@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router-dom';
 import { useProducts } from '@/hooks/useProducts';
 import { useCartContext } from '@/hooks/CartContext';
 import { ProductGrid } from '@/components/ProductGrid';
@@ -8,6 +9,8 @@ import { Button } from '@/components/ui/button';
 
 export function CatalogPage() {
   const { products, isLoading, error, refetch } = useProducts();
+  const [searchParams] = useSearchParams();
+  const category = searchParams.get('category');
   const {
     error: cartError,
     addItem,
@@ -16,14 +19,16 @@ export function CatalogPage() {
     isActionPending,
   } = useCartContext();
 
+  const filteredProducts = category ? products.filter((p) => p.category === category) : products;
+
   if (isLoading) return <LoadingSpinner />;
   if (error) return <ErrorMessage message={error} onRetry={() => void refetch()} />;
-  if (products.length === 0)
+  if (filteredProducts.length === 0)
     return <p className="py-12 text-center text-muted-foreground">No products available.</p>;
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold">Catalog</h1>
+      <h1 className="mb-6 text-2xl font-bold">Catalog{category ? ` — ${category}` : ''}</h1>
       {cartError && (
         <div
           role="alert"
@@ -36,7 +41,7 @@ export function CatalogPage() {
         </div>
       )}
       <ProductGrid>
-        {products.map((product) => (
+        {filteredProducts.map((product) => (
           <ProductCard
             key={product.id}
             product={product}

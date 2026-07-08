@@ -83,20 +83,14 @@ and real Playwright tests are deferred — do not start them until explicitly re
    admin. Domain boundaries drawn now (cart / checkout / catalog / account / shipping) so
    growth stays additive.
 
-### Phase 1 implementation status — 2026-07-08
+### Completed TLDR — 2026-07-08
 
-Implementation remediation complete; final verification matrix incomplete.
+- Built: npm workspaces -> React/Vite web + Fastify API + SQLite + shared contracts.
+- Built: catalog -> cart -> checkout -> `SAVE10` -> confirmation flow.
+- Built: desktop shop UI -> catalog, cart sheet/page, checkout, confirmation, category nav, inert search/account/wishlist placeholders.
+- Verified: Windows + Node 22 install/build path, lint, typecheck, format baseline, seed/reset, main browser journey at `1366x768`.
+- Preserved: no tests, no deferred Phase 2 features, no clean-baseline agent/config artifacts.
 
-- Built: npm-workspaces monorepo; React/Vite storefront; Fastify API; SQLite; shared TypeBox contracts.
-- Built: canonical 8-product Electronics catalog, local images, deterministic seed convergence, reset path.
-- Built: server-held cart, persisted browser ID, shared init/recovery, add/update/remove, backend-authoritative totals.
-- Built: `SAVE10` eligibility at 5+ total items, invalid-code feedback, server quote, quote invalidation after cart mutation, transactional order persistence, confirmation, fresh cart after checkout.
-- Built: polished desktop catalog/cart/checkout/confirmation journey, labeled fields, action/recovery feedback, loading/empty states.
-- Built: cross-platform install lifecycle; API on `127.0.0.1:3001`; web on `127.0.0.1:5173`; Node `>=22.0.0 <23.0.0`; README verified against clean Windows copy.
-- Verified on Windows + Node 22: clean `npm ci`/`npm install`, lint, typecheck, format, workspace builds, seed/reset, primary browser journey at `1366x768`.
-- Scope preserved: no tests, test tooling, deferred Phase 2 features, Cursor Rules, MCP config, `AGENTS.md`, or clean-baseline agent artifacts added.
-- Remaining gates: macOS + Node 22; isolated `npm run dev` startup + PowerShell/Command Prompt shutdown; browser journey at `3840x2160`; post-fix browser-console check; current-build runtime check for add-path missing-cart vs missing-product errors; final StrictMode/cart-recovery verification.
-- Completion rule: do not mark Phase 1 complete until remaining platform/runtime/browser evidence passes.
 
 **Layout must stay modern, extension-ready.** Monorepo shape chosen to later add, without
 rebuilding:
