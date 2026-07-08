@@ -1,0 +1,29 @@
+{
+  "name": "shop-qarefully",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "postinstall": "npm run build -w @shop/contracts",
+    "dev": "npm run seed && concurrently -n api,web -c blue,green --kill-others \"npm run dev -w @shop/api\" \"npm run dev -w @shop/web\"",
+    "seed": "npm run seed -w @shop/api",
+    "reset": "npm run reset -w @shop/api",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write ."
+  },
+  "engines": {
+    "node": ">=22.0.0 <23.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "concurrently": "^10.0.3",
+    "eslint": "^9.18.0",
+    "prettier": "^3.4.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.21.0"
+  }
+}
