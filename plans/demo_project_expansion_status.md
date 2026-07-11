@@ -12,7 +12,7 @@ Created: 2026-07-11
 | w1-a    | complete | 2d6a81f  | 59632cc  | plans/demo_project_expansion_evidence/w1-a.md  |
 | w1-b    | complete | 2ff87be  | ca3e3fc  | plans/demo_project_expansion_evidence/w1-b.md  |
 | w1-c    | complete | a04b5ba  | fef6f60  | plans/demo_project_expansion_evidence/w1-c.md  |
-| w1-d    | pending | -        | -         | plans/demo_project_expansion_evidence/w1-d.md  |
+| w1-d    | complete | aeaa785  | d49513c  | plans/demo_project_expansion_evidence/w1-d.md  |
 | w2-a    | pending | -        | -         | plans/demo_project_expansion_evidence/w2-a.md  |
 | w2-b    | pending | -        | -         | plans/demo_project_expansion_evidence/w2-b.md  |
 | wave3   | pending | -        | -         | plans/demo_project_expansion_evidence/wave3.md |
