@@ -174,6 +174,9 @@ export const PromoCode = Type.Object({
   code: Type.String(),
   discountPercent: Type.Number({ minimum: 0, maximum: 100 }),
   minItemCount: Type.Number({ minimum: 0, multipleOf: 1 }),
+  kind: PromoCodeKind,
+  amountCents: Type.Optional(MoneyCents),
+  minSubtotalCents: Type.Optional(MoneyCents),
 });
 export type PromoCode = Static<typeof PromoCode>;
 
