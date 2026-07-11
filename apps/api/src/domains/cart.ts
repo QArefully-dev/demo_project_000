@@ -26,6 +26,8 @@ export interface CartResult {
       imageUrl: string;
       category: string;
       stock: number;
+      slug: string;
+      salesCount: number;
     };
     quantity: number;
     lineTotalCents: number;

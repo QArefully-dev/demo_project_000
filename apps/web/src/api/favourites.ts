@@ -1,9 +1,5 @@
 import { apiFetch } from './client';
-import type {
-  FavouritesListResponse,
-  AddFavouriteBody,
-  SuccessResponse,
-} from '@shop/contracts';
+import type { FavouritesListResponse, AddFavouriteBody, SuccessResponse } from '@shop/contracts';
 
 /**
  * Favourites API module — stubs (Wave 0).

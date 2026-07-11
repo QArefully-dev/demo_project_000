@@ -4,40 +4,45 @@
  */
 
 /** Stub: register a new user. */
-export async function signup(_params: {
+export function signup(_params: {
   email: string;
   password: string;
   displayName: string;
-}): Promise<{ userId: number } | 'EMAIL_EXISTS'> {
+}): { userId: number } | 'EMAIL_EXISTS' {
+  void _params;
   return 'EMAIL_EXISTS';
 }
 
 /** Stub: authenticate a user. */
-export async function login(_params: {
+export function login(_params: {
   email: string;
   password: string;
-}): Promise<{ userId: number } | 'INVALID_CREDENTIALS'> {
+}): { userId: number } | 'INVALID_CREDENTIALS' {
+  void _params;
   return 'INVALID_CREDENTIALS';
 }
 
 /** Stub: generate a password reset token. Always returns success. */
 export function forgotPassword(_email: string): boolean {
+  void _email;
   return true;
 }
 
 /** Stub: reset password with token. */
-export async function resetPassword(_params: {
+export function resetPassword(_params: {
   token: string;
   newPassword: string;
-}): Promise<'SUCCESS' | 'INVALID_TOKEN' | 'EXPIRED' | 'ALREADY_USED'> {
+}): 'SUCCESS' | 'INVALID_TOKEN' | 'EXPIRED' | 'ALREADY_USED' {
+  void _params;
   return 'INVALID_TOKEN';
 }
 
 /** Stub: change password for authenticated user. */
-export async function changePassword(_params: {
+export function changePassword(_params: {
   userId: number;
   currentPassword: string;
   newPassword: string;
-}): Promise<'SUCCESS' | 'INVALID_CURRENT' | 'SAME_PASSWORD'> {
+}): 'SUCCESS' | 'INVALID_CURRENT' | 'SAME_PASSWORD' {
+  void _params;
   return 'INVALID_CURRENT';
 }

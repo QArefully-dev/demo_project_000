@@ -168,10 +168,7 @@ export type FavouritesListResponse = Static<typeof FavouritesListResponse>;
 
 // ── PromoCode ─────────────────────────────────────────────
 
-export const PromoCodeKind = Type.Union([
-  Type.Literal('percent'),
-  Type.Literal('fixed'),
-]);
+export const PromoCodeKind = Type.Union([Type.Literal('percent'), Type.Literal('fixed')]);
 
 export const PromoCode = Type.Object({
   code: Type.String(),

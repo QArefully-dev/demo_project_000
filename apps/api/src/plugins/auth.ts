@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { getDb } from '../db/index.js';
 import { sendUnauthorized } from '../utils/errors.js';
@@ -30,7 +31,7 @@ interface UserRow {
  * Never serialized to the client beyond the cookie.
  */
 export function generateSessionToken(): string {
-  return require('node:crypto').randomBytes(32).toString('hex');
+  return randomBytes(32).toString('hex');
 }
 
 /**
@@ -107,17 +108,14 @@ export function getAuthenticatedUser(request: FastifyRequest): AuthenticatedUser
  * Fastify preHandler that requires an authenticated session.
  * Responds 401 if no valid session is found.
  */
-export async function requireAuth(
-  request: FastifyRequest,
-  reply: FastifyReply,
-): Promise<void> {
+export function requireAuth(request: FastifyRequest, reply: FastifyReply): void {
   const user = getAuthenticatedUser(request);
   if (!user) {
     sendUnauthorized(reply);
     return;
   }
   // Attach user to request for downstream handlers.
-  (request as any).authenticatedUser = user;
+  request.authenticatedUser = user;
 }
 
 /**
@@ -130,9 +128,9 @@ export function authPlugin(app: FastifyInstance, _opts: unknown, done: () => voi
   app.decorateRequest('authenticatedUser', null);
 
   // Hydrate user on every request (best-effort, non-blocking).
-  app.addHook('onRequest', async (request) => {
+  app.addHook('onRequest', (request) => {
     const user = getAuthenticatedUser(request);
-    (request as any).authenticatedUser = user;
+    request.authenticatedUser = user;
   });
 
   done();

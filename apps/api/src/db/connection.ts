@@ -158,7 +158,7 @@ function ensureSchema(db: Database.Database): void {
 
     addColumn('products', 'slug', "TEXT NOT NULL DEFAULT ''");
     addColumn('products', 'compare_at_price_cents', 'INTEGER');
-    addColumn('products', 'sales_count', "INTEGER NOT NULL DEFAULT 0");
+    addColumn('products', 'sales_count', 'INTEGER NOT NULL DEFAULT 0');
 
     addColumn('promo_codes', 'kind', "TEXT NOT NULL DEFAULT 'percent'");
     addColumn('promo_codes', 'amount_cents', 'INTEGER');
@@ -166,7 +166,7 @@ function ensureSchema(db: Database.Database): void {
     addColumn('promo_codes', 'start_at', 'TEXT');
     addColumn('promo_codes', 'end_at', 'TEXT');
     addColumn('promo_codes', 'max_redemptions', 'INTEGER');
-    addColumn('promo_codes', 'redemption_count', "INTEGER NOT NULL DEFAULT 0");
+    addColumn('promo_codes', 'redemption_count', 'INTEGER NOT NULL DEFAULT 0');
     addColumn('promo_codes', 'per_user_limit', 'INTEGER');
 
     addColumn('orders', 'user_id', 'INTEGER');

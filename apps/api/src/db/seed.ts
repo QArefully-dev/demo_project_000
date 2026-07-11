@@ -1,3 +1,4 @@
+import { createHash, scryptSync } from 'node:crypto';
 import type Database from 'better-sqlite3';
 
 // ── Product categories ────────────────────────────────────
@@ -204,8 +205,7 @@ const PRODUCT_ROWS = [
   {
     id: 16,
     name: 'NVMe SSD 2TB Internal',
-    description:
-      'PCIe Gen 4 NVMe M.2 SSD with 7000MB/s read, 2TB capacity, heatsink included.',
+    description: 'PCIe Gen 4 NVMe M.2 SSD with 7000MB/s read, 2TB capacity, heatsink included.',
     price_cents: 16995,
     category: 'Storage',
     stock_count: 14,
@@ -347,8 +347,7 @@ const PRODUCT_ROWS = [
   {
     id: 27,
     name: 'Mechanical Numpad',
-    description:
-      'USB-C mechanical numpad with hot-swappable switches, per-key RGB, PBT keycaps.',
+    description: 'USB-C mechanical numpad with hot-swappable switches, per-key RGB, PBT keycaps.',
     price_cents: 3495,
     category: 'Peripherals',
     stock_count: 20,
@@ -438,8 +437,7 @@ const PRODUCT_ROWS = [
   {
     id: 34,
     name: 'Thunderbolt 4 Cable 1m',
-    description:
-      'Certified Thunderbolt 4 cable, 40Gbps data, 100W charging, 8K video, 1-meter.',
+    description: 'Certified Thunderbolt 4 cable, 40Gbps data, 100W charging, 8K video, 1-meter.',
     price_cents: 3995,
     category: 'Cables',
     stock_count: 25,
@@ -451,8 +449,7 @@ const PRODUCT_ROWS = [
   {
     id: 35,
     name: 'HDMI 2.1 Cable 3m',
-    description:
-      'Ultra high-speed HDMI 2.1 cable, 48Gbps, 8K@60Hz, 4K@120Hz, HDR, eARC, 3-meter.',
+    description: 'Ultra high-speed HDMI 2.1 cable, 48Gbps, 8K@60Hz, 4K@120Hz, HDR, eARC, 3-meter.',
     price_cents: 2495,
     category: 'Cables',
     stock_count: 35,
@@ -464,8 +461,7 @@ const PRODUCT_ROWS = [
   {
     id: 36,
     name: '5-Port Gigabit PoE Switch',
-    description:
-      '5-port gigabit PoE+ switch with 65W total budget, fanless design, VLAN support.',
+    description: '5-port gigabit PoE+ switch with 65W total budget, fanless design, VLAN support.',
     price_cents: 6995,
     category: 'Networking',
     stock_count: 12,
@@ -477,8 +473,7 @@ const PRODUCT_ROWS = [
   {
     id: 37,
     name: 'USB WiFi Adapter AC1300',
-    description:
-      'Dual-band AC1300 USB 3.0 WiFi adapter with high-gain antenna, MU-MIMO support.',
+    description: 'Dual-band AC1300 USB 3.0 WiFi adapter with high-gain antenna, MU-MIMO support.',
     price_cents: 2995,
     category: 'Networking',
     stock_count: 25,
@@ -490,8 +485,7 @@ const PRODUCT_ROWS = [
   {
     id: 38,
     name: 'Surge Protector 8-Outlet',
-    description:
-      '8-outlet surge protector with 4320J protection, 4 USB charging ports, 2m cord.',
+    description: '8-outlet surge protector with 4320J protection, 4 USB charging ports, 2m cord.',
     price_cents: 3495,
     category: 'Power',
     stock_count: 20,
@@ -555,8 +549,7 @@ const PRODUCT_ROWS = [
   {
     id: 43,
     name: 'External Blu-ray Drive',
-    description:
-      'USB 3.0 external Blu-ray/DVD/CD writer, slim portable design, M-DISC support.',
+    description: 'USB 3.0 external Blu-ray/DVD/CD writer, slim portable design, M-DISC support.',
     price_cents: 7995,
     category: 'Storage',
     stock_count: 8,
@@ -595,9 +588,27 @@ const PRODUCT_ROWS = [
 
 // ── Seed users ────────────────────────────────────────────
 const USERS = [
-  { id: 1, email: 'alice@example.com', display_name: 'Alice', password: 'Password123!', role: 'customer' },
-  { id: 2, email: 'bob@example.com', display_name: 'Bob', password: 'Password123!', role: 'customer' },
-  { id: 3, email: 'admin@example.com', display_name: 'Admin', password: 'Password123!', role: 'admin' },
+  {
+    id: 1,
+    email: 'alice@example.com',
+    display_name: 'Alice',
+    password: 'Password123!',
+    role: 'customer',
+  },
+  {
+    id: 2,
+    email: 'bob@example.com',
+    display_name: 'Bob',
+    password: 'Password123!',
+    role: 'customer',
+  },
+  {
+    id: 3,
+    email: 'admin@example.com',
+    display_name: 'Admin',
+    password: 'Password123!',
+    role: 'admin',
+  },
 ];
 
 // ── Seed promos ───────────────────────────────────────────
@@ -777,15 +788,13 @@ export function seedDatabase(db: Database.Database): void {
     // The passwords are rehashed on every seed run via sync scrypt.
     // We use a placeholder salt.hash format; the real hashing is done
     // synchronously below.
-    const crypto = require('node:crypto');
     for (const user of USERS) {
       // We use deterministic salt derived from email for idempotent seed.
-      const deterministicSalt = crypto
-        .createHash('sha256')
+      const deterministicSalt = createHash('sha256')
         .update(`seed-salt-${user.email}`)
         .digest('hex')
         .slice(0, 64);
-      const derived = crypto.scryptSync('Password123!', deterministicSalt, 64);
+      const derived = scryptSync('Password123!', deterministicSalt, 64);
       const stored = `${deterministicSalt}.${derived.toString('hex')}`;
       upsertUser.run({
         ...user,
@@ -809,12 +818,17 @@ export function seedDatabase(db: Database.Database): void {
     }
 
     // ── Assert post-seed counts ───────────────────────────
-    const productCount = (db.prepare('SELECT COUNT(*) as c FROM products').get() as { c: number }).c;
+    const productCount = (db.prepare('SELECT COUNT(*) as c FROM products').get() as { c: number })
+      .c;
     const userCount = (db.prepare('SELECT COUNT(*) as c FROM users').get() as { c: number }).c;
-    const promoCount = (db.prepare('SELECT COUNT(*) as c FROM promo_codes').get() as { c: number }).c;
+    const promoCount = (db.prepare('SELECT COUNT(*) as c FROM promo_codes').get() as { c: number })
+      .c;
     const favCount = (db.prepare('SELECT COUNT(*) as c FROM favourites').get() as { c: number }).c;
-    const sessionCount = (db.prepare('SELECT COUNT(*) as c FROM sessions').get() as { c: number }).c;
-    const mailboxCount = (db.prepare('SELECT COUNT(*) as c FROM dev_mailbox').get() as { c: number }).c;
+    const sessionCount = (db.prepare('SELECT COUNT(*) as c FROM sessions').get() as { c: number })
+      .c;
+    const mailboxCount = (
+      db.prepare('SELECT COUNT(*) as c FROM dev_mailbox').get() as { c: number }
+    ).c;
 
     const assert = (label: string, expected: number, actual: number) => {
       if (actual !== expected) {
@@ -830,16 +844,21 @@ export function seedDatabase(db: Database.Database): void {
     assert('dev_mailbox', 0, mailboxCount);
 
     // Assert SAVE10
-    const save10 = db.prepare("SELECT * FROM promo_codes WHERE code = 'SAVE10'").get() as {
-      kind: string;
-      discount_percent: number;
-      min_item_count: number;
-      active: number;
-    } | undefined;
+    const save10 = db.prepare("SELECT * FROM promo_codes WHERE code = 'SAVE10'").get() as
+      | {
+          kind: string;
+          discount_percent: number;
+          min_item_count: number;
+          active: number;
+        }
+      | undefined;
     if (!save10) throw new Error('Seed assertion failed: SAVE10 missing');
-    if (save10.kind !== 'percent') throw new Error('Seed assertion failed: SAVE10 kind not percent');
-    if (save10.discount_percent !== 10) throw new Error('Seed assertion failed: SAVE10 discount not 10');
-    if (save10.min_item_count !== 5) throw new Error('Seed assertion failed: SAVE10 min_item_count not 5');
+    if (save10.kind !== 'percent')
+      throw new Error('Seed assertion failed: SAVE10 kind not percent');
+    if (save10.discount_percent !== 10)
+      throw new Error('Seed assertion failed: SAVE10 discount not 10');
+    if (save10.min_item_count !== 5)
+      throw new Error('Seed assertion failed: SAVE10 min_item_count not 5');
     if (save10.active !== 1) throw new Error('Seed assertion failed: SAVE10 not active');
   });
 

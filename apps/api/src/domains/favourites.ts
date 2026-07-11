@@ -11,16 +11,21 @@ export interface FavouriteRow {
 }
 
 /** Stub: list favourites for a user. */
-export function listFavourites(_userId: number) {
+export function listFavourites(_userId: number): FavouriteRow[] {
+  void _userId;
   return [];
 }
 
 /** Stub: add a product to favourites. */
 export function addFavourite(_userId: number, _productId: string): true | 'NOT_FOUND' {
+  void _userId;
+  void _productId;
   return 'NOT_FOUND';
 }
 
 /** Stub: remove a product from favourites. */
 export function removeFavourite(_userId: number, _productId: string): true | 'NOT_FOUND' {
+  void _userId;
+  void _productId;
   return 'NOT_FOUND';
 }

@@ -19,6 +19,14 @@ export function processPayment(_params: {
   cardCvc: string;
   idempotencyKey: string;
   userId?: number;
-}): PaymentResult | 'CART_NOT_FOUND' | 'CART_EMPTY' | 'PROMO_INVALID' | 'DECLINED' | 'TIMEOUT' | 'IDEMPOTENT_CONFLICT' {
+}):
+  | PaymentResult
+  | 'CART_NOT_FOUND'
+  | 'CART_EMPTY'
+  | 'PROMO_INVALID'
+  | 'DECLINED'
+  | 'TIMEOUT'
+  | 'IDEMPOTENT_CONFLICT' {
+  void _params;
   return 'CART_NOT_FOUND';
 }

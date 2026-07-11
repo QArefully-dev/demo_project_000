@@ -1,9 +1,5 @@
 import { apiFetch } from './client';
-import type {
-  PlaceOrderBody,
-  PlaceOrderResponse,
-  OrderDetailResponse,
-} from '@shop/contracts';
+import type { PlaceOrderBody, PlaceOrderResponse, OrderDetailResponse } from '@shop/contracts';
 
 /**
  * Orders (legacy checkout) API module.

@@ -1,10 +1,5 @@
 import { apiFetch } from './client';
-import type {
-  Cart,
-  CreateCartResponse,
-  AddToCartBody,
-  UpdateCartLineBody,
-} from '@shop/contracts';
+import type { Cart, CreateCartResponse, AddToCartBody, UpdateCartLineBody } from '@shop/contracts';
 
 /**
  * Cart API module.
@@ -26,11 +21,7 @@ export function addToCart(cartId: string, productId: string): Promise<Cart> {
   });
 }
 
-export function updateCartItem(
-  cartId: string,
-  productId: string,
-  quantity: number,
-): Promise<Cart> {
+export function updateCartItem(cartId: string, productId: string, quantity: number): Promise<Cart> {
   const body: UpdateCartLineBody = { productId, quantity };
   return apiFetch<Cart>(`/api/cart/${cartId}/items`, {
     method: 'PATCH',
