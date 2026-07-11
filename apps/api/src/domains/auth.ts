@@ -224,17 +224,65 @@ export async function resetPassword(params: {
   return 'SUCCESS';
 }
 
-// ── Change Password (stub for W2.B) ───────────────────────
+// ── Change Password ───────────────────────────────────────
 
 export type ChangePasswordResult = 'SUCCESS' | 'INVALID_CURRENT' | 'SAME_PASSWORD';
 
-export function changePassword(_params: {
+/**
+ * Change the password for an authenticated user.
+ * Verifies the current password, rejects if the new password is the same,
+ * updates the stored hash, and invalidates all other sessions while
+ * preserving the current session.
+ */
+export async function changePassword(params: {
   userId: number;
   currentPassword: string;
   newPassword: string;
-}): ChangePasswordResult {
-  void _params;
-  return 'INVALID_CURRENT';
+  currentSessionToken: string;
+}): Promise<ChangePasswordResult> {
+  const db = getDb();
+
+  const row = db
+    .prepare('SELECT password_hash, password_salt FROM users WHERE id = ?')
+    .get(params.userId) as { password_hash: string; password_salt: string } | undefined;
+
+  if (!row) {
+    return 'INVALID_CURRENT';
+  }
+
+  // Verify current password
+  const stored = row.password_salt
+    ? `${row.password_salt}.${row.password_hash}`
+    : row.password_hash;
+  const valid = await verifyPassword(params.currentPassword, stored);
+
+  if (!valid) {
+    return 'INVALID_CURRENT';
+  }
+
+  // Reject same password
+  if (params.currentPassword === params.newPassword) {
+    return 'SAME_PASSWORD';
+  }
+
+  // Hash new password and update
+  const newStoredPassword = await hashPassword(params.newPassword);
+
+  db.transaction(() => {
+    db.prepare('UPDATE users SET password_hash = ?, password_salt = ? WHERE id = ?').run(
+      newStoredPassword,
+      '',
+      params.userId,
+    );
+
+    // Invalidate all other sessions; preserve the current session
+    db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(
+      params.userId,
+      params.currentSessionToken,
+    );
+  })();
+
+  return 'SUCCESS';
 }
 
 // ── Mailbox ────────────────────────────────────────────────

@@ -114,8 +114,9 @@ export function requireAuth(request: FastifyRequest, reply: FastifyReply): void 
     sendUnauthorized(reply);
     return;
   }
-  // Attach user to request for downstream handlers.
+  // Attach user and current session token to request for downstream handlers.
   request.authenticatedUser = user;
+  request.sessionToken = request.cookies?.sid ?? null;
 }
 
 /**
@@ -124,8 +125,9 @@ export function requireAuth(request: FastifyRequest, reply: FastifyReply): void 
  * Must be registered before route plugins.
  */
 export function authPlugin(app: FastifyInstance, _opts: unknown, done: () => void): void {
-  // Decorate request with authenticatedUser (set by requireAuth or preHandler)
+  // Decorate request with authenticatedUser and sessionToken (set by requireAuth or preHandler)
   app.decorateRequest('authenticatedUser', null);
+  app.decorateRequest('sessionToken', null);
 
   // Hydrate user on every request (best-effort, non-blocking).
   app.addHook('onRequest', (request) => {
@@ -136,9 +138,10 @@ export function authPlugin(app: FastifyInstance, _opts: unknown, done: () => voi
   done();
 }
 
-// Augment Fastify types for the decorated request property.
+// Augment Fastify types for the decorated request properties.
 declare module 'fastify' {
   interface FastifyRequest {
     authenticatedUser: AuthenticatedUser | null;
+    sessionToken: string | null;
   }
 }

@@ -2,12 +2,13 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { Type } from '@sinclair/typebox';
 import { sendBadRequest, sendUnauthorized, sendConflict } from '../utils/errors.js';
-import { createSession, destroySession } from '../plugins/auth.js';
+import { createSession, destroySession, requireAuth } from '../plugins/auth.js';
 import {
   signup as signupDomain,
   login as loginDomain,
   forgotPassword,
   resetPassword,
+  changePassword,
 } from '../domains/auth.js';
 import {
   SignupBody,
@@ -203,10 +204,11 @@ export default function authRoutes(app: FastifyInstance): void {
     },
   );
 
-  // PATCH /password (stub — W2.B)
+  // PATCH /password
   typed.patch(
     '/password',
     {
+      preHandler: requireAuth,
       schema: {
         body: ChangePasswordBody,
         response: {
@@ -216,9 +218,37 @@ export default function authRoutes(app: FastifyInstance): void {
         },
       },
     },
-    async (_request: FastifyRequest, reply: FastifyReply) => {
-      // Stub for W2.B — returns 501.
-      reply.code(501).send({ error: 'Not implemented' });
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { currentPassword, newPassword } = request.body as {
+        currentPassword: string;
+        newPassword: string;
+      };
+
+      const user = request.authenticatedUser!;
+      const sessionToken = request.sessionToken;
+
+      if (newPassword.length < 8 || newPassword.length > 128) {
+        sendBadRequest(reply, 'Password must be 8-128 characters');
+        return;
+      }
+
+      const result = await changePassword({
+        userId: user.id,
+        currentPassword,
+        newPassword,
+        currentSessionToken: sessionToken ?? '',
+      });
+
+      if (result === 'INVALID_CURRENT') {
+        sendBadRequest(reply, 'Current password is incorrect');
+        return;
+      }
+      if (result === 'SAME_PASSWORD') {
+        sendBadRequest(reply, 'New password must be different from current password');
+        return;
+      }
+
+      reply.code(200).send({ success: true as const });
     },
   );
 }
