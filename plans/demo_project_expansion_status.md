@@ -24,5 +24,5 @@ Created: 2026-07-11
 | bootstrap         | complete | -                                           |
 | wave0-gate        | complete | plans/demo_project_expansion_evidence/gate-wave0.md |
 | wave1-gate        | complete | plans/demo_project_expansion_evidence/gate-wave1.md |
-| wave2-gate        | pending | plans/demo_project_expansion_evidence/gate-wave2.md |
+| wave2-gate        | complete | plans/demo_project_expansion_evidence/gate-wave2.md |
 | final-verification | pending | plans/demo_project_expansion_evidence/final.md     |
