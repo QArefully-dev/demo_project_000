@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { WishlistButton } from '@/components/WishlistButton';
 import { formatMoney } from '@/lib/formatMoney';
 import type { Product } from '@shop/contracts';
 
@@ -59,6 +60,10 @@ export function ProductCard({
               Bestseller
             </Badge>
           )}
+        </div>
+        {/* Wishlist heart toggle */}
+        <div className="absolute top-1 right-1">
+          <WishlistButton productId={product.id} product={product} />
         </div>
       </div>
       <CardContent className="flex flex-1 flex-col gap-2 p-4">

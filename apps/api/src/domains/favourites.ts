@@ -1,7 +1,4 @@
-/**
- * Favourites domain — stub (Wave 0).
- * Full implementation deferred to W2.A.
- */
+import { getDb } from '../db/index.js';
 
 export interface FavouriteRow {
   id: number;
@@ -10,22 +7,52 @@ export interface FavouriteRow {
   created_at: string;
 }
 
-/** Stub: list favourites for a user. */
-export function listFavourites(_userId: number): FavouriteRow[] {
-  void _userId;
-  return [];
+interface ProductRow {
+  id: number;
+  name: string;
+  description: string;
+  price_cents: number;
+  category: string;
+  stock_count: number;
+  image_url: string;
+  slug: string;
+  compare_at_price_cents: number | null;
+  sales_count: number;
 }
 
-/** Stub: add a product to favourites. */
-export function addFavourite(_userId: number, _productId: string): true | 'NOT_FOUND' {
-  void _userId;
-  void _productId;
-  return 'NOT_FOUND';
+/** List all favourite products for a user, joined with the products table. */
+export function listFavourites(userId: number): ProductRow[] {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT p.* FROM favourites f
+       JOIN products p ON f.product_id = p.id
+       WHERE f.user_id = ?
+       ORDER BY f.created_at DESC`,
+    )
+    .all(userId) as ProductRow[];
 }
 
-/** Stub: remove a product from favourites. */
-export function removeFavourite(_userId: number, _productId: string): true | 'NOT_FOUND' {
-  void _userId;
-  void _productId;
-  return 'NOT_FOUND';
+/** Add a product to a user's favourites. Idempotent — returns true if added or already present. */
+export function addFavourite(userId: number, productId: number): true | 'NOT_FOUND' {
+  const db = getDb();
+
+  // Validate product exists
+  const product = db.prepare('SELECT id FROM products WHERE id = ?').get(productId);
+  if (!product) return 'NOT_FOUND';
+
+  db.prepare('INSERT OR IGNORE INTO favourites (user_id, product_id) VALUES (?, ?)').run(
+    userId,
+    productId,
+  );
+  return true;
+}
+
+/** Remove a product from a user's favourites. Returns true if removed, NOT_FOUND if not present. */
+export function removeFavourite(userId: number, productId: number): true | 'NOT_FOUND' {
+  const db = getDb();
+  const result = db
+    .prepare('DELETE FROM favourites WHERE user_id = ? AND product_id = ?')
+    .run(userId, productId);
+  return result.changes > 0 ? true : 'NOT_FOUND';
 }

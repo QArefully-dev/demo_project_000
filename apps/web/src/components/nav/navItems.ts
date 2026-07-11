@@ -23,7 +23,7 @@ export const wishlistItem: NavItem = {
   key: 'wishlist',
   label: 'Wishlist',
   icon: 'Heart',
-  enabled: false,
+  enabled: true,
 };
 
 export const navItems: Record<string, NavItem> = {
