@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useCartContext } from './CartContext';
 import { isEligibleForPromo } from '../features/checkout/cartValidation';
 import { validatePromo } from '../api/promo';
-import { placeOrder } from '../api/orders';
 import { isMissingCartError } from '../api/client';
 
 interface FormState {
@@ -20,7 +19,7 @@ interface FormErrors {
 
 export function useCheckout() {
   const navigate = useNavigate();
-  const { cart, cartId, clearCart, retryCart } = useCartContext();
+  const { cart, cartId, retryCart } = useCartContext();
 
   const [form, setForm] = useState<FormState>({
     customerName: '',
@@ -35,8 +34,6 @@ export function useCheckout() {
   const [promoTotalCents, setPromoTotalCents] = useState<number | null>(null);
   const [promoError, setPromoError] = useState<string | null>(null);
   const [promoValidating, setPromoValidating] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
   const [cartRecoveryMessage, setCartRecoveryMessage] = useState<string | null>(null);
 
   const isPromoEligible = cart ? isEligibleForPromo(cart.totalItems) : false;
@@ -47,7 +44,6 @@ export function useCheckout() {
     : null;
   const latestCartQuoteKey = useRef(cartQuoteKey);
   const promoRequestInFlight = useRef(false);
-  const orderSubmissionInFlight = useRef(false);
   latestCartQuoteKey.current = cartQuoteKey;
   const promoQuoteIsCurrent = appliedPromoCartKey === cartQuoteKey;
   const currentAppliedPromo = promoQuoteIsCurrent ? appliedPromo : null;
@@ -70,7 +66,6 @@ export function useCheckout() {
 
   const updateField = useCallback((field: keyof FormState, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
-    setSubmitError(null);
   }, []);
 
   const blurField = useCallback((field: keyof FormState) => {
@@ -159,42 +154,26 @@ export function useCheckout() {
     setPromoError(null);
   }, []);
 
-  const handleSubmit = useCallback(async () => {
-    if (!cartId || !cart || orderSubmissionInFlight.current) return;
+  const handleSubmit = useCallback(() => {
+    if (!cartId || !cart) return;
 
     const errors = validateFormFields(form);
     setTouched({ customerName: true, customerEmail: true, shippingAddress: true });
     if (Object.keys(errors).length > 0) return;
 
-    orderSubmissionInFlight.current = true;
-    setSubmitting(true);
-    setSubmitError(null);
-    try {
-      const order = await placeOrder({
+    // Pass shipping/contact info and promo to payment page via router state
+    navigate('/payment', {
+      state: {
         cartId,
-        promoCode: currentAppliedPromo ?? undefined,
         customerName: form.customerName.trim(),
         customerEmail: form.customerEmail.trim(),
         shippingAddress: form.shippingAddress.trim(),
-      });
-      clearCart();
-      navigate(`/order-confirmation/${order.id}`);
-    } catch (err) {
-      if (isMissingCartError(err)) {
-        const recovered = await retryCart();
-        setCartRecoveryMessage(
-          recovered
-            ? 'Your previous cart was no longer available. A new cart is ready; review it before placing the order.'
-            : 'Your previous cart was no longer available, and a replacement cart could not be prepared. Retry the cart to continue.',
-        );
-      } else {
-        setSubmitError(err instanceof Error ? err.message : 'Failed to place order');
-      }
-    } finally {
-      orderSubmissionInFlight.current = false;
-      setSubmitting(false);
-    }
-  }, [cartId, cart, form, currentAppliedPromo, clearCart, navigate, retryCart]);
+        promoCode: currentAppliedPromo ?? null,
+        discountCents: currentDiscountCents,
+        subtotalCents: cart.subtotalCents,
+      },
+    });
+  }, [cartId, cart, form, currentAppliedPromo, currentDiscountCents, navigate]);
 
   return {
     cart,
@@ -214,8 +193,6 @@ export function useCheckout() {
     validatePromo: handleValidatePromo,
     removePromo: handleRemovePromo,
     submitOrder: handleSubmit,
-    submitting,
-    submitError,
     cartRecoveryMessage,
   };
 }
