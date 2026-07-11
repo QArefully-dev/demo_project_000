@@ -1,7 +1,7 @@
 # Demo Project Expansion — State Ledger
 
 Integration branch: `codex/demo-project-expansion`
-Integration SHA: `f43100d7f3c76d0581c1d3f8e2e395d99846557f`
+Integration SHA: `fac8595da3efbc3d0b394e6b78393e1a34a32d7b`
 Created: 2026-07-11
 
 ## Section Status
