@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Cart } from '@shop/contracts';
-import * as api from '../api/client';
+import * as api from '../api/cart';
+import { ApiError, isMissingCartError } from '../api/client';
 import { clearCartId, getCartId, setCartId } from '../lib/cartStorage';
 
 export type CartAction = 'add' | 'update' | 'remove';
@@ -28,7 +29,7 @@ function loadOrCreateCart(): Promise<Cart> {
       try {
         return await api.getCart(storedCartId);
       } catch (error) {
-        if (!api.isMissingCartError(error)) throw error;
+        if (!isMissingCartError(error)) throw error;
         if (getCartId() === storedCartId) clearCartId();
       }
     }
@@ -47,7 +48,7 @@ function recoverMissingCart(missingCartId: string): Promise<Cart> {
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof api.ApiError && error.isNetworkError) {
+  if (error instanceof ApiError && error.isNetworkError) {
     return 'Unable to reach the shop server. Check that it is running and try again.';
   }
   return error instanceof Error ? error.message : fallback;
@@ -153,7 +154,7 @@ export function useCart() {
           if (getCartId() === updatedCart.id) applyCart(updatedCart);
           return true;
         } catch (actionError) {
-          if (!api.isMissingCartError(actionError)) throw actionError;
+          if (!isMissingCartError(actionError)) throw actionError;
 
           const replacementCart = await recoverMissingCart(activeCartId);
           applyCart(replacementCart);
