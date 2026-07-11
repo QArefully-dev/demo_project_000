@@ -50,10 +50,59 @@ SQLite database is created automatically on first `npm run dev` at `data/shop.db
 
 All scripts run via `npm run` — no separate shell scripts directory needed.
 
+## Features
+
+- **Product catalog** with search, category filter, sale filter, and sort (newest, price, bestselling)
+- **Product detail** pages with related products, sale badges, and bestseller badges
+- **Shopping cart** with quantity controls, subtotal display, and 5-item minimum promo gate
+- **Checkout** with contact/shipping details and promo code entry
+- **Payment** with simulated gateway (test cards below), order confirmation, and email receipt
+- **User accounts**: sign up, log in, log out, forgot/reset password via dev mailbox
+- **Favourites / wishlist** with heart toggle and wishlist page
+- **Account page** with password change
+- **Dev mailbox** for inspecting system emails and reset-password links
+
 ## Seeded Data
 
-- **8 electronics products** across categories: Audio (2), Peripherals (3), Accessories (2), Displays (1)
-- **Promo code:** `SAVE10` — 10% off when cart has 5 or more items
+- **45 products** across 10 categories: Audio, Peripherals, Displays, Accessories, Storage, Networking, Power, Cables, Wearables, Smart Home
+- **14 sale products** with compare-at prices
+- **3 users** (credentials below)
+- **7 promo codes** (details below)
+
+### User Credentials
+
+| Email               | Password      | Role     |
+| ------------------- | ------------- | -------- |
+| alice@example.com   | Password123!  | customer |
+| bob@example.com     | Password123!  | customer |
+| admin@example.com   | Password123!  | admin    |
+
+Alice has 3 pre-seeded favourite products.
+
+### Promo Codes
+
+| Code      | Type    | Value | Notes                               |
+| --------- | ------- | ----- | ----------------------------------- |
+| `SAVE10`  | Percent | 10%   | Min 5 items in cart                 |
+| `SAVE20`  | Percent | 20%   | Min subtotal $100.00                |
+| `WELCOME5`| Fixed   | $5.00 | Per-user limit: 1                   |
+| `VIP15`   | Percent | 15%   | No restrictions                     |
+| `EXPIRED10`| Percent| 10%   | Already expired — always rejected   |
+| `SOON10`  | Percent | 10%   | Not yet active — always rejected    |
+| `LIMITED5`| Percent | 5%    | Exhausted (0 redemptions left)      |
+
+### Test Payment Cards
+
+Use card number `4242 4242 4242 4242` for successful payments.
+Use `4000 0000 0000 0002` to simulate a declined card.
+Use `4000 0000 0000 0069` to simulate a gateway timeout (250ms delay).
+Any other valid Luhn card number will also succeed.
+
+Expiry: any future date (MM/YY). CVC: any 3 or 4 digits.
+
+### Dev Mailbox
+
+Visit [http://127.0.0.1:5173/mailbox](http://127.0.0.1:5173/mailbox) to inspect system emails. After a forgot-password request, a reset link appears here. Click it to reset the password.
 
 ## Reset to Known State
 

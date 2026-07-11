@@ -15,6 +15,7 @@ import { ResetPasswordPage } from './features/auth/ResetPasswordPage';
 import { AccountPage } from './features/account/AccountPage';
 import { WishlistPage } from './features/wishlist/WishlistPage';
 import { MailboxPage } from './features/mailbox/MailboxPage';
+import { NotFoundPage } from './features/notFound/NotFoundPage';
 
 export default function App() {
   return (
@@ -48,6 +49,7 @@ export default function App() {
           }
         />
         <Route path="/mailbox" element={<MailboxPage />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   );

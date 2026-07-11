@@ -156,3 +156,17 @@ own sake.
 **Noted for later:** real Playwright tests are a later pass; for now `tests/` is a placeholder.
 Phase 2 feature work is a later pass too — current work is building the app (Phase 1
 completion + additive Phase 3 groundwork).
+
+### Phase-1 TLDR — 2026-07-11
+
+- Auth: signup, login, logout, forgot/reset via dev mailbox, session cookie, AuthContext, route guards.
+- Catalog: 45 products across 10 categories with paginated search, filter (category / on sale), sort (newest / price asc / price desc / bestselling), 300ms debounce.
+- Product detail: image, badges (sale / bestseller), stock status, description, sales count, related products, add-to-cart.
+- Cart: persistent cart with quantity controls, cart sheet, cart page, subtotal display, 5-item minimum promo gate.
+- Checkout: multi-step shipping → payment flow, promo code validation (`SAVE10`, `SAVE20`, `WELCOME5`, `VIP15`, expired/soon/exhausted codes).
+- Payment: simulated gateway with success / decline / timeout cards, idempotency keys, order confirmation with email to dev mailbox.
+- Favourites: authenticated wishlist with heart toggle, wishlist page, add-to-cart from wishlist.
+- Account: password change with current-password verification, session invalidation.
+- UI polish: hero/search home page, category chips, bestsellers/sale/newest sections, loading/empty/error states, toasts, 404 page, money formatting.
+- Dev mailbox: inspect system emails, clickable reset-password links.
+- Seed: deterministic with exact-count verification (45 products, 3 users, 7 promos, 3 favourites, 0 sessions, 0 mailbox).
