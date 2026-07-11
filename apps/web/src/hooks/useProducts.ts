@@ -13,15 +13,25 @@ export interface UseProductsParams {
 }
 
 export function useProducts(params?: UseProductsParams) {
+  const q = params?.q;
+  const category = params?.category;
+  const onSale = params?.onSale;
+  const sort = params?.sort;
+  const page = params?.page;
+  const pageSize = params?.pageSize;
+
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
-  const [currentPage, setCurrentPage] = useState(params?.page ?? 1);
-  const [currentPageSize, setCurrentPageSize] = useState(params?.pageSize ?? 12);
+  const [currentPage, setCurrentPage] = useState(page ?? 1);
+  const [currentPageSize, setCurrentPageSize] = useState(pageSize ?? 12);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(false);
+
+  // Stable params object from destructured primitives — avoids new reference each render
+  const stableParams: GetProductsParams = { q, category, onSale, sort, page, pageSize };
 
   const fetchProducts = useCallback(
     async (fetchParams?: GetProductsParams) => {
@@ -29,7 +39,7 @@ export function useProducts(params?: UseProductsParams) {
       setIsLoading(true);
       setError(null);
       try {
-        const data = await getProducts(fetchParams ?? params);
+        const data = await getProducts(fetchParams ?? stableParams);
         if (!mountedRef.current) return;
         setProducts(data.items);
         setTotal(data.total);
@@ -42,7 +52,7 @@ export function useProducts(params?: UseProductsParams) {
         if (mountedRef.current) setIsLoading(false);
       }
     },
-    [params],
+    [q, category, onSale, sort, page, pageSize],
   );
 
   // Debounced fetch for search queries
@@ -60,20 +70,12 @@ export function useProducts(params?: UseProductsParams) {
 
   useEffect(() => {
     mountedRef.current = true;
-    void fetchProducts(params);
+    void fetchProducts();
     return () => {
       mountedRef.current = false;
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [
-    fetchProducts,
-    params?.q,
-    params?.category,
-    params?.onSale,
-    params?.sort,
-    params?.page,
-    params?.pageSize,
-  ]);
+  }, [q, category, onSale, sort, page, pageSize]);
 
   return {
     products,
@@ -82,7 +84,7 @@ export function useProducts(params?: UseProductsParams) {
     total,
     currentPage,
     currentPageSize,
-    refetch: () => fetchProducts(params),
+    refetch: () => fetchProducts(),
     debouncedFetch,
   };
 }
