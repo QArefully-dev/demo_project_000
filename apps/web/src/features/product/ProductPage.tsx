@@ -165,8 +165,8 @@ export function ProductPage() {
                     : 'Unavailable'}
             </Button>
 
-            {/* WishlistButton seam (inactive placeholder) */}
-            <WishlistButton />
+            {/* Wishlist heart toggle */}
+            <WishlistButton productId={product.id} product={product} />
 
             {actionError && (
               <p role="alert" className="text-sm text-destructive">

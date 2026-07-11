@@ -1,7 +1,13 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { requireAuth } from '../plugins/auth.js';
-import { sendNotImplemented } from '../utils/errors.js';
+import { sendBadRequest, sendNotFound } from '../utils/errors.js';
+import {
+  listFavourites,
+  addFavourite as addFavouriteDomain,
+  removeFavourite as removeFavouriteDomain,
+} from '../domains/favourites.js';
+import type { ProductRow } from '../domains/products.js';
 import {
   AddFavouriteBody,
   FavouriteIdParam,
@@ -10,10 +16,31 @@ import {
   SuccessResponse,
 } from '@shop/contracts';
 
+function toProductContract(row: ProductRow) {
+  return {
+    id: String(row.id),
+    name: row.name,
+    description: row.description,
+    priceCents: row.price_cents,
+    imageUrl: row.image_url,
+    category: row.category,
+    stock: row.stock_count,
+    slug: row.slug,
+    compareAtPriceCents: row.compare_at_price_cents ?? undefined,
+    salesCount: row.sales_count,
+  };
+}
+
+/** Validate and parse a product ID from a string. Returns the numeric ID or null. */
+function parseProductId(id: string): number | null {
+  const parsed = Number(id);
+  if (!Number.isFinite(parsed) || parsed <= 0 || !Number.isInteger(parsed)) return null;
+  return parsed;
+}
+
 /**
- * Favourites routes — stubs (Wave 0).
- * All endpoints return 501 "Not implemented".
- * Real implementation deferred to W2.A.
+ * Favourites routes.
+ * Authenticated users can list, add, and remove product favourites.
  */
 export default function favouritesRoutes(app: FastifyInstance): void {
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
@@ -30,8 +57,10 @@ export default function favouritesRoutes(app: FastifyInstance): void {
         },
       },
     },
-    async (_request, reply) => {
-      sendNotImplemented(reply);
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const user = request.authenticatedUser!;
+      const rows = listFavourites(user.id);
+      reply.code(200).send(rows.map(toProductContract));
     },
   );
 
@@ -49,8 +78,23 @@ export default function favouritesRoutes(app: FastifyInstance): void {
         },
       },
     },
-    async (_request, reply) => {
-      sendNotImplemented(reply);
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const user = request.authenticatedUser!;
+      const { productId } = request.body as { productId: string };
+
+      const numericId = parseProductId(productId);
+      if (numericId === null) {
+        sendBadRequest(reply, 'Invalid product ID');
+        return;
+      }
+
+      const result = addFavouriteDomain(user.id, numericId);
+      if (result === 'NOT_FOUND') {
+        sendNotFound(reply, 'Product');
+        return;
+      }
+
+      reply.code(200).send({ success: true as const });
     },
   );
 
@@ -68,8 +112,23 @@ export default function favouritesRoutes(app: FastifyInstance): void {
         },
       },
     },
-    async (_request, reply) => {
-      sendNotImplemented(reply);
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const user = request.authenticatedUser!;
+      const { productId } = request.params as { productId: string };
+
+      const numericId = parseProductId(productId);
+      if (numericId === null) {
+        sendBadRequest(reply, 'Invalid product ID');
+        return;
+      }
+
+      const result = removeFavouriteDomain(user.id, numericId);
+      if (result === 'NOT_FOUND') {
+        sendNotFound(reply, 'Favourite');
+        return;
+      }
+
+      reply.code(200).send({ success: true as const });
     },
   );
 }
