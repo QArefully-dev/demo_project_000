@@ -1,7 +1,7 @@
 # Demo Project Expansion — State Ledger
 
 Integration branch: `codex/demo-project-expansion`
-Integration SHA: `5412e34ea3ef30d3df1ff91cddd15276a6a7c6c5`
+Integration SHA: `30b36210413f179ec89afcf6a135708a9dad79c7`
 Created: 2026-07-11
 
 ## Section Status
@@ -15,7 +15,7 @@ Created: 2026-07-11
 | w1-d    | complete | aeaa785  | d49513c  | plans/demo_project_expansion_evidence/w1-d.md  |
 | w2-a    | complete | aeaa785  | bfe411c  | plans/demo_project_expansion_evidence/w2-a.md  |
 | w2-b    | complete | dc1bd7e  | 5412e34  | plans/demo_project_expansion_evidence/w2-b.md  |
-| wave3   | pending | -        | -         | plans/demo_project_expansion_evidence/wave3.md |
+| wave3   | complete | 5412e34  | 30b3621  | plans/demo_project_expansion_evidence/wave3.md |
 
 ## Gate Results
 
