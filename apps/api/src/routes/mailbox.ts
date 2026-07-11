@@ -1,12 +1,11 @@
 import { FastifyInstance } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
-import { sendNotImplemented } from '../utils/errors.js';
 import { MailboxListResponse } from '@shop/contracts';
+import { getMailbox } from '../domains/auth.js';
 
 /**
- * Dev mailbox routes — stub (Wave 0).
- * Returns 501 "Not implemented".
- * Real implementation deferred to W1.A.
+ * Dev mailbox routes.
+ * Lists all mailbox messages (e.g. password reset emails).
  */
 export default function mailboxRoutes(app: FastifyInstance): void {
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
@@ -21,7 +20,17 @@ export default function mailboxRoutes(app: FastifyInstance): void {
       },
     },
     async (_request, reply) => {
-      sendNotImplemented(reply);
+      const messages = getMailbox();
+      reply.code(200).send(
+        messages.map((m) => ({
+          id: String(m.id),
+          recipient: m.recipient,
+          subject: m.subject,
+          body: m.body,
+          kind: m.kind,
+          created: m.created,
+        })),
+      );
     },
   );
 }

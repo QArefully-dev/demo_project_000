@@ -789,17 +789,18 @@ export function seedDatabase(db: Database.Database): void {
     // We use a placeholder salt.hash format; the real hashing is done
     // synchronously below.
     for (const user of USERS) {
-      // We use deterministic salt derived from email for idempotent seed.
+      // Deterministic salt from email for idempotent seed.
+      // Stores combined "salt.hash" format in password_hash (consistent with hashPassword).
       const deterministicSalt = createHash('sha256')
         .update(`seed-salt-${user.email}`)
         .digest('hex')
         .slice(0, 64);
       const derived = scryptSync('Password123!', deterministicSalt, 64);
-      const stored = `${deterministicSalt}.${derived.toString('hex')}`;
+      const combined = `${deterministicSalt}.${derived.toString('hex')}`;
       upsertUser.run({
         ...user,
-        password_hash: stored.split('.')[1],
-        password_salt: deterministicSalt,
+        password_hash: combined,
+        password_salt: '',
       });
     }
 

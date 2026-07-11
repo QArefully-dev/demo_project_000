@@ -9,11 +9,7 @@ import type {
   SuccessResponse,
 } from '@shop/contracts';
 
-/**
- * Auth API module — stubs (Wave 0).
- * All endpoints return 501 at this stage.
- * Real implementation deferred to W1.A.
- */
+/** Auth API module — signup, login, logout, session, forgot/reset password, password change. */
 
 export function signup(body: SignupBody): Promise<PublicUser> {
   return apiFetch<PublicUser>('/signup', {
