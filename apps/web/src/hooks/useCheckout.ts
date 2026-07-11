@@ -2,7 +2,9 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCartContext } from './CartContext';
 import { isEligibleForPromo } from '../features/checkout/cartValidation';
-import * as api from '../api/client';
+import { validatePromo } from '../api/promo';
+import { placeOrder } from '../api/orders';
+import { isMissingCartError } from '../api/client';
 
 interface FormState {
   customerName: string;
@@ -113,7 +115,7 @@ export function useCheckout() {
     setPromoValidating(true);
     setPromoError(null);
     try {
-      const result = await api.validatePromo(cartId, promoCode.trim());
+      const result = await validatePromo(cartId, promoCode.trim());
       if (latestCartQuoteKey.current !== requestedCartQuoteKey) return;
       if (
         result.valid &&
@@ -130,7 +132,7 @@ export function useCheckout() {
         setPromoError(result.error ?? 'Invalid promo code');
       }
     } catch (err) {
-      if (api.isMissingCartError(err)) {
+      if (isMissingCartError(err)) {
         const recovered = await retryCart();
         setCartRecoveryMessage(
           recovered
@@ -168,7 +170,7 @@ export function useCheckout() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const order = await api.placeOrder({
+      const order = await placeOrder({
         cartId,
         promoCode: currentAppliedPromo ?? undefined,
         customerName: form.customerName.trim(),
@@ -176,11 +178,9 @@ export function useCheckout() {
         shippingAddress: form.shippingAddress.trim(),
       });
       clearCart();
-      // Don't call refreshCart — the consumed cart is gone and a new one
-      // will be created automatically when useCart re-renders with null cartId
       navigate(`/order-confirmation/${order.id}`);
     } catch (err) {
-      if (api.isMissingCartError(err)) {
+      if (isMissingCartError(err)) {
         const recovered = await retryCart();
         setCartRecoveryMessage(
           recovered

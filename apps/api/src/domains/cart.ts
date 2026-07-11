@@ -10,6 +10,8 @@ export interface CartLineResult {
   category: string;
   stock_count: number;
   image_url: string;
+  slug: string;
+  sales_count: number;
 }
 
 export interface CartResult {
@@ -24,6 +26,8 @@ export interface CartResult {
       imageUrl: string;
       category: string;
       stock: number;
+      slug: string;
+      salesCount: number;
     };
     quantity: number;
     lineTotalCents: number;
@@ -57,7 +61,7 @@ export function getCart(cartId: string): CartResult | undefined {
   const rows = db
     .prepare(
       `
-    SELECT cli.product_id, cli.quantity, p.id, p.name, p.description, p.price_cents, p.category, p.stock_count, p.image_url
+    SELECT cli.product_id, cli.quantity, p.id, p.name, p.description, p.price_cents, p.category, p.stock_count, p.image_url, p.slug, p.sales_count
     FROM cart_line_items cli
     JOIN products p ON cli.product_id = p.id
     WHERE cli.cart_id = ?
@@ -76,6 +80,8 @@ export function getCart(cartId: string): CartResult | undefined {
       imageUrl: row.image_url,
       category: row.category,
       stock: row.stock_count,
+      slug: row.slug,
+      salesCount: row.sales_count,
     };
     return {
       productId: String(row.product_id),
