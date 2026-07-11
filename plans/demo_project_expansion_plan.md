@@ -28,6 +28,7 @@ Out of scope:
 
 Root owns only:
 
+- delegation harness preflight
 - coordinator scheduling
 - dependency and concurrency decisions
 - compact state ledger
@@ -46,11 +47,42 @@ Root does not:
 
 Root delegates bootstrap, each section lifecycle, wave gates, and final verification.
 
+## Delegation harness preflight
+
+Run before bootstrap or repository mutation:
+
+1. Root spawns probe coordinator with plan path, unique nonce, no-write constraint.
+2. Probe coordinator spawns probe worker. Worker reads plan heading, returns heading + nonce, makes no file or repository change.
+3. After worker completes, probe coordinator spawns independent probe reviewer with worker result. Reviewer validates heading + nonce, returns `approved`, makes no file or repository change.
+4. Probe coordinator returns `preflight: passed | blocked`, worker spawn result, reviewer spawn result, blocker.
+5. `passed` requires successful coordinator, worker, and reviewer spawns plus reviewer approval.
+6. Any spawn failure, unsupported nested delegation, timeout, invalid result, or repository mutation -> global delegation stop.
+
+Root starts bootstrap only after `preflight: passed`. Probe agents terminate before bootstrap.
+
+## Delegation failure rule
+
+Every coordinator must spawn needed worker subagent(s) and independent reviewer subagent. Section merge also requires distinct merge subagent. Coordinator must not implement product code, review, merge, run delegated checks, or substitute for failed nested delegation. Coordinator may edit only orchestration artifacts: evidence files and state ledger.
+
+Required spawn failure for any reason, including harness or permission limits -> coordinator returns blocked envelope with `decision: nested delegation unavailable` and exact spawn error when possible -> global delegation stop.
+
+Global delegation stop:
+
+1. Affected coordinator stops before further repository mutation.
+2. Root tells every active coordinator to stop.
+3. Root cancels remaining agents when possible.
+4. Preserve existing branches, worktrees, commits, evidence, and user work.
+5. Root launches no fallback specialist and performs no implementation.
+6. Root informs user immediately with failing role and exact spawn error.
+
+No bootstrap, section, wave, recovery, or final verification continues after global delegation stop. User must resolve harness limit or explicitly replace orchestration design.
+
 ## Context boundary
 
 Root -> coordinator prompt:
 
 - role and section name
+- delegation failure rule + required worker/reviewer/merger roles
 - integration branch/worktree path
 - starting SHA or dependency state
 - paths to this plan, section specification, `CLAUDE.md`, state ledger
@@ -90,34 +122,38 @@ All resolved worktree paths must stay under configured worktree root.
 
 Delegate before section work:
 
-1. Read full specification + `CLAUDE.md`.
-2. Inspect status, branch, worktrees, branches, recent log.
-3. Preserve unrelated work.
-4. Create/resume integration branch and safe integration worktree.
-5. Track plan/spec if needed in isolated bootstrap commit.
-6. Install only missing/specified dependencies.
-7. Run baseline `typecheck`, `lint`, `format`, `seed`.
-8. Create state ledger with integration SHA and section states.
-9. Return bootstrap envelope. Existing baseline failure -> blocked envelope with evidence path.
+1. Spawn bootstrap worker. Spawn failure -> global delegation stop.
+2. Worker reads full specification + `CLAUDE.md`.
+3. Worker inspects status, branch, worktrees, branches, recent log.
+4. Worker preserves unrelated work.
+5. Worker creates/resumes integration branch and safe integration worktree.
+6. Worker tracks plan/spec if needed in isolated bootstrap commit.
+7. Worker installs only missing/specified dependencies.
+8. Worker runs baseline `typecheck`, `lint`, `format`, `seed`.
+9. Worker creates state ledger with integration SHA and section states.
+10. After worker reports, spawn independent reviewer. Spawn failure -> global delegation stop.
+11. Reviewer checks bootstrap state, evidence, safety, and required command results. Blocking findings -> worker fix -> same reviewer re-review.
+12. Coordinator returns bootstrap envelope. Existing baseline failure -> blocked envelope with evidence path.
 
 Dirty overlap, unsafe path, ambiguous user-owned change -> root decision. Non-overlapping dirt -> leave untouched.
 
 ## Section coordinator protocol
 
-One coordinator owns section from `pending` through `complete`. Coordinator may implement directly or launch implementation specialist. Reviewer and merger must be distinct agents from implementer and from each other.
+One coordinator owns section from `pending` through `complete`. Coordinator must spawn implementation worker, independent reviewer, and distinct merger. All three must be distinct agents. Coordinator orchestrates only.
 
 Coordinator lifecycle:
 
 1. Read named specification section, global constraints, ownership map, dependency state.
-2. Create section branch/worktree from latest eligible green integration SHA.
-3. Implement; run section checks; commit.
-4. Launch independent reviewer with minimal prompt and file paths.
-5. On `changes requested`: fix -> commit -> same reviewer re-review. Repeat.
-6. After approval, launch distinct merge specialist.
-7. Merge specialist merges latest integration into section, resolves conflicts, reruns checks, merges `--no-ff` into integration, runs post-merge checks.
-8. Coordinator writes evidence, updates ledger, commits both on integration.
-9. Remove section branch/worktree only after green merge, evidence, ledger commit. Preserve failed/unmerged state.
-10. Return one completion envelope to root.
+2. Spawn implementation worker; reserve later capacity for independent reviewer and distinct merger. Spawn failure -> global delegation stop.
+3. Implementation worker creates section branch/worktree from latest eligible green integration SHA.
+4. Implementation worker implements, runs section checks, commits, and reports to coordinator.
+5. After worker reports, spawn independent reviewer with minimal prompt and file paths. Spawn failure -> global delegation stop.
+6. On `changes requested`: implementation worker fixes -> commits -> same reviewer re-reviews. Repeat.
+7. After approval, spawn distinct merge specialist. Spawn failure -> global delegation stop.
+8. Merge specialist merges latest integration into section, resolves conflicts, reruns checks, merges `--no-ff` into integration, runs post-merge checks.
+9. Coordinator writes evidence, updates ledger, commits both on integration; reviewer validates resulting state.
+10. Remove section branch/worktree only after green merge, evidence, ledger commit. Preserve failed/unmerged state.
+11. Return one completion envelope to root.
 
 Reviewer output -> findings by severity with file/line evidence. Blocking: invariant/scope breach, correctness/security bug, acceptance miss, ownership breach, required-check failure. Zero blocking findings -> `approved`.
 
@@ -132,12 +168,13 @@ Active agents <= available slots. Root reserves own slot.
 - excess work queued
 - merges serialized against latest integration
 - reviewer and merger separation mandatory; parallelism optional
+- inability to reserve capacity -> queue; unsupported or failed required spawn -> global delegation stop
 
 ## Waves and dependencies
 
 Execution order:
 
-`bootstrap -> Wave 0 -> Wave 1 -> Wave 2 -> Wave 3 -> final verification`
+`delegation preflight -> bootstrap -> Wave 0 -> Wave 1 -> Wave 2 -> Wave 3 -> final verification`
 
 - Wave 0: `wave0`; serial; blocks all feature sections
 - Wave 1 independent starts: `w1-a`, `w1-b`, `w1-c`
@@ -145,13 +182,13 @@ Execution order:
 - Wave 2: `w2-a` depends on `w1-a` + `w1-b`; `w2-b` depends on `w1-a`
 - Wave 3: `wave3`; serial; starts after all Wave 2 sections complete
 
-Between waves -> delegate gate verifier: confirm ledger/evidence commits, run `typecheck`, `lint`, `format`, write evidence, return envelope.
+Between waves -> delegate gate coordinator. Coordinator spawns verification worker. Worker confirms ledger/evidence commits, runs `typecheck`, `lint`, `format`, writes evidence. After worker reports, coordinator spawns independent reviewer. Reviewer validates evidence and results. Coordinator returns envelope. Any required spawn failure -> global delegation stop.
 
 Ownership and handoffs live only in section specification. Root schedules from dependency list above; coordinator enforces file ownership.
 
 ## Recovery
 
-Delegate recovery coordinator with state-ledger path and affected section only.
+Delegate recovery coordinator with state-ledger path and affected section only. Recovery coordinator spawns needed recovery worker, independent reviewer, and distinct merger when merge work exists. Spawn failure -> global delegation stop.
 
 - existing section commit without approval -> fresh reviewer
 - approved, unmerged -> merge specialist
@@ -167,12 +204,16 @@ Root reads detailed evidence only when concise decision field cannot support arb
 
 After `wave3` complete:
 
-1. Confirm all section states `complete`; evidence and ledger committed.
-2. Run `npm run reset` -> `npm run seed` -> exact seed assertions -> `npm run typecheck` -> `npm run lint` -> `npm run format`.
-3. Run full Wave 3 smoke from clean reset state per specification.
-4. Stop only task-started servers.
-5. Confirm integration worktree clean; preserve unrelated main-worktree state.
-6. Write and commit `final.md` evidence; return completion envelope with final SHA.
+1. Spawn final-verification worker. Spawn failure -> global delegation stop.
+2. Worker confirms all section states `complete`; evidence and ledger committed.
+3. Worker runs `npm run reset` -> `npm run seed` -> exact seed assertions -> `npm run typecheck` -> `npm run lint` -> `npm run format`.
+4. Worker runs full Wave 3 smoke from clean reset state per specification.
+5. Worker stops only task-started servers.
+6. Worker confirms integration worktree clean; preserves unrelated main-worktree state.
+7. Worker writes and commits `final.md` evidence.
+8. After worker reports, spawn independent reviewer. Spawn failure -> global delegation stop.
+9. Reviewer validates final state, evidence, checks, smoke results, clean integration worktree, and SHA.
+10. Coordinator returns completion envelope with final SHA.
 
 ## Completion
 
