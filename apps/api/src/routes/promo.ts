@@ -23,16 +23,17 @@ export default function promoRoutes(app: FastifyInstance): void {
         sendNotFound(reply, 'Cart');
         return;
       }
-      const result = validatePromoCode(
-        request.body.promoCode,
-        request.body.cartId,
-        cart.totalItems,
-      );
+      const userId = request.authenticatedUser?.id ?? null;
+      const result = validatePromoCode({
+        code: request.body.promoCode,
+        cartId: request.body.cartId,
+        userId,
+      });
       if (result.valid && result.promoCode) {
-        const discountCents = calculateDiscount(
-          cart.subtotalCents,
-          result.promoCode.discountPercent,
-        );
+        const discountCents = calculateDiscount({
+          promo: result.promoCode,
+          subtotalCents: cart.subtotalCents,
+        });
         const totalCents = cart.subtotalCents - discountCents;
         return { ...result, discountCents, totalCents };
       }

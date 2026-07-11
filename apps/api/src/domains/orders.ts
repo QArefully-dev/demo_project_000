@@ -1,6 +1,6 @@
 import { getDb } from '../db/index.js';
 import { getCart } from './cart.js';
-import { validatePromoCode, calculateDiscount } from './promo.js';
+import { validatePromoCode, calculateDiscount, recordRedemption } from './promo.js';
 
 export interface OrderResult {
   id: string;
@@ -38,15 +38,21 @@ export function placeOrder(params: PlaceOrderParams): OrderResult | PlaceOrderEr
   // Capture cart values before transaction (acceptable for single-user demo scope)
   const cartItems = cart.items;
   const subtotalCents = cart.subtotalCents;
-  const totalItems = cart.totalItems;
 
   let discountCents = 0;
   let promoApplied: string | null = null;
 
   if (params.promoCode) {
-    const promoResult = validatePromoCode(params.promoCode, params.cartId, totalItems);
+    const promoResult = validatePromoCode({
+      code: params.promoCode,
+      cartId: params.cartId,
+      userId: null, // legacy path: anonymous guest
+    });
     if (!promoResult.valid) return 'PROMO_INVALID';
-    discountCents = calculateDiscount(subtotalCents, promoResult.promoCode!.discountPercent);
+    discountCents = calculateDiscount({
+      promo: promoResult.promoCode!,
+      subtotalCents,
+    });
     promoApplied = params.promoCode;
   }
 
@@ -88,6 +94,16 @@ export function placeOrder(params: PlaceOrderParams): OrderResult | PlaceOrderEr
         item.quantity,
         item.lineTotalCents,
       );
+    }
+
+    // Record promo redemption if applicable
+    if (promoApplied) {
+      recordRedemption({
+        db,
+        promo: { code: promoApplied },
+        userId: null,
+        orderId,
+      });
     }
 
     // ON DELETE CASCADE on carts.id handles cart_line_items cleanup automatically

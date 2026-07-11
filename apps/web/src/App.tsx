@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import { HomePage } from './features/home/HomePage';
 import { CatalogPage } from './features/catalog/CatalogPage';
 import { ProductPage } from './features/product/ProductPage';
@@ -30,8 +31,22 @@ export default function App() {
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
-        <Route path="/account" element={<AccountPage />} />
-        <Route path="/wishlist" element={<WishlistPage />} />
+        <Route
+          path="/account"
+          element={
+            <ProtectedRoute>
+              <AccountPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/wishlist"
+          element={
+            <ProtectedRoute>
+              <WishlistPage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/mailbox" element={<MailboxPage />} />
       </Route>
     </Routes>
