@@ -5,15 +5,34 @@ import type {
   CategoriesResponse,
   BestsellersResponse,
   RelatedResponse,
+  ProductQuery,
 } from '@shop/contracts';
 
 /**
  * Products API module.
- * Wave 0: uses paginated list endpoint (backward-compat wrapper for existing callers).
+ * W1.B: paginated list with query params, single product, categories, bestsellers, related.
  */
 
-export function getProducts(): Promise<ProductListPaginatedResponse> {
-  return apiFetch<ProductListPaginatedResponse>('/api/products');
+export interface GetProductsParams {
+  q?: string;
+  category?: string;
+  onSale?: boolean;
+  sort?: ProductQuery['sort'];
+  page?: number;
+  pageSize?: number;
+}
+
+export function getProducts(params?: GetProductsParams): Promise<ProductListPaginatedResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.q) searchParams.set('q', params.q);
+  if (params?.category) searchParams.set('category', params.category);
+  if (params?.onSale) searchParams.set('onSale', 'true');
+  if (params?.sort) searchParams.set('sort', params.sort);
+  if (params?.page) searchParams.set('page', String(params.page));
+  if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+
+  const qs = searchParams.toString();
+  return apiFetch<ProductListPaginatedResponse>(`/api/products${qs ? `?${qs}` : ''}`);
 }
 
 export function getProduct(id: string): Promise<ProductDetailResponse> {
