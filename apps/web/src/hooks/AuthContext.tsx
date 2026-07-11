@@ -1,41 +1,90 @@
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { PublicUser } from '@shop/contracts';
-
-/**
- * AuthContext — skeleton (Wave 0).
- * Provides a static unauthenticated state.
- * Real implementation deferred to W1.A.
- */
+import { getMe, login as loginApi, signup as signupApi, logout as logoutApi } from '@/api/auth';
 
 interface AuthState {
   user: PublicUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, displayName: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<PublicUser>;
+  signup: (email: string, password: string, displayName: string) => Promise<PublicUser>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState>({
   user: null,
-  loading: false,
-  login: async () => {},
-  signup: async () => {},
-  logout: async () => {},
+  loading: true,
+  login: () => {
+    throw new Error('AuthProvider not mounted');
+  },
+  signup: () => {
+    throw new Error('AuthProvider not mounted');
+  },
+  logout: () => {
+    throw new Error('AuthProvider not mounted');
+  },
 });
 
 export function useAuth(): AuthState {
   return useContext(AuthContext);
 }
 
-/** Skeleton provider — always unauthenticated (Wave 0). */
+/**
+ * AuthProvider — manages authentication state.
+ * Refreshes the session on mount by calling GET /me.
+ */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const value: AuthState = {
-    user: null,
-    loading: false,
-    login: async () => {},
-    signup: async () => {},
-    logout: async () => {},
-  };
+  const [user, setUser] = useState<PublicUser | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Refresh session on mount
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refresh() {
+      try {
+        const me = await getMe();
+        if (!cancelled) {
+          setUser(me ?? null);
+        }
+      } catch {
+        if (!cancelled) {
+          setUser(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void refresh();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const login = useCallback(async (email: string, password: string): Promise<PublicUser> => {
+    const result = await loginApi({ email, password });
+    setUser(result);
+    return result;
+  }, []);
+
+  const signup = useCallback(
+    async (email: string, password: string, displayName: string): Promise<PublicUser> => {
+      const result = await signupApi({ email, password, displayName });
+      setUser(result);
+      return result;
+    },
+    [],
+  );
+
+  const logout = useCallback(async (): Promise<void> => {
+    await logoutApi();
+    setUser(null);
+  }, []);
+
+  const value: AuthState = { user, loading, login, signup, logout };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
