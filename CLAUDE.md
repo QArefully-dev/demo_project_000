@@ -1,54 +1,65 @@
 # Demo Project — Agent Instructions
 
-## Project overview
+## Project
 
-**Shop Qarefully v000** — small, polished e-commerce learning-demo application for **Cursor for Test Automation Engineers — How It Actually Works** course. Audience are QAs, so for now don't write ANY tests (unit, integration, E2E). Tests will be written as a part of the actual course.
-Runs locally with minimal setup.
+**Shop Qarefully v000**: small, polished, local e-commerce learning demo for **Cursor for Test Automation Engineers — How It Actually Works**.
 
-**Current state:** Phase 1 foundation ready for implementation.
-Reference solutions isolated in `reference/` folder.
+- audience: QA engineers
+- current state: storefront baseline implemented; approved expansion active
+- tests: no unit, integration, or E2E tests until explicitly requested for named course phase
+- setup goal: minimal, cross-platform, no external services
+
+## Sources
+
+- `CLAUDE.md`: repository-wide rules
+- `plans/demo_project_expansion_plan.md`: approved expansion orchestration
+- `plans/demo_project_expansion_spec.md`: approved expansion architecture, behavior, ownership, acceptance
+- `plans/demo_project_high_level_plan.md`: course and product background; draft content cannot override approved expansion documents
+
+Expansion work -> read plan, relevant specification section, this file. Course-scenario or exercise work -> also read high-level plan. Unresolved conflict -> stop and request decision.
 
 ## Stack
 
-- **Repo:** npm workspaces monorepo
-- **Frontend:** React + Vite + TypeScript
-- **Backend:** Fastify + TypeScript
-- **Database:** SQLite via `better-sqlite3`
-- **Shared:** TypeScript contracts package (API types, no business logic)
-- **Monetary values:** integer minor units (cents), backend-authoritative
-- **Dev:** `npm install` → `npm run dev` (starts API + web, seeds DB, cross-platform)
+- repo: npm workspaces monorepo
+- runtime: Node.js 22
+- frontend: React + Vite + TypeScript
+- backend: Fastify + TypeScript
+- database: SQLite via `better-sqlite3`
+- shared: TypeScript API contracts; no business logic
+- money: integer minor units through `MoneyCents`; backend authoritative
+- local flow: `npm ci` -> `npm run dev`; dev command seeds database and starts API + web
 
-## Primary source
+## Learning design
 
-Detailed plan, architecture, stack decisions, phasing, constraints -> `projekt_demo_companion_repo.md`.
-Read before implementing course scenarios/exercise artifacts.
-Conflict with course outline -> outline wins. Plan is draft; open decisions not approved.
+- gradual progression; no front-loaded theory or early advanced work
+- M1: small success -> intentional failure demo
+- each feature and deliberate defect -> named lesson
+- single through-line: M1 failure -> M8 working agentic workflow
+- no later revelations in earlier UI, comments, docs, filenames, or starter artifacts
 
-## Learning-design rules
+## Course baseline
 
-- Gradual progression. No front-loaded theory. No early advanced work.
-- Simple setup, safe early exercises. M1 -> small success then intentional failure demo.
-- Every feature + deliberate defect -> named lesson.
-- Single through-line: M1 failure -> M8 working agentic workflow.
-- Don't expose later revelations in earlier UI, comments, docs, filenames, starter artifacts.
+Scope: artifacts shipped to students. Does not prohibit implementation orchestration required by approved expansion plan.
 
-## Clean baseline
+- M1 baseline: no Rules, MCP config, `AGENTS.md`, Skills, or real test suite
+- reference solutions, when present: isolated under `reference/`; never add to clean clone
+- protected paths: no edits under `reference/` or `.cursor/`
+- only prebuilt M1 artifact: Cursor agent definition for Vision Run
+- `uat_03.spec.ts` and partial page object: preserve if present; do not create during expansion
+- completed tests: add only during named course phase
 
-- M1 starts with no Rules, MCP config, AGENTS.md, Skills, real test suite.
-- Reference solutions -> `reference/` folder, isolated from clean clone.
-- Only prebuilt artifact: M1 Cursor agent definition (Vision Run).
-- Preserve deliberate messiness: `uat_03.spec.ts`, one partial page object.
-- No completed tests prematurely -> per course phase.
+## Quality
 
-## Quality bar
+- first-run reliability paramount; verify clean setup on Windows and macOS before release
+- UI: modern, polished, desktop-only; predictable teaching behavior over decoration
+- target resolutions: `1920x1080`, `1920x1200`, `3840x2160`
+- out of scope unless named course scenario requires: mobile, keyboard-only acceptance, exhaustive accessibility certification, production hardening, live-traffic scale
+- business rules: realistic, traceable across frontend and backend
+- intentional behavior change -> check affected course module
 
-- First-run reliability paramount. Clean setup verified on Windows + macOS before release.
-- UI modern and visually polished for a desktop-only course demo; predictable teaching behavior > decorative complexity.
-- Target desktop browsers at standard laptop (`1366x768`) and 4K (`3840x2160`) resolutions. Mobile use, keyboard-only acceptance, exhaustive accessibility certification, production hardening, and live-traffic scale are out of scope unless required by a named course scenario.
-- Realistic, traceable business rules frontend/backend -> agent exploration meaningful.
-- When changing intentional behavior -> check affected course module in outline.
+## AI-native code
 
-## Self document, AI native
-
-- The project is meant to be used with support of AI agents, so method names, TSDoc need to self-document as the project grows
-- Keep the project AI-native, so that agents can easily pick it up and move around. Leave comments only if absolutely necessary - method names and TSDoc should be enough in most cases.
+- prefer clear names, types, contracts, and module boundaries
+- use TSDoc for public or non-obvious contracts
+- comments explain necessary rationale, not observable code behavior
+- avoid redundant comments and narration

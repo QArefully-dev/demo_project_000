@@ -14,7 +14,7 @@ Global control rules: [demo_project_expansion_plan.md](demo_project_expansion_pl
 - seed: deterministic upsert; reset: FK-safe deletes
 - web: feature folders, shared UI components, React Router under `Layout`, `formatMoney`, `CartContext`
 - stack: React 18, Fastify, Vite, TypeScript strict, Tailwind v4, base-ui, lucide-react, Node 22
-- UI: polished desktop at `1366x768` and 4K; predictable teaching behavior
+- UI: polished desktop at `1920x1080`, `1920x1200`, and 4K; predictable teaching behavior
 
 ## Data model
 
