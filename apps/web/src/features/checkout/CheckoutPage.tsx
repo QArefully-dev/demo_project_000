@@ -27,8 +27,6 @@ export function CheckoutPage() {
     validatePromo,
     removePromo,
     submitOrder,
-    submitting,
-    submitError,
     cartRecoveryMessage,
   } = useCheckout();
   const {
@@ -249,23 +247,13 @@ export function CheckoutPage() {
               <span>Total</span>
               <span>{formatMoney(totalCents)}</span>
             </div>
-
-            {submitError && (
-              <p role="alert" className="rounded-md bg-destructive/5 p-3 text-sm text-destructive">
-                {submitError}
-              </p>
-            )}
           </CardContent>
         </Card>
       </div>
 
       <div className="mt-6 flex justify-end">
-        <Button
-          type="submit"
-          size="lg"
-          disabled={submitting || promoValidating || !isCartAvailable}
-        >
-          {submitting ? 'Placing Order...' : 'Place Order'}
+        <Button type="submit" size="lg" disabled={promoValidating || !isCartAvailable}>
+          Proceed to Payment
         </Button>
       </div>
     </form>
