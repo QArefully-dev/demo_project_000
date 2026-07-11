@@ -1,5 +1,4 @@
 import { useSearchParams, Link } from 'react-router-dom';
-import { useProducts } from '@/hooks/useProducts';
 import { useCategories } from '@/hooks/useCategories';
 import { cn } from '@/lib/utils';
 import {
@@ -13,14 +12,13 @@ import {
 
 /**
  * Functional category filter navigation.
- * Derives categories from live product data and drives catalog
+ * Fetches categories from the API and drives catalog
  * filtering via the `?category=` URL search parameter.
  */
 export function CategoryNav() {
   const [searchParams] = useSearchParams();
   const activeCategory = searchParams.get('category') ?? '';
-  const { products } = useProducts();
-  const categories = useCategories(products);
+  const { categories, isLoading } = useCategories();
 
   const linkClassName = (category: string) =>
     cn(activeCategory === category && 'font-semibold bg-muted/50');
@@ -35,7 +33,7 @@ export function CategoryNav() {
               <NavigationMenuLink
                 render={(props) => (
                   <Link
-                    to="/"
+                    to="/catalog"
                     {...props}
                     aria-current={activeCategory === '' ? 'page' : undefined}
                     className={cn(props.className, linkClassName(''))}
@@ -44,21 +42,22 @@ export function CategoryNav() {
                   </Link>
                 )}
               />
-              {categories.map((category) => (
-                <NavigationMenuLink
-                  key={category}
-                  render={(props) => (
-                    <Link
-                      to={`/?category=${category}`}
-                      {...props}
-                      aria-current={activeCategory === category ? 'page' : undefined}
-                      className={cn(props.className, linkClassName(category))}
-                    >
-                      {category}
-                    </Link>
-                  )}
-                />
-              ))}
+              {!isLoading &&
+                categories.map((category) => (
+                  <NavigationMenuLink
+                    key={category}
+                    render={(props) => (
+                      <Link
+                        to={`/catalog?category=${category}`}
+                        {...props}
+                        aria-current={activeCategory === category ? 'page' : undefined}
+                        className={cn(props.className, linkClassName(category))}
+                      >
+                        {category}
+                      </Link>
+                    )}
+                  />
+                ))}
             </div>
           </NavigationMenuContent>
         </NavigationMenuItem>

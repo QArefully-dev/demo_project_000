@@ -21,6 +21,9 @@ export function ProductCard({
   const [imgError, setImgError] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const inStock = product.stock > 0;
+  const isOnSale =
+    product.compareAtPriceCents != null && product.compareAtPriceCents > product.priceCents;
+  const isBestseller = product.salesCount >= 250;
 
   const handleAddToCart = async () => {
     setActionError(null);
@@ -30,7 +33,7 @@ export function ProductCard({
 
   return (
     <Card className="flex flex-col overflow-hidden transition-shadow hover:shadow-md">
-      <div className="aspect-square bg-muted flex items-center justify-center">
+      <div className="relative aspect-square bg-muted flex items-center justify-center">
         {imgError ? (
           <span className="text-muted-foreground text-sm">No image</span>
         ) : (
@@ -41,6 +44,22 @@ export function ProductCard({
             onError={() => setImgError(true)}
           />
         )}
+        {/* Badges overlay */}
+        <div className="absolute top-2 left-2 flex flex-wrap gap-1">
+          {isOnSale && (
+            <Badge variant="destructive" className="text-xs">
+              Sale
+            </Badge>
+          )}
+          {isBestseller && (
+            <Badge
+              variant="secondary"
+              className="text-xs bg-amber-100 text-amber-800 border-amber-200"
+            >
+              Bestseller
+            </Badge>
+          )}
+        </div>
       </div>
       <CardContent className="flex flex-1 flex-col gap-2 p-4">
         <div className="flex items-start justify-between gap-2">
@@ -51,7 +70,20 @@ export function ProductCard({
         </div>
         <p className="text-sm text-muted-foreground line-clamp-2">{product.description}</p>
         <div className="mt-auto flex items-center justify-between pt-2">
-          <span className="text-lg font-bold">{formatMoney(product.priceCents)}</span>
+          <div className="flex items-baseline gap-2">
+            {isOnSale ? (
+              <>
+                <span className="text-lg font-bold text-destructive">
+                  {formatMoney(product.priceCents)}
+                </span>
+                <span className="text-sm text-muted-foreground line-through">
+                  {formatMoney(product.compareAtPriceCents!)}
+                </span>
+              </>
+            ) : (
+              <span className="text-lg font-bold">{formatMoney(product.priceCents)}</span>
+            )}
+          </div>
           <span className={`text-xs ${inStock ? 'text-green-600' : 'text-destructive'}`}>
             {inStock ? 'In Stock' : 'Out of Stock'}
           </span>

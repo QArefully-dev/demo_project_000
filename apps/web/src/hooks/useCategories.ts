@@ -1,13 +1,35 @@
-import { useMemo } from 'react';
-import type { Product } from '@shop/contracts';
+import { useState, useEffect, useCallback } from 'react';
+import { getCategories } from '../api/products';
 
 /**
- * Derives distinct, sorted category names from a product list.
+ * Fetches distinct, sorted category names from the API.
  * Does not include "All" — that label lives in the UI layer.
  */
-export function useCategories(products: Product[]): string[] {
-  return useMemo(() => {
-    const categories = new Set(products.map((p) => p.category));
-    return Array.from(categories).sort();
-  }, [products]);
+export function useCategories(): {
+  categories: string[];
+  isLoading: boolean;
+  error: string | null;
+} {
+  const [categories, setCategories] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchCategories = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await getCategories();
+      setCategories(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load categories');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchCategories();
+  }, [fetchCategories]);
+
+  return { categories, isLoading, error };
 }

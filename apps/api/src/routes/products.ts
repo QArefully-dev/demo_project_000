@@ -1,7 +1,13 @@
 import { FastifyInstance } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
-import { listProducts, getProductById } from '../domains/products.js';
-import { sendNotFound, sendBadRequest, sendNotImplemented } from '../utils/errors.js';
+import {
+  listProducts,
+  getProductById,
+  getCategories,
+  getBestsellers,
+  getRelatedProducts,
+} from '../domains/products.js';
+import { sendNotFound, sendBadRequest } from '../utils/errors.js';
 import {
   ProductDetailResponse,
   ErrorResponse,
@@ -10,45 +16,41 @@ import {
   BestsellersResponse,
   RelatedResponse,
   ProductListPaginatedResponse,
+  ProductQuery,
+  type Product,
 } from '@shop/contracts';
+
+/** Map a database product row to the API contract shape. */
+function mapProduct(row: {
+  id: number;
+  name: string;
+  description: string;
+  price_cents: number;
+  category: string;
+  stock_count: number;
+  image_url: string;
+  slug: string;
+  compare_at_price_cents: number | null;
+  sales_count: number;
+}): Product {
+  return {
+    id: String(row.id),
+    name: row.name,
+    description: row.description,
+    priceCents: row.price_cents,
+    imageUrl: row.image_url,
+    category: row.category,
+    stock: row.stock_count,
+    slug: row.slug ?? '',
+    compareAtPriceCents: row.compare_at_price_cents ?? undefined,
+    salesCount: row.sales_count ?? 0,
+  };
+}
 
 export default function productsRoutes(app: FastifyInstance): void {
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
 
   // Static routes registered before /:id
-
-  // GET /api/products — paginated product list
-  typed.get(
-    '/api/products',
-    {
-      schema: {
-        response: {
-          200: ProductListPaginatedResponse,
-        },
-      },
-    },
-    () => {
-      const rows = listProducts();
-      const items = rows.map((r) => ({
-        id: String(r.id),
-        name: r.name,
-        description: r.description,
-        priceCents: r.price_cents,
-        imageUrl: r.image_url,
-        category: r.category,
-        stock: r.stock_count,
-        slug: r.slug ?? '',
-        compareAtPriceCents: r.compare_at_price_cents ?? undefined,
-        salesCount: r.sales_count ?? 0,
-      }));
-      return {
-        items,
-        total: items.length,
-        page: 1,
-        pageSize: items.length || 12,
-      };
-    },
-  );
 
   // GET /api/products/categories
   typed.get(
@@ -61,9 +63,7 @@ export default function productsRoutes(app: FastifyInstance): void {
       },
     },
     () => {
-      const rows = listProducts();
-      const categories = [...new Set(rows.map((r) => r.category))].sort();
-      return categories;
+      return getCategories();
     },
   );
 
@@ -78,22 +78,29 @@ export default function productsRoutes(app: FastifyInstance): void {
       },
     },
     () => {
-      const rows = listProducts()
-        .filter((r) => (r.sales_count ?? 0) >= 250)
-        .sort((a, b) => (b.sales_count ?? 0) - (a.sales_count ?? 0))
-        .slice(0, 8);
-      return rows.map((r) => ({
-        id: String(r.id),
-        name: r.name,
-        description: r.description,
-        priceCents: r.price_cents,
-        imageUrl: r.image_url,
-        category: r.category,
-        stock: r.stock_count,
-        slug: r.slug ?? '',
-        compareAtPriceCents: r.compare_at_price_cents ?? undefined,
-        salesCount: r.sales_count ?? 0,
-      }));
+      return getBestsellers().map(mapProduct);
+    },
+  );
+
+  // GET /api/products — paginated product list
+  typed.get(
+    '/api/products',
+    {
+      schema: {
+        querystring: ProductQuery,
+        response: {
+          200: ProductListPaginatedResponse,
+        },
+      },
+    },
+    (request) => {
+      const result = listProducts(request.query);
+      return {
+        items: result.items.map(mapProduct),
+        total: result.total,
+        page: result.page,
+        pageSize: result.pageSize,
+      };
     },
   );
 
@@ -111,32 +118,25 @@ export default function productsRoutes(app: FastifyInstance): void {
       },
     },
     async (request, reply) => {
-      const productId = Number(request.params.id);
-      if (Number.isNaN(productId)) {
+      const rawId = request.params.id;
+      const productId = Number(rawId);
+
+      // Validate: must be a positive integer
+      if (!Number.isFinite(productId) || productId <= 0 || !Number.isInteger(productId)) {
         sendBadRequest(reply, 'Invalid product ID');
         return;
       }
+
       const product = getProductById(productId);
       if (!product) {
         sendNotFound(reply, 'Product');
         return;
       }
-      return {
-        id: String(product.id),
-        name: product.name,
-        description: product.description,
-        priceCents: product.price_cents,
-        imageUrl: product.image_url,
-        category: product.category,
-        stock: product.stock_count,
-        slug: product.slug ?? '',
-        compareAtPriceCents: product.compare_at_price_cents ?? undefined,
-        salesCount: product.sales_count ?? 0,
-      };
+      return mapProduct(product);
     },
   );
 
-  // GET /api/products/:id/related — stub
+  // GET /api/products/:id/related — related products
   typed.get(
     '/api/products/:id/related',
     {
@@ -149,8 +149,23 @@ export default function productsRoutes(app: FastifyInstance): void {
         },
       },
     },
-    async (_request, reply) => {
-      sendNotImplemented(reply);
+    async (request, reply) => {
+      const rawId = request.params.id;
+      const productId = Number(rawId);
+
+      if (!Number.isFinite(productId) || productId <= 0 || !Number.isInteger(productId)) {
+        sendBadRequest(reply, 'Invalid product ID');
+        return;
+      }
+
+      // Verify the product exists
+      const product = getProductById(productId);
+      if (!product) {
+        sendNotFound(reply, 'Product');
+        return;
+      }
+
+      return getRelatedProducts(productId).map(mapProduct);
     },
   );
 }
