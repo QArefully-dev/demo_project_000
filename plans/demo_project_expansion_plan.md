@@ -16,6 +16,7 @@ Expand electronics shop through one orchestrated session. Root stays control pla
 - no native dependencies; only allowed new dependency: `@fastify/cookie`; password hashing: `node:crypto` scrypt
 - no edits under `reference/` or `.cursor/`
 - no later-course spoilers in UI, comments, filenames
+- all subagents inherit model from main agent -> `deepseek/deepseek-v4-pro`; don't override
 - preserve user work; no stash, reset, overwrite, unrelated commits
 - required commands stay green: `npm run dev`, `seed`, `reset`, `typecheck`, `lint`, `format`
 
