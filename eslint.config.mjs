@@ -13,6 +13,17 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ['**/dist/**', '**/node_modules/**', '**/*.config.*'],
+    ...tseslint.configs.disableTypeChecked,
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      ...tseslint.configs.disableTypeChecked.languageOptions,
+      globals: {
+        console: 'readonly',
+        process: 'readonly',
+      },
+    },
+  },
+  {
+    ignores: ['**/dist/**', '**/node_modules/**', '**/*.config.*', '.claude/skills/**'],
   },
 );

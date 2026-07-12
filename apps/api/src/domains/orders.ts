@@ -1,6 +1,7 @@
+import type Database from 'better-sqlite3';
 import { getDb } from '../db/index.js';
 import { getCart } from './cart.js';
-import { validatePromoCode, calculateDiscount } from './promo.js';
+import { validatePromoCode, calculateDiscount, recordRedemption } from './promo.js';
 
 export interface OrderResult {
   id: string;
@@ -28,6 +29,74 @@ export interface PlaceOrderParams {
 
 export type PlaceOrderError = 'CART_NOT_FOUND' | 'CART_EMPTY' | 'PROMO_INVALID';
 
+/**
+ * Parameters for writing an order inside an existing transaction.
+ * Callers must manage the transaction boundary.
+ */
+export interface CreateOrderTxParams {
+  customerName: string;
+  customerEmail: string;
+  shippingAddress: string;
+  promoApplied: string | null;
+  subtotalCents: number;
+  discountCents: number;
+  totalCents: number;
+  userId: number | null;
+  items: {
+    productId: string;
+    productName: string;
+    unitPriceCents: number;
+    quantity: number;
+    lineTotalCents: number;
+  }[];
+  createdAt: string;
+}
+
+/**
+ * Write an order and its line items within an existing transaction.
+ * Returns the new order's integer ID. Does NOT record redemption or delete the cart —
+ * those operations belong to the caller's transaction scope.
+ */
+export function createOrderInTransaction(
+  db: Database.Database,
+  params: CreateOrderTxParams,
+): number {
+  const orderResult = db
+    .prepare(
+      `INSERT INTO orders (customer_name, customer_email, shipping_address, promo_code_applied, subtotal_cents, discount_cents, total_cents, user_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      params.customerName,
+      params.customerEmail,
+      params.shippingAddress,
+      params.promoApplied,
+      params.subtotalCents,
+      params.discountCents,
+      params.totalCents,
+      params.userId,
+      params.createdAt,
+    );
+
+  const orderId = Number(orderResult.lastInsertRowid);
+
+  for (const item of params.items) {
+    db.prepare(
+      `INSERT INTO order_line_items (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(
+      orderId,
+      item.productId,
+      item.productName,
+      item.unitPriceCents,
+      item.quantity,
+      item.lineTotalCents,
+    );
+  }
+
+  return orderId;
+}
+
 /** Place an order from a cart. Computes all totals server-side, writes order + line items in a transaction, clears the cart. Single promo code only — no stacking: by design only one promo code can apply per order. */
 export function placeOrder(params: PlaceOrderParams): OrderResult | PlaceOrderError {
   const db = getDb();
@@ -38,15 +107,21 @@ export function placeOrder(params: PlaceOrderParams): OrderResult | PlaceOrderEr
   // Capture cart values before transaction (acceptable for single-user demo scope)
   const cartItems = cart.items;
   const subtotalCents = cart.subtotalCents;
-  const totalItems = cart.totalItems;
 
   let discountCents = 0;
   let promoApplied: string | null = null;
 
   if (params.promoCode) {
-    const promoResult = validatePromoCode(params.promoCode, params.cartId, totalItems);
+    const promoResult = validatePromoCode({
+      code: params.promoCode,
+      cartId: params.cartId,
+      userId: null, // legacy path: anonymous guest
+    });
     if (!promoResult.valid) return 'PROMO_INVALID';
-    discountCents = calculateDiscount(subtotalCents, promoResult.promoCode!.discountPercent);
+    discountCents = calculateDiscount({
+      promo: promoResult.promoCode!,
+      subtotalCents,
+    });
     promoApplied = params.promoCode;
   }
 
@@ -54,40 +129,33 @@ export function placeOrder(params: PlaceOrderParams): OrderResult | PlaceOrderEr
   const createdAt = new Date().toISOString();
 
   const placeOrderTx = db.transaction(() => {
-    const orderResult = db
-      .prepare(
-        `
-      INSERT INTO orders (customer_name, customer_email, shipping_address, promo_code_applied, subtotal_cents, discount_cents, total_cents, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-      )
-      .run(
-        params.customerName,
-        params.customerEmail,
-        params.shippingAddress,
-        promoApplied,
-        subtotalCents,
-        discountCents,
-        totalCents,
-        createdAt,
-      );
+    const orderId = createOrderInTransaction(db, {
+      customerName: params.customerName,
+      customerEmail: params.customerEmail,
+      shippingAddress: params.shippingAddress,
+      promoApplied,
+      subtotalCents,
+      discountCents,
+      totalCents,
+      userId: null,
+      items: cartItems.map((item) => ({
+        productId: item.productId,
+        productName: item.product.name,
+        unitPriceCents: item.product.priceCents,
+        quantity: item.quantity,
+        lineTotalCents: item.lineTotalCents,
+      })),
+      createdAt,
+    });
 
-    const orderId = Number(orderResult.lastInsertRowid);
-
-    for (const item of cartItems) {
-      db.prepare(
-        `
-        INSERT INTO order_line_items (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `,
-      ).run(
+    // Record promo redemption if applicable
+    if (promoApplied) {
+      recordRedemption({
+        db,
+        promo: { code: promoApplied },
+        userId: null,
         orderId,
-        item.productId,
-        item.product.name,
-        item.product.priceCents,
-        item.quantity,
-        item.lineTotalCents,
-      );
+      });
     }
 
     // ON DELETE CASCADE on carts.id handles cart_line_items cleanup automatically

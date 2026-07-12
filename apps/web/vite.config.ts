@@ -15,6 +15,13 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': 'http://127.0.0.1:3001',
+      '/signup': 'http://127.0.0.1:3001',
+      '/login': 'http://127.0.0.1:3001',
+      '/logout': 'http://127.0.0.1:3001',
+      '/forgot-password': 'http://127.0.0.1:3001',
+      '/reset-password': 'http://127.0.0.1:3001',
+      '/me': 'http://127.0.0.1:3001',
+      '/password': 'http://127.0.0.1:3001',
     },
   },
 });

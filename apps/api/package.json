@@ -11,6 +11,7 @@
     "reset": "tsx src/db/run-reset.ts"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.1.1",
     "@fastify/type-provider-typebox": "^5.0.0",
     "@shop/contracts": "*",
     "better-sqlite3": "^11.7.0",

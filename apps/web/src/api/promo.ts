@@ -1,0 +1,14 @@
+import { apiFetch } from './client';
+import type { ValidatePromoBody, ValidatePromoResponse } from '@shop/contracts';
+
+/**
+ * Promo API module.
+ */
+
+export function validatePromo(cartId: string, promoCode: string): Promise<ValidatePromoResponse> {
+  const body: ValidatePromoBody = { cartId, promoCode };
+  return apiFetch<ValidatePromoResponse>('/api/promo/validate', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}

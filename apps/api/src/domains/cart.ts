@@ -1,4 +1,5 @@
 import { getDb } from '../db/index.js';
+import { getApiProductImage } from './productMedia.js';
 
 export interface CartLineResult {
   product_id: number;
@@ -10,6 +11,9 @@ export interface CartLineResult {
   category: string;
   stock_count: number;
   image_url: string;
+  image_set_id: string;
+  slug: string;
+  sales_count: number;
 }
 
 export interface CartResult {
@@ -22,8 +26,12 @@ export interface CartResult {
       description: string;
       priceCents: number;
       imageUrl: string;
+      imageSetId: string;
+      images: { src: string; alt: string; width: number; height: number }[];
       category: string;
       stock: number;
+      slug: string;
+      salesCount: number;
     };
     quantity: number;
     lineTotalCents: number;
@@ -57,7 +65,7 @@ export function getCart(cartId: string): CartResult | undefined {
   const rows = db
     .prepare(
       `
-    SELECT cli.product_id, cli.quantity, p.id, p.name, p.description, p.price_cents, p.category, p.stock_count, p.image_url
+    SELECT cli.product_id, cli.quantity, p.id, p.name, p.description, p.price_cents, p.category, p.stock_count, p.image_url, p.image_set_id, p.slug, p.sales_count
     FROM cart_line_items cli
     JOIN products p ON cli.product_id = p.id
     WHERE cli.cart_id = ?
@@ -74,8 +82,12 @@ export function getCart(cartId: string): CartResult | undefined {
       description: row.description,
       priceCents,
       imageUrl: row.image_url,
+      imageSetId: row.image_set_id,
+      images: [getApiProductImage(row.image_set_id, row.image_url, row.name)],
       category: row.category,
       stock: row.stock_count,
+      slug: row.slug,
+      salesCount: row.sales_count,
     };
     return {
       productId: String(row.product_id),

@@ -1,0 +1,29 @@
+{
+  "background": "#f3f0e9",
+  "sources": [
+    {
+      "id": "headphones",
+      "slug": "wireless-headphones",
+      "file": "apps/web/public/images/product-headphones.jpg"
+    },
+    {
+      "id": "keyboard",
+      "slug": "mechanical-keyboard",
+      "file": "apps/web/public/images/product-keyboard.jpg"
+    },
+    {
+      "id": "monitor",
+      "slug": "desktop-monitor",
+      "file": "apps/web/public/images/product-monitor.jpg"
+    },
+    { "id": "mouse", "slug": "wireless-mouse", "file": "apps/web/public/images/product-mouse.jpg" },
+    {
+      "id": "speaker",
+      "slug": "portable-speaker",
+      "file": "apps/web/public/images/product-speaker.jpg"
+    },
+    { "id": "stand", "slug": "laptop-stand", "file": "apps/web/public/images/product-stand.jpg" },
+    { "id": "usbhub", "slug": "usb-hub", "file": "apps/web/public/images/product-usbhub.jpg" },
+    { "id": "webcam", "slug": "webcam", "file": "apps/web/public/images/product-webcam.jpg" }
+  ]
+}

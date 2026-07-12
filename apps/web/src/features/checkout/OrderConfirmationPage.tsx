@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { formatMoney } from '@/lib/formatMoney';
-import * as api from '../../api/client';
+import { getOrder } from '../../api/orders';
 import type { Order } from '@shop/contracts';
 
 export function OrderConfirmationPage() {
@@ -24,7 +24,7 @@ export function OrderConfirmationPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await api.getOrder(orderId);
+      const data = await getOrder(orderId);
       setOrder(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load order');

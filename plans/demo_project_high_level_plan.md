@@ -1,158 +1,294 @@
-# Demo Companion Repo — High-Level Plan
+# Demo Project High-Level Plan
 
-Status: draft for approval. Detailed build plans follow once decisions below locked.
+Status: current product direction.
 
 ## Purpose
 
-Single sample project students download/use in every module of Udemy course
-(`pierwszy_kurs_udemy.md`). Course's primary deliverable, not bonus.
+Single local sample project for course exercises and large-repository harness demos.
 
-Two jobs:
-1. **Now** -> small e-commerce shop, runs from one command, carries promo-code scenario
-   (Module 1) + other module exercises.
-2. **Later** -> grows into 100k+ LOC codebase flagship course needs. Must be
-   **extendable by addition**, not rebuilt.
+Goals:
 
-## Hard constraints
+- immediate recognition: ordinary online department store
+- no domain explanation: browse -> cart -> checkout -> track or return order
+- modern polished UI
+- deterministic local behavior
+- meaningful growth to 150k+ authored LOC
+- rich agentic engineering and QA tasks
+- additive growth; no rewrite of current storefront
 
-- Frontend + backend + local SQLite DB.
-- Launches from single command, works on Mac + Windows, no Docker.
-- Clone -> running in ~2 minutes (setup friction = refunds on tripwire course).
+## Product Direction
 
-## Stack decisions
+General-purpose department store. Customer-facing experience remains only required product concept.
 
-- Repo shape: **monorepo, npm workspaces** (`apps/web`, `apps/api`, `packages/*`)
-  - why: grows to 100k LOC by adding domains/packages, not refactoring. npm (not pnpm/Turbo) keeps student prerequisites zero now.
-- Frontend: **React + Vite + TypeScript**
-  - why: Vite SPA keeps frontend/backend cleanly separate -> makes "explore dev repo, find where rule lives" narrative (Modules 7-8) richer. Next.js would blur that line.
-- Backend: **Node (Fastify or Express) + TypeScript**
-  - why: frontend already forces Node onto every machine -> Node backend = one runtime. Java/Python = second toolchain, fights cross-platform, kills 2-minute promise. All-TS keeps codebase coherent for agent exploration.
-- Database: **SQLite via better-sqlite3** (fallback: sql.js)
-  - why: what real apps use, students recognize it. Risk: native module — usually downloads prebuilt binary, but some machines fall back to compiling from source (needs C++ toolchain) -> day-one setup failure. Mitigation: verify on clean Win + Mac before shipping; sql.js (pure WASM, zero native) is documented escape hatch.
-- One command: `npm install` once, then `npm run dev` -> seed-if-missing -> run api + web together (cross-platform, no bash-isms)
-  - why: bulletproof single entry point.
+Core journey:
 
-**Teaching nuance baked into design:** 5-item promo gate enforced in **frontend**
-(`cartValidation.ts`, per course script), while promo definitions / min-order / stackability
-rules live in **backend**. Sets up later lesson: business rule can sit on either side, must
-look in both.
+`home -> catalog -> product -> cart -> checkout -> payment -> confirmation -> order history`
 
-## Proposed structure
+Extended familiar journeys:
 
+- search, filter, sort, paginate
+- select product variant
+- apply promotion or gift card
+- save address and payment preference metadata
+- track, cancel, or return order
+- write verified-purchase review
+- manage wishlist, profile, sessions, and notification preferences
+
+Avoid visible platform complexity:
+
+- no seller marketplace as main concept
+- no warehouse or logistics product requiring explanation
+- no live trading or financial-market dependency
+- no microservice topology exposed to users
+- optional admin tooling stays secondary and absent from normal journey
+
+## Current Baseline
+
+- monorepo: npm workspaces
+- web: React, Vite, TypeScript
+- API: Fastify, TypeScript
+- database: local SQLite
+- shared contracts: TypeBox
+- launch: `npm ci` -> `npm run dev`
+- external services: none
+- implemented: auth, catalog, search, filters, sorting, product pages, cart, promotions, checkout, simulated payment, orders, favourites, account, dev mailbox
+- seed: deterministic products, users, promotions, favourites
+- tests: basic unit and SQLite integration baseline required; API and E2E coverage reserved for course
+
+## Hard Constraints
+
+- Windows and macOS support
+- Node.js-only toolchain
+- no Docker
+- no required account, API key, cloud service, or network after install
+- clone-to-running target: about two minutes on supported machine
+- single customer-facing web application
+- SQLite remains default local database
+- integer minor units for money; backend authoritative
+- deterministic reset and seed
+- modern desktop UI at `1920x1080`, `1920x1200`, `3840x2160`
+- preserve course behavior: frontend five-item promo gate in `cartValidation.ts`; backend promotion rules; `SAVE10` remains 10% with five-item minimum
+
+## Growth Strategy
+
+Grow through depth behind familiar store actions. Prefer modular monolith until distributed behavior serves named demo.
+
+Domain package shape:
+
+```text
+packages/
+  catalog/
+  pricing/
+  promotions/
+  inventory/
+  checkout/
+  orders/
+  payments/
+  shipping/
+  returns/
+  reviews/
+  notifications/
+  identity/
 ```
-qarefully-shop/
-  apps/web/    React + Vite + TS   (checkout/cartValidation.ts = named rule file)
-  apps/api/    Fastify + TS        (db/, domain rules, routes)
-  packages/    shared types/utils  (primary growth area)
-  tests/       (placeholders for now — no real tests yet)
-    unit/
-    integrations/
-    e2e/
-      frontend/  Playwright
-      api/       Playwright
-  tickets/     mock Jira markdown
-  exercises/   module-01, module-05 artifacts
-  reference/   answer-keys (Rules / AGENTS.md / Skills) — NOT in clean clone
-  .cursor/agents/  pre-built Vision Run agent only
+
+Each domain may contain:
+
+- models and contracts
+- business rules
+- commands and queries
+- validation and error definitions
+- persistence adapters
+- domain events
+- small test helpers
+- basic unit tests for critical pure rules
+- basic SQLite integration tests for persistence and transactions
+
+Build vertical slices:
+
+`database -> domain -> API -> UI -> critical unit or SQLite integration test`
+
+Avoid empty scaffolding, copied framework internals, vendored projects, generated-code padding, duplicate abstractions.
+
+## Expansion Order
+
+1. Product variants and richer catalog
+   - sizes, colors, capacities, SKUs
+   - variant price and stock
+   - specifications, bundles, comparisons, recently viewed
+2. Order history and lifecycle
+   - processing -> packed -> shipped -> delivered
+   - cancellation, split shipment, delivery failure, tracking events
+3. Inventory
+   - reservations, expiry, backorders, concurrent purchase protection
+4. Returns and refunds
+   - return windows, partial quantities, refund rules, stock restoration
+5. Checkout depth
+   - saved addresses, billing address, delivery methods, estimates, gift options
+6. Pricing and promotions
+   - scheduled sales, category offers, stacking, gift cards, loyalty points
+7. Reviews
+   - verified purchases, moderation, helpful votes, rating aggregation
+8. Account depth
+   - addresses, sessions, preferences, data export, account deletion
+9. Async behavior
+   - local job queue, notifications, retry policy, captured webhooks, failure injection
+10. Secondary admin
+   - products, orders, refunds, reviews, users, feature flags, audit log
+
+## Agentic AI and QA Surface
+
+Prefer tasks crossing several clear boundaries without changing visible product concept.
+
+High-value scenarios:
+
+- price changes while item remains in cart
+- concurrent purchases compete for final stock
+- duplicate payment submission uses idempotency key
+- promotion combinations produce boundary and rounding bugs
+- partial cancellation changes tax, discount, and refund totals
+- webhook arrives twice or out of order
+- background notification retries after transient failure
+- role lacks permission for refund or moderation action
+- feature flag changes checkout behavior
+- migration must preserve existing seeded and user-created data
+- search, order, and notification state becomes eventually consistent
+
+## Basic Test Baseline
+
+Purpose: protect absolute must-have rules while leaving major test-design work for course.
+
+Unit scope:
+
+- frontend five-item promo gate
+- money and discount rounding
+- promotion eligibility and discount calculation
+- order transition guards
+- inventory quantity and reservation rules
+
+Integration scope:
+
+- isolated temporary SQLite database
+- schema creation and guarded migrations
+- repository create/read/update flows for critical domains
+- order/payment/inventory transaction commit and rollback
+- deterministic reset and seed counts
+
+Integration boundary:
+
+`domain service -> SQLite adapter -> temporary database`
+
+Excluded:
+
+- HTTP route tests
+- API tests through Fastify injection, `fetch`, or other client
+- E2E tests
+- Playwright
+- browser automation
+- contract tests
+- visual regression tests
+- accessibility automation
+- property-based tests
+- load or performance tests
+- broad coverage target
+
+Keep suite small, stable, fast, and obvious. Test only critical happy paths, invariants, and one or two high-risk failures per selected rule. Course owns expansion into full testing strategy.
+
+## LOC Target
+
+Target: 150k+ meaningful authored LOC. Report production and test LOC separately.
+
+Suggested allocation:
+
+- customer React application: 40k-45k
+- API and domain implementations: 65k-75k
+- shared contracts and infrastructure: 20k-25k
+- basic unit and SQLite integration tests: 4k-6k
+- seed scenarios and developer tooling: 15k-20k
+
+Count:
+
+- authored TypeScript, TSX, CSS, SQL, test code, migrations, developer tooling
+
+Exclude:
+
+- `node_modules`
+- lockfiles
+- build output
+- coverage output
+- generated clients
+- snapshots
+- vendored code
+- downloaded assets
+
+## Product Image Strategy
+
+Rule: database product does not imply unique committed image.
+
+Use reusable image-set library:
+
+- target image sets: 80-150
+- many products reference same `imageSetId`
+- product variants share parent image set
+- color or capacity variants reuse photography when difference need not be visible
+- seed may create thousands of products without duplicating image files
+
+Stored asset format:
+
+- detail image: WebP or AVIF, 600-800px
+- optional thumbnail: WebP or AVIF, 250-350px
+- no committed full-resolution originals
+- immutable hashed filenames when practical; avoid binary churn in Git history
+
+Catalog mix:
+
+- 50-80 polished images for prominent products
+- 50-100 generic product or category images for long-tail reuse
+- deterministic generated SVG artwork for bulk seeded products and missing assets
+- UI badges, labels, gradients, and backgrounds rendered separately from product image
+
+Data relation:
+
+`product -> imageSetId -> shared image paths`
+
+Example:
+
+```ts
+{
+  name: "Studio Wireless Headphones X2",
+  imageSetId: "headphones/studio-black"
+}
 ```
 
-**Clean baseline vs. answer-keys:** Module 1 demands students start with no Rules / MCP /
-AGENTS.md. Reference solutions live in separate `reference/` folder (simpler than git branches,
-which audience's "basic Git only" assumption makes risky).
+Runtime SVG option:
 
-## What it must carry (course -> repo)
+`product ID + category + palette + label -> deterministic local SVG response`
 
-- Module 1: checkout page; promo field always in DOM but disabled when cart < 5 items;
-  `SAVE10` = 10% + discount summary panel; deliberate messiness (`uat_03.spec.ts`, one partial
-  page object); pre-built Cursor Agent.
-- Module 8: second feature — shipping address zip-format validation.
-- Module 9: real race condition making a test genuinely flaky.
-- Mock Jira tickets, saved bad output (M1), degrading-session transcript (M5).
+Asset budget:
 
-## Phasing
+- built-in product assets target: 5-15 MB
+- same source may serve catalog and product detail when performance remains acceptable
+- optional high-resolution asset pack distributed separately from default clone
 
-**Current focus: build the app (Phase 1 + additive Phase 3 groundwork).** Phase 2 feature work
-and real Playwright tests are deferred — do not start them until explicitly requested.
+Avoid:
 
-1. **Phase 1 (course MVP)** — active now: auth/login, catalog, cart + 5-item gate,
-   checkout + `SAVE10` + summary panel, named `cartValidation.ts`, mock tickets, exercise
-   artifacts. Small.
-2. **Phase 2 (deferred)**: shipping/zip validation (M8) + deliberate race condition (M9).
-   Real Playwright tests added here — not before.
-3. **Phase 3 (flagship growth, additive)**: orders, inventory, returns, reviews, payments,
-   admin. Domain boundaries drawn now (cart / checkout / catalog / account / shipping) so
-   growth stays additive.
+- one photo set per seeded SKU
+- committed PNG or large JPEG originals
+- Git LFS in default student flow
+- remote CDN dependency for required product rendering
+- unstable third-party image URLs
 
-### Completed TLDR — 2026-07-08
+Fallback behavior:
 
-- Built: npm workspaces -> React/Vite web + Fastify API + SQLite + shared contracts.
-- Built: catalog -> cart -> checkout -> `SAVE10` -> confirmation flow.
-- Built: desktop shop UI -> catalog, cart sheet/page, checkout, confirmation, category nav, inert search/account/wishlist placeholders.
-- Verified: Windows + Node 22 install/build path, lint, typecheck, format baseline, seed/reset, main browser journey at `1366x768`.
-- Preserved: no tests, no deferred Phase 2 features, no clean-baseline agent/config artifacts.
+- missing image -> deterministic local category SVG
+- offline use -> complete visual journey remains available
+- optional asset pack absent -> no broken layout or network request
 
+## Delivery Principles
 
-**Layout must stay modern, extension-ready.** Monorepo shape chosen to later add, without
-rebuilding:
-- Local DB upgrade — swap/augment SQLite with "real" local DB (Postgres) for flagship.
-- Kafka / event-driven — async messaging between services (order placed -> inventory ->
-  notifications), introduces eventual consistency + legitimate flakiness to test.
-- Multiple backend services — split monolith API into independent services under `apps/`.
-- Contract tests — consumer-driven contracts (e.g. Pact) once more than one service exists,
-  plus `tests/contract/` placeholder alongside unit/integration/e2e.
-
-## Realistic-complexity menu (Phase 3)
-
-Udemy build stays small but designed with these extensions in mind — domain boundaries,
-monorepo shape, `tests/` layout above all assume this menu lands later. Not built for tripwire
-course now; banked so growth stays additive. Grouped by QA skill each unlocks:
-
-**State & async (highest teaching value)**
-- Order lifecycle state machine (`created -> paid -> shipped -> delivered -> returned/refunded`)
-  — best single addition: unlocks state-transition testing + illegal-transition guards, each
-  transition emits Kafka event.
-- Background workers / job queue (e.g. release abandoned-cart reservation after N min) — forces
-  testing eventual outcomes, not synchronous responses; realistic basis for "poll vs. flaky
-  sleep" lessons.
-
-**Integration boundaries (where mocking & contract tests live)**
-- Fake third-party services we control — payment gateway, email/notification sender,
-  shipping-rate API. Stubbed locally with realistic failure modes (timeouts, 500s, declined
-  cards). Natural home for service virtualization, contract tests, unhappy-path testing.
-- Inbound webhooks (payment confirmation callback) — teaches idempotency +
-  signature-verification testing.
-
-**Money & data correctness (classic bug nurseries)**
-- Decimal/rounding on prices, tax, multi-item discounts — deliberate precision traps.
-- Idempotency keys on order/payment submission — makes duplicate-click + retry handling testable.
-- Inventory concurrency / overselling — promote M9 race condition into real stock-decrement
-  race so it's authentic, not contrived.
-
-**Authz & config combinatorics**
-- Roles / RBAC (customer / admin / support) — permission-matrix testing.
-- Feature flags — environment-dependent behavior, combinatorial surface, ties into "behavior
-  depends on config you have to go find."
-
-**Boundary inputs**
-- Pagination / filter / sort on catalog, CSV product import or image upload (validation + file
-  handling), i18n / currency / timezone — cheap to add, rich in edge cases.
-
-**Notifications & email (later work)**
-- User-facing email + in-app notifications (order confirmation, shipping update, password
-  reset) — driven off lifecycle events above. Teaches testing async side effects, template
-  rendering, asserting against captured outbox / mailhog-style sink rather than live inbox.
-
-**Lead-with three:** order state machine + fake payment gateway + inventory race — justify
-Kafka, contract tests, multi-service splits respectively, rather than adding those for their
-own sake.
-
-## Decisions to approve
-
-1. Vite SPA + separate Fastify API (recommended) vs. Next.js full-stack.
-2. better-sqlite3 (realistic, small native risk) vs. sql.js (zero risk, less realistic).
-3. `reference/` folder vs. git branches for clean-baseline split.
-4. E-commerce theme — plain B2C storefront, or something more memorable for course?
-
-**Noted for later:** real Playwright tests are a later pass; for now `tests/` is a placeholder.
-Phase 2 feature work is a later pass too — current work is building the app (Phase 1
-completion + additive Phase 3 groundwork).
+- each expansion adds working customer value or named QA scenario
+- keep main journey obvious without documentation
+- prefer domain correctness over architecture theater
+- preserve one-command startup
+- keep fake integrations local and controllable
+- seed edge cases intentionally and document credentials or triggers in human README
+- validate clean setup before release
