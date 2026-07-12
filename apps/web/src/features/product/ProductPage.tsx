@@ -1,16 +1,15 @@
-import { useParams, Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { getProduct, getRelatedProducts } from '@/api/products';
-import { useCartContext } from '@/hooks/CartContext';
-import { ProductGrid } from '@/components/ProductGrid';
-import { ProductCard } from '@/components/ProductCard';
-import { LoadingSpinner } from '@/components/LoadingSpinner';
-import { ErrorMessage } from '@/components/ErrorMessage';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { WishlistButton } from '@/components/WishlistButton';
-import { formatMoney } from '@/lib/formatMoney';
+import { Link, useParams } from 'react-router-dom';
 import type { Product } from '@shop/contracts';
+import { getProduct, getRelatedProducts } from '@/api/products';
+import { ErrorMessage } from '@/components/ErrorMessage';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { ProductCard } from '@/components/ProductCard';
+import { ProductGrid } from '@/components/ProductGrid';
+import { useCartContext } from '@/hooks/CartContext';
+import { ProductDetails } from './ProductDetails';
+import { ProductGallery } from './ProductGallery';
+import { ProductPurchasePanel } from './ProductPurchasePanel';
 
 export function ProductPage() {
   const { id } = useParams<{ id: string }>();
@@ -18,8 +17,7 @@ export function ProductPage() {
   const [related, setRelated] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [imgError, setImgError] = useState(false);
-
+  const [actionError, setActionError] = useState<string | null>(null);
   const {
     error: cartError,
     addItem,
@@ -29,23 +27,31 @@ export function ProductPage() {
   } = useCartContext();
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      setError('Product not found');
+      setIsLoading(false);
+      return;
+    }
+
     let cancelled = false;
     setIsLoading(true);
     setError(null);
+    setProduct(null);
+    setRelated([]);
+    setActionError(null);
 
     Promise.all([getProduct(id).catch(() => null), getRelatedProducts(id).catch(() => [])])
       .then(([productResult, relatedResult]) => {
         if (cancelled) return;
-        if (!productResult) {
-          setError('Product not found');
-        } else {
+        if (!productResult) setError('Product not found');
+        else {
           setProduct(productResult);
-          setRelated(Array.isArray(relatedResult) ? relatedResult : []);
+          setRelated(Array.isArray(relatedResult) ? relatedResult.slice(0, 5) : []);
         }
       })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load product');
+      .catch((loadError: unknown) => {
+        if (!cancelled)
+          setError(loadError instanceof Error ? loadError.message : 'Failed to load product');
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -60,135 +66,69 @@ export function ProductPage() {
   if (error) return <ErrorMessage message={error} />;
   if (!product) return <ErrorMessage message="Product not found" />;
 
-  const inStock = product.stock > 0;
-  const isOnSale =
-    product.compareAtPriceCents != null && product.compareAtPriceCents > product.priceCents;
-  const isBestseller = product.salesCount >= 250;
-  const [actionError, setActionError] = useState<string | null>(null);
-
   const handleAddToCart = async () => {
     setActionError(null);
-    const added = await addItem(product.id);
-    if (!added) setActionError('Could not add this item. Try again.');
+    if (!(await addItem(product.id))) setActionError('Could not add this item. Try again.');
   };
 
   return (
-    <div>
-      {/* Breadcrumb */}
-      <nav className="mb-4 text-sm text-muted-foreground">
-        <Link to="/catalog" className="hover:text-foreground">
+    <div className="pb-8">
+      <nav
+        aria-label="Breadcrumb"
+        className="mb-6 flex flex-wrap items-center gap-2 text-sm text-muted-foreground"
+      >
+        <Link
+          to="/catalog"
+          className="rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
           Catalog
         </Link>
-        <span className="mx-2">/</span>
-        <span>{product.name}</span>
+        <span aria-hidden="true">/</span>
+        <Link
+          to={`/catalog?category=${encodeURIComponent(product.category)}`}
+          className="rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {product.category}
+        </Link>
+        <span aria-hidden="true">/</span>
+        <span aria-current="page" className="text-foreground">
+          {product.name}
+        </span>
       </nav>
 
-      {/* Product detail */}
-      <div className="grid gap-8 lg:grid-cols-2">
-        {/* Image */}
-        <div className="aspect-square bg-muted rounded-lg flex items-center justify-center overflow-hidden">
-          {imgError ? (
-            <span className="text-muted-foreground text-lg">No image available</span>
-          ) : (
-            <img
-              src={product.imageUrl}
-              alt={product.name}
-              className="h-full w-full object-cover"
-              onError={() => setImgError(true)}
-            />
-          )}
-        </div>
-
-        {/* Info */}
-        <div className="flex flex-col gap-4">
-          {/* Badges */}
-          <div className="flex flex-wrap gap-2">
-            {isOnSale && <Badge variant="destructive">Sale</Badge>}
-            {isBestseller && (
-              <Badge className="bg-amber-100 text-amber-800 border-amber-200">Bestseller</Badge>
-            )}
-            <Badge variant="secondary">{product.category}</Badge>
-          </div>
-
-          <h1 className="text-3xl font-bold">{product.name}</h1>
-
-          {/* Price */}
-          <div className="flex items-baseline gap-3">
-            {isOnSale ? (
-              <>
-                <span className="text-2xl font-bold text-destructive">
-                  {formatMoney(product.priceCents)}
-                </span>
-                <span className="text-lg text-muted-foreground line-through">
-                  {formatMoney(product.compareAtPriceCents!)}
-                </span>
-              </>
-            ) : (
-              <span className="text-2xl font-bold">{formatMoney(product.priceCents)}</span>
-            )}
-          </div>
-
-          {/* Stock */}
-          <div className="flex items-center gap-2">
-            <span
-              className={`inline-block h-2 w-2 rounded-full ${inStock ? 'bg-green-500' : 'bg-destructive'}`}
-            />
-            <span className={`text-sm ${inStock ? 'text-green-600' : 'text-destructive'}`}>
-              {inStock ? `In Stock (${product.stock} available)` : 'Out of Stock'}
-            </span>
-          </div>
-
-          {/* Description */}
-          <p className="text-muted-foreground">{product.description}</p>
-
-          {/* Sales count */}
-          {product.salesCount > 0 && (
-            <p className="text-sm text-muted-foreground">{product.salesCount} sold</p>
-          )}
-
-          {/* Actions */}
-          <div className="flex flex-col gap-3 pt-2">
-            <Button
-              size="lg"
-              className="w-full sm:w-auto"
-              disabled={!isCartAvailable || !inStock || isActionPending(product.id, 'add')}
-              onClick={() => {
-                void handleAddToCart();
-              }}
-            >
-              {!isCartAvailable
-                ? 'Cart Unavailable'
-                : isActionPending(product.id, 'add')
-                  ? 'Adding...'
-                  : inStock
-                    ? 'Add to Cart'
-                    : 'Unavailable'}
-            </Button>
-
-            {/* Wishlist heart toggle */}
-            <WishlistButton productId={product.id} product={product} />
-
-            {actionError && (
-              <p role="alert" className="text-sm text-destructive">
-                {actionError}
-              </p>
-            )}
-            {cartError && (
-              <div role="alert" className="flex items-center gap-2">
-                <p className="text-sm text-destructive">{cartError}</p>
-                <Button variant="outline" size="sm" onClick={() => void retryCart()}>
-                  Retry Cart
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
+      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(22rem,0.85fr)] xl:gap-12">
+        <ProductGallery product={product} />
+        <ProductPurchasePanel
+          product={product}
+          isCartAvailable={isCartAvailable}
+          isAdding={isActionPending(product.id, 'add')}
+          actionError={actionError}
+          cartError={cartError}
+          onAddToCart={() => void handleAddToCart()}
+          onRetryCart={() => void retryCart()}
+        />
       </div>
 
-      {/* Related products */}
+      <div className="mt-12 grid gap-6">
+        <ProductDetails description={product.description} />
+      </div>
+
       {related.length > 0 && (
-        <section className="mt-16">
-          <h2 className="mb-6 text-xl font-bold">Related Products</h2>
+        <section className="mt-16" aria-labelledby="related-products-heading">
+          <div className="mb-6 flex items-end justify-between gap-4">
+            <div>
+              <p className="section-eyebrow">You may also like</p>
+              <h2 id="related-products-heading" className="section-heading mt-2">
+                Related products
+              </h2>
+            </div>
+            <Link
+              to={`/catalog?category=${encodeURIComponent(product.category)}`}
+              className="section-link"
+            >
+              View category
+            </Link>
+          </div>
           <ProductGrid>
             {related.map((relatedProduct) => (
               <ProductCard
@@ -196,7 +136,7 @@ export function ProductPage() {
                 product={relatedProduct}
                 isCartAvailable={isCartAvailable}
                 isAdding={isActionPending(relatedProduct.id, 'add')}
-                onAddToCart={(pid) => addItem(pid)}
+                onAddToCart={(productId) => addItem(productId)}
               />
             ))}
           </ProductGrid>

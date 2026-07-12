@@ -13,7 +13,7 @@ export function Layout() {
           <ToastProvider>
             <div className="min-h-screen bg-background">
               <Header />
-              <main className="container mx-auto px-4 py-6">
+              <main className="content-shell py-6 sm:py-8">
                 <Outlet />
               </main>
             </div>

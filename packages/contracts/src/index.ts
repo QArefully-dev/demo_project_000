@@ -3,6 +3,7 @@ export {
   MoneyCents,
   ErrorResponse,
   SuccessResponse,
+  ProductImage,
   Product,
   ProductSort,
   ProductQuery,

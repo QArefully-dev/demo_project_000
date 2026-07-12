@@ -9,6 +9,7 @@ export interface ProductRow {
   category: string;
   stock_count: number;
   image_url: string;
+  image_set_id: string | null;
   slug: string;
   compare_at_price_cents: number | null;
   sales_count: number;

@@ -22,12 +22,22 @@ export type SuccessResponse = Static<typeof SuccessResponse>;
 
 // ── Product ───────────────────────────────────────────────
 
+export const ProductImage = Type.Object({
+  src: Type.String(),
+  alt: Type.String(),
+  width: Type.Number({ minimum: 1, multipleOf: 1 }),
+  height: Type.Number({ minimum: 1, multipleOf: 1 }),
+});
+export type ProductImage = Static<typeof ProductImage>;
+
 export const Product = Type.Object({
   id: Type.String(),
   name: Type.String(),
   description: Type.String(),
   priceCents: MoneyCents,
   imageUrl: Type.String(),
+  imageSetId: Type.String(),
+  images: Type.Array(ProductImage, { minItems: 1 }),
   category: Type.String(),
   stock: Type.Number({ minimum: 0, multipleOf: 1 }),
   slug: Type.String(),

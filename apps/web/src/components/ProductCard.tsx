@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { WishlistButton } from '@/components/WishlistButton';
 import { formatMoney } from '@/lib/formatMoney';
 import type { Product } from '@shop/contracts';
+import { ProductMedia } from '@/components/ProductMedia';
 
 interface ProductCardProps {
   product: Product;
@@ -19,12 +21,17 @@ export function ProductCard({
   isCartAvailable,
   isAdding = false,
 }: ProductCardProps) {
-  const [imgError, setImgError] = useState(false);
+  const [, setImgError] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const inStock = product.stock > 0;
   const isOnSale =
     product.compareAtPriceCents != null && product.compareAtPriceCents > product.priceCents;
   const isBestseller = product.salesCount >= 250;
+
+  useEffect(() => {
+    setImgError(false);
+    setActionError(null);
+  }, [product.id]);
 
   const handleAddToCart = async () => {
     setActionError(null);
@@ -33,29 +40,28 @@ export function ProductCard({
   };
 
   return (
-    <Card className="flex flex-col overflow-hidden transition-shadow hover:shadow-md">
-      <div className="relative aspect-square bg-muted flex items-center justify-center">
-        {imgError ? (
-          <span className="text-muted-foreground text-sm">No image</span>
-        ) : (
-          <img
-            src={product.imageUrl}
-            alt={product.name}
-            className="h-full w-full object-cover"
+    <Card className="group flex h-full flex-col overflow-hidden border-border/80 bg-surface-raised py-0 shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-lg">
+      <div className="relative aspect-square overflow-hidden bg-surface-soft flex items-center justify-center">
+        <Link
+          to={`/products/${product.id}`}
+          className="h-full w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        >
+          <ProductMedia
+            product={product}
+            loading="lazy"
+            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.035]"
             onError={() => setImgError(true)}
           />
-        )}
+        </Link>
         {/* Badges overlay */}
         <div className="absolute top-2 left-2 flex flex-wrap gap-1">
           {isOnSale && (
-            <Badge variant="destructive" className="text-xs">
-              Sale
-            </Badge>
+            <Badge className="border-transparent bg-sale text-xs text-sale-foreground">Sale</Badge>
           )}
           {isBestseller && (
             <Badge
               variant="secondary"
-              className="text-xs bg-amber-100 text-amber-800 border-amber-200"
+              className="border-primary/10 bg-background/90 text-xs text-primary"
             >
               Bestseller
             </Badge>
@@ -66,36 +72,40 @@ export function ProductCard({
           <WishlistButton productId={product.id} product={product} />
         </div>
       </div>
-      <CardContent className="flex flex-1 flex-col gap-2 p-4">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="font-semibold leading-tight">{product.name}</h3>
-          <Badge variant="secondary" className="shrink-0">
-            {product.category}
-          </Badge>
-        </div>
-        <p className="text-sm text-muted-foreground line-clamp-2">{product.description}</p>
-        <div className="mt-auto flex items-center justify-between pt-2">
-          <div className="flex items-baseline gap-2">
+      <CardContent className="flex flex-1 flex-col gap-2 p-4 pb-3">
+        <p className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          {product.category}
+        </p>
+        <h3 className="line-clamp-2 min-h-10 font-semibold leading-5">
+          <Link
+            to={`/products/${product.id}`}
+            className="rounded-sm underline-offset-4 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {product.name}
+          </Link>
+        </h3>
+        <p className="line-clamp-1 text-sm text-muted-foreground">{product.description}</p>
+        <div className="mt-auto pt-2">
+          <div className="flex flex-wrap items-baseline gap-2">
             {isOnSale ? (
               <>
-                <span className="text-lg font-bold text-destructive">
-                  {formatMoney(product.priceCents)}
-                </span>
+                <span className="price-current text-sale">{formatMoney(product.priceCents)}</span>
                 <span className="text-sm text-muted-foreground line-through">
                   {formatMoney(product.compareAtPriceCents!)}
                 </span>
               </>
             ) : (
-              <span className="text-lg font-bold">{formatMoney(product.priceCents)}</span>
+              <span className="price-current">{formatMoney(product.priceCents)}</span>
             )}
           </div>
-          <span className={`text-xs ${inStock ? 'text-green-600' : 'text-destructive'}`}>
-            {inStock ? 'In Stock' : 'Out of Stock'}
-          </span>
         </div>
       </CardContent>
       <CardFooter className="p-4 pt-0">
         <div className="w-full space-y-2">
+          {!inStock && <p className="text-xs font-medium text-destructive">Out of stock</p>}
+          {inStock && product.stock <= 5 && (
+            <p className="text-xs font-medium text-sale">Only {product.stock} left</p>
+          )}
           <Button
             className="w-full"
             disabled={!isCartAvailable || !inStock || isAdding}

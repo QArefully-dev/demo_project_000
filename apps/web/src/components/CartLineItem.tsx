@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatMoney } from '@/lib/formatMoney';
 import type { CartLine } from '@shop/contracts';
+import { ProductMedia } from '@/components/ProductMedia';
 
 interface CartLineItemProps {
   item: CartLine;
@@ -19,9 +20,12 @@ export function CartLineItem({
   isUpdating = false,
   isRemoving = false,
 }: CartLineItemProps) {
-  const [imgError, setImgError] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const isPending = isUpdating || isRemoving;
+
+  useEffect(() => {
+    setActionError(null);
+  }, [item.productId]);
 
   const updateQuantity = async (quantity: number) => {
     setActionError(null);
@@ -40,16 +44,11 @@ export function CartLineItem({
   return (
     <div className="flex items-center gap-3 py-3">
       <div className="h-16 w-16 shrink-0 rounded-md bg-muted flex items-center justify-center overflow-hidden">
-        {imgError ? (
-          <span className="text-muted-foreground text-xs">No image</span>
-        ) : (
-          <img
-            src={item.product.imageUrl}
-            alt={item.product.name}
-            className="h-full w-full object-cover"
-            onError={() => setImgError(true)}
-          />
-        )}
+        <ProductMedia
+          product={item.product}
+          role="thumbnail"
+          className="h-full w-full object-cover"
+        />
       </div>
       <div className="flex flex-1 flex-col gap-1">
         <p className="text-sm font-medium leading-tight">{item.product.name}</p>

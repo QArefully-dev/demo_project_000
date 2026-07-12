@@ -730,8 +730,8 @@ export function seedDatabase(db: Database.Database): void {
   const seed = db.transaction(() => {
     // ── Products ──────────────────────────────────────────
     const upsertProduct = db.prepare(
-      `INSERT INTO products (id, name, description, price_cents, category, stock_count, image_url, slug, compare_at_price_cents, sales_count)
-       VALUES (@id, @name, @description, @price_cents, @category, @stock_count, @image_url, @slug, @compare_at_price_cents, @sales_count)
+      `INSERT INTO products (id, name, description, price_cents, category, stock_count, image_url, image_set_id, slug, compare_at_price_cents, sales_count)
+       VALUES (@id, @name, @description, @price_cents, @category, @stock_count, @image_url, @image_set_id, @slug, @compare_at_price_cents, @sales_count)
        ON CONFLICT(id) DO UPDATE SET
          name          = excluded.name,
          description   = excluded.description,
@@ -739,13 +739,18 @@ export function seedDatabase(db: Database.Database): void {
          category      = excluded.category,
          stock_count   = excluded.stock_count,
          image_url     = excluded.image_url,
+         image_set_id  = excluded.image_set_id,
          slug          = excluded.slug,
          compare_at_price_cents = excluded.compare_at_price_cents,
          sales_count   = excluded.sales_count`,
     );
 
     for (const p of PRODUCT_ROWS) {
-      upsertProduct.run(p);
+      const imageSetId = p.image_url
+        .replace('/images/product-', '')
+        .replace('.jpg', '')
+        .replace('usbhub', 'usb-hub');
+      upsertProduct.run({ ...p, image_set_id: imageSetId });
     }
 
     // ── Promo codes ───────────────────────────────────────

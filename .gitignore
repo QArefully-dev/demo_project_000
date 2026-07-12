@@ -1,4 +1,6 @@
 data/
+!apps/web/src/data/
+!apps/web/src/data/productImageSets.ts
 node_modules/
 dist/
 *.db

@@ -7,7 +7,7 @@ import { Search } from 'lucide-react';
  * Functional search bar with 300ms debounce.
  * Navigates to the catalog page with the search query.
  */
-export function SearchBar() {
+export function SearchBar({ className = '' }: { className?: string }) {
   const [searchParams] = useSearchParams();
   const currentQ = searchParams.get('q') ?? '';
   const [localValue, setLocalValue] = useState(currentQ);
@@ -63,12 +63,13 @@ export function SearchBar() {
   );
 
   return (
-    <div className="relative w-full max-w-[280px]" aria-label="Search products">
+    <div className={`relative w-full ${className}`} role="search">
       <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground z-10" />
       <Input
         type="search"
-        placeholder="Search products..."
-        className="pl-9"
+        aria-label="Search products"
+        placeholder="What are you looking for?"
+        className="h-10 rounded-full border-input bg-surface-raised pl-10 pr-4 shadow-sm focus-visible:ring-2"
         value={localValue}
         onChange={handleChange}
         onKeyDown={handleKeyDown}

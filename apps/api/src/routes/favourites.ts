@@ -15,6 +15,7 @@ import {
   ErrorResponse,
   SuccessResponse,
 } from '@shop/contracts';
+import { getApiProductImage } from '../domains/productMedia.js';
 
 function toProductContract(row: ProductRow) {
   return {
@@ -23,6 +24,8 @@ function toProductContract(row: ProductRow) {
     description: row.description,
     priceCents: row.price_cents,
     imageUrl: row.image_url,
+    imageSetId: row.image_set_id ?? 'unknown',
+    images: [getApiProductImage(row.image_set_id, row.image_url, row.name)],
     category: row.category,
     stock: row.stock_count,
     slug: row.slug,

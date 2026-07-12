@@ -1,0 +1,222 @@
+{
+  "version": 1,
+  "background": "#f3f0e9",
+  "files": [
+    {
+      "sourceId": "headphones",
+      "role": "thumbnail",
+      "path": "/images/products/wireless-headphones.thumbnail.3fc685d48366.320.webp",
+      "width": 320,
+      "height": 320,
+      "bytes": 8010,
+      "sha256": "3fc685d483662c986e8182d22baf8ea7e5daea032070a408a3751c27f82f5fd5"
+    },
+    {
+      "sourceId": "headphones",
+      "role": "card",
+      "path": "/images/products/wireless-headphones.card.1bec8d07bb59.720.webp",
+      "width": 720,
+      "height": 720,
+      "bytes": 27966,
+      "sha256": "1bec8d07bb593a6cbc58c8800f0457f76c097d51aea832bf6656a0224b9eb408"
+    },
+    {
+      "sourceId": "headphones",
+      "role": "detail",
+      "path": "/images/products/wireless-headphones.detail.09cd9a0b2710.1200.webp",
+      "width": 1200,
+      "height": 1200,
+      "bytes": 39030,
+      "sha256": "09cd9a0b27104366796c45b5572d2201aa04c6dcc0e380e9173abef8d9a01e06"
+    },
+    {
+      "sourceId": "keyboard",
+      "role": "thumbnail",
+      "path": "/images/products/mechanical-keyboard.thumbnail.003d71581792.320.webp",
+      "width": 320,
+      "height": 320,
+      "bytes": 4308,
+      "sha256": "003d715817920dc6a5e007524e60b7d35866184007d4c514bf8ba633c9cb1d60"
+    },
+    {
+      "sourceId": "keyboard",
+      "role": "card",
+      "path": "/images/products/mechanical-keyboard.card.24a705d3f3c5.720.webp",
+      "width": 720,
+      "height": 720,
+      "bytes": 13708,
+      "sha256": "24a705d3f3c50f2025b94ce2bab1a5e747c6fcd4df852133c46638044ba9e961"
+    },
+    {
+      "sourceId": "keyboard",
+      "role": "detail",
+      "path": "/images/products/mechanical-keyboard.detail.6f2453e3016d.1200.webp",
+      "width": 1200,
+      "height": 1200,
+      "bytes": 19264,
+      "sha256": "6f2453e3016dd8c98e5b606f4a511290087668bc8db08693f710389792b190c0"
+    },
+    {
+      "sourceId": "monitor",
+      "role": "thumbnail",
+      "path": "/images/products/desktop-monitor.thumbnail.9e7f5f18b393.320.webp",
+      "width": 320,
+      "height": 320,
+      "bytes": 16830,
+      "sha256": "9e7f5f18b393d2acbbf363d617b0279e49811f912ec3a4505a1ce27895abaf38"
+    },
+    {
+      "sourceId": "monitor",
+      "role": "card",
+      "path": "/images/products/desktop-monitor.card.60700175c6db.720.webp",
+      "width": 720,
+      "height": 720,
+      "bytes": 59596,
+      "sha256": "60700175c6db771b4b0a6fdf533a9d2641e2f1ef09d48bcfd1d8998536a724b1"
+    },
+    {
+      "sourceId": "monitor",
+      "role": "detail",
+      "path": "/images/products/desktop-monitor.detail.6c93ebef7d3a.1200.webp",
+      "width": 1200,
+      "height": 1200,
+      "bytes": 72292,
+      "sha256": "6c93ebef7d3a6ebae9ea483aeac95f9cf1eacb222a951e836f8343954d588baa"
+    },
+    {
+      "sourceId": "mouse",
+      "role": "thumbnail",
+      "path": "/images/products/wireless-mouse.thumbnail.58fed3e7b09e.320.webp",
+      "width": 320,
+      "height": 320,
+      "bytes": 6346,
+      "sha256": "58fed3e7b09e4836b47fad15a8c2d0f6fc0aa98f76f0ba766f2f32d45fe01ea4"
+    },
+    {
+      "sourceId": "mouse",
+      "role": "card",
+      "path": "/images/products/wireless-mouse.card.77ec7dc8214c.720.webp",
+      "width": 720,
+      "height": 720,
+      "bytes": 20412,
+      "sha256": "77ec7dc8214c4c161bf597facc8ec17a6d8b277eebedbaa97ebca09dcbf4b945"
+    },
+    {
+      "sourceId": "mouse",
+      "role": "detail",
+      "path": "/images/products/wireless-mouse.detail.fd3919d49022.1200.webp",
+      "width": 1200,
+      "height": 1200,
+      "bytes": 27504,
+      "sha256": "fd3919d490228fdd7a5473cd44bfa6b361d4e65815b644ea6294092672c652ec"
+    },
+    {
+      "sourceId": "speaker",
+      "role": "thumbnail",
+      "path": "/images/products/portable-speaker.thumbnail.74d1b5b37831.320.webp",
+      "width": 320,
+      "height": 320,
+      "bytes": 13444,
+      "sha256": "74d1b5b37831d26f90c4d478c40242c6de361c3b320f9fa75d93d5132c604b4a"
+    },
+    {
+      "sourceId": "speaker",
+      "role": "card",
+      "path": "/images/products/portable-speaker.card.c874cf8d8eca.720.webp",
+      "width": 720,
+      "height": 720,
+      "bytes": 54944,
+      "sha256": "c874cf8d8eca3ad699a51f8db0049169208cabae92a84cfa726a2660066f6bc2"
+    },
+    {
+      "sourceId": "speaker",
+      "role": "detail",
+      "path": "/images/products/portable-speaker.detail.bc6d73537ba9.1200.webp",
+      "width": 1200,
+      "height": 1200,
+      "bytes": 68252,
+      "sha256": "bc6d73537ba9663e8ad5a25e3b1d045723bb90520db551eabe827723c46f3e1b"
+    },
+    {
+      "sourceId": "stand",
+      "role": "thumbnail",
+      "path": "/images/products/laptop-stand.thumbnail.1797f3623612.320.webp",
+      "width": 320,
+      "height": 320,
+      "bytes": 29380,
+      "sha256": "1797f36236120f29cd35623c5521eff29f6c8b0270316d0655b59c61e41fa841"
+    },
+    {
+      "sourceId": "stand",
+      "role": "card",
+      "path": "/images/products/laptop-stand.card.057302deede7.720.webp",
+      "width": 720,
+      "height": 720,
+      "bytes": 127028,
+      "sha256": "057302deede77c5139b63bd57ee0198d7e4c676ffd8ade40bd112db69ff89b94"
+    },
+    {
+      "sourceId": "stand",
+      "role": "detail",
+      "path": "/images/products/laptop-stand.detail.9bb0069ff67a.1200.webp",
+      "width": 1200,
+      "height": 1200,
+      "bytes": 148880,
+      "sha256": "9bb0069ff67a8a95f2c822008b0dfa7a4c065e9b751d97ba6928db8e12ae0f9b"
+    },
+    {
+      "sourceId": "usbhub",
+      "role": "thumbnail",
+      "path": "/images/products/usb-hub.thumbnail.19fb1698f58d.320.webp",
+      "width": 320,
+      "height": 320,
+      "bytes": 13848,
+      "sha256": "19fb1698f58dfe0ba7314d4a1840177cab148005a981b9bdf65d33e06be9909a"
+    },
+    {
+      "sourceId": "usbhub",
+      "role": "card",
+      "path": "/images/products/usb-hub.card.9b304cc40aad.720.webp",
+      "width": 720,
+      "height": 720,
+      "bytes": 55092,
+      "sha256": "9b304cc40aada8403ce31c6ad3fbea33c6586565133653701571fc39b27af43e"
+    },
+    {
+      "sourceId": "usbhub",
+      "role": "detail",
+      "path": "/images/products/usb-hub.detail.a939856c8b8a.1200.webp",
+      "width": 1200,
+      "height": 1200,
+      "bytes": 64356,
+      "sha256": "a939856c8b8a6624c188eba09fc5184cf3d7b6994a148fc5e770d7a9b33c2b1a"
+    },
+    {
+      "sourceId": "webcam",
+      "role": "thumbnail",
+      "path": "/images/products/webcam.thumbnail.8cd5ef6756ad.320.webp",
+      "width": 320,
+      "height": 320,
+      "bytes": 11230,
+      "sha256": "8cd5ef6756ad6e170b13af7b74432ebf6e59f8cc9872daa5cf2f2e0585498a79"
+    },
+    {
+      "sourceId": "webcam",
+      "role": "card",
+      "path": "/images/products/webcam.card.61c6d85cc7a0.720.webp",
+      "width": 720,
+      "height": 720,
+      "bytes": 32922,
+      "sha256": "61c6d85cc7a09b1015defd44f7670cbc6e3c4fa0fdde1c88957a2d73a93ae66b"
+    },
+    {
+      "sourceId": "webcam",
+      "role": "detail",
+      "path": "/images/products/webcam.detail.b79792faa84f.1200.webp",
+      "width": 1200,
+      "height": 1200,
+      "bytes": 41856,
+      "sha256": "b79792faa84ff2f8e0027a213d2717cadb1463d2a37bab2c602e4526c973b7e8"
+    }
+  ]
+}
