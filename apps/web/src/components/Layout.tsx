@@ -11,9 +11,9 @@ export function Layout() {
       <CartProvider>
         <TooltipProvider>
           <ToastProvider>
-            <div className="min-h-screen bg-background">
+            <div className="flex min-h-screen flex-col bg-background">
               <Header />
-              <main className="content-shell py-6 sm:py-8">
+              <main className="content-shell w-full flex-1 py-6 sm:py-8">
                 <Outlet />
               </main>
             </div>

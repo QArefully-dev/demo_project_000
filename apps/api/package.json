@@ -8,7 +8,10 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "seed": "tsx src/db/run-seed.ts",
-    "reset": "tsx src/db/run-reset.ts"
+    "reset": "tsx src/db/run-reset.ts",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "tsx --test src/domains/promo.test.ts",
+    "test:integration": "tsx --test test/smoke.integration.test.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.1",

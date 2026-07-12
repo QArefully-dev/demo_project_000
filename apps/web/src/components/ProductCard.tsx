@@ -44,7 +44,7 @@ export function ProductCard({
       <div className="relative aspect-square overflow-hidden bg-surface-soft flex items-center justify-center">
         <Link
           to={`/products/${product.id}`}
-          className="h-full w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          className="block h-full w-full rounded-sm transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
           <ProductMedia
             product={product}

@@ -1,6 +1,6 @@
 # Storefront UI, Product Detail, Media Implementation Plan
 
-Status: ready for implementation.
+Status: Phases 1-2 complete; Phases 3-9 ready for implementation.
 
 Audience: coding agents.
 
@@ -17,8 +17,7 @@ Primary journey:
 ## Current Findings
 
 - `/products/:id` route exists in `apps/web/src/App.tsx`.
-- `ProductPage` crashes after async load: `useState` declared after conditional returns.
-- `ProductCard` image and title lack links. Product route unreachable through normal browsing.
+- Phase 1 resolved product-detail hook/state handling and restored card-to-detail navigation.
 - `Product` contract exposes single `imageUrl`; no `imageSetId`, gallery, specs, variants, rating summary.
 - Seed contains 48 products but only 8 JPEG files. Many unrelated products use wrong image.
 - Existing JPEGs: 800x800, 28-146 KB. Resolution acceptable for cards; semantic mismatch causes poor result.
@@ -71,23 +70,8 @@ Media build path:
 
 Runtime path contains no `media-use`, HeyGen, FFmpeg, remote URLs, or source originals.
 
-## Phase 0: Safety Baseline
 
-### Tasks
-
-- Run `npm run typecheck`.
-- Run `npm run lint`.
-- Run existing tests if workspace scripts expose tests.
-- Record existing failures; do not widen scope for unrelated failures.
-- Preserve user-owned `.claude/skills/media-use/` files.
-- Confirm `npm run dev` serves API and web through loopback URLs.
-
-### Exit Gate
-
-- Baseline results recorded in implementation handoff.
-- No unrelated file edits.
-
-## Phase 1: Restore Product Journey
+## Phase 1: Restore Product Journey — Complete (2026-07-12)
 
 ### Files
 
@@ -109,13 +93,16 @@ Runtime path contains no `media-use`, HeyGen, FFmpeg, remote URLs, or source ori
 
 ### Exit Gate
 
-- Clicking card image opens product page.
-- Clicking card title opens product page.
-- Product page loads without hook-order error.
-- Wishlist and add-to-cart actions still work.
-- Direct navigation and refresh at `/products/1` work.
+- Complete: card image and title navigate to `/products/:id`; wishlist and add-to-cart remain separate controls.
+- Complete: product ID transitions reset product/action state; missing-product and API-error states remain distinct.
+- Complete: `/products/:id` route already supports direct navigation and SPA refresh through existing router/Vite setup.
 
-## Phase 2: Design Tokens and Shared Shell
+### Verification Record
+
+- Passed: web typecheck, lint, unit test, production build, targeted Prettier check, `git diff --check`.
+- Note: repository-wide `npm run format` still reports unrelated pre-existing formatting issues.
+
+## Phase 2: Design Tokens and Shared Shell — Complete (2026-07-12)
 
 ### Files
 
@@ -146,6 +133,12 @@ Runtime path contains no `media-use`, HeyGen, FFmpeg, remote URLs, or source ori
 - Header search receives largest navigation emphasis.
 - Focus states visible on every header control.
 - Layout remains centered at 1920px and 3840px.
+
+### Verification Record
+
+- Passed: root typecheck, lint, web production build, `git diff --check`, targeted Phase 2 Prettier check.
+- Manual local review passed: 1280px, 1920px, 3840px, narrow viewport smoke.
+- Note: repository-wide format check still fails on 77 unrelated baseline files.
 
 ## Phase 3: Product Image Data Model
 

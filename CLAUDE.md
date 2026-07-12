@@ -78,13 +78,16 @@ Design rules:
 - keep current public behavior unless task requests change
 - avoid empty scaffolding, speculative abstraction, vendored code, generated-code padding
 - do not edit `reference/` or `.cursor/` unless task explicitly includes them
-- follow test scope defined by current task or active plan; do not add broad test suites by inference
 - intentional course-visible behavior change -> inspect affected course artifacts before implementation
 
 ## Quality
 
 - use repository scripts for formatting, type checking, linting, build, seed, reset, and tests
 - run checks proportional to changed surface
+- add essential unit and integration tests with new code; prioritize critical rules, boundaries, and smoke-test paths
+- keep coverage focused, not exhaustive; preserve meaningful gaps for QA exercises
+- no Playwright frontend or API E2E tests; leave E2E automation for lessons
+- follow narrower test scope from current task or active plan
 - verify customer journey when UI or business behavior changes
 - keep failures deterministic and reproducible
 - preserve useful error boundaries and exact domain errors

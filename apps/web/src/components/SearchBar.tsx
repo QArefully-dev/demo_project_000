@@ -1,12 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 
-/**
- * Functional search bar with 300ms debounce.
- * Navigates to the catalog page with the search query.
- */
+/** Functional catalog search with 300ms debounce and explicit submit support. */
 export function SearchBar({ className = '' }: { className?: string }) {
   const [searchParams] = useSearchParams();
   const currentQ = searchParams.get('q') ?? '';
@@ -15,7 +12,6 @@ export function SearchBar({ className = '' }: { className?: string }) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(false);
 
-  // Sync local state when URL q param changes externally
   useEffect(() => {
     setLocalValue(currentQ);
   }, [currentQ]);
@@ -31,11 +27,14 @@ export function SearchBar({ className = '' }: { className?: string }) {
   const navigateToCatalog = useCallback(
     (q: string) => {
       const params = new URLSearchParams();
-      if (q) params.set('q', q);
-      // Preserve current category if present
+      const normalizedQuery = q.trim();
+      if (normalizedQuery) params.set('q', normalizedQuery);
+
       const category = searchParams.get('category');
       if (category) params.set('category', category);
-      navigate(`/catalog?${params.toString()}`);
+
+      const queryString = params.toString();
+      navigate(queryString ? `/catalog?${queryString}` : '/catalog');
     },
     [navigate, searchParams],
   );
@@ -52,28 +51,33 @@ export function SearchBar({ className = '' }: { className?: string }) {
     [navigateToCatalog],
   );
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Enter') {
-        if (timerRef.current) clearTimeout(timerRef.current);
-        navigateToCatalog(localValue);
-      }
+  const handleSubmit = useCallback(
+    (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      if (timerRef.current) clearTimeout(timerRef.current);
+      navigateToCatalog(localValue);
     },
     [navigateToCatalog, localValue],
   );
 
   return (
-    <div className={`relative w-full ${className}`} role="search">
-      <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground z-10" />
+    <form className={`relative w-full ${className}`} role="search" onSubmit={handleSubmit}>
+      <Search className="pointer-events-none absolute top-1/2 left-4 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         type="search"
         aria-label="Search products"
         placeholder="What are you looking for?"
-        className="h-10 rounded-full border-input bg-surface-raised pl-10 pr-4 shadow-sm focus-visible:ring-2"
+        className="h-11 rounded-full border-border bg-surface-raised pl-11 pr-12 text-base shadow-sm transition-[border-color,box-shadow] placeholder:text-muted-foreground/80 hover:border-primary/40 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring"
         value={localValue}
         onChange={handleChange}
-        onKeyDown={handleKeyDown}
       />
-    </div>
+      <button
+        type="submit"
+        aria-label="Search products"
+        className="absolute top-1/2 right-1.5 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      >
+        <Search aria-hidden="true" className="size-4" />
+      </button>
+    </form>
   );
 }

@@ -44,6 +44,10 @@ SQLite database is created automatically on first `npm run dev` at `data/shop.db
 | `npm run seed`       | Idempotent seed — upserts canonical products + promo code on every startup, non-seed rows preserved |
 | `npm run reset`      | Clear all data and re-seed to known state                                                           |
 | `npm run typecheck`  | Run TypeScript type-checking across all workspaces                                                  |
+| `npm test`           | Run all workspace test suites                                                                       |
+| `npm run test:unit`  | Run web and API unit tests                                                                          |
+| `npm run test:integration` | Run API SQLite integration tests                                                            |
+| `npm run smoke`      | Run typecheck plus unit and integration tests                                                      |
 | `npm run lint`       | Run ESLint across entire project                                                                    |
 | `npm run format`     | Check formatting with Prettier                                                                      |
 | `npm run format:fix` | Auto-fix formatting with Prettier                                                                   |

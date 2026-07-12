@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { Product } from '@shop/contracts';
+import { ApiError } from '@/api/client';
 import { getProduct, getRelatedProducts } from '@/api/products';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
@@ -27,12 +28,6 @@ export function ProductPage() {
   } = useCartContext();
 
   useEffect(() => {
-    if (!id) {
-      setError('Product not found');
-      setIsLoading(false);
-      return;
-    }
-
     let cancelled = false;
     setIsLoading(true);
     setError(null);
@@ -40,7 +35,19 @@ export function ProductPage() {
     setRelated([]);
     setActionError(null);
 
-    Promise.all([getProduct(id).catch(() => null), getRelatedProducts(id).catch(() => [])])
+    if (!id) {
+      setError('Product not found');
+      setIsLoading(false);
+      return;
+    }
+
+    Promise.all([
+      getProduct(id).catch((loadError: unknown) => {
+        if (loadError instanceof ApiError && loadError.status === 404) return null;
+        throw loadError;
+      }),
+      getRelatedProducts(id).catch(() => []),
+    ])
       .then(([productResult, relatedResult]) => {
         if (cancelled) return;
         if (!productResult) setError('Product not found');
