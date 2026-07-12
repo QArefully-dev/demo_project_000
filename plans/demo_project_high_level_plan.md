@@ -53,6 +53,7 @@ Avoid visible platform complexity:
 - external services: none
 - implemented: auth, catalog, search, filters, sorting, product pages, cart, promotions, checkout, simulated payment, orders, favourites, account, dev mailbox
 - seed: deterministic products, users, promotions, favourites
+- tests: basic unit and SQLite integration baseline required; API and E2E coverage reserved for course
 
 ## Hard Constraints
 
@@ -98,12 +99,13 @@ Each domain may contain:
 - validation and error definitions
 - persistence adapters
 - domain events
-- test builders
-- unit and integration tests when named course phase permits tests
+- small test helpers
+- basic unit tests for critical pure rules
+- basic SQLite integration tests for persistence and transactions
 
 Build vertical slices:
 
-`database -> domain -> API -> UI -> automated tests`
+`database -> domain -> API -> UI -> critical unit or SQLite integration test`
 
 Avoid empty scaffolding, copied framework internals, vendored projects, generated-code padding, duplicate abstractions.
 
@@ -151,18 +153,45 @@ High-value scenarios:
 - migration must preserve existing seeded and user-created data
 - search, order, and notification state becomes eventually consistent
 
-Testing growth:
+## Basic Test Baseline
 
-- domain unit tests
-- property-based pricing and promotion tests
-- API integration tests
-- database migration tests
+Purpose: protect absolute must-have rules while leaving major test-design work for course.
+
+Unit scope:
+
+- frontend five-item promo gate
+- money and discount rounding
+- promotion eligibility and discount calculation
+- order transition guards
+- inventory quantity and reservation rules
+
+Integration scope:
+
+- isolated temporary SQLite database
+- schema creation and guarded migrations
+- repository create/read/update flows for critical domains
+- order/payment/inventory transaction commit and rollback
+- deterministic reset and seed counts
+
+Integration boundary:
+
+`domain service -> SQLite adapter -> temporary database`
+
+Excluded:
+
+- HTTP route tests
+- API tests through Fastify injection, `fetch`, or other client
+- E2E tests
+- Playwright
+- browser automation
 - contract tests
-- Playwright customer journeys
-- accessibility and visual regression tests
-- failure-injection and concurrency tests
+- visual regression tests
+- accessibility automation
+- property-based tests
+- load or performance tests
+- broad coverage target
 
-Course schedule controls when test suites become visible to students.
+Keep suite small, stable, fast, and obvious. Test only critical happy paths, invariants, and one or two high-risk failures per selected rule. Course owns expansion into full testing strategy.
 
 ## LOC Target
 
@@ -170,12 +199,11 @@ Target: 150k+ meaningful authored LOC. Report production and test LOC separately
 
 Suggested allocation:
 
-- customer React application: 30k-35k
-- API and domain implementations: 40k-45k
-- shared contracts and infrastructure: 12k-15k
-- unit and property-based tests: 25k-30k
-- integration, contract, and E2E tests: 20k-25k
-- seed scenarios and developer tooling: 8k-10k
+- customer React application: 40k-45k
+- API and domain implementations: 65k-75k
+- shared contracts and infrastructure: 20k-25k
+- basic unit and SQLite integration tests: 4k-6k
+- seed scenarios and developer tooling: 15k-20k
 
 Count:
 
