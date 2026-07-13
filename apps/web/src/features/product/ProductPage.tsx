@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { Product } from '@shop/contracts';
 import { ApiError } from '@/api/client';
@@ -19,6 +19,8 @@ export function ProductPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const addInFlightProductIdsRef = useRef(new Set<string>());
+  const activeProductIdRef = useRef<string | undefined>(id);
   const {
     error: cartError,
     addItem,
@@ -29,6 +31,7 @@ export function ProductPage() {
 
   useEffect(() => {
     let cancelled = false;
+    activeProductIdRef.current = id;
     setIsLoading(true);
     setError(null);
     setProduct(null);
@@ -73,9 +76,18 @@ export function ProductPage() {
   if (error) return <ErrorMessage message={error} />;
   if (!product) return <ErrorMessage message="Product not found" />;
 
-  const handleAddToCart = async () => {
+  const handleAddToCart = async (): Promise<void> => {
+    const productId = product.id;
+    if (addInFlightProductIdsRef.current.has(productId)) return;
+    addInFlightProductIdsRef.current.add(productId);
     setActionError(null);
-    if (!(await addItem(product.id))) setActionError('Could not add this item. Try again.');
+    try {
+      if (!(await addItem(productId)) && activeProductIdRef.current === productId) {
+        setActionError('Could not add this item. Try again.');
+      }
+    } finally {
+      addInFlightProductIdsRef.current.delete(productId);
+    }
   };
 
   return (
@@ -111,7 +123,7 @@ export function ProductPage() {
           isAdding={isActionPending(product.id, 'add')}
           actionError={actionError}
           cartError={cartError}
-          onAddToCart={() => void handleAddToCart()}
+          onAddToCart={handleAddToCart}
           onRetryCart={() => void retryCart()}
         />
       </div>

@@ -8,7 +8,7 @@ import {
   getRelatedProducts,
 } from '../domains/products.js';
 import { sendNotFound, sendBadRequest } from '../utils/errors.js';
-import { getApiProductImage } from '../domains/productMedia.js';
+import { getApiProductImages } from '../domains/productMedia.js';
 import {
   ProductDetailResponse,
   ErrorResponse,
@@ -29,22 +29,19 @@ function mapProduct(row: {
   price_cents: number;
   category: string;
   stock_count: number;
-  image_url: string;
   image_set_id: string | null;
   slug: string;
   compare_at_price_cents: number | null;
   sales_count: number;
 }): Product {
   const imageSetId = row.image_set_id || 'unknown';
-  const productImage = getApiProductImage(row.image_set_id, row.image_url, row.name);
   return {
     id: String(row.id),
     name: row.name,
     description: row.description,
     priceCents: row.price_cents,
-    imageUrl: row.image_url,
     imageSetId,
-    images: [productImage],
+    images: getApiProductImages(row.image_set_id, row.category, row.name),
     category: row.category,
     stock: row.stock_count,
     slug: row.slug ?? '',

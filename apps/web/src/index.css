@@ -189,6 +189,20 @@
   .metadata {
     @apply text-sm text-muted-foreground;
   }
+
+  .product-purchase-panel {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+@media (min-width: 64rem) and (min-height: 48rem) {
+  .product-purchase-panel {
+    max-height: calc(100vh - 10rem);
+    overflow-y: auto;
+    position: sticky;
+    top: 9rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

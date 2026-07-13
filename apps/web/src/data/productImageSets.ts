@@ -68,9 +68,16 @@ export const productImageSets: Readonly<Record<string, ProductImageSet>> = {
 };
 
 const categoryFallbacks: Readonly<Record<string, string>> = {
+  accessories: 'usb-hub',
   audio: 'headphones',
+  cables: 'usb-hub',
   displays: 'monitor',
+  networking: 'usb-hub',
   peripherals: 'keyboard',
+  power: 'usb-hub',
+  'smart home': 'webcam',
+  storage: 'usb-hub',
+  wearables: 'mouse',
 };
 
 function unknownImage(product: Product, role: ProductMediaRole): ProductImage {
@@ -86,16 +93,20 @@ function unknownImage(product: Product, role: ProductMediaRole): ProductImage {
 export function resolveProductImage(
   product: Product,
   role: ProductMediaRole = 'card',
+  imageIndex = 0,
 ): ProductImage {
+  const contractImage = product.images[imageIndex];
+  if (imageIndex > 0 && contractImage) return contractImage;
+
   const registered = productImageSets[product.imageSetId];
   if (registered) return registered[role];
 
-  const categorySet =
-    productImageSets[categoryFallbacks[product.category.toLowerCase()] ?? 'usb-hub'];
+  const categorySetId = categoryFallbacks[product.category.toLowerCase()];
+  const categorySet = categorySetId ? productImageSets[categorySetId] : undefined;
   return categorySet?.[role] ?? unknownImage(product, role);
 }
 
-/** Logical gallery images. Rendition selection is handled separately by ProductMedia. */
+/** Product contract remains source of gallery count and secondary-image metadata. */
 export function resolveProductImages(product: Product): readonly ProductImage[] {
-  return [resolveProductImage(product, 'detail')];
+  return product.images.length > 0 ? product.images : [resolveProductImage(product, 'detail')];
 }

@@ -16,16 +16,39 @@ const cardPaths: Readonly<Record<string, string>> = {
   webcam: '/images/products/webcam.card.61c6d85cc7a0.720.webp',
 };
 
-export function getApiProductImage(
-  imageSetId: string | null,
-  fallbackSrc: string,
-  alt: string,
-): ApiProductImage {
-  const generated = imageSetId ? cardPaths[imageSetId] : undefined;
+const categoryFallbacks: Readonly<Record<string, keyof typeof cardPaths>> = {
+  accessories: 'usb-hub',
+  audio: 'headphones',
+  cables: 'usb-hub',
+  displays: 'monitor',
+  networking: 'usb-hub',
+  peripherals: 'keyboard',
+  power: 'usb-hub',
+  'smart home': 'webcam',
+  storage: 'usb-hub',
+  wearables: 'mouse',
+};
+
+function unknownImage(alt: string): ApiProductImage {
+  const size = 720;
+  const label = alt.replace(/[<>&]/g, '');
   return {
-    src: generated ?? fallbackSrc,
+    src: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}"><rect width="${size}" height="${size}" fill="#eeeae4"/><text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" fill="#57534e" font-family="sans-serif" font-size="32">${label}</text></svg>`)}`,
     alt,
-    width: generated ? 720 : 800,
-    height: generated ? 720 : 800,
+    width: size,
+    height: size,
   };
+}
+
+/** Resolve contract image data from the durable set ID, never the legacy URL column. */
+export function getApiProductImages(
+  imageSetId: string | null,
+  category: string,
+  alt: string,
+): ApiProductImage[] {
+  const resolvedSetId =
+    (imageSetId && cardPaths[imageSetId] ? imageSetId : undefined) ??
+    categoryFallbacks[category.toLowerCase()];
+  const src = resolvedSetId ? cardPaths[resolvedSetId] : undefined;
+  return src ? [{ src, alt, width: 720, height: 720 }] : [unknownImage(alt)];
 }

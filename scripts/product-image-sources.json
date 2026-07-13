@@ -3,27 +3,23 @@
   "sources": [
     {
       "id": "headphones",
-      "slug": "wireless-headphones",
-      "file": "apps/web/public/images/product-headphones.jpg"
+      "slug": "wireless-headphones"
     },
     {
       "id": "keyboard",
-      "slug": "mechanical-keyboard",
-      "file": "apps/web/public/images/product-keyboard.jpg"
+      "slug": "mechanical-keyboard"
     },
     {
       "id": "monitor",
-      "slug": "desktop-monitor",
-      "file": "apps/web/public/images/product-monitor.jpg"
+      "slug": "desktop-monitor"
     },
-    { "id": "mouse", "slug": "wireless-mouse", "file": "apps/web/public/images/product-mouse.jpg" },
+    { "id": "mouse", "slug": "wireless-mouse" },
     {
       "id": "speaker",
-      "slug": "portable-speaker",
-      "file": "apps/web/public/images/product-speaker.jpg"
+      "slug": "portable-speaker"
     },
-    { "id": "stand", "slug": "laptop-stand", "file": "apps/web/public/images/product-stand.jpg" },
-    { "id": "usbhub", "slug": "usb-hub", "file": "apps/web/public/images/product-usbhub.jpg" },
-    { "id": "webcam", "slug": "webcam", "file": "apps/web/public/images/product-webcam.jpg" }
+    { "id": "stand", "slug": "laptop-stand" },
+    { "id": "usbhub", "slug": "usb-hub" },
+    { "id": "webcam", "slug": "webcam" }
   ]
 }

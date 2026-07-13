@@ -1,6 +1,6 @@
 # Storefront UI, Product Detail, Media Implementation Plan
 
-Status: Phases 1-2 complete; Phases 3-9 ready for implementation.
+Status: Phases 1-3 complete; Phase 4 partial; Phase 5 implemented; Phases 6-8 pending; Phase 9 complete (2026-07-13).
 
 Audience: coding agents.
 
@@ -18,9 +18,9 @@ Primary journey:
 
 - `/products/:id` route exists in `apps/web/src/App.tsx`.
 - Phase 1 resolved product-detail hook/state handling and restored card-to-detail navigation.
-- `Product` contract exposes single `imageUrl`; no `imageSetId`, gallery, specs, variants, rating summary.
-- Seed contains 48 products but only 8 JPEG files. Many unrelated products use wrong image.
-- Existing JPEGs: 800x800, 28-146 KB. Resolution acceptable for cards; semantic mismatch causes poor result.
+- `Product` contract exposes `imageSetId` and resolved `images`; `imageUrl` removed atomically.
+- Seeded products use deterministic `image_set_id` values; API resolves local WebP images through registry.
+- Derived media contains 24 WebP renditions (0.94 MiB); legacy public JPEG inputs removed.
 - Home hero has no visual asset. Neutral monochrome tokens and stock shadcn composition produce generic UI.
 - Repeated 8-card sections create long page and duplicate products.
 - Current `media-use --doctor` fails: `heygen`, `ffmpeg`, `ffprobe` missing.
@@ -40,7 +40,8 @@ Primary journey:
 - No Git LFS.
 - No committed source-resolution originals.
 - No new E2E, browser automation, visual-regression test suite.
-- Manual browser QA allowed.
+- Add unit and integration coverage for every deterministic UI state and flow changed by this plan.
+- Human review limited to subjective visual quality that unit/integration tests cannot prove.
 
 ## Target Visual Direction
 
@@ -137,10 +138,10 @@ Runtime path contains no `media-use`, HeyGen, FFmpeg, remote URLs, or source ori
 ### Verification Record
 
 - Passed: root typecheck, lint, web production build, `git diff --check`, targeted Phase 2 Prettier check.
-- Manual local review passed: 1280px, 1920px, 3840px, narrow viewport smoke.
+- Historical visual review passed: 1280px, 1920px, 3840px, narrow viewport.
 - Note: repository-wide format check still fails on 77 unrelated baseline files.
 
-## Phase 3: Product Image Data Model
+## Phase 3: Product Image Data Model — Complete (2026-07-13)
 
 ### Files
 
@@ -186,12 +187,17 @@ const Product = Type.Object({
 
 ### Exit Gate
 
-- Every seeded product resolves valid local image set.
-- Missing registry key renders fallback, never broken image.
-- Catalog and detail use same registry.
-- Seed reset remains deterministic.
+- Complete: seeded products resolve valid local image sets.
+- Complete: missing registry key uses category fallback, then deterministic SVG; no broken image.
+- Complete: catalog and detail share registry resolution.
+- Complete: seed reset remains deterministic.
 
-## Phase 4: Media Sourcing and Conversion
+### Verification Record
+
+- Passed: contracts build, root typecheck, lint, API integration, `npm run assets:check`, targeted Prettier, `git diff --check`.
+- Verified: live products API returned local WebP image paths only; `imageUrl` absent.
+
+## Phase 4: Media Sourcing and Conversion — Partial (2026-07-13)
 
 ### Scope
 
@@ -259,13 +265,18 @@ Filename pattern:
 
 ### Exit Gate
 
-- Built-in committed media remains within 5-15 MB.
-- No committed full-resolution sources.
-- Every prominent product has semantically correct image.
-- Every derived asset has stable dimensions and local path.
-- Fresh clone runs without sourcing tools or network.
+- Complete: no committed full-resolution sources; build inputs require ignored local `media-sources.json`.
+- Complete: derived assets have stable dimensions and local paths; `npm run assets:check` validates 24 files (0.94 MiB).
+- Complete: fresh clone runs with committed derived assets; `assets:check` needs no local source config.
+- Remaining: source 12-20 pilot sets, including hero, category/editorial, and 2-4 flagship gallery images.
+- Remaining: verify semantic correctness for expanded prominent-media scope.
 
-## Phase 5: Product Card Redesign
+### Verification Record
+
+- Passed: `npm run assets:check`, targeted Prettier, `node --check scripts/build-product-images.mjs`, `git diff --check`.
+- Verified: `npm run assets:build` fails clearly until maintainer creates ignored `media-sources.json` from `media-sources.example.json` with local source paths.
+
+## Phase 5: Product Card Redesign — Implemented (2026-07-13)
 
 ### Files
 
@@ -294,10 +305,14 @@ Filename pattern:
 
 ### Exit Gate
 
-- Product identity readable before metadata.
-- Image, title, price, action hierarchy obvious.
-- Repeated cards align across row.
-- Interactive elements keyboard reachable and non-nested.
+- Implemented: identity, media, title, price, and action hierarchy redesigned; description removed from dense cards.
+- Implemented: responsive grid uses two columns when space permits, four desktop columns, and five wide-desktop columns.
+- Implemented: sibling controls preserve keyboard reachability and avoid nested interactions.
+- Remaining: automated component coverage for media, pricing, actions, accessible links, and responsive class contracts.
+
+### Verification Record
+
+- Passed: web typecheck, web production build, targeted Prettier, targeted ESLint, `git diff --check`.
 
 ## Phase 6: Homepage Redesign
 
@@ -424,67 +439,105 @@ Below fold:
 
 ## Phase 9: Verification
 
-### Static Checks
+### Test Harness
+
+Files:
+
+- `package.json`
+- `apps/web/package.json`
+- `apps/web/vite.config.ts`
+- new `apps/web/src/test/setup.ts`
+- colocated `*.test.ts` and `*.test.tsx` files
+- `apps/api/test/*.integration.test.ts`
+
+Tasks:
+
+- Keep `node:test` + `tsx` for pure TypeScript unit tests and existing API tests.
+- Add Vitest, jsdom, React Testing Library, and `user-event` for web component tests.
+- Add web unit and integration scripts; include them in root `test:unit` and `test:integration` commands.
+- Use deterministic fixtures and fake API modules; no real network or runtime server.
+- Use `MemoryRouter` for route, query, and browser-back behavior.
+- Test user-visible output and behavior; avoid implementation-detail assertions.
+- Keep functional, error, keyboard, and reduced-motion checks automated.
+
+### Unit Tests
+
+- `ProductMedia`: registry hit, category fallback, deterministic SVG fallback, request-error fallback, width/height, loading priority.
+- `ProductCard`: sale/no-sale price, stock states, linked image/title, separate wishlist/cart controls, pending/error states.
+- `ProductGallery`: no thumbnails for one image, selected image, click/keyboard selection, alt text.
+- `ProductPurchasePanel`: quantity bounds, single submission per click, pending state, out-of-stock disabled state.
+- Home sections: CTA targets, truthful trust copy, shelf cap, product de-duplication helper, independent loading/error output.
+- Catalog state helpers: query parsing/serialization, clear-all, sort/filter/pagination preservation.
+- CSS/layout contracts: expected responsive grid/sticky/reduced-motion classes and image dimension attributes.
+
+### Integration Tests
+
+- Home bestseller card -> product route -> add to cart.
+- Catalog filter -> product route -> history back -> filter state preserved.
+- Product route: loading, API error, missing product, sale, regular price, out of stock.
+- Gallery + purchase panel: keyboard selection, quantity/action behavior, missing secondary images.
+- Cart mutation failure -> visible error -> retry success without duplicate item.
+- Unauthenticated wishlist -> expected sign-in behavior; authenticated wishlist -> state update.
+- Shelf request failure remains isolated while successful home content stays visible.
+- API seeded catalog -> local image paths, fallback keys, deterministic reset, `SAVE10` invariant.
+- Asset manifest -> every entry exists, dimensions/size/rendition rules pass, no remote URL or duplicate output.
+
+### Commands
 
 ```powershell
 npm run typecheck
 npm run lint
 npm run format
+npm run test:unit
+npm run test:integration
 npm run assets:check
 ```
 
-Run existing unit and SQLite integration scripts when present.
+### Asset and Performance Integration Checks
 
-### Manual Browser Matrix
+- rendered image sources contain no remote URL
+- every rendered image has explicit dimensions or stable aspect-ratio contract
+- below-fold grid images use lazy loading
+- hero markup exposes responsive rendition selection instead of source-sized-only asset
+- manifest keeps initial home assets within local demo budget
+- rendered home content does not reference duplicate large renditions
 
-- 1920x1080 -> home, catalog, product detail, cart sheet
-- 1920x1200 -> same routes
-- 3840x2160 -> same routes; verify max-width and image sharpness
-- narrow viewport smoke check -> header, grid, product purchase actions
+### Human Visual Acceptance — Only Manual Exception
 
-### Manual Scenarios
+Run once after automated checks pass. No functional scenarios.
 
-- home -> bestseller card -> product -> add to cart
-- catalog filter -> product -> browser back -> filter state preserved
-- product with sale price
-- product without sale price
-- out-of-stock product
-- missing image-set registry entry
-- image request failure
-- cart API failure and retry
-- unauthenticated wishlist behavior
-- keyboard-only card, gallery, purchase actions
-- reduced-motion preference
-
-### Performance Checks
-
-- no remote image requests
-- no layout shift from missing dimensions
-- no eager loading for below-fold grids
-- hero image responsive, not source-sized download
-- initial home assets within reasonable local demo budget
-- no duplicate large rendition download in same viewport
+- 1920x1080, 1920x1200, 3840x2160, narrow viewport
+- inspect visual balance, unintended clipping/overlap, crop quality, image sharpness, and subjective polish
+- record defects only; deterministic behavior belongs in automated tests
+- required because plan excludes browser automation and visual-regression tooling
 
 ### Exit Gate
 
-- Static checks pass or unrelated baseline failures documented.
-- Browser console has no React hook errors.
-- No broken image icon across seeded catalog.
-- Core journey works at target desktop sizes.
-- Asset budget passes.
+- Complete: static checks pass; repository-wide `npm run format` reports 55 unrelated baseline files.
+- Complete: deterministic web/API unit and integration coverage passes.
+- Complete: React image-priority and Base UI rendered-link warnings fixed in touched UI.
+- Complete: media fallback, seeded local image, reset, `SAVE10`, and asset manifest checks pass.
+- Complete: web integration covers catalog filter -> product route -> browser back preserving URL state.
+- Complete: manual visual acceptance at 1280px, 1920px, 3840px, and narrow viewport found no release-blocking layout/media defect.
+
+### Verification Record
+
+- Passed: root typecheck, lint, `test:unit` (24 web + 3 API tests), `test:integration` (1 web + 8 API tests), `assets:check`, targeted Prettier, `git diff --check`.
+- Added: Vitest, jsdom, React Testing Library, user-event, web test setup, and root web integration wiring.
+- Note: React Router v7 future flags remain third-party test warnings; no hook/render errors remain.
 
 ## Delivery Slices
 
 Implement as small vertical commits:
 
-1. `fix(web): restore product detail navigation`
-2. `feat(web): add storefront design tokens and header shell`
-3. `feat(catalog): add shared product image-set contract`
-4. `chore(media): add deterministic image conversion pipeline`
-5. `feat(web): redesign product cards and home shelves`
+1. Complete: `fix(web): restore product detail navigation`
+2. Complete: `feat(web): add storefront design tokens and header shell`
+3. Complete: `feat(catalog): add shared product image-set contract`
+4. Partial: `chore(media): add deterministic image conversion pipeline`; expand pilot media sets.
+5. Partial: `feat(web): redesign product cards and home shelves`; product cards complete, home shelves pending Phase 6.
 6. `feat(web): build product gallery and purchase panel`
 7. `feat(web): polish catalog and responsive states`
-8. `test(web): verify UI flows and asset integrity`
+8. `test(web): automate UI flows and asset integrity`
 
 Each slice must compile independently. Do not mix media binaries, database migration, and broad UI rewrite in one commit.
 

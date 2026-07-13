@@ -1,4 +1,5 @@
 import type { Product } from '@shop/contracts';
+import { Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { WishlistButton } from '@/components/WishlistButton';
@@ -10,7 +11,7 @@ interface ProductPurchasePanelProps {
   isAdding: boolean;
   actionError: string | null;
   cartError: string | null;
-  onAddToCart: () => void;
+  onAddToCart: () => Promise<void>;
   onRetryCart: () => void;
 }
 
@@ -29,7 +30,7 @@ export function ProductPurchasePanel({
   const savings = isOnSale ? product.compareAtPriceCents! - product.priceCents : 0;
 
   return (
-    <aside className="self-start rounded-2xl border bg-surface-raised p-6 shadow-sm lg:sticky lg:top-36 lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto xl:p-8">
+    <aside className="product-purchase-panel self-start rounded-2xl border bg-surface-raised p-6 shadow-sm xl:p-8">
       <p className="section-eyebrow">{product.category}</p>
       <div className="mt-3 flex flex-wrap items-start gap-2">
         <h1 className="min-w-0 flex-1 text-3xl font-semibold tracking-tight sm:text-4xl">
@@ -54,6 +55,24 @@ export function ProductPurchasePanel({
 
       <p className="mt-6 leading-7 text-muted-foreground">{product.description}</p>
 
+      <ul
+        aria-label="Shopping details"
+        className="mt-5 grid gap-2 text-sm font-medium text-muted-foreground"
+      >
+        <li className="flex items-center gap-2">
+          <Check className="size-4 shrink-0 text-success" aria-hidden="true" />
+          Cart linked to this browser
+        </li>
+        <li className="flex items-center gap-2">
+          <Check className="size-4 shrink-0 text-success" aria-hidden="true" />
+          Adjust quantities before checkout
+        </li>
+        <li className="flex items-center gap-2">
+          <Check className="size-4 shrink-0 text-success" aria-hidden="true" />
+          Simulated payment, no charge
+        </li>
+      </ul>
+
       <div className="mt-6 rounded-xl bg-surface-soft p-4">
         <p className={inStock ? 'font-semibold text-success' : 'font-semibold text-destructive'}>
           {inStock ? 'In stock' : 'Out of stock'}
@@ -70,7 +89,7 @@ export function ProductPurchasePanel({
           size="lg"
           className="h-12 flex-1 text-base"
           disabled={!isCartAvailable || !inStock || isAdding}
-          onClick={onAddToCart}
+          onClick={() => void onAddToCart()}
         >
           {!isCartAvailable
             ? 'Cart unavailable'
@@ -102,11 +121,11 @@ export function ProductPurchasePanel({
       <dl className="mt-8 grid gap-4 border-t pt-6 text-sm sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
         <div>
           <dt className="font-semibold">Checkout</dt>
-          <dd className="mt-1 text-muted-foreground">Secure simulated payment</dd>
+          <dd className="mt-1 text-muted-foreground">Simulated payment, no charge</dd>
         </div>
         <div>
-          <dt className="font-semibold">Order status</dt>
-          <dd className="mt-1 text-muted-foreground">Tracked in your demo account</dd>
+          <dt className="font-semibold">Delivery &amp; returns</dt>
+          <dd className="mt-1 text-muted-foreground">No real fulfilment or returns in this demo</dd>
         </div>
       </dl>
     </aside>

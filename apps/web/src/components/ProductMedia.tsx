@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ImgHTMLAttributes } from 'react';
 import type { Product } from '@shop/contracts';
 import { resolveProductImage, type ProductMediaRole } from '@/data/productImageSets';
 
@@ -22,7 +22,7 @@ export function ProductMedia({
   role = 'card',
 }: ProductMediaProps) {
   const [failed, setFailed] = useState(false);
-  const selected = resolveProductImage(product, role);
+  const selected = resolveProductImage(product, role, imageIndex);
   const fallback = resolveProductImage(
     {
       ...product,
@@ -31,6 +31,9 @@ export function ProductMedia({
     },
     role,
   );
+  const fetchPriorityAttribute = {
+    fetchpriority: fetchPriority,
+  } as unknown as ImgHTMLAttributes<HTMLImageElement>;
 
   useEffect(() => {
     setFailed(false);
@@ -43,7 +46,7 @@ export function ProductMedia({
       width={failed ? fallback.width : selected.width}
       height={failed ? fallback.height : selected.height}
       loading={loading}
-      fetchPriority={fetchPriority}
+      {...fetchPriorityAttribute}
       className={className}
       onError={() => {
         setFailed(true);

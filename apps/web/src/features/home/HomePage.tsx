@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getBestsellers, getCategories, getProducts } from '@/api/products';
 import { CategoryTiles } from '@/components/home/CategoryTiles';
 import { HeroSection } from '@/components/home/HeroSection';
@@ -9,51 +9,93 @@ import type { Product } from '@shop/contracts';
 
 interface ShelfState {
   products: Product[];
+  isLoading: boolean;
   error: string | null;
 }
-const emptyShelf: ShelfState = { products: [], error: null };
+const initialShelf: ShelfState = { products: [], isLoading: true, error: null };
+
+export function withoutProducts(products: Product[], excludedIds: ReadonlySet<string>): Product[] {
+  return products.filter((product) => !excludedIds.has(product.id));
+}
 
 export function HomePage() {
   const { addItem, isCartAvailable, isActionPending } = useCartContext();
-  const [bestsellers, setBestsellers] = useState<ShelfState>(emptyShelf);
-  const [newest, setNewest] = useState<ShelfState>(emptyShelf);
+  const [bestsellers, setBestsellers] = useState<ShelfState>(initialShelf);
+  const [newest, setNewest] = useState<ShelfState>(initialShelf);
   const [categories, setCategories] = useState<string[]>([]);
+  const [isCategoriesLoading, setIsCategoriesLoading] = useState(true);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const [bestsellersRetry, setBestsellersRetry] = useState(0);
+  const [newestRetry, setNewestRetry] = useState(0);
+  const [categoriesRetry, setCategoriesRetry] = useState(0);
+
+  const message = (reason: unknown) =>
+    reason instanceof Error ? reason.message : 'Unable to load this collection';
 
   useEffect(() => {
     let cancelled = false;
-    const message = (reason: unknown) =>
-      reason instanceof Error ? reason.message : 'Unable to load this collection';
 
-    void Promise.allSettled([
-      getBestsellers(),
-      getProducts({ sort: 'newest', pageSize: 10 }),
-      getCategories(),
-    ]).then(([bestResult, newestResult, categoriesResult]) => {
-      if (cancelled) return;
-      if (bestResult.status === 'fulfilled')
-        setBestsellers({ products: bestResult.value.slice(0, 5), error: null });
-      else setBestsellers({ products: [], error: message(bestResult.reason) });
+    setBestsellers((current) => ({ ...current, isLoading: true, error: null }));
+    void getBestsellers()
+      .then((products) => {
+        if (!cancelled)
+          setBestsellers({ products: products.slice(0, 5), isLoading: false, error: null });
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setBestsellers({ products: [], isLoading: false, error: message(reason) });
+      });
 
-      const usedIds = new Set(
-        bestResult.status === 'fulfilled'
-          ? bestResult.value.slice(0, 5).map((product) => product.id)
-          : [],
-      );
-      if (newestResult.status === 'fulfilled')
-        setNewest({
-          products: newestResult.value.items
-            .filter((product) => !usedIds.has(product.id))
-            .slice(0, 5),
-          error: null,
-        });
-      else setNewest({ products: [], error: message(newestResult.reason) });
-
-      if (categoriesResult.status === 'fulfilled') setCategories(categoriesResult.value);
-    });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [bestsellersRetry]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setNewest((current) => ({ ...current, isLoading: true, error: null }));
+    void getProducts({ sort: 'newest', pageSize: 10 })
+      .then((response) => {
+        if (!cancelled) setNewest({ products: response.items, isLoading: false, error: null });
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setNewest({ products: [], isLoading: false, error: message(reason) });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [newestRetry]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setIsCategoriesLoading(true);
+    setCategoriesError(null);
+    void getCategories()
+      .then((result) => {
+        if (!cancelled) setCategories(result);
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setCategoriesError(message(reason));
+      })
+      .finally(() => {
+        if (!cancelled) setIsCategoriesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [categoriesRetry]);
+
+  const newArrivals = useMemo(
+    () =>
+      withoutProducts(
+        newest.products,
+        new Set(bestsellers.products.map((product) => product.id)),
+      ).slice(0, 5),
+    [bestsellers.products, newest.products],
+  );
 
   return (
     <div className="space-y-16 pb-12 lg:space-y-20">
@@ -75,13 +117,20 @@ export function HomePage() {
           <span className="text-muted-foreground">No real payment is processed</span>
         </p>
       </section>
-      <CategoryTiles categories={categories} />
+      <CategoryTiles
+        categories={categories}
+        isLoading={isCategoriesLoading}
+        error={categoriesError}
+        onRetry={() => setCategoriesRetry((attempt) => attempt + 1)}
+      />
       <ProductShelf
         eyebrow="Customer favourites"
         title="Bestsellers"
         href="/catalog?sort=bestselling"
         products={bestsellers.products}
+        isLoading={bestsellers.isLoading}
         error={bestsellers.error}
+        onRetry={() => setBestsellersRetry((attempt) => attempt + 1)}
         isCartAvailable={isCartAvailable}
         isAdding={(id) => isActionPending(id, 'add')}
         onAddToCart={addItem}
@@ -91,8 +140,10 @@ export function HomePage() {
         eyebrow="Freshly selected"
         title="New arrivals"
         href="/catalog?sort=newest"
-        products={newest.products}
+        products={newArrivals}
+        isLoading={newest.isLoading}
         error={newest.error}
+        onRetry={() => setNewestRetry((attempt) => attempt + 1)}
         isCartAvailable={isCartAvailable}
         isAdding={(id) => isActionPending(id, 'add')}
         onAddToCart={addItem}

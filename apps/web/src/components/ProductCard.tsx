@@ -21,7 +21,6 @@ export function ProductCard({
   isCartAvailable,
   isAdding = false,
 }: ProductCardProps) {
-  const [, setImgError] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const inStock = product.stock > 0;
   const isOnSale =
@@ -29,7 +28,6 @@ export function ProductCard({
   const isBestseller = product.salesCount >= 250;
 
   useEffect(() => {
-    setImgError(false);
     setActionError(null);
   }, [product.id]);
 
@@ -40,43 +38,38 @@ export function ProductCard({
   };
 
   return (
-    <Card className="group flex h-full flex-col overflow-hidden border-border/80 bg-surface-raised py-0 shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-lg">
-      <div className="relative aspect-square overflow-hidden bg-surface-soft flex items-center justify-center">
+    <Card className="group flex h-full flex-col gap-0 overflow-hidden border-border/80 bg-surface-raised py-0 shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-lg">
+      <div className="relative aspect-4/5 overflow-hidden bg-surface-soft">
         <Link
           to={`/products/${product.id}`}
-          className="block h-full w-full rounded-sm transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          className="block h-full w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
           <ProductMedia
             product={product}
             loading="lazy"
-            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.035]"
-            onError={() => setImgError(true)}
+            className="h-full w-full object-contain p-4 transition-transform duration-200 group-hover:scale-[1.035] sm:p-5"
           />
         </Link>
-        {/* Badges overlay */}
-        <div className="absolute top-2 left-2 flex flex-wrap gap-1">
-          {isOnSale && (
-            <Badge className="border-transparent bg-sale text-xs text-sale-foreground">Sale</Badge>
-          )}
+        <div className="pointer-events-none absolute top-3 left-3 flex flex-wrap gap-1.5">
+          {isOnSale && <Badge className="bg-sale px-2.5 text-sale-foreground">Sale</Badge>}
           {isBestseller && (
             <Badge
               variant="secondary"
-              className="border-primary/10 bg-background/90 text-xs text-primary"
+              className="border-primary/10 bg-background/95 px-2.5 text-primary shadow-sm"
             >
               Bestseller
             </Badge>
           )}
         </div>
-        {/* Wishlist heart toggle */}
-        <div className="absolute top-1 right-1">
+        <div className="absolute top-2 right-2 rounded-full bg-background/90 shadow-sm backdrop-blur-sm">
           <WishlistButton productId={product.id} product={product} />
         </div>
       </div>
-      <CardContent className="flex flex-1 flex-col gap-2 p-4 pb-3">
-        <p className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+      <CardContent className="flex flex-1 flex-col gap-2 p-4 pt-4 sm:p-5 sm:pt-4">
+        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
           {product.category}
         </p>
-        <h3 className="line-clamp-2 min-h-10 font-semibold leading-5">
+        <h3 className="line-clamp-2 min-h-11 text-base font-semibold leading-[1.35] tracking-tight">
           <Link
             to={`/products/${product.id}`}
             className="rounded-sm underline-offset-4 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -84,15 +77,12 @@ export function ProductCard({
             {product.name}
           </Link>
         </h3>
-        <p className="line-clamp-1 text-sm text-muted-foreground">{product.description}</p>
         <div className="mt-auto pt-2">
           <div className="flex flex-wrap items-baseline gap-2">
             {isOnSale ? (
               <>
                 <span className="price-current text-sale">{formatMoney(product.priceCents)}</span>
-                <span className="text-sm text-muted-foreground line-through">
-                  {formatMoney(product.compareAtPriceCents!)}
-                </span>
+                <span className="price-compare">{formatMoney(product.compareAtPriceCents!)}</span>
               </>
             ) : (
               <span className="price-current">{formatMoney(product.priceCents)}</span>
@@ -100,7 +90,7 @@ export function ProductCard({
           </div>
         </div>
       </CardContent>
-      <CardFooter className="p-4 pt-0">
+      <CardFooter className="border-t-0 bg-transparent p-4 pt-0 sm:px-5 sm:pb-5">
         <div className="w-full space-y-2">
           {!inStock && <p className="text-xs font-medium text-destructive">Out of stock</p>}
           {inStock && product.stock <= 5 && (

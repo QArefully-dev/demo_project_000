@@ -35,7 +35,6 @@ export const Product = Type.Object({
   name: Type.String(),
   description: Type.String(),
   priceCents: MoneyCents,
-  imageUrl: Type.String(),
   imageSetId: Type.String(),
   images: Type.Array(ProductImage, { minItems: 1 }),
   category: Type.String(),

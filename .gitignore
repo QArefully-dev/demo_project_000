@@ -8,4 +8,5 @@ dist/
 *.tsbuildinfo
 .env
 .env.local
+media-sources.json
 nul

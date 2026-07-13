@@ -1,6 +1,11 @@
 import { ArrowRight, Sparkles } from 'lucide-react';
+import type { ImgHTMLAttributes } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+
+const heroImagePriority = {
+  fetchpriority: 'high',
+} as unknown as ImgHTMLAttributes<HTMLImageElement>;
 
 export function HeroSection() {
   return (
@@ -16,11 +21,17 @@ export function HeroSection() {
           Discover useful technology and everyday essentials selected for simpler, better routines.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
-          <Button size="lg" variant="secondary" render={<Link to="/catalog" />}>
+          <Button
+            size="lg"
+            variant="secondary"
+            nativeButton={false}
+            render={<Link to="/catalog" />}
+          >
             Shop the collection <ArrowRight />
           </Button>
           <Button
             size="lg"
+            nativeButton={false}
             className="border-primary-foreground/35 bg-transparent text-primary-foreground hover:bg-primary-foreground/10"
             render={<Link to="/catalog?onSale=true&sort=bestselling" />}
           >
@@ -36,7 +47,7 @@ export function HeroSection() {
           height="1200"
           alt="Wireless headphones from the collection"
           className="absolute inset-0 h-full w-full object-contain p-8 mix-blend-multiply lg:p-14"
-          fetchPriority="high"
+          {...heroImagePriority}
         />
       </div>
     </section>

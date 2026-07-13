@@ -8,7 +8,6 @@ export interface ProductRow {
   price_cents: number;
   category: string;
   stock_count: number;
-  image_url: string;
   image_set_id: string | null;
   slug: string;
   compare_at_price_cents: number | null;

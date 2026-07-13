@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { getDb, resetDatabase, seedDatabase } from '../src/db/index.js';
 import {
@@ -12,6 +13,11 @@ import {
   updateCartItem,
 } from '../src/domains/cart.js';
 import { processPayment } from '../src/domains/payments.js';
+import { getApiProductImages } from '../src/domains/productMedia.js';
+import { validatePromoCode } from '../src/domains/promo.js';
+
+const apiRoot = dirname(fileURLToPath(import.meta.url));
+const productAssetDirectory = resolve(apiRoot, '../../web/public/images/products');
 
 const tempDir = mkdtempSync(join(tmpdir(), 'shop-api-smoke-'));
 const dbPath = join(tempDir, 'shop.db');
@@ -51,6 +57,102 @@ void test('SQLite smoke integration', async (t) => {
           .get(),
         { active: 1, discount_percent: 10, min_item_count: 5 },
       );
+    });
+
+    await t.test('seeds local product images and deterministic fallback paths', () => {
+      resetAndSeed();
+      const products = db
+        .prepare('SELECT name, category, image_set_id FROM products ORDER BY id')
+        .all() as { name: string; category: string; image_set_id: string }[];
+
+      assert.equal(products.length, 45);
+      for (const product of products) {
+        const [image] = getApiProductImages(product.image_set_id, product.category, product.name);
+        assert.ok(image);
+        assert.match(image.src, /^\/images\/products\/.+\.card\.[a-f0-9]{12}\.720\.webp$/);
+        assert.equal(image.width, 720);
+        assert.equal(image.height, 720);
+        assert.ok(!image.src.includes('://'));
+      }
+
+      assert.equal(
+        getApiProductImages('missing-set', 'Audio', 'Fallback')[0]?.src,
+        '/images/products/wireless-headphones.card.1bec8d07bb59.720.webp',
+      );
+      assert.match(
+        getApiProductImages('missing-set', 'Unknown', 'Fallback')[0]?.src ?? '',
+        /^data:image\/svg\+xml,/,
+      );
+    });
+
+    await t.test('reset restores seeded SAVE10 eligibility', () => {
+      resetAndSeed();
+      const { cartId } = createCart();
+      for (const productId of ['1', '2', '3', '4']) addItemToCart(cartId, productId);
+      assert.equal(
+        validatePromoCode({ code: 'SAVE10', cartId, userId: null }).errorCode,
+        'MIN_ITEMS',
+      );
+
+      addItemToCart(cartId, '5');
+      assert.deepEqual(validatePromoCode({ code: 'SAVE10', cartId, userId: null }).promoCode, {
+        code: 'SAVE10',
+        discountPercent: 10,
+        minItemCount: 5,
+        kind: 'percent',
+        amountCents: undefined,
+        minSubtotalCents: undefined,
+      });
+
+      resetAndSeed();
+      assert.deepEqual(
+        db
+          .prepare(
+            "SELECT active, discount_percent, min_item_count FROM promo_codes WHERE code = 'SAVE10'",
+          )
+          .get(),
+        { active: 1, discount_percent: 10, min_item_count: 5 },
+      );
+    });
+
+    await t.test('committed asset manifest tracks complete local WebP outputs', () => {
+      const manifest = JSON.parse(
+        readFileSync(join(productAssetDirectory, 'manifest.json'), 'utf8'),
+      ) as {
+        version: number;
+        files: {
+          sourceId: string;
+          role: string;
+          path: string;
+          width: number;
+          height: number;
+          bytes: number;
+        }[];
+      };
+      const expectedRoles = new Set(['thumbnail', 'card', 'detail']);
+      const paths = new Set<string>();
+      const renditions = new Set<string>();
+
+      assert.equal(manifest.version, 1);
+      assert.equal(manifest.files.length, 24);
+      for (const file of manifest.files) {
+        assert.ok(expectedRoles.has(file.role));
+        assert.match(
+          file.path,
+          /^\/images\/products\/[a-z0-9-]+\.(thumbnail|card|detail)\.[a-f0-9]{12}\.(320|720|1200)\.webp$/,
+        );
+        assert.ok(!paths.has(file.path), `duplicate asset path: ${file.path}`);
+        assert.ok(!renditions.has(`${file.sourceId}:${file.role}`));
+        paths.add(file.path);
+        renditions.add(`${file.sourceId}:${file.role}`);
+        assert.equal(file.width, file.height);
+        assert.equal(file.width, { thumbnail: 320, card: 720, detail: 1200 }[file.role]);
+        assert.equal(
+          statSync(join(productAssetDirectory, file.path.slice('/images/products/'.length))).size,
+          file.bytes,
+        );
+      }
+      assert.equal(renditions.size, 24);
     });
 
     await t.test('persists cart create, update, read, and remove operations', () => {
