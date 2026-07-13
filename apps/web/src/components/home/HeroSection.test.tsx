@@ -4,20 +4,22 @@ import { describe, expect, it } from 'vitest';
 import { HeroSection } from './HeroSection';
 
 describe('HeroSection', () => {
-  it('renders primary shopping and sale CTAs with shareable catalog targets', () => {
+  it('renders QArefully powder CTAs with shareable catalog targets', () => {
     render(
       <MemoryRouter>
         <HeroSection />
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('button', { name: /shop the collection/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /shop powders/i })).toHaveAttribute(
       'href',
       '/catalog',
     );
-    expect(screen.getByRole('button', { name: /explore deals/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /browse impossible powders/i })).toHaveAttribute(
       'href',
-      '/catalog?onSale=true&sort=bestselling',
+      '/catalog?category=Impossible',
     );
+    expect(screen.getByRole('heading', { name: /we will powder anything/i })).toBeInTheDocument();
+    expect(screen.getByAltText('Powdered Water powder bag')).toBeInTheDocument();
   });
 });

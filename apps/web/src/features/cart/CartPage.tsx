@@ -24,7 +24,7 @@ export function CartPage() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="mb-6 text-2xl font-bold">Shopping Cart</h1>
+      <h1 className="mb-6 text-2xl font-bold">Powder cart</h1>
       {error && cart && (
         <div
           role="alert"
@@ -38,9 +38,9 @@ export function CartPage() {
       )}
       {!cart || cart.items.length === 0 ? (
         <div className="py-12 text-center space-y-4">
-          <p className="text-muted-foreground">Your cart is empty</p>
+          <p className="text-muted-foreground">Your powder cart is empty</p>
           <Button variant="outline" render={<Link to="/" />}>
-            Continue Shopping
+            Shop powders
           </Button>
         </div>
       ) : (
@@ -58,13 +58,13 @@ export function CartPage() {
           <Separator className="my-4" />
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Subtotal ({cart.totalItems} items)</span>
+              <span className="text-muted-foreground">Subtotal ({cart.totalItems} bags)</span>
               <span className="font-semibold">{formatMoney(cart.subtotalCents)}</span>
             </div>
           </div>
           <div className="flex gap-3 pt-4">
             <Button variant="outline" className="flex-1" render={<Link to="/" />}>
-              Continue Shopping
+              Keep browsing
             </Button>
             <Button className="flex-1" render={<Link to="/checkout" />}>
               Checkout

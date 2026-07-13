@@ -66,7 +66,7 @@ export function SearchBar({ className = '' }: { className?: string }) {
       <Input
         type="search"
         aria-label="Search products"
-        placeholder="What are you looking for?"
+        placeholder="Search protein, campfire, water..."
         className="h-11 rounded-full border-border bg-surface-raised pl-11 pr-12 text-base shadow-sm transition-[border-color,box-shadow] placeholder:text-muted-foreground/80 hover:border-primary/40 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring"
         value={localValue}
         onChange={handleChange}

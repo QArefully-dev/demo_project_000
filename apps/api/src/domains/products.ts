@@ -34,8 +34,8 @@ export function listProducts(query: ProductQuery): ListProductsResult {
 
   if (query.q) {
     const escaped = escapeLike(query.q);
-    conditions.push("name LIKE ? ESCAPE '\\'");
-    params.push(`%${escaped}%`);
+    conditions.push("(name LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\')");
+    params.push(`%${escaped}%`, `%${escaped}%`);
   }
 
   if (query.category) {

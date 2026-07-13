@@ -1,6 +1,6 @@
-# Shop Qarefully v000
+# QArefully Powder Co.
 
-Production-style department-store demo for QA education and repository-scale engineering exercises. Local and non-live by design; no external services required.
+QArefully Powder Co. is a local, non-live powder shop built for QA education and repository-scale engineering exercises. Browse credible pantry powders, questionable household powders, and impossible powders; every customer journey runs without external services.
 
 ## Prerequisites
 
@@ -68,10 +68,12 @@ All scripts run via `npm run` — no separate shell scripts directory needed.
 
 ## Seeded Data
 
-- **45 products** across 10 categories: Audio, Peripherals, Displays, Accessories, Storage, Networking, Power, Cables, Wearables, Smart Home
+- **45 products** across 7 powder categories: Pantry Staples, Performance, Drinks, Household, Outdoors, Questionable, and Impossible
 - **14 sale products** with compare-at prices
 - **3 users** (credentials below)
 - **7 promo codes** (details below)
+
+The catalog moves from everyday powders to deliberate nonsense. Household, conceptual, and impossible products are clearly marked “Not for consumption.” `Powdered Water` is the featured bestseller.
 
 ### User Credentials
 

@@ -52,7 +52,9 @@ export function CartLineItem({
       </div>
       <div className="flex flex-1 flex-col gap-1">
         <p className="text-sm font-medium leading-tight">{item.product.name}</p>
-        <p className="text-xs text-muted-foreground">{formatMoney(item.product.priceCents)} each</p>
+        <p className="text-xs text-muted-foreground">
+          {formatMoney(item.product.priceCents)} per bag
+        </p>
         <div className="flex items-center gap-2 mt-1">
           <Button
             variant="outline"

@@ -22,13 +22,13 @@ export function CategoryNav() {
     );
 
   return (
-    <nav aria-label="Departments" className="flex min-w-max items-center gap-0.5">
+    <nav aria-label="Powder types" className="flex min-w-max items-center gap-0.5">
       <Link
         to="/catalog"
         aria-current={isCatalog && activeCategory === '' && !isDealsActive ? 'page' : undefined}
         className={linkClassName(isCatalog && activeCategory === '' && !isDealsActive)}
       >
-        All departments
+        All powders
       </Link>
       {!isLoading &&
         categories.slice(0, 6).map((category) => (

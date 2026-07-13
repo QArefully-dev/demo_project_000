@@ -116,7 +116,10 @@ export function PaymentPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h1 className="mb-6 text-2xl font-bold">Payment</h1>
+      <h1 className="mb-2 text-2xl font-bold">Simulated payment</h1>
+      <p className="mb-6 text-sm text-muted-foreground">
+        Use a test card only. No charge is made and card details are not stored.
+      </p>
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Left column: Shipping summary + Card form */}
@@ -124,7 +127,7 @@ export function PaymentPage() {
           {/* Shipping & Contact Summary */}
           <Card>
             <CardHeader>
-              <CardTitle>Shipping & Contact</CardTitle>
+              <CardTitle>Delivery and contact</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               <div>
@@ -154,7 +157,7 @@ export function PaymentPage() {
           {/* Card Payment Form */}
           <Card>
             <CardHeader>
-              <CardTitle>Card Details</CardTitle>
+              <CardTitle>Test card details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-1.5">
@@ -205,7 +208,7 @@ export function PaymentPage() {
         {/* Right column: Order Summary */}
         <Card>
           <CardHeader>
-            <CardTitle>Order Summary</CardTitle>
+            <CardTitle>Powder order summary</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between text-sm">
@@ -253,10 +256,10 @@ export function PaymentPage() {
               {submitting ? (
                 <span className="flex items-center justify-center gap-2">
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Processing Payment...
+                  Processing simulated payment...
                 </span>
               ) : (
-                `Pay ${formatMoney(totalCents)}`
+                `Simulate payment of ${formatMoney(totalCents)}`
               )}
             </Button>
           </CardContent>

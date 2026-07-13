@@ -1,13 +1,16 @@
 import { ArrowUpRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { getProductMedia } from '@shop/contracts';
 import { Button } from '@/components/ui/button';
 
-const tileImages: Readonly<Record<string, string>> = {
-  accessories: '/images/products/usb-hub.card.9b304cc40aad.720.webp',
-  audio: '/images/products/wireless-headphones.card.1bec8d07bb59.720.webp',
-  displays: '/images/products/desktop-monitor.card.60700175c6db.720.webp',
-  peripherals: '/images/products/mechanical-keyboard.card.24a705d3f3c5.720.webp',
-  'smart home': '/images/products/webcam.card.61c6d85cc7a0.720.webp',
+const tileImageSets: Readonly<Record<string, string>> = {
+  'pantry staples': 'protein-powder',
+  performance: 'electrolyte-powder',
+  drinks: 'matcha-powder',
+  household: 'laundry-powder',
+  outdoors: 'powdered-campfire',
+  questionable: 'powdered-house',
+  impossible: 'powdered-water',
 };
 
 interface CategoryTilesProps {
@@ -20,20 +23,20 @@ interface CategoryTilesProps {
 export function CategoryTiles({ categories, isLoading, error, onRetry }: CategoryTilesProps) {
   return (
     <section aria-labelledby="category-heading">
-      <p className="section-eyebrow">Browse your way</p>
+      <p className="section-eyebrow">Choose your material</p>
       <h2 id="category-heading" className="section-heading mt-2">
-        Shop by department
+        Shop by powder type
       </h2>
       {error ? (
         <div role="status" className="mt-6 rounded-2xl border bg-surface-raised p-5 text-sm">
-          <p className="text-muted-foreground">Departments are temporarily unavailable.</p>
+          <p className="text-muted-foreground">Powder types are temporarily unavailable.</p>
           <Button variant="outline" size="sm" className="mt-3" onClick={onRetry}>
             Try again
           </Button>
         </div>
       ) : isLoading ? (
         <div
-          aria-label="Loading departments"
+          aria-label="Loading powder types"
           className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
         >
           {Array.from({ length: 4 }, (_, index) => (
@@ -43,16 +46,16 @@ export function CategoryTiles({ categories, isLoading, error, onRetry }: Categor
       ) : categories.length === 0 ? null : (
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {categories.slice(0, 4).map((category) => {
-            const image = tileImages[category.toLowerCase()];
+            const image = getProductMedia(tileImageSets[category.toLowerCase()], 'card');
             return (
               <Link
                 key={category}
                 to={`/catalog?category=${encodeURIComponent(category)}`}
-                className="group relative aspect-[4/3] overflow-hidden rounded-2xl bg-surface-soft shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-foreground/20 bg-surface-soft shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {image ? (
                   <img
-                    src={image}
+                    src={image.src}
                     alt=""
                     width="720"
                     height="720"

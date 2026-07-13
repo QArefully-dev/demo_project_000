@@ -14,7 +14,10 @@ import {
 } from '../src/domains/cart.js';
 import { processPayment } from '../src/domains/payments.js';
 import { getApiProductImages } from '../src/domains/productMedia.js';
+import { POWDER_CATALOG } from '../src/db/powderCatalog.js';
+import { addFavourite, listFavourites } from '../src/domains/favourites.js';
 import { validatePromoCode } from '../src/domains/promo.js';
+import { getCategories, getRelatedProducts, listProducts } from '../src/domains/products.js';
 
 const apiRoot = dirname(fileURLToPath(import.meta.url));
 const productAssetDirectory = resolve(apiRoot, '../../web/public/images/products');
@@ -57,33 +60,142 @@ void test('SQLite smoke integration', async (t) => {
           .get(),
         { active: 1, discount_percent: 10, min_item_count: 5 },
       );
-    });
-
-    await t.test('seeds local product images and deterministic fallback paths', () => {
-      resetAndSeed();
-      const products = db
-        .prepare('SELECT name, category, image_set_id FROM products ORDER BY id')
-        .all() as { name: string; category: string; image_set_id: string }[];
-
-      assert.equal(products.length, 45);
-      for (const product of products) {
-        const [image] = getApiProductImages(product.image_set_id, product.category, product.name);
-        assert.ok(image);
-        assert.match(image.src, /^\/images\/products\/.+\.card\.[a-f0-9]{12}\.720\.webp$/);
-        assert.equal(image.width, 720);
-        assert.equal(image.height, 720);
-        assert.ok(!image.src.includes('://'));
-      }
-
-      assert.equal(
-        getApiProductImages('missing-set', 'Audio', 'Fallback')[0]?.src,
-        '/images/products/wireless-headphones.card.1bec8d07bb59.720.webp',
-      );
-      assert.match(
-        getApiProductImages('missing-set', 'Unknown', 'Fallback')[0]?.src ?? '',
-        /^data:image\/svg\+xml,/,
+      assert.deepEqual(
+        (
+          db
+            .prepare(
+              'SELECT p.slug FROM favourites f JOIN products p ON p.id = f.product_id WHERE f.user_id = 1 ORDER BY p.id',
+            )
+            .all() as { slug: string }[]
+        ).map((row) => row.slug),
+        ['protein-powder', 'powdered-campfire', 'powdered-water'],
       );
     });
+
+    await t.test(
+      'serves the canonical powder catalogue through search, categories, sale, and ordering',
+      () => {
+        resetAndSeed();
+
+        assert.deepEqual(getCategories(), [
+          'Drinks',
+          'Household',
+          'Impossible',
+          'Outdoors',
+          'Pantry Staples',
+          'Performance',
+          'Questionable',
+        ]);
+        assert.ok(
+          listProducts({ q: 'water', sort: 'newest' }).items.some(
+            (product) => product.name === 'Powdered Water',
+          ),
+        );
+        const impossible = listProducts({ category: 'Impossible', sort: 'newest', pageSize: 48 });
+        assert.equal(impossible.total, 7);
+        assert.ok(impossible.items.every((product) => product.category === 'Impossible'));
+
+        const bestselling = listProducts({ sort: 'bestselling', pageSize: 48 });
+        assert.equal(bestselling.items[0]?.name, 'Powdered Water');
+        assert.deepEqual(
+          bestselling.items.map((product) => product.id),
+          [...bestselling.items]
+            .sort((left, right) => right.sales_count - left.sales_count || left.id - right.id)
+            .map((product) => product.id),
+        );
+        const sale = listProducts({ onSale: true, sort: 'newest', pageSize: 48 });
+        assert.equal(sale.total, 14);
+        assert.ok(sale.items.every((product) => product.compare_at_price_cents !== null));
+
+        const emptySearch = listProducts({ q: 'unpowderable signal', sort: 'newest' });
+        assert.equal(emptySearch.total, 0);
+        assert.deepEqual(emptySearch.items, []);
+
+        const related = getRelatedProducts(45);
+        assert.ok(related.length > 0);
+        assert.ok(related.every((product) => product.category === 'Impossible'));
+      },
+    );
+
+    await t.test(
+      'normal seed preserves user state and non-canonical products while reset clears snapshots',
+      () => {
+        resetAndSeed();
+        db.prepare(
+          "UPDATE users SET display_name = 'Alice Changed' WHERE email = 'alice@example.com'",
+        ).run();
+        db.prepare(
+          "INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id, slug, sales_count) VALUES (99, 'Local Powder', 'A local row.', 100, 'Local', 1, 'missing-set', 'local-powder', 0)",
+        ).run();
+        db.prepare(
+          "INSERT INTO orders (customer_name, customer_email, shipping_address, subtotal_cents, total_cents) VALUES ('Snapshot', 'snapshot@example.test', '1 Test Street', 100, 100)",
+        ).run();
+        db.prepare(
+          "INSERT INTO dev_mailbox (recipient, subject, body, kind) VALUES ('alice@example.com', 'Existing', 'Existing mailbox snapshot', 'plain')",
+        ).run();
+
+        seedDatabase(db);
+        assert.equal(
+          (
+            db
+              .prepare("SELECT display_name FROM users WHERE email = 'alice@example.com'")
+              .get() as { display_name: string }
+          ).display_name,
+          'Alice Changed',
+        );
+        assert.equal(
+          (db.prepare('SELECT name FROM products WHERE id = 99').get() as { name: string }).name,
+          'Local Powder',
+        );
+        assert.equal(countRows('orders'), 1);
+        assert.equal(countRows('dev_mailbox'), 1);
+
+        resetAndSeed();
+        assert.equal(countRows('orders'), 0);
+        assert.equal(countRows('dev_mailbox'), 0);
+        assert.equal(
+          db.prepare('SELECT COUNT(*) AS count FROM products WHERE id = 99').get().count,
+          0,
+        );
+        const canonicalRows = db
+          .prepare('SELECT id, name, slug FROM products WHERE id BETWEEN 1 AND 45 ORDER BY id')
+          .all() as { id: number; name: string; slug: string }[];
+        assert.deepEqual(
+          canonicalRows,
+          POWDER_CATALOG.map((product) => ({
+            id: product.id,
+            name: product.name,
+            slug: product.slug,
+          })),
+        );
+      },
+    );
+
+    await t.test(
+      'resolves generated powder image metadata and deterministic unknown fallback',
+      () => {
+        for (const product of POWDER_CATALOG) {
+          const images = getApiProductImages(product.image_set_id, product.category, product.name);
+          assert.deepEqual(
+            images.map((image) => image.role),
+            ['thumbnail', 'card', 'detail'],
+          );
+          for (const image of images) {
+            assert.match(
+              image.src,
+              /^\/images\/products\/.+\.(thumbnail|card|detail)\.[a-f0-9]{12}\.(320|720|1200)\.webp$/,
+            );
+            assert.equal(image.alt, `${product.name} powder bag`);
+            assert.ok(!image.src.includes('://'));
+          }
+        }
+
+        assert.match(
+          getApiProductImages('missing-set', 'Unknown', 'Fallback powder bag')[0]?.src ?? '',
+          /^data:image\/svg\+xml,/,
+        );
+      },
+    );
 
     await t.test('reset restores seeded SAVE10 eligibility', () => {
       resetAndSeed();
@@ -103,6 +215,11 @@ void test('SQLite smoke integration', async (t) => {
         amountCents: undefined,
         minSubtotalCents: undefined,
       });
+
+      assert.equal(
+        validatePromoCode({ code: 'EXPIRED10', cartId, userId: null }).errorCode,
+        'EXPIRED',
+      );
 
       resetAndSeed();
       assert.deepEqual(
@@ -133,8 +250,8 @@ void test('SQLite smoke integration', async (t) => {
       const paths = new Set<string>();
       const renditions = new Set<string>();
 
-      assert.equal(manifest.version, 1);
-      assert.equal(manifest.files.length, 24);
+      assert.equal(manifest.version, 2);
+      assert.equal(manifest.files.length, 135);
       for (const file of manifest.files) {
         assert.ok(expectedRoles.has(file.role));
         assert.match(
@@ -152,7 +269,7 @@ void test('SQLite smoke integration', async (t) => {
           file.bytes,
         );
       }
-      assert.equal(renditions.size, 24);
+      assert.equal(renditions.size, 135);
     });
 
     await t.test('persists cart create, update, read, and remove operations', () => {
@@ -174,44 +291,64 @@ void test('SQLite smoke integration', async (t) => {
       assert.deepEqual(getCart(cartId)?.items, []);
     });
 
-    await t.test('commits successful payment state and removes its cart', async () => {
-      resetAndSeed();
-      const product = seededProduct();
-      const { cartId } = createCart();
-      addItemToCart(cartId, String(product.id));
+    await t.test(
+      'completes the favourite, five-bag SAVE10 payment, and mailbox receipt flow',
+      async () => {
+        resetAndSeed();
+        const { cartId } = createCart();
+        const productIds = ['1', '2', '3', '4', '5'];
+        assert.equal(addFavourite(1, Number(productIds[0])), true);
+        assert.ok(listFavourites(1).some((product) => product.id === Number(productIds[0])));
+        for (const productId of productIds) addItemToCart(cartId, productId);
+        const cartBeforePayment = getCart(cartId);
+        assert.ok(cartBeforePayment);
+        const expectedDiscountCents = Math.floor(cartBeforePayment.subtotalCents * 0.1);
 
-      const result = await processPayment({
-        cartId,
-        customerName: 'Smoke Success',
-        customerEmail: 'smoke-success@example.test',
-        shippingAddress: '1 Test Street',
-        cardNumber: '4242 4242 4242 4242',
-        cardExpiry: '12/99',
-        cardCvc: '123',
-        idempotencyKey: 'smoke-success-payment',
-        userId: null,
-      });
+        const promo = validatePromoCode({ code: 'SAVE10', cartId, userId: 1 });
+        assert.equal(promo.valid, true);
 
-      assert.equal(result.success, true);
-      if (!result.success) throw new Error('Expected successful payment');
-      assert.equal(countRows('orders'), 1);
-      assert.equal(countRows('order_line_items'), 1);
-      assert.deepEqual(
-        db
-          .prepare('SELECT status, order_id FROM payments WHERE idempotency_key = ?')
-          .get('smoke-success-payment'),
-        { status: 'success', order_id: Number(result.orderId) },
-      );
-      assert.equal(
-        (
+        const result = await processPayment({
+          cartId,
+          promoCode: 'SAVE10',
+          customerName: 'Smoke Success',
+          customerEmail: 'smoke-success@example.test',
+          shippingAddress: '1 Test Street',
+          cardNumber: '4242 4242 4242 4242',
+          cardExpiry: '12/99',
+          cardCvc: '123',
+          idempotencyKey: 'smoke-success-payment',
+          userId: 1,
+        });
+
+        assert.equal(result.success, true);
+        if (!result.success) throw new Error('Expected successful payment');
+        assert.equal(countRows('orders'), 1);
+        assert.equal(countRows('order_line_items'), 5);
+        assert.deepEqual(
           db
-            .prepare("SELECT COUNT(*) AS count FROM dev_mailbox WHERE kind = 'order_confirmation'")
-            .get() as { count: number }
-        ).count,
-        1,
-      );
-      assert.equal(getCart(cartId), undefined);
-    });
+            .prepare('SELECT status, order_id FROM payments WHERE idempotency_key = ?')
+            .get('smoke-success-payment'),
+          { status: 'success', order_id: Number(result.orderId) },
+        );
+        assert.equal(
+          (
+            db
+              .prepare(
+                "SELECT COUNT(*) AS count FROM dev_mailbox WHERE kind = 'order_confirmation'",
+              )
+              .get() as { count: number }
+          ).count,
+          1,
+        );
+        assert.deepEqual(
+          db
+            .prepare('SELECT promo_code_applied, discount_cents FROM orders WHERE id = ?')
+            .get(Number(result.orderId)),
+          { promo_code_applied: 'SAVE10', discount_cents: expectedDiscountCents },
+        );
+        assert.equal(getCart(cartId), undefined);
+      },
+    );
 
     await t.test(
       'records declined payment without creating an order or deleting its cart',
@@ -240,6 +377,40 @@ void test('SQLite smoke integration', async (t) => {
             .prepare('SELECT status, order_id FROM payments WHERE idempotency_key = ?')
             .get('smoke-decline-payment'),
           { status: 'declined', order_id: null },
+        );
+        assert.equal(getCart(cartId)?.totalItems, 1);
+      },
+    );
+
+    await t.test(
+      'records gateway timeout without creating an order or deleting its cart',
+      async () => {
+        resetAndSeed();
+        const product = seededProduct();
+        const { cartId } = createCart();
+        addItemToCart(cartId, String(product.id));
+
+        const result = await processPayment({
+          cartId,
+          customerName: 'Smoke Timeout',
+          customerEmail: 'smoke-timeout@example.test',
+          shippingAddress: '3 Test Street',
+          cardNumber: '4000 0000 0000 0069',
+          cardExpiry: '12/99',
+          cardCvc: '123',
+          idempotencyKey: 'smoke-timeout-payment',
+          userId: null,
+        });
+
+        assert.deepEqual(result, { success: false, error: 'TIMEOUT' });
+        assert.equal(countRows('orders'), 0);
+        assert.deepEqual(
+          db
+            .prepare(
+              'SELECT status, order_id, failure_reason FROM payments WHERE idempotency_key = ?',
+            )
+            .get('smoke-timeout-payment'),
+          { status: 'timeout', order_id: null, failure_reason: 'GATEWAY_TIMEOUT' },
         );
         assert.equal(getCart(cartId)?.totalItems, 1);
       },

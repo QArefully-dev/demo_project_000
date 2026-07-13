@@ -1,7 +1,9 @@
 import type Database from 'better-sqlite3';
 
 /**
- * Clears all data from every table in foreign-key-safe order.
+ * Clears all data from every table in foreign-key-safe order. This is the
+ * deliberate clean-slate path: carts, orders, payments, and mailbox snapshots
+ * are removed before the canonical powder catalogue is re-seeded.
  * Does NOT drop tables — schema is preserved.
  *
  * Reset order: payments -> promo redemptions -> favourites ->

@@ -28,6 +28,7 @@ export function ProductMedia({
       ...product,
       imageSetId: '__missing__',
       category: '__missing__',
+      images: [],
     },
     role,
   );

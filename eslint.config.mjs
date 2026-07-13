@@ -14,9 +14,12 @@ export default tseslint.config(
   },
   {
     ...tseslint.configs.disableTypeChecked,
-    files: ['scripts/**/*.mjs'],
+    files: ['scripts/**/*.{ts,mjs}'],
     languageOptions: {
       ...tseslint.configs.disableTypeChecked.languageOptions,
+      parserOptions: {
+        projectService: false,
+      },
       globals: {
         console: 'readonly',
         process: 'readonly',

@@ -161,24 +161,13 @@ function ensureSchema(db: Database.Database): void {
     addColumn('products', 'sales_count', 'INTEGER NOT NULL DEFAULT 0');
     addColumn('products', 'image_set_id', 'TEXT');
 
-    // Existing databases predate image sets. Keep the migration additive, then
-    // deterministically backfill every row before API reads can expose it.
+    // Existing databases predate image sets. Canonical IDs are overwritten by
+    // the seed; non-canonical legacy rows receive an intentionally unknown ID
+    // so the product-media resolver uses its safe inline fallback rather than
+    // presenting stale catalog artwork.
     db.exec(`
       UPDATE products
-      SET image_set_id = CASE
-        WHEN image_url LIKE '%headphones%' THEN 'headphones'
-        WHEN image_url LIKE '%keyboard%' THEN 'keyboard'
-        WHEN image_url LIKE '%monitor%' THEN 'monitor'
-        WHEN image_url LIKE '%mouse%' THEN 'mouse'
-        WHEN image_url LIKE '%speaker%' THEN 'speaker'
-        WHEN image_url LIKE '%stand%' THEN 'stand'
-        WHEN image_url LIKE '%webcam%' THEN 'webcam'
-        WHEN image_url LIKE '%usbhub%' THEN 'usb-hub'
-        WHEN LOWER(category) = 'audio' THEN 'category-audio'
-        WHEN LOWER(category) = 'displays' THEN 'category-displays'
-        WHEN LOWER(category) = 'peripherals' THEN 'category-peripherals'
-        ELSE 'category-accessories'
-      END
+      SET image_set_id = 'legacy-product-' || id
       WHERE image_set_id IS NULL OR image_set_id = ''
     `);
 

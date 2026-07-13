@@ -26,23 +26,23 @@ vi.mock('@/hooks/useFavourites', () => ({
 }));
 
 const product = (overrides: Partial<Product> = {}): Product => ({
-  id: 'headphones',
-  name: 'Wireless headphones',
-  description: 'Comfortable over-ear headphones.',
+  id: 'powdered-water',
+  name: 'Powdered Water',
+  description: 'Just-add-water water powder, 300g. Dry until required.',
   priceCents: 12999,
   compareAtPriceCents: 16999,
-  imageSetId: 'headphones',
+  imageSetId: 'powdered-water',
   images: [
     {
-      src: '/images/headphones.webp',
-      alt: 'Wireless headphones',
+      src: '/images/powdered-water.webp',
+      alt: 'Powdered Water powder bag',
       width: 1200,
       height: 1200,
     },
   ],
-  category: 'Audio',
+  category: 'Impossible',
   stock: 8,
-  slug: 'wireless-headphones',
+  slug: 'powdered-water',
   salesCount: 12,
   ...overrides,
 });
@@ -51,7 +51,7 @@ function renderPanel(overrides: Partial<ComponentProps<typeof ProductPurchasePan
   const onAddToCart = vi.fn(async () => {});
   const onRetryCart = vi.fn();
   const result = render(
-    <MemoryRouter initialEntries={['/products/headphones']}>
+    <MemoryRouter initialEntries={['/products/powdered-water']}>
       <Routes>
         <Route
           path="*"
@@ -97,6 +97,8 @@ describe('ProductPurchasePanel', () => {
 
     expect(screen.getByText('Sale')).toBeInTheDocument();
     expect(screen.getByText('Save $40.00')).toBeInTheDocument();
+    expect(screen.getByText('Not for consumption')).toBeInTheDocument();
+    expect(screen.getByText('300g')).toBeInTheDocument();
 
     rerender(
       <MemoryRouter>
@@ -152,7 +154,7 @@ describe('ProductPurchasePanel', () => {
     favouriteState.favouriteIds = new Set();
     favouriteState.toggleFavourite.mockReset();
     render(
-      <MemoryRouter initialEntries={['/products/headphones']}>
+      <MemoryRouter initialEntries={['/products/powdered-water']}>
         <Routes>
           <Route
             path="*"
@@ -191,8 +193,8 @@ describe('ProductPurchasePanel', () => {
     const authenticated = renderPanel();
     await user.click(screen.getByRole('button', { name: 'Add to wishlist' }));
     expect(favouriteState.toggleFavourite).toHaveBeenCalledWith(
-      'headphones',
-      expect.objectContaining({ id: 'headphones' }),
+      'powdered-water',
+      expect.objectContaining({ id: 'powdered-water' }),
     );
     authenticated.unmount();
   });

@@ -57,8 +57,8 @@ export function CheckoutPage() {
             {cartRecoveryMessage}
           </p>
         )}
-        <p className="text-muted-foreground">Your cart is empty</p>
-        <Button render={<Link to="/" />}>Continue Shopping</Button>
+        <p className="text-muted-foreground">Your powder cart is empty</p>
+        <Button render={<Link to="/catalog" />}>Shop powders</Button>
       </div>
     );
   }
@@ -76,7 +76,10 @@ export function CheckoutPage() {
         void submitOrder();
       }}
     >
-      <h1 className="mb-6 text-2xl font-bold">Checkout</h1>
+      <h1 className="mb-2 text-2xl font-bold">Checkout your powders</h1>
+      <p className="mb-6 text-sm text-muted-foreground">
+        This is a simulated checkout. No payment card will be charged.
+      </p>
       {cartError && (
         <div
           role="alert"
@@ -99,7 +102,7 @@ export function CheckoutPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Customer & Shipping</CardTitle>
+            <CardTitle>Contact and delivery</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
@@ -165,7 +168,7 @@ export function CheckoutPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Order Summary</CardTitle>
+            <CardTitle>Bag summary</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -188,15 +191,18 @@ export function CheckoutPage() {
 
             <div className="space-y-2">
               <label htmlFor="promoCode" className="text-sm font-medium">
-                Promo Code
+                Powder promotion
               </label>
+              <p className="text-xs text-muted-foreground">
+                SAVE10 takes 10% off when this cart contains at least five bags.
+              </p>
               {!appliedPromo ? (
                 <div className="flex gap-2">
                   <Input
                     id="promoCode"
                     value={promoCode}
                     onChange={(e) => setPromoCode(e.target.value)}
-                    placeholder={isPromoEligible ? 'Promo code' : 'Add 5+ items to unlock promo'}
+                    placeholder={isPromoEligible ? 'Enter SAVE10' : 'Add 5 bags to unlock SAVE10'}
                     disabled={!isPromoEligible}
                     className="flex-1"
                     onKeyDown={(e) => {
@@ -253,7 +259,7 @@ export function CheckoutPage() {
 
       <div className="mt-6 flex justify-end">
         <Button type="submit" size="lg" disabled={promoValidating || !isCartAvailable}>
-          Proceed to Payment
+          Continue to simulated payment
         </Button>
       </div>
     </form>

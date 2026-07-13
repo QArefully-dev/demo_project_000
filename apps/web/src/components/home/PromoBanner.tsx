@@ -2,14 +2,15 @@ import { Link } from 'react-router-dom';
 
 export function PromoBanner() {
   return (
-    <section className="grid overflow-hidden rounded-3xl bg-sale text-sale-foreground sm:grid-cols-[1fr_auto] sm:items-center">
+    <section className="grid overflow-hidden rounded-2xl border-2 border-foreground bg-sale text-sale-foreground sm:grid-cols-[1fr_auto] sm:items-center">
       <div className="px-7 py-9 sm:px-10">
-        <p className="text-xs font-bold uppercase tracking-[0.18em] opacity-80">A little extra</p>
-        <h2 className="mt-2 text-3xl font-semibold tracking-tight">
-          Save 10% when you choose five.
-        </h2>
+        <p className="text-xs font-bold uppercase tracking-[0.18em] opacity-80">
+          Bag-count promotion
+        </p>
+        <h2 className="mt-2 text-3xl font-semibold tracking-tight">Save 10% when you bag five.</h2>
         <p className="mt-2 max-w-2xl text-sm opacity-85">
-          Use code <strong>SAVE10</strong> on five or more items in this demo storefront.
+          Use code <strong>SAVE10</strong> on five or more bags. Simulated checkout; very real
+          maths.
         </p>
       </div>
       <Link

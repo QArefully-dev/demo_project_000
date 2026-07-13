@@ -100,7 +100,7 @@ export function ProductPage() {
           to="/catalog"
           className="rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          Catalog
+          All powders
         </Link>
         <span aria-hidden="true">/</span>
         <Link
@@ -136,16 +136,16 @@ export function ProductPage() {
         <section className="mt-16" aria-labelledby="related-products-heading">
           <div className="mb-6 flex items-end justify-between gap-4">
             <div>
-              <p className="section-eyebrow">You may also like</p>
+              <p className="section-eyebrow">Same powder type</p>
               <h2 id="related-products-heading" className="section-heading mt-2">
-                Related products
+                Powders well with
               </h2>
             </div>
             <Link
               to={`/catalog?category=${encodeURIComponent(product.category)}`}
               className="section-link"
             >
-              View category
+              View powder type
             </Link>
           </div>
           <ProductGrid>

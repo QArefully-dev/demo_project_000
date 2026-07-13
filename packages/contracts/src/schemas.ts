@@ -27,6 +27,9 @@ export const ProductImage = Type.Object({
   alt: Type.String(),
   width: Type.Number({ minimum: 1, multipleOf: 1 }),
   height: Type.Number({ minimum: 1, multipleOf: 1 }),
+  role: Type.Optional(
+    Type.Union([Type.Literal('thumbnail'), Type.Literal('card'), Type.Literal('detail')]),
+  ),
 });
 export type ProductImage = Static<typeof ProductImage>;
 

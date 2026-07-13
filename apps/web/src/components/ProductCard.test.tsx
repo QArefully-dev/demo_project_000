@@ -15,12 +15,12 @@ vi.mock('@/components/WishlistButton', () => ({
 }));
 
 const product = (overrides: Partial<Product> = {}): Product => ({
-  id: 'headphones-1',
-  name: 'Studio Headphones',
-  description: 'Balanced sound for focused listening.',
+  id: 'powdered-water-1',
+  name: 'Powdered Water',
+  description: 'Just-add-water water powder, 300g. Dry until required.',
   priceCents: 7999,
   compareAtPriceCents: 9999,
-  imageSetId: 'headphones',
+  imageSetId: 'powdered-water',
   images: [
     {
       src: '/contract-image.webp',
@@ -29,9 +29,9 @@ const product = (overrides: Partial<Product> = {}): Product => ({
       height: 720,
     },
   ],
-  category: 'audio',
+  category: 'Impossible',
   stock: 10,
-  slug: 'studio-headphones',
+  slug: 'powdered-water',
   salesCount: 10,
   ...overrides,
 });
@@ -87,18 +87,18 @@ describe('ProductCard', () => {
   it('links image and title to the product while leaving wishlist and cart actions separate', () => {
     renderCard();
 
-    expect(screen.getByRole('link', { name: 'Over-ear headphones' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Contract image' })).toHaveAttribute(
       'href',
-      '/products/headphones-1',
+      '/products/powdered-water-1',
     );
-    expect(screen.getByRole('link', { name: 'Studio Headphones' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Powdered Water' })).toHaveAttribute(
       'href',
-      '/products/headphones-1',
+      '/products/powdered-water-1',
     );
     expect(
-      screen.getByRole('button', { name: 'Add headphones-1 to wishlist' }).closest('a'),
+      screen.getByRole('button', { name: 'Add powdered-water-1 to wishlist' }).closest('a'),
     ).toBeNull();
-    expect(screen.getByRole('button', { name: 'Add to Cart' }).closest('a')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Add powder' }).closest('a')).toBeNull();
   });
 
   it('disables purchase for unavailable stock and labels low stock', () => {
@@ -114,9 +114,9 @@ describe('ProductCard', () => {
     const user = userEvent.setup();
     const onAddToCart = renderCard({}, { onAddToCart: vi.fn().mockResolvedValue(false) });
 
-    await user.click(screen.getByRole('button', { name: 'Add to Cart' }));
+    await user.click(screen.getByRole('button', { name: 'Add powder' }));
 
-    expect(onAddToCart).toHaveBeenCalledWith('headphones-1');
+    expect(onAddToCart).toHaveBeenCalledWith('powdered-water-1');
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Could not add this item. Try again.',
     );

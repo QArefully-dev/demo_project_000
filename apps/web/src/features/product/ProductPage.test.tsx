@@ -25,28 +25,28 @@ vi.mock('@/components/WishlistButton', () => ({
 }));
 
 const product = (overrides: Partial<Product> = {}): Product => ({
-  id: 'headphones',
-  name: 'Wireless headphones',
-  description: 'Comfortable over-ear headphones.',
+  id: 'powdered-water',
+  name: 'Powdered Water',
+  description: 'Just-add-water water powder, 300g. Dry until required.',
   priceCents: 12999,
   compareAtPriceCents: 16999,
-  imageSetId: 'headphones',
+  imageSetId: 'powdered-water',
   images: [
     {
-      src: '/images/headphones-primary.webp',
-      alt: 'Wireless headphones front view',
+      src: '/images/powdered-water-primary.webp',
+      alt: 'Powdered Water powder bag',
       width: 1200,
       height: 1200,
     },
   ],
-  category: 'Audio',
+  category: 'Impossible',
   stock: 8,
-  slug: 'wireless-headphones',
+  slug: 'powdered-water',
   salesCount: 12,
   ...overrides,
 });
 
-function renderPage(path = '/products/headphones') {
+function renderPage(path = '/products/powdered-water') {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
@@ -71,10 +71,10 @@ describe('ProductPage', () => {
     productApi.getRelatedProducts.mockResolvedValueOnce([]);
 
     renderPage();
-    expect(screen.queryByRole('heading', { name: 'Wireless headphones' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Powdered Water' })).not.toBeInTheDocument();
 
     response.resolve(product());
-    expect(await screen.findByRole('heading', { name: 'Wireless headphones' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Powdered Water' })).toBeInTheDocument();
   });
 
   it('renders API and not-found failures distinctly', async () => {
@@ -120,7 +120,7 @@ describe('ProductPage', () => {
     productApi.getRelatedProducts.mockResolvedValueOnce([]);
 
     renderPage();
-    const addButton = await screen.findByRole('button', { name: 'Add to cart' });
+    const addButton = await screen.findByRole('button', { name: 'Add powder' });
     await user.click(addButton);
     await user.click(addButton);
     expect(cart.addItem).toHaveBeenCalledOnce();
@@ -128,7 +128,7 @@ describe('ProductPage', () => {
     pendingAdd.resolve(false);
     expect(await screen.findByText('Could not add this item. Try again.')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Add to cart' }));
+    await user.click(screen.getByRole('button', { name: 'Add powder' }));
     await waitFor(() => expect(cart.addItem).toHaveBeenCalledTimes(2));
     expect(screen.queryByText('Could not add this item. Try again.')).not.toBeInTheDocument();
   });

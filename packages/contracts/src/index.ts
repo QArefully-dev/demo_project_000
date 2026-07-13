@@ -1,5 +1,12 @@
 export { CONTRACTS_VERSION } from './version.js';
 export {
+  PRODUCT_MEDIA_REGISTRY,
+  getProductMedia,
+  getProductMediaSet,
+  type GeneratedProductImage,
+  type ProductMediaRole,
+} from './productMediaRegistry.js';
+export {
   MoneyCents,
   ErrorResponse,
   SuccessResponse,

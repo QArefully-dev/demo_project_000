@@ -5,21 +5,21 @@ import { describe, expect, it } from 'vitest';
 import { ProductGallery } from './ProductGallery';
 
 const product = (images: Product['images']): Product => ({
-  id: 'headphones',
-  name: 'Wireless headphones',
-  description: 'Comfortable over-ear headphones.',
+  id: 'powdered-water',
+  name: 'Powdered Water',
+  description: 'Just-add-water water powder, 300g. Dry until required.',
   priceCents: 12999,
-  imageSetId: 'headphones',
+  imageSetId: 'powdered-water',
   images,
-  category: 'Audio',
+  category: 'Impossible',
   stock: 8,
-  slug: 'wireless-headphones',
+  slug: 'powdered-water',
   salesCount: 12,
 });
 
 const primaryImage = {
-  src: '/images/headphones-primary.webp',
-  alt: 'Wireless headphones front view',
+  src: '/images/powdered-water-primary.webp',
+  alt: 'Powdered Water powder bag',
   width: 1200,
   height: 1200,
 };
@@ -29,7 +29,7 @@ describe('ProductGallery', () => {
     render(<ProductGallery product={product([primaryImage])} />);
 
     expect(screen.queryByRole('button', { name: /view image/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'Over-ear headphones' })).toHaveAttribute(
+    expect(screen.getByRole('img', { name: 'Powdered Water powder bag' })).toHaveAttribute(
       'loading',
       'eager',
     );
@@ -42,8 +42,8 @@ describe('ProductGallery', () => {
         product={product([
           primaryImage,
           {
-            src: '/images/headphones-side.webp',
-            alt: 'Wireless headphones side view',
+            src: '/images/powdered-water-side.webp',
+            alt: 'Powdered Water side label',
             width: 1200,
             height: 1200,
           },
@@ -56,9 +56,10 @@ describe('ProductGallery', () => {
 
     await user.click(second);
     expect(second).toHaveAttribute('aria-pressed', 'true');
-    expect(
-      screen.getAllByRole('img', { name: 'Wireless headphones side view' })[0],
-    ).toHaveAttribute('loading', 'eager');
+    expect(screen.getAllByRole('img', { name: 'Powdered Water side label' })[0]).toHaveAttribute(
+      'loading',
+      'eager',
+    );
 
     first.focus();
     await user.keyboard('{ArrowRight}');
@@ -68,7 +69,7 @@ describe('ProductGallery', () => {
     await user.keyboard('{Home}');
     expect(first).toHaveFocus();
     expect(first).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getAllByRole('img', { name: 'Over-ear headphones' })[0]).toHaveAttribute(
+    expect(screen.getAllByRole('img', { name: 'Powdered Water powder bag' })[0]).toHaveAttribute(
       'loading',
       'eager',
     );

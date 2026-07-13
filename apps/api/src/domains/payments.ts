@@ -309,8 +309,8 @@ export async function processPayment(params: ProcessPaymentParams): Promise<Paym
          VALUES (?, ?, ?, 'order_confirmation', ?)`,
       ).run(
         customerEmail,
-        `Order #${orderId} Confirmed`,
-        `Your order #${orderId} has been placed successfully. Total: $${totalCents / 100}`,
+        `QArefully Powder Co. — order #${orderId} confirmed`,
+        `Your QArefully Powder Co. order #${orderId} has been recorded. Total: $${totalCents / 100}. This was a simulated payment; no card was charged.`,
         createdAt,
       );
 
