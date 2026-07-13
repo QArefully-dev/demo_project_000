@@ -20,6 +20,6 @@ describe('HeroSection', () => {
       '/catalog?category=Impossible',
     );
     expect(screen.getByRole('heading', { name: /we will powder anything/i })).toBeInTheDocument();
-    expect(screen.getByAltText('Powdered Water powder bag')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Powdered Water powder bag' })).toBeInTheDocument();
   });
 });

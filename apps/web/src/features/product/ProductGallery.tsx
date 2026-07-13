@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Product } from '@shop/contracts';
+import { getProductVisual, type Product } from '@shop/contracts';
 import { ProductMedia } from '@/components/ProductMedia';
 import { resolveProductImages } from '@/data/productImageSets';
 import { cn } from '@/lib/utils';
@@ -11,7 +11,8 @@ interface ProductGalleryProps {
 export function ProductGallery({ product }: ProductGalleryProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const thumbnailRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const images = resolveProductImages(product);
+  const resolvedImages = resolveProductImages(product);
+  const images = getProductVisual(product.imageSetId) ? resolvedImages.slice(0, 1) : resolvedImages;
 
   useEffect(() => {
     setSelectedIndex(0);

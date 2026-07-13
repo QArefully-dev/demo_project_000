@@ -1,6 +1,6 @@
 # QArefully Powder Co. Rebrand Implementation Plan
 
-Status: ready for implementation
+Status: Phases 0-6 complete. Phases 7-8 deferred.
 
 Audience: implementation agent
 
@@ -24,6 +24,26 @@ Working brand:
 Required delivery: Phases 0-6.
 
 Follow-up delivery: Phases 7-8. Keep separate from core rebrand. Do not block rebrand completion on Powderizer.
+
+## Implementation Record
+
+Completed: Phases 0-6.
+
+Delivered:
+
+- 45-product, seven-category powder catalog; deterministic ordering, sales, favourites, search, reset, seed behavior retained
+- deterministic bag-art pipeline: 45 image sets, 135 WebP renditions
+- QArefully storefront, catalog, product, cart, checkout, payment, confirmation, and mailbox copy
+- README and product-direction documentation updates
+- unrelated `plans/catalog_reviews_audit_seed_content_implementation_plan.md` edit preserved
+
+Verification:
+
+- pass: `npm run reset`, `npm run assets:check`, `npm run typecheck`, `npm run test:unit`, `npm run test:integration`, `npm run lint`, `npm run smoke`
+- browser QA not run: browser automation unavailable. Loopback route checks completed.
+- `npm run format`: 45 failures in unrelated baseline files. Rebrand-generated files clean.
+
+Deferred: Phase 7 Powderizer domain slice; Phase 8 Powderizer UI slice. Not implemented.
 
 ## Constraints
 
@@ -79,7 +99,7 @@ Defer until Phase 7:
 - custom labels
 - custom mix order snapshots
 
-## Phase 0 - Baseline and Change Audit
+## Phase 0 - Baseline and Change Audit [Complete]
 
 Goal: establish safe starting point.
 
@@ -112,7 +132,7 @@ Exit criteria:
 - rebrand file boundary confirmed
 - no code changed during audit
 
-## Phase 1 - Brand System and Canonical Catalog
+## Phase 1 - Brand System and Canonical Catalog [Complete]
 
 Goal: define one deterministic source for powder identity and content.
 
@@ -206,7 +226,7 @@ Exit criteria:
 - anchor products present
 - no seed or UI integration yet
 
-## Phase 2 - Deterministic Powder Asset System
+## Phase 2 - Deterministic Powder Asset System [Complete]
 
 Goal: replace external/manual product photography with reproducible bag artwork.
 
@@ -262,7 +282,7 @@ Exit criteria:
 - catalog grid shows distinct, coherent bags
 - no electronics asset references remain
 
-## Phase 3 - Seed and Backend Migration
+## Phase 3 - Seed and Backend Migration [Complete]
 
 Goal: serve powder catalog through existing backend without changing commerce behavior.
 
@@ -303,7 +323,7 @@ Exit criteria:
 - non-catalog domains unchanged
 - backend tests pass
 
-## Phase 4 - Storefront Brand Shell
+## Phase 4 - Storefront Brand Shell [Complete]
 
 Goal: make first viewport unmistakably QArefully Powder Co.
 
@@ -362,7 +382,7 @@ Exit criteria:
 - mobile, 1920x1080, 1920x1200, 3840x2160 layouts remain sound
 - homepage component tests updated and passing
 
-## Phase 5 - Catalog, Product, Cart, and Checkout Copy
+## Phase 5 - Catalog, Product, Cart, and Checkout Copy [Complete]
 
 Goal: carry powder identity through full purchase journey.
 
@@ -414,7 +434,7 @@ Exit criteria:
 - no schema expansion required
 - relevant tests pass
 
-## Phase 6 - Cleanup, Documentation, and Rebrand Verification
+## Phase 6 - Cleanup, Documentation, and Rebrand Verification [Complete]
 
 Goal: finish required rebrand milestone with no electronics residue.
 
@@ -476,7 +496,7 @@ Required milestone exit criteria:
 - preserved commerce behavior verified
 - unrelated worktree changes preserved
 
-## Phase 7 - Powderizer Domain Slice
+## Phase 7 - Powderizer Domain Slice [Deferred / Not Implemented]
 
 Goal: add custom mix capability after stable rebrand.
 
@@ -534,7 +554,7 @@ Exit criteria:
 - reset and seed support mix schema
 - unit and SQLite integration tests pass
 
-## Phase 8 - Powderizer UI Slice
+## Phase 8 - Powderizer UI Slice [Deferred / Not Implemented]
 
 Goal: expose understandable mix builder without weakening standard catalog.
 

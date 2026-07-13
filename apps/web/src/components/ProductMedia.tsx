@@ -1,6 +1,8 @@
 import { useEffect, useState, type ImgHTMLAttributes } from 'react';
 import type { Product } from '@shop/contracts';
+import { getProductVisual } from '@shop/contracts';
 import { resolveProductImage, type ProductMediaRole } from '@/data/productImageSets';
+import { BagArtwork } from '@/components/BagArtwork';
 
 interface ProductMediaProps {
   product: Product;
@@ -22,6 +24,7 @@ export function ProductMedia({
   role = 'card',
 }: ProductMediaProps) {
   const [failed, setFailed] = useState(false);
+  const visual = getProductVisual(product.imageSetId);
   const selected = resolveProductImage(product, role, imageIndex);
   const fallback = resolveProductImage(
     {
@@ -39,6 +42,27 @@ export function ProductMedia({
   useEffect(() => {
     setFailed(false);
   }, [product.id, imageIndex, role]);
+
+  if (visual) {
+    const quantity =
+      product.description.match(/(?:\d+(?:\.\d+)?\s?(?:g|kg)|conceptual quantity)/i)?.[0] ??
+      'Measured quantity';
+    return (
+      <BagArtwork
+        shape="paper-square"
+        decoration="paired-ovals"
+        name={product.name}
+        category={product.category}
+        quantity={quantity}
+        batchCode={visual.batchCode}
+        mark={visual.mark}
+        accent={visual.labelColor}
+        powderAccent={visual.powderColor}
+        ariaLabel={`${product.name} powder bag`}
+        className={className}
+      />
+    );
+  }
 
   return (
     <img

@@ -1,17 +1,32 @@
 import { ArrowRight } from 'lucide-react';
-import type { ImgHTMLAttributes } from 'react';
 import { Link } from 'react-router-dom';
-import { getProductMedia } from '@shop/contracts';
+import { getProductVisual } from '@shop/contracts';
+import { BagArtwork } from '@/components/BagArtwork';
 import { Button } from '@/components/ui/button';
 
-const heroImagePriority = {
-  fetchpriority: 'high',
-} as unknown as ImgHTMLAttributes<HTMLImageElement>;
 const heroBags = [
-  getProductMedia('powdered-water', 'detail'),
-  getProductMedia('protein-powder', 'card'),
-  getProductMedia('powdered-campfire', 'card'),
-].filter(Boolean);
+  {
+    imageSetId: 'powdered-water',
+    name: 'Powdered Water',
+    category: 'Impossible',
+    quantity: 'Conceptual quantity',
+  },
+  {
+    imageSetId: 'protein-powder',
+    name: 'Protein Powder',
+    category: 'Pantry Staples',
+    quantity: '1kg',
+  },
+  {
+    imageSetId: 'powdered-campfire',
+    name: 'Powdered Campfire',
+    category: 'Outdoors',
+    quantity: '200g',
+  },
+].flatMap((bag) => {
+  const visual = getProductVisual(bag.imageSetId);
+  return visual ? [{ ...bag, visual }] : [];
+});
 
 export function HeroSection() {
   return (
@@ -48,19 +63,22 @@ export function HeroSection() {
       </div>
       <div className="powder-hero-art relative min-h-72 overflow-hidden bg-surface-soft lg:min-h-full">
         <div aria-hidden="true" className="powder-measurements absolute inset-4" />
-        {heroBags.map((image, index) =>
-          image ? (
-            <img
-              key={image.src}
-              src={image.src}
-              width={image.width}
-              height={image.height}
-              alt={index === 0 ? image.alt : ''}
-              className={`powder-hero-bag powder-hero-bag-${index} absolute object-contain mix-blend-multiply`}
-              {...(index === 0 ? heroImagePriority : { loading: 'lazy' })}
-            />
-          ) : null,
-        )}
+        {heroBags.map((bag, index) => (
+          <BagArtwork
+            key={bag.imageSetId}
+            shape="paper-square"
+            decoration="paired-ovals"
+            name={bag.name}
+            category={bag.category}
+            quantity={bag.quantity}
+            batchCode={bag.visual.batchCode}
+            mark={bag.visual.mark}
+            accent={bag.visual.labelColor}
+            powderAccent={bag.visual.powderColor}
+            ariaLabel={index === 0 ? `${bag.name} powder bag` : ''}
+            className={`powder-hero-bag powder-hero-bag-${index} absolute object-contain mix-blend-multiply`}
+          />
+        ))}
       </div>
     </section>
   );

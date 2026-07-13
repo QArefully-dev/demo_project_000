@@ -16,6 +16,7 @@ import { AccountPage } from './features/account/AccountPage';
 import { WishlistPage } from './features/wishlist/WishlistPage';
 import { MailboxPage } from './features/mailbox/MailboxPage';
 import { NotFoundPage } from './features/notFound/NotFoundPage';
+import { BagDesignsPage } from './features/designs/BagDesignsPage';
 
 export default function App() {
   return (
@@ -49,6 +50,7 @@ export default function App() {
           }
         />
         <Route path="/mailbox" element={<MailboxPage />} />
+        <Route path="/bag-designs" element={<BagDesignsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

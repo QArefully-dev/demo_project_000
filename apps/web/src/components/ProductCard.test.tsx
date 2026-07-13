@@ -87,7 +87,7 @@ describe('ProductCard', () => {
   it('links image and title to the product while leaving wishlist and cart actions separate', () => {
     renderCard();
 
-    expect(screen.getByRole('link', { name: 'Contract image' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Powdered Water powder bag' })).toHaveAttribute(
       'href',
       '/products/powdered-water-1',
     );

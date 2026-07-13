@@ -1,9 +1,12 @@
 export { CONTRACTS_VERSION } from './version.js';
 export {
   PRODUCT_MEDIA_REGISTRY,
+  PRODUCT_VISUAL_REGISTRY,
   getProductMedia,
   getProductMediaSet,
+  getProductVisual,
   type GeneratedProductImage,
+  type GeneratedProductVisual,
   type ProductMediaRole,
 } from './productMediaRegistry.js';
 export {

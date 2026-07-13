@@ -9,6 +9,13 @@ export type GeneratedProductImage = Readonly<{
   role: ProductMediaRole;
 }>;
 
+export type GeneratedProductVisual = Readonly<{
+  labelColor: string;
+  powderColor: string;
+  mark: string;
+  batchCode: string;
+}>;
+
 const registry = {
   'protein-powder': {
     thumbnail: {
@@ -912,6 +919,279 @@ const registry = {
   },
 } as const;
 
+const visualRegistry = {
+  'protein-powder': {
+    labelColor: '#d9583b',
+    powderColor: '#f4dfb5',
+    mark: 'P',
+    batchCode: 'PAN-01',
+  },
+  'powdered-oats': {
+    labelColor: '#d5a12d',
+    powderColor: '#dac18b',
+    mark: 'O',
+    batchCode: 'PAN-02',
+  },
+  'cocoa-powder': {
+    labelColor: '#71412c',
+    powderColor: '#6a3828',
+    mark: 'C',
+    batchCode: 'PAN-03',
+  },
+  'powdered-peanut-butter': {
+    labelColor: '#d68132',
+    powderColor: '#d5ad68',
+    mark: 'PB',
+    batchCode: 'PAN-04',
+  },
+  'tomato-powder': {
+    labelColor: '#c9483d',
+    powderColor: '#d85643',
+    mark: 'T',
+    batchCode: 'PAN-05',
+  },
+  'mushroom-powder': {
+    labelColor: '#8a6847',
+    powderColor: '#9a7e57',
+    mark: 'M',
+    batchCode: 'PAN-06',
+  },
+  'roasted-garlic-powder': {
+    labelColor: '#b67e2c',
+    powderColor: '#d8bf85',
+    mark: 'G',
+    batchCode: 'PAN-07',
+  },
+  'electrolyte-powder': {
+    labelColor: '#2476a8',
+    powderColor: '#b8dc48',
+    mark: 'E',
+    batchCode: 'PER-01',
+  },
+  'recovery-cocoa': {
+    labelColor: '#51362f',
+    powderColor: '#8b583e',
+    mark: 'RC',
+    batchCode: 'PER-02',
+  },
+  'beetroot-powder': {
+    labelColor: '#a82d4b',
+    powderColor: '#bd3555',
+    mark: 'B',
+    batchCode: 'PER-03',
+  },
+  'pea-protein-powder': {
+    labelColor: '#658a47',
+    powderColor: '#c5d69c',
+    mark: 'PP',
+    batchCode: 'PER-04',
+  },
+  'banana-powder': {
+    labelColor: '#e0b82f',
+    powderColor: '#e5ce65',
+    mark: 'B',
+    batchCode: 'PER-05',
+  },
+  'oat-milk-powder': {
+    labelColor: '#b8894b',
+    powderColor: '#e3d2b0',
+    mark: 'OM',
+    batchCode: 'PER-06',
+  },
+  'matcha-powder': {
+    labelColor: '#476b35',
+    powderColor: '#77a94f',
+    mark: 'M',
+    batchCode: 'DRK-01',
+  },
+  'coffee-powder': {
+    labelColor: '#56382d',
+    powderColor: '#8a5b3d',
+    mark: 'C',
+    batchCode: 'DRK-02',
+  },
+  'strawberry-milk-powder': {
+    labelColor: '#d85475',
+    powderColor: '#ef9aac',
+    mark: 'SM',
+    batchCode: 'DRK-03',
+  },
+  'lemonade-powder': {
+    labelColor: '#d4ad25',
+    powderColor: '#f1e36e',
+    mark: 'L',
+    batchCode: 'DRK-04',
+  },
+  'chai-powder': {
+    labelColor: '#a85e29',
+    powderColor: '#c98950',
+    mark: 'CH',
+    batchCode: 'DRK-05',
+  },
+  'cherry-soda-powder': {
+    labelColor: '#b52d45',
+    powderColor: '#dc4862',
+    mark: 'CS',
+    batchCode: 'DRK-06',
+  },
+  'laundry-powder': {
+    labelColor: '#2b789d',
+    powderColor: '#e7eef0',
+    mark: 'LP',
+    batchCode: 'HOU-01',
+  },
+  'dishwasher-powder': {
+    labelColor: '#438e89',
+    powderColor: '#e2eee0',
+    mark: 'DP',
+    batchCode: 'HOU-02',
+  },
+  'carpet-refresh-powder': {
+    labelColor: '#795b98',
+    powderColor: '#c8b5d5',
+    mark: 'CR',
+    batchCode: 'HOU-03',
+  },
+  'window-powder': {
+    labelColor: '#4c96b4',
+    powderColor: '#b6e0ec',
+    mark: 'W',
+    batchCode: 'HOU-04',
+  },
+  'sock-drawer-powder': {
+    labelColor: '#7d579a',
+    powderColor: '#c1a8d1',
+    mark: 'SD',
+    batchCode: 'HOU-05',
+  },
+  'bookshelf-dusting-powder': {
+    labelColor: '#8b7655',
+    powderColor: '#d2c29f',
+    mark: 'BD',
+    batchCode: 'HOU-06',
+  },
+  'mop-bucket-powder': {
+    labelColor: '#357f7d',
+    powderColor: '#acd5ce',
+    mark: 'MB',
+    batchCode: 'HOU-07',
+  },
+  'powdered-campfire': {
+    labelColor: '#b6452d',
+    powderColor: '#715044',
+    mark: 'CF',
+    batchCode: 'OUT-01',
+  },
+  'powdered-beach': {
+    labelColor: '#2f97a9',
+    powderColor: '#e3cb8c',
+    mark: 'B',
+    batchCode: 'OUT-02',
+  },
+  'trail-dust-powder': {
+    labelColor: '#557447',
+    powderColor: '#9a8261',
+    mark: 'TD',
+    batchCode: 'OUT-03',
+  },
+  'morning-fog-powder': {
+    labelColor: '#69879b',
+    powderColor: '#d3dfe3',
+    mark: 'MF',
+    batchCode: 'OUT-04',
+  },
+  'pine-needle-powder': {
+    labelColor: '#38634d',
+    powderColor: '#7b9b69',
+    mark: 'PN',
+    batchCode: 'OUT-05',
+  },
+  'summit-air-powder': {
+    labelColor: '#557da8',
+    powderColor: '#d4e3ed',
+    mark: 'SA',
+    batchCode: 'OUT-06',
+  },
+  'powdered-house': {
+    labelColor: '#a96d46',
+    powderColor: '#d6c1a8',
+    mark: 'H',
+    batchCode: 'QUE-01',
+  },
+  'powdered-wifi': {
+    labelColor: '#3e75ad',
+    powderColor: '#a4c8e4',
+    mark: 'WF',
+    batchCode: 'QUE-02',
+  },
+  'powdered-tuesday': {
+    labelColor: '#4e77a7',
+    powderColor: '#bbc9da',
+    mark: 'TU',
+    batchCode: 'QUE-03',
+  },
+  'powdered-meeting': {
+    labelColor: '#5e6472',
+    powderColor: '#b7bac1',
+    mark: 'MT',
+    batchCode: 'QUE-04',
+  },
+  'powdered-spare-key': {
+    labelColor: '#9a7727',
+    powderColor: '#d3b969',
+    mark: 'SK',
+    batchCode: 'QUE-05',
+  },
+  'powdered-queue': {
+    labelColor: '#7a5e8f',
+    powderColor: '#c7b4d4',
+    mark: 'Q',
+    batchCode: 'QUE-06',
+  },
+  'powdered-five-more-minutes': {
+    labelColor: '#62508d',
+    powderColor: '#b7a2d4',
+    mark: '5M',
+    batchCode: 'IMP-01',
+  },
+  'powdered-gravity': {
+    labelColor: '#393e62',
+    powderColor: '#8288ae',
+    mark: 'G',
+    batchCode: 'IMP-02',
+  },
+  'powdered-silence': {
+    labelColor: '#55555e',
+    powderColor: '#d9d8d1',
+    mark: 'S',
+    batchCode: 'IMP-03',
+  },
+  'powdered-moonlight': {
+    labelColor: '#596d9d',
+    powderColor: '#d8d8e8',
+    mark: 'ML',
+    batchCode: 'IMP-04',
+  },
+  'powdered-weekend': {
+    labelColor: '#dd8150',
+    powderColor: '#edbc75',
+    mark: 'WE',
+    batchCode: 'IMP-05',
+  },
+  'powdered-horizon': {
+    labelColor: '#b46851',
+    powderColor: '#e4b978',
+    mark: 'HZ',
+    batchCode: 'IMP-06',
+  },
+  'powdered-water': {
+    labelColor: '#287fa6',
+    powderColor: '#b9e2ee',
+    mark: 'H2O',
+    batchCode: 'IMP-07',
+  },
+} as const;
+
 export const PRODUCT_MEDIA_REGISTRY: Readonly<
   Record<string, Readonly<Record<ProductMediaRole, GeneratedProductImage>>>
 > = Object.fromEntries(
@@ -922,6 +1202,9 @@ export const PRODUCT_MEDIA_REGISTRY: Readonly<
     ) as Readonly<Record<ProductMediaRole, GeneratedProductImage>>,
   ]),
 );
+
+export const PRODUCT_VISUAL_REGISTRY: Readonly<Record<string, GeneratedProductVisual>> =
+  visualRegistry;
 
 export function getProductMedia(
   imageSetId: string | null | undefined,
@@ -935,4 +1218,10 @@ export function getProductMediaSet(
 ): readonly GeneratedProductImage[] {
   const media = imageSetId ? PRODUCT_MEDIA_REGISTRY[imageSetId] : undefined;
   return media ? [media.thumbnail, media.card, media.detail] : [];
+}
+
+export function getProductVisual(
+  imageSetId: string | null | undefined,
+): GeneratedProductVisual | undefined {
+  return imageSetId ? PRODUCT_VISUAL_REGISTRY[imageSetId] : undefined;
 }

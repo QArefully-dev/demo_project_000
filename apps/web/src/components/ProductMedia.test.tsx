@@ -26,15 +26,31 @@ const product = (overrides: Partial<Product> = {}): Product => ({
 });
 
 describe('ProductMedia', () => {
-  it('renders API-supplied image metadata with explicit dimensions and loading priority', () => {
+  it('renders the locked data-driven bag for a catalogued image set', () => {
     render(<ProductMedia product={product()} loading="eager" fetchPriority="high" />);
 
-    const image = screen.getByRole('img', { name: 'Contract image' });
-    expect(image).toHaveAttribute('src', '/contract-image.webp');
-    expect(image).toHaveAttribute('width', '720');
-    expect(image).toHaveAttribute('height', '720');
-    expect(image).toHaveAttribute('loading', 'eager');
-    expect(image).toHaveAttribute('fetchpriority', 'high');
+    const artwork = screen.getByRole('img', { name: 'Powdered Water powder bag' });
+    expect(artwork.tagName).toBe('svg');
+    expect(artwork).toHaveAttribute('viewBox', '0 0 720 720');
+    expect(artwork).toHaveTextContent('POWDERED');
+    expect(artwork).toHaveTextContent('WATER');
+  });
+
+  it('balances long product names across the generated label', () => {
+    render(
+      <ProductMedia
+        product={product({
+          name: 'Powdered Five More Minutes',
+          imageSetId: 'powdered-five-more-minutes',
+        })}
+      />,
+    );
+
+    const artwork = screen.getByRole('img', {
+      name: 'Powdered Five More Minutes powder bag',
+    });
+    expect(artwork).toHaveTextContent('POWDERED FIVE');
+    expect(artwork).toHaveTextContent('MORE MINUTES');
   });
 
   it('uses a deterministic SVG only when the API record has no usable image', () => {
@@ -52,7 +68,12 @@ describe('ProductMedia', () => {
 
   it('switches to the deterministic fallback after an image request error', () => {
     const onError = vi.fn();
-    render(<ProductMedia product={product()} onError={onError} />);
+    render(
+      <ProductMedia
+        product={product({ imageSetId: 'retired-set', category: 'unknown' })}
+        onError={onError}
+      />,
+    );
 
     fireEvent.error(screen.getByRole('img', { name: 'Contract image' }));
 

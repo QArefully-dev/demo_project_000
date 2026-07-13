@@ -4,12 +4,12 @@ import type { Product } from '@shop/contracts';
 import { describe, expect, it } from 'vitest';
 import { ProductGallery } from './ProductGallery';
 
-const product = (images: Product['images']): Product => ({
+const product = (images: Product['images'], imageSetId = 'powdered-water'): Product => ({
   id: 'powdered-water',
   name: 'Powdered Water',
   description: 'Just-add-water water powder, 300g. Dry until required.',
   priceCents: 12999,
-  imageSetId: 'powdered-water',
+  imageSetId,
   images,
   category: 'Impossible',
   stock: 8,
@@ -29,25 +29,25 @@ describe('ProductGallery', () => {
     render(<ProductGallery product={product([primaryImage])} />);
 
     expect(screen.queryByRole('button', { name: /view image/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'Powdered Water powder bag' })).toHaveAttribute(
-      'loading',
-      'eager',
-    );
+    expect(screen.getByRole('img', { name: 'Powdered Water powder bag' }).tagName).toBe('svg');
   });
 
   it('selects images by click and keyboard while keeping the selected thumbnail focused', async () => {
     const user = userEvent.setup();
     render(
       <ProductGallery
-        product={product([
-          primaryImage,
-          {
-            src: '/images/powdered-water-side.webp',
-            alt: 'Powdered Water side label',
-            width: 1200,
-            height: 1200,
-          },
-        ])}
+        product={product(
+          [
+            primaryImage,
+            {
+              src: '/images/powdered-water-side.webp',
+              alt: 'Powdered Water side label',
+              width: 1200,
+              height: 1200,
+            },
+          ],
+          'retired-set',
+        )}
       />,
     );
 
