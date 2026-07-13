@@ -2,7 +2,7 @@
 
 ## Project
 
-Local department-store application for QA education and large-repository agent demos.
+Local production-style department-store codebase for QA education and large-repository agent demos. Non-live demo runtime; production implementation defaults.
 
 Priorities:
 
@@ -12,11 +12,13 @@ Priorities:
 - deterministic local execution
 - low setup friction
 - clear code navigation for humans and agents
+- production-grade migrations, validation, authorization, transactions, and error handling
 
 ## Context Sources
 
 - `CLAUDE.md`: durable repository guardrails
 - `plans/demo_project_high_level_plan.md`: current product direction, constraints, growth strategy
+- `plans/catalog_reviews_audit_seed_content_implementation_plan.md`: active catalog, review, audit, seed, and content expansion
 - task-specific plan or specification: named scope, acceptance criteria, sequencing
 - code, manifests, migrations: current implementation truth
 
@@ -77,6 +79,8 @@ Design rules:
 - make smallest coherent change satisfying current scope
 - keep current public behavior unless task requests change
 - avoid empty scaffolding, speculative abstraction, vendored code, generated-code padding
+- do not use demo status to justify shortcuts in schema design, authorization, validation, transactions, or data integrity
+- simulated local integrations replace live services; surrounding code still follows production boundaries
 - do not edit `reference/` or `.cursor/` unless task explicitly includes them
 - intentional course-visible behavior change -> inspect affected course artifacts before implementation
 

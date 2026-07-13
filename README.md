@@ -1,6 +1,6 @@
 # Shop Qarefully v000
 
-Small e-commerce learning-demo application — local setup only, no external services.
+Production-style department-store demo for QA education and repository-scale engineering exercises. Local and non-live by design; no external services required.
 
 ## Prerequisites
 

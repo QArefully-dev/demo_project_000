@@ -4,7 +4,7 @@ Status: current product direction.
 
 ## Purpose
 
-Single local sample project for course exercises and large-repository harness demos.
+Local, production-style department-store codebase for course exercises and large-repository harness demos. Deployment remains non-live demo; code follows production defaults.
 
 Goals:
 
@@ -15,6 +15,8 @@ Goals:
 - meaningful growth to 150k+ authored LOC
 - rich agentic engineering and QA tasks
 - additive growth; no rewrite of current storefront
+- production-grade migrations, validation, authorization, transactions, error handling, and data integrity
+- simulated local integrations without production deployment obligations
 
 ## Product Direction
 
@@ -53,7 +55,8 @@ Avoid visible platform complexity:
 - external services: none
 - implemented: auth, catalog, search, filters, sorting, product pages, cart, promotions, checkout, simulated payment, orders, favourites, account, dev mailbox
 - seed: deterministic products, users, promotions, favourites
-- tests: basic unit and SQLite integration baseline required; API and E2E coverage reserved for course
+- tests: focused unit and SQLite integration baseline required; broad API and E2E coverage reserved for course
+- active expansion: `plans/catalog_reviews_audit_seed_content_implementation_plan.md`
 
 ## Hard Constraints
 
@@ -66,6 +69,7 @@ Avoid visible platform complexity:
 - SQLite remains default local database
 - integer minor units for money; backend authoritative
 - deterministic reset and seed
+- production code standards apply despite demo-only runtime
 - modern desktop UI at `1920x1080`, `1920x1200`, `3840x2160`
 - preserve course behavior: frontend five-item promo gate in `cartValidation.ts`; backend promotion rules; `SAVE10` remains 10% with five-item minimum
 
@@ -99,7 +103,7 @@ Each domain may contain:
 - validation and error definitions
 - persistence adapters
 - domain events
-- small test helpers
+- focused test helpers
 - basic unit tests for critical pure rules
 - basic SQLite integration tests for persistence and transactions
 
@@ -109,12 +113,29 @@ Build vertical slices:
 
 Avoid empty scaffolding, copied framework internals, vendored projects, generated-code padding, duplicate abstractions.
 
+## Active Expansion
+
+Implementation plan: `plans/catalog_reviews_audit_seed_content_implementation_plan.md`.
+
+Scope:
+
+- product variants, specifications, bundles, comparison
+- customer reviews and verified-purchase summaries
+- deterministic similar products
+- price, date, name filters and stable sorting
+- append-only auditing
+- deterministic named seed scenarios and validation tooling
+- help, policy, FAQ, shipping, returns, size-guide pages
+- focused core unit and SQLite integration tests
+
 ## Expansion Order
 
-1. Product variants and richer catalog
+1. Active catalog and review expansion
    - sizes, colors, capacities, SKUs
-   - variant price and stock
-   - specifications, bundles, comparisons, recently viewed
+   - variant price and stock, specifications, bundles, comparisons
+   - customer reviews, deterministic similar products
+   - price, date, name filtering and stable sorting
+   - append-only audit events, seed scenarios, customer help and policy content
 2. Order history and lifecycle
    - processing -> packed -> shipped -> delivered
    - cancellation, split shipment, delivery failure, tracking events
@@ -126,14 +147,14 @@ Avoid empty scaffolding, copied framework internals, vendored projects, generate
    - saved addresses, billing address, delivery methods, estimates, gift options
 6. Pricing and promotions
    - scheduled sales, category offers, stacking, gift cards, loyalty points
-7. Reviews
-   - verified purchases, moderation, helpful votes, rating aggregation
+7. Review depth
+   - moderation workflows, helpful votes, abuse controls, aggregate maintenance
 8. Account depth
    - addresses, sessions, preferences, data export, account deletion
 9. Async behavior
    - local job queue, notifications, retry policy, captured webhooks, failure injection
 10. Secondary admin
-   - products, orders, refunds, reviews, users, feature flags, audit log
+   - products, orders, refunds, reviews, users, feature flags, expanded audit tooling
 
 ## Agentic AI and QA Surface
 
@@ -191,7 +212,7 @@ Excluded:
 - load or performance tests
 - broad coverage target
 
-Keep suite small, stable, fast, and obvious. Test only critical happy paths, invariants, and one or two high-risk failures per selected rule. Course owns expansion into full testing strategy.
+Keep suite focused, stable, fast, and obvious. Test only critical happy paths, invariants, and one or two high-risk failures per selected rule. Course owns expansion into full testing strategy.
 
 ## LOC Target
 
