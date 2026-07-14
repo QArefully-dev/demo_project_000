@@ -299,7 +299,9 @@ describe('CheckoutPage', () => {
     await completeCard(user);
 
     await user.click(screen.getByRole('button', { name: 'Simulate payment' }));
-    await screen.findByText('Mix prices have changed. Review and accept updated prices before paying.');
+    await screen.findByText(
+      'Mix prices have changed. Review and accept updated prices before paying.',
+    );
     expect(screen.getByText('$12.00 → $14.00')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Accept updated price' }));
     await waitFor(() => expect(requoteMix).toHaveBeenCalledWith(mixedCart.mixItems[0]!.mixId));

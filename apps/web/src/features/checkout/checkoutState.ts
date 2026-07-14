@@ -170,7 +170,12 @@ type QuoteMixItem = {
   quantity: number;
   lineTotalCents: number;
 };
-type QuoteCart = { id: string; subtotalCents: number; items: QuoteItem[]; mixItems: QuoteMixItem[] };
+type QuoteCart = {
+  id: string;
+  subtotalCents: number;
+  items: QuoteItem[];
+  mixItems: QuoteMixItem[];
+};
 
 /** Stable against rendering and cart-item ordering. */
 export function createCartQuoteKey(cart: QuoteCart | null): string | null {
@@ -180,8 +185,9 @@ export function createCartQuoteKey(cart: QuoteCart | null): string | null {
     .map(({ productId, quantity, lineTotalCents }) => `${productId}:${quantity}:${lineTotalCents}`);
   const mixLines = [...cart.mixItems]
     .sort((left, right) => left.mixId.localeCompare(right.mixId))
-    .map(({ mixId, priceVersion, quantity, lineTotalCents }) =>
-      `${mixId}:${priceVersion}:${quantity}:${lineTotalCents}`,
+    .map(
+      ({ mixId, priceVersion, quantity, lineTotalCents }) =>
+        `${mixId}:${priceVersion}:${quantity}:${lineTotalCents}`,
     );
   return `${cart.id}:${cart.subtotalCents}:${lines.join('|')}:${mixLines.join('|')}`;
 }

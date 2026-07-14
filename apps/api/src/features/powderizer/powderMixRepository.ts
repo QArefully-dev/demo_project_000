@@ -109,8 +109,19 @@ export function createPowderMixRepository(db: Database.Database): PowderMixRepos
           mix.components.push(component);
           continue;
         }
-        const { product_id, percentage, allocated_grams, product_name, ...powderMix } = row;
-        mixes.set(row.id, { ...powderMix, components: [component] });
+        mixes.set(row.id, {
+          id: row.id,
+          cart_id: row.cart_id,
+          quantity: row.quantity,
+          bag_size_grams: row.bag_size_grams,
+          fineness: row.fineness,
+          custom_label: row.custom_label,
+          price_version: row.price_version,
+          quoted_unit_price_cents: row.quoted_unit_price_cents,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+          components: [component],
+        });
       }
       return [...mixes.values()];
     },

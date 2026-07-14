@@ -35,6 +35,7 @@ function product(id: string): Product {
     stock: 5,
     slug: `product-${id}`,
     salesCount: 0,
+    mixable: false,
   };
 }
 

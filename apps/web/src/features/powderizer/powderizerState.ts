@@ -70,7 +70,11 @@ function clearQuote(state: PowderizerState, config: BuilderConfig): PowderizerSt
 export function powderizerReducer(state: PowderizerState, event: PowderizerEvent): PowderizerState {
   switch (event.type) {
     case 'component-added': {
-      if (state.config.components.length >= 5 || state.config.components.some(({ productId }) => productId === event.productId)) return state;
+      if (
+        state.config.components.length >= 5 ||
+        state.config.components.some(({ productId }) => productId === event.productId)
+      )
+        return state;
       return clearQuote(state, {
         ...state.config,
         components: [...state.config.components, { productId: event.productId, percentage: 1 }],
@@ -79,7 +83,9 @@ export function powderizerReducer(state: PowderizerState, event: PowderizerEvent
     case 'component-removed':
       return clearQuote(state, {
         ...state.config,
-        components: state.config.components.filter(({ productId }) => productId !== event.productId),
+        components: state.config.components.filter(
+          ({ productId }) => productId !== event.productId,
+        ),
       });
     case 'percentage-changed':
       return clearQuote(state, {
@@ -91,7 +97,10 @@ export function powderizerReducer(state: PowderizerState, event: PowderizerEvent
         ),
       });
     case 'equal-split':
-      return clearQuote(state, { ...state.config, components: equalSplit(state.config.components) });
+      return clearQuote(state, {
+        ...state.config,
+        components: equalSplit(state.config.components),
+      });
     case 'bag-size-changed':
       return clearQuote(state, { ...state.config, bagSizeGrams: event.bagSizeGrams });
     case 'fineness-changed':
@@ -101,7 +110,10 @@ export function powderizerReducer(state: PowderizerState, event: PowderizerEvent
     case 'edit-hydrated':
       return {
         ...clearQuote(state, {
-          components: event.item.components.map(({ productId, percentage }) => ({ productId, percentage })),
+          components: event.item.components.map(({ productId, percentage }) => ({
+            productId,
+            percentage,
+          })),
           bagSizeGrams: event.item.bagSizeGrams,
           fineness: event.item.fineness,
           customLabel: event.item.customLabel ?? '',
@@ -110,25 +122,57 @@ export function powderizerReducer(state: PowderizerState, event: PowderizerEvent
         editError: null,
       };
     case 'edit-missing':
-      return { ...state, editMixId: event.mixId, editError: 'This custom mix is no longer in your cart.' };
+      return {
+        ...state,
+        editMixId: event.mixId,
+        editError: 'This custom mix is no longer in your cart.',
+      };
     case 'edit-cleared':
       return initialPowderizerState();
     case 'quote-started':
       return {
         ...state,
-        quote: { status: 'loading', key: event.key, requestId: event.requestId, quote: null, error: null },
+        quote: {
+          status: 'loading',
+          key: event.key,
+          requestId: event.requestId,
+          quote: null,
+          error: null,
+        },
       };
     case 'quote-succeeded':
-      if (state.quote.status !== 'loading' || state.quote.key !== event.key || state.quote.requestId !== event.requestId) return state;
+      if (
+        state.quote.status !== 'loading' ||
+        state.quote.key !== event.key ||
+        state.quote.requestId !== event.requestId
+      )
+        return state;
       return {
         ...state,
-        quote: { status: 'ready', key: event.key, requestId: event.requestId, quote: event.quote, error: null },
+        quote: {
+          status: 'ready',
+          key: event.key,
+          requestId: event.requestId,
+          quote: event.quote,
+          error: null,
+        },
       };
     case 'quote-failed':
-      if (state.quote.status !== 'loading' || state.quote.key !== event.key || state.quote.requestId !== event.requestId) return state;
+      if (
+        state.quote.status !== 'loading' ||
+        state.quote.key !== event.key ||
+        state.quote.requestId !== event.requestId
+      )
+        return state;
       return {
         ...state,
-        quote: { status: 'error', key: event.key, requestId: event.requestId, quote: null, error: event.error },
+        quote: {
+          status: 'error',
+          key: event.key,
+          requestId: event.requestId,
+          quote: null,
+          error: event.error,
+        },
       };
     case 'quote-retry-requested':
       if (state.quote.status !== 'error') return state;
@@ -163,14 +207,21 @@ export function graphemeCount(value: string): number {
 
 /** Browser-side feedback only. Server validation remains authoritative. */
 export function validateBuilderConfig(config: BuilderConfig): string | null {
-  if (config.components.length < 2 || config.components.length > 5) return 'Choose between 2 and 5 powders.';
-  if (new Set(config.components.map(({ productId }) => productId)).size !== config.components.length) return 'Choose each powder only once.';
-  if (config.components.some(({ percentage }) => !Number.isInteger(percentage) || percentage < 1)) return 'Each ratio must be a positive whole number.';
-  if (config.components.reduce((total, { percentage }) => total + percentage, 0) !== 100) return 'Ratios must total 100%.';
+  if (config.components.length < 2 || config.components.length > 5)
+    return 'Choose between 2 and 5 powders.';
+  if (
+    new Set(config.components.map(({ productId }) => productId)).size !== config.components.length
+  )
+    return 'Choose each powder only once.';
+  if (config.components.some(({ percentage }) => !Number.isInteger(percentage) || percentage < 1))
+    return 'Each ratio must be a positive whole number.';
+  if (config.components.reduce((total, { percentage }) => total + percentage, 0) !== 100)
+    return 'Ratios must total 100%.';
   if (![250, 500, 1000].includes(config.bagSizeGrams)) return 'Choose a valid bag size.';
   if (!['coarse', 'standard', 'fine'].includes(config.fineness)) return 'Choose a valid fineness.';
   const label = config.customLabel.trim().normalize('NFC');
-  if (graphemeCount(label) > 40 || /[<>&\p{Cc}\p{Cf}]/u.test(label)) return 'Label contains unsupported characters.';
+  if (graphemeCount(label) > 40 || /[<>&\p{Cc}\p{Cf}]/u.test(label))
+    return 'Label contains unsupported characters.';
   return null;
 }
 

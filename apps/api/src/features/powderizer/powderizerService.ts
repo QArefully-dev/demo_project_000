@@ -21,11 +21,15 @@ import {
 } from './powderizerTypes.js';
 
 export type PowderMixMutationResult = 'CART_NOT_FOUND' | 'CART_RESERVED' | 'MIX_NOT_FOUND';
+type PowderMixId = string & { readonly __powderMixId: unique symbol };
 
 export interface PowderizerService {
   config(): PowderizerConfigResponse;
   quote(input: PowderMixConfigInput): PowderMixQuoteContract;
-  create(cartId: string, input: PowderMixConfigInput): string | PowderMixMutationResult;
+  create(
+    cartId: string,
+    input: PowderMixConfigInput,
+  ): PowderMixId | 'CART_NOT_FOUND' | 'CART_RESERVED';
   update(
     cartId: string,
     mixId: string,
@@ -158,7 +162,7 @@ export function createPowderizerService(dependencies: {
     create(cartId, input) {
       return mutate(cartId, () => {
         const mixQuote = quote(input);
-        const mixId = crypto.randomUUID();
+        const mixId = crypto.randomUUID() as PowderMixId;
         dependencies.mixes.create({
           id: mixId,
           cartId,

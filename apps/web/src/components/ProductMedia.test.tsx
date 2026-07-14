@@ -25,6 +25,7 @@ const product = (overrides: Partial<Product> = {}): Product => ({
   slug: 'powdered-water',
   salesCount: 10,
   ...overrides,
+  mixable: overrides.mixable ?? false,
 });
 
 describe('ProductMedia', () => {

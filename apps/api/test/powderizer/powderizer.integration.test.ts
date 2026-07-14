@@ -3,6 +3,12 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import {
+  PowderMixQuote,
+  PowderizerConfigResponse,
+  PowderizerValidationErrorResponse,
+} from '@shop/contracts/powderizer';
+import { Value } from '@sinclair/typebox/value';
 import { buildApp } from '../../src/app.js';
 import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
@@ -49,11 +55,12 @@ void test('Powderizer config and quote are server-authoritative and stateless', 
 
   const config = await app.inject({ method: 'GET', url: '/api/powderizer/config' });
   assert.equal(config.statusCode, 200);
-  assert.equal(config.json().eligibleProducts.length, 19);
-  assert.deepEqual(config.json().bagSizesGrams, [250, 500, 1000]);
-  assert.deepEqual(config.json().finenessValues, ['coarse', 'standard', 'fine']);
-  assert.equal(config.json().labelMaxGraphemes, 40);
-  assert.equal(config.json().priceVersion, 'powderizer-v1');
+  const configBody = Value.Parse(PowderizerConfigResponse, config.json());
+  assert.equal(configBody.eligibleProducts.length, 19);
+  assert.deepEqual(configBody.bagSizesGrams, [250, 500, 1000]);
+  assert.deepEqual(configBody.finenessValues, ['coarse', 'standard', 'fine']);
+  assert.equal(configBody.labelMaxGraphemes, 40);
+  assert.equal(configBody.priceVersion, 'powderizer-v1');
 
   const before = (
     db.prepare('SELECT COUNT(*) AS count FROM powder_mixes').get() as { count: number }
@@ -76,7 +83,7 @@ void test('Powderizer config and quote are server-authoritative and stateless', 
     payload: validMix,
   });
   assert.equal(httpQuote.statusCode, 200);
-  assert.deepEqual(httpQuote.json(), quote);
+  assert.deepEqual(Value.Parse(PowderMixQuote, httpQuote.json()), quote);
 
   const invalidQuote = await app.inject({
     method: 'POST',
@@ -84,7 +91,10 @@ void test('Powderizer config and quote are server-authoritative and stateless', 
     payload: { ...validMix, components: [{ productId: '1', percentage: 100 }] },
   });
   assert.equal(invalidQuote.statusCode, 400);
-  assert.equal(invalidQuote.json().code, 'MIX_COMPONENT_COUNT');
+  assert.equal(
+    Value.Parse(PowderizerValidationErrorResponse, invalidQuote.json()).code,
+    'MIX_COMPONENT_COUNT',
+  );
 });
 
 void test('Powderizer persists anonymous mix mutations atomically and requotes from current prices', (t) => {

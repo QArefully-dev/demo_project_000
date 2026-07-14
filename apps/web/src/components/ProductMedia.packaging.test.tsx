@@ -28,6 +28,7 @@ const product: Product = {
   stock: 10,
   slug: 'powdered-water',
   salesCount: 10,
+  mixable: false,
 };
 
 describe('ProductMedia packaging mapping', () => {

@@ -36,6 +36,7 @@ const product = (overrides: Partial<Product> = {}): Product => ({
   slug: 'powdered-water',
   salesCount: 12,
   ...overrides,
+  mixable: overrides.mixable ?? false,
 });
 
 function renderPage(path = '/products/powdered-water') {

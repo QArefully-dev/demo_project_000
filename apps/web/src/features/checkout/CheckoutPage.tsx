@@ -72,13 +72,23 @@ export function CheckoutPage() {
         </p>
       )}
       {flow.mixConflict?.code === 'MIX_REQUOTE_REQUIRED' && (
-        <div role="alert" className="mb-6 space-y-3 rounded-lg border border-amber-500/50 bg-amber-50 p-4 text-sm">
-          <p className="font-medium">Mix prices have changed. Review and accept updated prices before paying.</p>
+        <div
+          role="alert"
+          className="mb-6 space-y-3 rounded-lg border border-amber-500/50 bg-amber-50 p-4 text-sm"
+        >
+          <p className="font-medium">
+            Mix prices have changed. Review and accept updated prices before paying.
+          </p>
           <ul className="space-y-1 text-muted-foreground">
             {flow.mixConflict.mixes.map((mix) => (
               <li key={mix.mixId}>
                 {formatMoney(mix.oldUnitPriceCents)} → {formatMoney(mix.newUnitPriceCents)}{' '}
-                <Link className="text-primary underline-offset-4 hover:underline" to={`/powderizer?edit=${mix.mixId}`}>Edit mix</Link>
+                <Link
+                  className="text-primary underline-offset-4 hover:underline"
+                  to={`/powderizer?edit=${mix.mixId}`}
+                >
+                  Edit mix
+                </Link>
               </li>
             ))}
           </ul>
@@ -88,13 +98,24 @@ export function CheckoutPage() {
         </div>
       )}
       {flow.mixConflict?.code === 'MIX_STOCK_UNAVAILABLE' && (
-        <div role="alert" className="mb-6 space-y-2 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+        <div
+          role="alert"
+          className="mb-6 space-y-2 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
+        >
           <p>One or more custom mixes no longer have enough ingredient stock.</p>
           <div className="flex flex-wrap gap-3">
             {flow.mixConflict.mixIds.map((mixId) => (
-              <Link key={mixId} className="underline-offset-4 hover:underline" to={`/powderizer?edit=${mixId}`}>Edit mix</Link>
+              <Link
+                key={mixId}
+                className="underline-offset-4 hover:underline"
+                to={`/powderizer?edit=${mixId}`}
+              >
+                Edit mix
+              </Link>
             ))}
-            <Link className="underline-offset-4 hover:underline" to="/cart">Remove from cart</Link>
+            <Link className="underline-offset-4 hover:underline" to="/cart">
+              Remove from cart
+            </Link>
           </div>
         </div>
       )}

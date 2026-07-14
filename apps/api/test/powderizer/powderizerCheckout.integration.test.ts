@@ -149,9 +149,9 @@ void test('mix price and stock conflicts block gateway before reservation', asyn
     orders: createOrderRepository(db),
     mailbox: createMailboxRepository(db),
     gateway: {
-      process: async () => {
+      process: () => {
         calls += 1;
-        return { status: 'success' as const };
+        return Promise.resolve({ status: 'success' as const });
       },
     },
     clock: { now: () => new Date('2026-07-14T10:00:00.000Z') },

@@ -3,6 +3,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { Cart, CreateCartResponse } from '@shop/contracts/cart';
+import { ErrorResponse } from '@shop/contracts/common';
+import { Value } from '@sinclair/typebox/value';
 import { buildApp } from '../../src/app.js';
 import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import { createCartRepository } from '../../src/features/cart/cartRepository.js';
@@ -143,14 +146,14 @@ void test('cart HTTP response preserves product lines and adds mixItems', async 
     rmSync(directory, { recursive: true, force: true });
   });
   const created = await app.inject({ method: 'POST', url: '/api/cart' });
-  const cartId = created.json().cartId as string;
+  const cartId = Value.Parse(CreateCartResponse, created.json()).cartId;
   const product = await app.inject({
     method: 'POST',
     url: `/api/cart/${cartId}/items`,
     payload: { productId: '3' },
   });
   assert.equal(product.statusCode, 200);
-  assert.deepEqual(product.json().mixItems, []);
+  assert.deepEqual(Value.Parse(Cart, product.json()).mixItems, []);
 
   const createdMix = await app.inject({
     method: 'POST',
@@ -165,7 +168,7 @@ void test('cart HTTP response preserves product lines and adds mixItems', async 
     },
   });
   assert.equal(createdMix.statusCode, 200);
-  const cart = createdMix.json();
+  const cart = Value.Parse(Cart, createdMix.json());
   assert.equal(cart.items.length, 1);
   assert.equal(cart.mixItems.length, 1);
   assert.equal(cart.mixItems[0].lineTotalCents, 1715);
@@ -199,7 +202,8 @@ void test('every mix mutation rejects a reserved cart', async (t) => {
     },
   });
   assert.equal(created.statusCode, 200);
-  const mixId = created.json().mixItems[0].mixId as string;
+  const mixId = Value.Parse(Cart, created.json()).mixItems[0]?.mixId;
+  if (!mixId) throw new Error('Expected mix ID');
 
   const paymentKey = crypto.randomUUID();
   db.prepare(
@@ -245,6 +249,9 @@ void test('every mix mutation rejects a reserved cart', async (t) => {
 
   for (const response of await Promise.all(mutations)) {
     assert.equal(response.statusCode, 409);
-    assert.equal(response.json().error, 'Cart is reserved for checkout');
+    assert.equal(
+      Value.Parse(ErrorResponse, response.json()).error,
+      'Cart is reserved for checkout',
+    );
   }
 });

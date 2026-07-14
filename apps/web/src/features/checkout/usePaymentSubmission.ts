@@ -34,7 +34,11 @@ function mixConflict(error: unknown): MixCheckoutConflict | null {
     response.mixIds.every((id) => typeof id === 'string') &&
     response.productIds.every((id) => typeof id === 'string')
   ) {
-    return { code: 'MIX_STOCK_UNAVAILABLE', mixIds: response.mixIds, productIds: response.productIds };
+    return {
+      code: 'MIX_STOCK_UNAVAILABLE',
+      mixIds: response.mixIds,
+      productIds: response.productIds,
+    };
   }
   return null;
 }

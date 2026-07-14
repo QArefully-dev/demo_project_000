@@ -38,6 +38,7 @@ const catalogProduct: Product = {
   stock: 5,
   slug: 'powdered-water',
   salesCount: 0,
+  mixable: false,
 };
 
 function NavigationControls() {

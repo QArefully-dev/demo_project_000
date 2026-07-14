@@ -33,6 +33,10 @@ function sendMutationError(
   void reply.code(404).send({ code: 'MIX_NOT_FOUND', error: 'Mix not found' });
 }
 
+function isCartMutationError(result: string): result is 'CART_NOT_FOUND' | 'CART_RESERVED' {
+  return result === 'CART_NOT_FOUND' || result === 'CART_RESERVED';
+}
+
 /** HTTP entry points for stateless quotes and cart-scoped Powderizer mutations. */
 export default function powderizerRoutes(app: FastifyInstance, { services }: AppContext): void {
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
@@ -85,7 +89,7 @@ export default function powderizerRoutes(app: FastifyInstance, { services }: App
     (request, reply) => {
       try {
         const result = powderizer.create(request.params.cartId, request.body as never);
-        if (result === 'CART_NOT_FOUND' || result === 'CART_RESERVED') {
+        if (isCartMutationError(result)) {
           sendMutationError(reply, result);
           return;
         }

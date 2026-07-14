@@ -46,6 +46,7 @@ const product = (overrides: Partial<Product> = {}): Product => ({
   slug: 'powdered-water',
   salesCount: 12,
   ...overrides,
+  mixable: overrides.mixable ?? false,
 });
 
 function renderPanel(overrides: Partial<ComponentProps<typeof ProductPurchasePanel>> = {}) {

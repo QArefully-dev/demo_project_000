@@ -31,7 +31,8 @@ export function PowderMixCartLineItem({
 
   const updateQuantity = async (quantity: number) => {
     setActionError(null);
-    if (!(await onUpdateQuantity(item.mixId, quantity))) setActionError('Quantity update failed. Try again.');
+    if (!(await onUpdateQuantity(item.mixId, quantity)))
+      setActionError('Quantity update failed. Try again.');
   };
   const remove = async () => {
     setActionError(null);
@@ -46,31 +47,64 @@ export function PowderMixCartLineItem({
       <div className="flex flex-1 flex-col gap-1">
         <p className="text-sm font-medium leading-tight">{mixName(item)}</p>
         <p className="text-xs text-muted-foreground">
-          {item.components.map(({ productName, percentage }) => `${productName} ${percentage}%`).join(' · ')}
+          {item.components
+            .map(({ productName, percentage }) => `${productName} ${percentage}%`)
+            .join(' · ')}
         </p>
         <p className="text-xs text-muted-foreground">
           {item.bagSizeGrams}g · {item.fineness}
         </p>
         <div className="mt-1 flex items-center gap-2">
-          <Button variant="outline" size="icon" className="h-7 w-7" aria-label={`Decrease ${mixName(item)} quantity`} disabled={item.quantity <= 1 || isPending} onClick={() => void updateQuantity(item.quantity - 1)}>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-7 w-7"
+            aria-label={`Decrease ${mixName(item)} quantity`}
+            disabled={item.quantity <= 1 || isPending}
+            onClick={() => void updateQuantity(item.quantity - 1)}
+          >
             <Minus className="h-3 w-3" />
           </Button>
-          <span className="w-8 text-center text-sm" aria-live="polite">{item.quantity}</span>
-          <Button variant="outline" size="icon" className="h-7 w-7" aria-label={`Increase ${mixName(item)} quantity`} disabled={isPending} onClick={() => void updateQuantity(item.quantity + 1)}>
+          <span className="w-8 text-center text-sm" aria-live="polite">
+            {item.quantity}
+          </span>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-7 w-7"
+            aria-label={`Increase ${mixName(item)} quantity`}
+            disabled={isPending}
+            onClick={() => void updateQuantity(item.quantity + 1)}
+          >
             <Plus className="h-3 w-3" />
           </Button>
-          <Link className="text-xs text-primary underline-offset-4 hover:underline" to={`/powderizer?edit=${item.mixId}`}>
+          <Link
+            className="text-xs text-primary underline-offset-4 hover:underline"
+            to={`/powderizer?edit=${item.mixId}`}
+          >
             Edit
           </Link>
         </div>
       </div>
       <div className="flex flex-col items-end gap-1">
         <span className="text-sm font-semibold">{formatMoney(item.lineTotalCents)}</span>
-        <span className="text-xs text-muted-foreground">{formatMoney(item.unitPriceCents)} each</span>
-        <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive" disabled={isPending} onClick={() => void remove()}>
+        <span className="text-xs text-muted-foreground">
+          {formatMoney(item.unitPriceCents)} each
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs text-destructive hover:text-destructive"
+          disabled={isPending}
+          onClick={() => void remove()}
+        >
           {isRemoving ? 'Removing...' : 'Remove'}
         </Button>
-        {actionError && <p role="alert" className="max-w-36 text-right text-xs text-destructive">{actionError}</p>}
+        {actionError && (
+          <p role="alert" className="max-w-36 text-right text-xs text-destructive">
+            {actionError}
+          </p>
+        )}
       </div>
     </div>
   );

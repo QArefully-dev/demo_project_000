@@ -29,6 +29,7 @@ function response(name: string): ProductListPaginatedResponse {
         stock: 1,
         slug: name,
         salesCount: 0,
+        mixable: false,
       },
     ],
     total: 1,

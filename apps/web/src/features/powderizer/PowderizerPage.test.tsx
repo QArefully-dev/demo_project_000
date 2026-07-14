@@ -61,6 +61,28 @@ const config: PowderizerConfigResponse = {
 
 const emptyCart: Cart = { id: cartId, items: [], mixItems: [], totalItems: 0, subtotalCents: 0 };
 
+function cartContext(cart: Cart): ReturnType<typeof useCartContext> {
+  return {
+    cart,
+    cartId,
+    isCartAvailable: true,
+    isLoading: false,
+    isInitializing: false,
+    error: null,
+    pendingActions: {},
+    isActionPending: () => false,
+    addItem: vi.fn(),
+    updateQuantity: vi.fn(),
+    removeItem: vi.fn(),
+    updateMixQuantity: vi.fn(),
+    removeMix: vi.fn(),
+    requoteMix: vi.fn(),
+    refreshCart: vi.fn().mockResolvedValue(true),
+    retryCart: vi.fn().mockResolvedValue(true),
+    clearCart: vi.fn(),
+  };
+}
+
 function quoteFrom(body: {
   components: { productId: string; percentage: number }[];
   bagSizeGrams: 250 | 500 | 1000;
@@ -104,12 +126,7 @@ describe('PowderizerPage', () => {
     vi.resetAllMocks();
     vi.mocked(getPowderizerConfig).mockResolvedValue(config);
     vi.mocked(quotePowderMix).mockImplementation((body) => Promise.resolve(quoteFrom(body)));
-    vi.mocked(useCartContext).mockReturnValue({
-      cart: emptyCart,
-      cartId,
-      isInitializing: false,
-      refreshCart: vi.fn().mockResolvedValue(true),
-    } as ReturnType<typeof useCartContext>);
+    vi.mocked(useCartContext).mockReturnValue(cartContext(emptyCart));
   });
 
   it('blocks 99% and 101% totals, then creates only after a current quote', async () => {
@@ -149,8 +166,8 @@ describe('PowderizerPage', () => {
 
   it('hydrates edit state and submits an update for the existing mix', async () => {
     const user = userEvent.setup();
-    vi.mocked(useCartContext).mockReturnValue({
-      cart: {
+    vi.mocked(useCartContext).mockReturnValue(
+      cartContext({
         ...emptyCart,
         mixItems: [
           {
@@ -173,11 +190,8 @@ describe('PowderizerPage', () => {
             lineTotalCents: 1400,
           },
         ],
-      },
-      cartId,
-      isInitializing: false,
-      refreshCart: vi.fn().mockResolvedValue(true),
-    } as ReturnType<typeof useCartContext>);
+      }),
+    );
     vi.mocked(updatePowderMix).mockResolvedValue(emptyCart);
     renderPage(`/powderizer?edit=${mixId}`);
     await screen.findByText('Editing custom mix');

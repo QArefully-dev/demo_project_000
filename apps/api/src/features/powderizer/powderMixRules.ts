@@ -167,11 +167,15 @@ export function allocatePowderMixGrams(
     if (!recipient) throw new Error('Allocation remainder has no component recipient.');
     recipient.allocatedGrams += 1;
   }
-  return allocations.map(({ discardedNumerator: _discardedNumerator, ...allocation }) => {
+  return allocations.map((allocation) => {
     if (allocation.allocatedGrams <= 0) {
       throw new Error('Validated mix allocation must be positive.');
     }
-    return allocation;
+    return {
+      productId: allocation.productId,
+      percentage: allocation.percentage,
+      allocatedGrams: allocation.allocatedGrams,
+    };
   });
 }
 
