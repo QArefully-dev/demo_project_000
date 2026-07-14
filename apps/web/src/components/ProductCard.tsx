@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { WishlistButton } from '@/components/WishlistButton';
 import { formatMoney } from '@/lib/formatMoney';
-import type { Product } from '@shop/contracts';
+import type { Product } from '@shop/contracts/products';
 import { ProductMedia } from '@/components/ProductMedia';
 
 interface ProductCardProps {
@@ -26,9 +26,7 @@ export function ProductCard({
   const isOnSale =
     product.compareAtPriceCents != null && product.compareAtPriceCents > product.priceCents;
   const isBestseller = product.salesCount >= 250;
-  const packSize = product.description.match(
-    /\b\d+(?:\.\d+)?\s?(?:g|kg)\b|conceptual quantity/i,
-  )?.[0];
+  const packSize = product.packaging?.quantity;
 
   useEffect(() => {
     setActionError(null);
@@ -49,7 +47,6 @@ export function ProductCard({
         >
           <ProductMedia
             product={product}
-            loading="lazy"
             className="h-full w-full object-contain p-4 transition-transform duration-200 group-hover:scale-[1.035] sm:p-5"
           />
         </Link>

@@ -6,7 +6,7 @@ import type {
   BestsellersResponse,
   RelatedResponse,
   ProductQuery,
-} from '@shop/contracts';
+} from '@shop/contracts/products';
 
 /**
  * Products API module.
@@ -22,7 +22,10 @@ export interface GetProductsParams {
   pageSize?: number;
 }
 
-export function getProducts(params?: GetProductsParams): Promise<ProductListPaginatedResponse> {
+export function getProducts(
+  params?: GetProductsParams,
+  signal?: AbortSignal,
+): Promise<ProductListPaginatedResponse> {
   const searchParams = new URLSearchParams();
   if (params?.q) searchParams.set('q', params.q);
   if (params?.category) searchParams.set('category', params.category);
@@ -32,7 +35,7 @@ export function getProducts(params?: GetProductsParams): Promise<ProductListPagi
   if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
 
   const qs = searchParams.toString();
-  return apiFetch<ProductListPaginatedResponse>(`/api/products${qs ? `?${qs}` : ''}`);
+  return apiFetch<ProductListPaginatedResponse>(`/api/products${qs ? `?${qs}` : ''}`, { signal });
 }
 
 export function getProduct(id: string): Promise<ProductDetailResponse> {

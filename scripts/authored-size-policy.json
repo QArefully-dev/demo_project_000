@@ -1,0 +1,8 @@
+{
+  "files": {
+    "apps/web/src/features/checkout/useCheckoutFlow.ts": {
+      "responsibilities": ["checkout browser workflow"]
+    }
+  },
+  "exceptions": {}
+}

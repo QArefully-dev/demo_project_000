@@ -1,7 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import type { Product, PublicUser } from '@shop/contracts';
+import type { Product } from '@shop/contracts/products';
+import type { PublicUser } from '@shop/contracts/auth';
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ProductPurchasePanel } from './ProductPurchasePanel';
@@ -32,14 +33,14 @@ const product = (overrides: Partial<Product> = {}): Product => ({
   priceCents: 12999,
   compareAtPriceCents: 16999,
   imageSetId: 'powdered-water',
-  images: [
-    {
-      src: '/images/powdered-water.webp',
-      alt: 'Powdered Water powder bag',
-      width: 1200,
-      height: 1200,
-    },
-  ],
+  packaging: {
+    labelColor: '#287fa6',
+    powderColor: '#b9e2ee',
+    mark: 'H2O',
+    batchCode: 'IMP-07',
+    quantity: '300g',
+    consumptionLabel: 'Not for consumption',
+  },
   category: 'Impossible',
   stock: 8,
   slug: 'powdered-water',

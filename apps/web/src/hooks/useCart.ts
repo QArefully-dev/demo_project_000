@@ -1,50 +1,52 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Cart } from '@shop/contracts';
+import { useCallback, useEffect, useReducer, useRef } from 'react';
+import type { Cart } from '@shop/contracts/cart';
 import * as api from '../api/cart';
 import { ApiError, isMissingCartError } from '../api/client';
-import { clearCartId, getCartId, setCartId } from '../lib/cartStorage';
+import { clearCartId, getCartId } from '../lib/cartStorage';
+import { createCartClient } from './cartClient';
 
 export type CartAction = 'add' | 'update' | 'remove';
 
-let sharedCartInitialization: Promise<Cart> | null = null;
+type CartStatus = 'initializing' | 'ready' | 'refreshing' | 'error';
 
-function createAndLoadCart(): Promise<Cart> {
-  return api.createCart().then(async ({ cartId }) => {
-    setCartId(cartId);
-    try {
-      return await api.getCart(cartId);
-    } catch (error) {
-      if (getCartId() === cartId) clearCartId();
-      throw error;
+type CartState = {
+  cart: Cart | null;
+  cartId: string | null;
+  error: string | null;
+  pendingActions: Readonly<Record<string, CartAction>>;
+  status: CartStatus;
+};
+
+type CartEvent =
+  | { type: 'start'; status: 'initializing' | 'refreshing' }
+  | { type: 'cart-loaded'; cart: Cart }
+  | { type: 'failed'; error: string }
+  | { type: 'action-started'; productId: string; action: CartAction }
+  | { type: 'action-finished'; productId: string }
+  | { type: 'cleared' };
+
+function cartReducer(state: CartState, event: CartEvent): CartState {
+  switch (event.type) {
+    case 'start':
+      return { ...state, error: null, status: event.status };
+    case 'cart-loaded':
+      return { ...state, cart: event.cart, cartId: event.cart.id, error: null, status: 'ready' };
+    case 'failed':
+      return { ...state, error: event.error, status: 'error' };
+    case 'action-started':
+      return {
+        ...state,
+        error: null,
+        pendingActions: { ...state.pendingActions, [event.productId]: event.action },
+      };
+    case 'action-finished': {
+      const pendingActions = { ...state.pendingActions };
+      delete pendingActions[event.productId];
+      return { ...state, pendingActions };
     }
-  });
-}
-
-function loadOrCreateCart(): Promise<Cart> {
-  if (sharedCartInitialization) return sharedCartInitialization;
-
-  sharedCartInitialization = (async () => {
-    const storedCartId = getCartId();
-    if (storedCartId) {
-      try {
-        return await api.getCart(storedCartId);
-      } catch (error) {
-        if (!isMissingCartError(error)) throw error;
-        if (getCartId() === storedCartId) clearCartId();
-      }
-    }
-
-    return createAndLoadCart();
-  })().finally(() => {
-    sharedCartInitialization = null;
-  });
-
-  return sharedCartInitialization;
-}
-
-function recoverMissingCart(missingCartId: string): Promise<Cart> {
-  if (getCartId() === missingCartId) clearCartId();
-  return loadOrCreateCart();
+    case 'cleared':
+      return { cart: null, cartId: null, error: null, pendingActions: {}, status: 'initializing' };
+  }
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -55,79 +57,87 @@ function getErrorMessage(error: unknown, fallback: string): string {
 }
 
 export function useCart() {
-  const [cartId, setCartIdState] = useState<string | null>(getCartId());
-  const [cart, setCart] = useState<Cart | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isInitializing, setIsInitializing] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [pendingActions, setPendingActions] = useState<Readonly<Record<string, CartAction>>>({});
+  const [state, dispatch] = useReducer(cartReducer, {
+    cart: null,
+    cartId: getCartId(),
+    error: null,
+    pendingActions: {},
+    status: 'initializing',
+  });
+  const cartClientRef = useRef<ReturnType<typeof createCartClient>>();
+  const initializationRef = useRef<Promise<Cart> | null>(null);
+  const recoveryRef = useRef<Promise<Cart> | null>(null);
+  const mutationSequenceRef = useRef(0);
+  const committedMutationSequenceRef = useRef(0);
   const mountedRef = useRef(false);
+  const cartIdRef = useRef<string | null>(getCartId());
 
-  const applyCart = useCallback((nextCart: Cart) => {
-    if (!mountedRef.current) return;
-    setCartIdState(nextCart.id);
-    setCart(nextCart);
-    setError(null);
+  if (!cartClientRef.current) cartClientRef.current = createCartClient();
+
+  const applyCart = useCallback((cart: Cart) => {
+    cartIdRef.current = cart.id;
+    if (mountedRef.current) dispatch({ type: 'cart-loaded', cart });
   }, []);
 
-  const initializeCart = useCallback(async (): Promise<boolean> => {
-    try {
-      applyCart(await loadOrCreateCart());
-      return true;
-    } catch (initializationError) {
-      if (mountedRef.current) {
-        setError(getErrorMessage(initializationError, 'Failed to initialize cart'));
-      }
-      return false;
-    } finally {
-      if (mountedRef.current) setIsInitializing(false);
+  const loadCart = useCallback((): Promise<Cart> => {
+    if (!initializationRef.current) {
+      initializationRef.current = cartClientRef.current!.loadOrCreate().finally(() => {
+        initializationRef.current = null;
+      });
     }
-  }, [applyCart]);
+    return initializationRef.current;
+  }, []);
+
+  const recoverCart = useCallback((missingCartId: string): Promise<Cart> => {
+    if (!recoveryRef.current) {
+      recoveryRef.current = cartClientRef.current!.recoverMissingCart(missingCartId).finally(() => {
+        recoveryRef.current = null;
+      });
+    }
+    return recoveryRef.current;
+  }, []);
+
+  const applyMutationCart = useCallback(
+    (cart: Cart, mutationSequence: number) => {
+      if (mutationSequence < committedMutationSequenceRef.current) return;
+      committedMutationSequenceRef.current = mutationSequence;
+      applyCart(cart);
+    },
+    [applyCart],
+  );
+
+  const initializeCart = useCallback(
+    async (status: 'initializing' | 'refreshing', fallback: string): Promise<boolean> => {
+      if (mountedRef.current) dispatch({ type: 'start', status });
+      try {
+        applyCart(await loadCart());
+        return true;
+      } catch (error) {
+        if (mountedRef.current)
+          dispatch({ type: 'failed', error: getErrorMessage(error, fallback) });
+        return false;
+      }
+    },
+    [applyCart, loadCart],
+  );
 
   useEffect(() => {
     mountedRef.current = true;
-    void initializeCart();
-
+    void initializeCart('initializing', 'Failed to initialize cart');
     return () => {
       mountedRef.current = false;
     };
   }, [initializeCart]);
 
-  const retryCart = useCallback(async (): Promise<boolean> => {
-    if (mountedRef.current) {
-      setError(null);
-      if (cartId) setIsLoading(true);
-      else setIsInitializing(true);
-    }
-    try {
-      applyCart(await loadOrCreateCart());
-      return true;
-    } catch (retryError) {
-      if (mountedRef.current) setError(getErrorMessage(retryError, 'Failed to load cart'));
-      return false;
-    } finally {
-      if (mountedRef.current) {
-        setIsLoading(false);
-        setIsInitializing(false);
-      }
-    }
-  }, [applyCart, cartId]);
+  const retryCart = useCallback(
+    () => initializeCart(cartIdRef.current ? 'refreshing' : 'initializing', 'Failed to load cart'),
+    [initializeCart],
+  );
 
-  const refreshCart = useCallback(async (): Promise<boolean> => {
-    if (mountedRef.current) {
-      setIsLoading(true);
-      setError(null);
-    }
-    try {
-      applyCart(await loadOrCreateCart());
-      return true;
-    } catch (refreshError) {
-      if (mountedRef.current) setError(getErrorMessage(refreshError, 'Failed to refresh cart'));
-      return false;
-    } finally {
-      if (mountedRef.current) setIsLoading(false);
-    }
-  }, [applyCart]);
+  const refreshCart = useCallback(
+    () => initializeCart('refreshing', 'Failed to refresh cart'),
+    [initializeCart],
+  );
 
   const runCartAction = useCallback(
     async (
@@ -136,114 +146,95 @@ export function useCart() {
       operation: (activeCartId: string) => Promise<Cart>,
       retryAfterRecovery: boolean,
     ): Promise<boolean> => {
-      if (mountedRef.current) {
-        setError(null);
-        setPendingActions((current) => ({ ...current, [productId]: action }));
-      }
+      const mutationSequence = ++mutationSequenceRef.current;
+      if (mountedRef.current) dispatch({ type: 'action-started', productId, action });
 
-      let activeCartId = cartId;
       try {
+        let activeCartId = cartIdRef.current;
         if (!activeCartId) {
-          const availableCart = await loadOrCreateCart();
-          activeCartId = availableCart.id;
-          applyCart(availableCart);
+          const cart = await loadCart();
+          activeCartId = cart.id;
+          applyCart(cart);
         }
 
         try {
-          const updatedCart = await operation(activeCartId);
-          if (getCartId() === updatedCart.id) applyCart(updatedCart);
+          const cart = await operation(activeCartId);
+          if (getCartId() === cart.id) applyMutationCart(cart, mutationSequence);
           return true;
-        } catch (actionError) {
-          if (!isMissingCartError(actionError)) throw actionError;
+        } catch (error) {
+          if (!isMissingCartError(error)) throw error;
 
-          const replacementCart = await recoverMissingCart(activeCartId);
+          const replacementCart = await recoverCart(activeCartId);
           applyCart(replacementCart);
           if (!retryAfterRecovery) {
             throw new Error('Your previous cart was no longer available. A new cart is ready.');
           }
 
-          const updatedCart = await operation(replacementCart.id);
-          if (getCartId() === updatedCart.id) applyCart(updatedCart);
+          const cart = await operation(replacementCart.id);
+          if (getCartId() === cart.id) applyMutationCart(cart, mutationSequence);
           return true;
         }
-      } catch (actionError) {
+      } catch (error) {
         if (mountedRef.current) {
-          setError(getErrorMessage(actionError, `Failed to ${action} cart item`));
+          dispatch({
+            type: 'failed',
+            error: getErrorMessage(error, `Failed to ${action} cart item`),
+          });
         }
         return false;
       } finally {
-        if (mountedRef.current) {
-          setPendingActions((current) => {
-            const next = { ...current };
-            delete next[productId];
-            return next;
-          });
-        }
+        if (mountedRef.current) dispatch({ type: 'action-finished', productId });
       }
     },
-    [applyCart, cartId],
+    [applyCart, applyMutationCart, loadCart, recoverCart],
   );
 
   const addItem = useCallback(
-    (productId: string): Promise<boolean> =>
-      runCartAction(
-        'add',
-        productId,
-        (activeCartId) => api.addToCart(activeCartId, productId),
-        true,
-      ),
+    (productId: string) =>
+      runCartAction('add', productId, (cartId) => api.addToCart(cartId, productId), true),
     [runCartAction],
   );
-
   const updateQuantity = useCallback(
-    (productId: string, quantity: number): Promise<boolean> =>
+    (productId: string, quantity: number) =>
       runCartAction(
         'update',
         productId,
-        (activeCartId) => api.updateCartItem(activeCartId, productId, quantity),
+        (cartId) => api.updateCartItem(cartId, productId, quantity),
         false,
       ),
     [runCartAction],
   );
-
   const removeItem = useCallback(
-    (productId: string): Promise<boolean> =>
-      runCartAction(
-        'remove',
-        productId,
-        (activeCartId) => api.removeFromCart(activeCartId, productId),
-        false,
-      ),
+    (productId: string) =>
+      runCartAction('remove', productId, (cartId) => api.removeFromCart(cartId, productId), false),
     [runCartAction],
   );
 
   const clearCart = useCallback(() => {
     clearCartId();
+    cartIdRef.current = null;
     if (!mountedRef.current) return;
-    setCartIdState(null);
-    setCart(null);
-    setError(null);
-    setIsLoading(false);
-    setIsInitializing(true);
-    void initializeCart();
+    dispatch({ type: 'cleared' });
+    void initializeCart('initializing', 'Failed to initialize cart');
   }, [initializeCart]);
 
   const isActionPending = useCallback(
-    (productId: string, action?: CartAction): boolean => {
-      const pendingAction = pendingActions[productId];
+    (productId: string, action?: CartAction) => {
+      const pendingAction = state.pendingActions[productId];
       return action ? pendingAction === action : pendingAction !== undefined;
     },
-    [pendingActions],
+    [state.pendingActions],
   );
 
   return {
-    cart,
-    cartId,
-    isCartAvailable: cart !== null && cartId !== null && !isInitializing,
-    isLoading,
-    isInitializing,
-    error,
-    pendingActions,
+    cart: state.cart,
+    cartId: state.cartId,
+    isCartAvailable:
+      state.cart !== null && state.cartId !== null && state.status !== 'initializing',
+    isLoading: state.status === 'refreshing',
+    isInitializing: state.status === 'initializing',
+    error: state.error,
+    pendingActions: state.pendingActions,
     isActionPending,
     addItem,
     updateQuantity,

@@ -7,7 +7,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { formatMoney } from '@/lib/formatMoney';
 import { getOrder } from '../../api/orders';
-import type { Order } from '@shop/contracts';
+import type { Order } from '@shop/contracts/orders';
 
 export function OrderConfirmationPage() {
   const { orderId } = useParams<{ orderId: string }>();

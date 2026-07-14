@@ -1,7 +1,6 @@
 import { createHash, scryptSync } from 'node:crypto';
-import { PRODUCT_MEDIA_REGISTRY } from '@shop/contracts';
+import { CATALOG_PRODUCTS, validateCatalog } from '@shop/catalog';
 import type Database from 'better-sqlite3';
-import { POWDER_CATALOG, validatePowderCatalog } from './powderCatalog.js';
 
 const USERS = [
   { id: 1, email: 'alice@example.com', display_name: 'Alice', role: 'customer' },
@@ -127,7 +126,7 @@ function seededPassword(email: string): string {
  * insert-only; resetDatabase is the explicit destructive clean-slate path.
  */
 export function seedDatabase(db: Database.Database): void {
-  validatePowderCatalog(POWDER_CATALOG, Object.keys(PRODUCT_MEDIA_REGISTRY));
+  validateCatalog();
 
   const seed = db.transaction(() => {
     const upsertProduct = db.prepare(`
@@ -146,7 +145,7 @@ export function seedDatabase(db: Database.Database): void {
         compare_at_price_cents = excluded.compare_at_price_cents,
         sales_count = excluded.sales_count
     `);
-    for (const product of POWDER_CATALOG) upsertProduct.run(product);
+    for (const product of CATALOG_PRODUCTS) upsertProduct.run(product);
 
     // Existing promo redemption counts must not be reset by a normal seed.
     const insertPromo = db.prepare(`
@@ -184,9 +183,9 @@ export function seedDatabase(db: Database.Database): void {
         count: number;
       }
     ).count;
-    if (canonicalCount !== POWDER_CATALOG.length) {
+    if (canonicalCount !== CATALOG_PRODUCTS.length) {
       throw new Error(
-        `Seed assertion failed: expected ${POWDER_CATALOG.length} canonical powder products, got ${canonicalCount}`,
+        `Seed assertion failed: expected ${CATALOG_PRODUCTS.length} canonical powder products, got ${canonicalCount}`,
       );
     }
   });

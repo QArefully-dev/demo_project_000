@@ -1,5 +1,5 @@
 import { Search } from 'lucide-react';
-import type { ProductQuery } from '@shop/contracts';
+import type { ProductQuery } from '@shop/contracts/products';
 import { Input } from '@/components/ui/input';
 
 interface CatalogToolbarProps {

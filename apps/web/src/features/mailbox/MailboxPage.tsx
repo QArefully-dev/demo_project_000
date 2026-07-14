@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getMailbox } from '@/api/mailbox';
-import type { MailboxMessage } from '@shop/contracts';
+import type { MailboxMessage } from '@shop/contracts/mailbox';
 
 /**
  * Dev mailbox page.
@@ -57,10 +57,10 @@ export function MailboxPage() {
 
   /**
    * Parse the reset link from a mailbox body.
-   * Looks for the http://127.0.0.1:5173/reset-password?token=... pattern.
+   * Looks for a reset-password link in the message body.
    */
   function extractResetLink(body: string): string | null {
-    const match = body.match(/http:\/\/127\.0\.0\.1:5173\/reset-password\?token=[^\s]+/);
+    const match = body.match(/https?:\/\/[^\s]+\/reset-password\?token=[^\s]+/);
     return match ? match[0] : null;
   }
 

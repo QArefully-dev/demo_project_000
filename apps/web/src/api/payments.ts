@@ -1,5 +1,6 @@
 import { apiFetch } from './client';
-import type { PaymentBody, PlaceOrderResponse } from '@shop/contracts';
+import type { PaymentBody } from '@shop/contracts/payments';
+import type { PlaceOrderResponse } from '@shop/contracts/orders';
 
 /**
  * Payment API module.

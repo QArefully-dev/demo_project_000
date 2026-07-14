@@ -18,7 +18,7 @@ npm run dev
 
 Open [http://127.0.0.1:5173](http://127.0.0.1:5173) in your browser.
 
-`npm ci` installs the locked dependencies and builds the shared contracts package automatically.
+`npm ci` installs the locked dependencies and builds the shared contracts and catalog packages automatically.
 
 ## What's Running
 
@@ -48,11 +48,18 @@ SQLite database is created automatically on first `npm run dev` at `data/shop.db
 | `npm run test:unit`  | Run web and API unit tests                                                                          |
 | `npm run test:integration` | Run API SQLite integration tests                                                            |
 | `npm run smoke`      | Run typecheck plus unit and integration tests                                                      |
-| `npm run lint`       | Run ESLint across entire project                                                                    |
+| `npm run lint`       | Enforce import boundaries and report authored files over 300 logical lines                          |
 | `npm run format`     | Check formatting with Prettier                                                                      |
 | `npm run format:fix` | Auto-fix formatting with Prettier                                                                   |
+| `npm run verify`     | Run format, typecheck, lint, tests, and every workspace build                                       |
 
 All scripts run via `npm run` — no separate shell scripts directory needed.
+
+## Architecture
+
+Dependencies flow one way: `@shop/contracts` owns transport schemas, `@shop/catalog` owns canonical catalog and packaging data, the API owns persistence and workflows, and the web app consumes API contracts only. Packages and scripts cannot import app-private source; the web app cannot import API source.
+
+`npm run lint` also reports authored source files above 300 logical lines and fails above 400 unless `scripts/authored-size-policy.json` records a cohesive, single-responsibility exception. Generated files, migrations, fixtures, and framework UI adapters are excluded from this review.
 
 ## Features
 
@@ -153,7 +160,9 @@ demo_project_000/
 │   ├── api/          # Fastify API server (port 3001)
 │   └── web/          # React + Vite frontend (port 5173)
 ├── packages/
-│   └── contracts/    # Shared TypeScript types & schemas
+│   ├── catalog/      # Canonical catalog and packaging data
+│   └── contracts/    # Shared transport schemas and types
+├── scripts/          # Repository quality checks
 ├── data/             # SQLite database (auto-created)
-└── plans/          # Design & implementation plans
+└── plans/            # Design and implementation plans
 ```

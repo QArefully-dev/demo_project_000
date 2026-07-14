@@ -1,11 +1,6 @@
 import { apiFetch } from './client';
-import type { FavouritesListResponse, AddFavouriteBody, SuccessResponse } from '@shop/contracts';
-
-/**
- * Favourites API module — stubs (Wave 0).
- * All endpoints return 501 at this stage.
- * Real implementation deferred to W2.A.
- */
+import type { FavouritesListResponse, AddFavouriteBody } from '@shop/contracts/favourites';
+import type { SuccessResponse } from '@shop/contracts/common';
 
 export function getFavourites(): Promise<FavouritesListResponse> {
   return apiFetch<FavouritesListResponse>('/api/favourites');

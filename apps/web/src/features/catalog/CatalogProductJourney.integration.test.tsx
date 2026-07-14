@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import type { Product } from '@shop/contracts';
+import type { Product } from '@shop/contracts/products';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getProduct, getRelatedProducts } from '@/api/products';
 import { useCategories } from '@/hooks/useCategories';
@@ -34,14 +34,6 @@ const catalogProduct: Product = {
   description: 'Just-add-water water powder, 300g. Dry until required.',
   priceCents: 1000,
   imageSetId: 'powdered-water',
-  images: [
-    {
-      src: '/images/products/test.webp',
-      alt: 'Powdered Water powder bag',
-      width: 720,
-      height: 720,
-    },
-  ],
   category: 'Impossible',
   stock: 5,
   slug: 'powdered-water',
@@ -76,7 +68,6 @@ describe('catalog to product journey', () => {
       currentPage: 1,
       currentPageSize: 24,
       refetch: vi.fn().mockResolvedValue(undefined),
-      debouncedFetch: vi.fn(),
     });
     vi.mocked(getProduct).mockResolvedValue(catalogProduct);
     vi.mocked(getRelatedProducts).mockResolvedValue([]);

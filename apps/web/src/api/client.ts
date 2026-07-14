@@ -1,4 +1,4 @@
-import type { ErrorResponse } from '@shop/contracts';
+import type { ErrorResponse } from '@shop/contracts/common';
 
 /**
  * Core fetch wrapper for the Shop Qarefully API.

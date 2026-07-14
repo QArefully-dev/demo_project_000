@@ -1,57 +1,27 @@
-import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { FastifyInstance } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { requireAuth } from '../plugins/auth.js';
-import { sendBadRequest, sendNotFound } from '../utils/errors.js';
-import {
-  listFavourites,
-  addFavourite as addFavouriteDomain,
-  removeFavourite as removeFavouriteDomain,
-} from '../domains/favourites.js';
-import type { ProductRow } from '../domains/products.js';
+import { sendNotFound } from '../utils/errors.js';
+import { toProductContract } from '../mappers/product.js';
 import {
   AddFavouriteBody,
   FavouriteIdParam,
   FavouritesListResponse,
-  ErrorResponse,
-  SuccessResponse,
-} from '@shop/contracts';
-import { getApiProductImages } from '../domains/productMedia.js';
-
-function toProductContract(row: ProductRow) {
-  return {
-    id: String(row.id),
-    name: row.name,
-    description: row.description,
-    priceCents: row.price_cents,
-    imageSetId: row.image_set_id ?? 'unknown',
-    images: getApiProductImages(row.image_set_id, row.category, row.name),
-    category: row.category,
-    stock: row.stock_count,
-    slug: row.slug,
-    compareAtPriceCents: row.compare_at_price_cents ?? undefined,
-    salesCount: row.sales_count,
-  };
-}
-
-/** Validate and parse a product ID from a string. Returns the numeric ID or null. */
-function parseProductId(id: string): number | null {
-  const parsed = Number(id);
-  if (!Number.isFinite(parsed) || parsed <= 0 || !Number.isInteger(parsed)) return null;
-  return parsed;
-}
-
+} from '@shop/contracts/favourites';
+import { ErrorResponse, SuccessResponse } from '@shop/contracts/common';
+import type { AppContext } from '../app.js';
 /**
  * Favourites routes.
  * Authenticated users can list, add, and remove product favourites.
  */
-export default function favouritesRoutes(app: FastifyInstance): void {
+export default function favouritesRoutes(app: FastifyInstance, { services }: AppContext): void {
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
 
   // GET /api/favourites
   typed.get(
     '/api/favourites',
     {
-      preHandler: [requireAuth],
+      preHandler: [requireAuth(services.sessions)],
       schema: {
         response: {
           200: FavouritesListResponse,
@@ -59,9 +29,9 @@ export default function favouritesRoutes(app: FastifyInstance): void {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const user = request.authenticatedUser!;
-      const rows = listFavourites(user.id);
+      const rows = services.favourites.list(user.id);
       reply.code(200).send(rows.map(toProductContract));
     },
   );
@@ -70,7 +40,7 @@ export default function favouritesRoutes(app: FastifyInstance): void {
   typed.post(
     '/api/favourites',
     {
-      preHandler: [requireAuth],
+      preHandler: [requireAuth(services.sessions)],
       schema: {
         body: AddFavouriteBody,
         response: {
@@ -80,17 +50,11 @@ export default function favouritesRoutes(app: FastifyInstance): void {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const user = request.authenticatedUser!;
-      const { productId } = request.body as { productId: string };
+      const numericId = Number(request.body.productId);
 
-      const numericId = parseProductId(productId);
-      if (numericId === null) {
-        sendBadRequest(reply, 'Invalid product ID');
-        return;
-      }
-
-      const result = addFavouriteDomain(user.id, numericId);
+      const result = services.favourites.add(user.id, numericId);
       if (result === 'NOT_FOUND') {
         sendNotFound(reply, 'Product');
         return;
@@ -104,7 +68,7 @@ export default function favouritesRoutes(app: FastifyInstance): void {
   typed.delete(
     '/api/favourites/:productId',
     {
-      preHandler: [requireAuth],
+      preHandler: [requireAuth(services.sessions)],
       schema: {
         params: FavouriteIdParam,
         response: {
@@ -114,17 +78,11 @@ export default function favouritesRoutes(app: FastifyInstance): void {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const user = request.authenticatedUser!;
-      const { productId } = request.params as { productId: string };
+      const numericId = Number(request.params.productId);
 
-      const numericId = parseProductId(productId);
-      if (numericId === null) {
-        sendBadRequest(reply, 'Invalid product ID');
-        return;
-      }
-
-      const result = removeFavouriteDomain(user.id, numericId);
+      const result = services.favourites.remove(user.id, numericId);
       if (result === 'NOT_FOUND') {
         sendNotFound(reply, 'Favourite');
         return;

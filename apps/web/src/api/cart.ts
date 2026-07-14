@@ -1,5 +1,10 @@
 import { apiFetch } from './client';
-import type { Cart, CreateCartResponse, AddToCartBody, UpdateCartLineBody } from '@shop/contracts';
+import type {
+  Cart,
+  CreateCartResponse,
+  AddToCartBody,
+  UpdateCartLineBody,
+} from '@shop/contracts/cart';
 
 /**
  * Cart API module.

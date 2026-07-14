@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import type { Product } from '@shop/contracts';
+import type { Product } from '@shop/contracts/products';
 import { ProductCard } from '@/components/ProductCard';
 import { ProductGrid } from '@/components/ProductGrid';
 import { Button } from '@/components/ui/button';

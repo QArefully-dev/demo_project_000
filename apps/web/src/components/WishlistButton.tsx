@@ -4,7 +4,7 @@ import { useFavourites } from '@/hooks/useFavourites';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Heart } from 'lucide-react';
-import type { Product } from '@shop/contracts';
+import type { Product } from '@shop/contracts/products';
 
 interface WishlistButtonProps {
   /** When provided, renders as a heart toggle for this product. Otherwise renders as a header link to /wishlist. */

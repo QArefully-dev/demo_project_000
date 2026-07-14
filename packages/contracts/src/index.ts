@@ -1,59 +1,10 @@
 export { CONTRACTS_VERSION } from './version.js';
-export {
-  PRODUCT_MEDIA_REGISTRY,
-  PRODUCT_VISUAL_REGISTRY,
-  getProductMedia,
-  getProductMediaSet,
-  getProductVisual,
-  type GeneratedProductImage,
-  type GeneratedProductVisual,
-  type ProductMediaRole,
-} from './productMediaRegistry.js';
-export {
-  MoneyCents,
-  ErrorResponse,
-  SuccessResponse,
-  ProductImage,
-  Product,
-  ProductSort,
-  ProductQuery,
-  ProductListPaginatedResponse,
-  CategoriesResponse,
-  BestsellersResponse,
-  RelatedResponse,
-  CartLine,
-  Cart,
-  PublicUser,
-  MailboxMessage,
-  MailboxListResponse,
-  SignupBody,
-  LoginBody,
-  ForgotPasswordBody,
-  ResetPasswordBody,
-  ChangePasswordBody,
-  AddFavouriteBody,
-  FavouriteIdParam,
-  FavouritesListResponse,
-  PromoCodeKind,
-  PromoCode,
-  PromoValidationErrorCode,
-  ValidatePromoBody,
-  ValidatePromoResponse,
-  Order,
-  OrderLineItem,
-  PaymentBody,
-  PaymentErrorResponse,
-  AddToCartBody,
-  UpdateCartLineBody,
-  RemoveFromCartBody,
-  PlaceOrderBody,
-  CreateCartResponse,
-  ProductListResponse,
-  ProductDetailResponse,
-  PlaceOrderResponse,
-  OrderDetailResponse,
-  CartIdParam,
-  CartIdAndProductIdParam,
-  OrderIdParam,
-  ProductIdParam,
-} from './schemas.js';
+export * from './common.js';
+export * from './products.js';
+export * from './cart.js';
+export * from './auth.js';
+export * from './favourites.js';
+export * from './promos.js';
+export * from './orders.js';
+export * from './payments.js';
+export * from './mailbox.js';

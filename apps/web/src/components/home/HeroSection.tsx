@@ -1,32 +1,40 @@
 import { ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { getProductVisual } from '@shop/contracts';
 import { BagArtwork } from '@/components/BagArtwork';
 import { Button } from '@/components/ui/button';
 
 const heroBags = [
   {
-    imageSetId: 'powdered-water',
     name: 'Powdered Water',
     category: 'Impossible',
     quantity: 'Conceptual quantity',
+    batchCode: 'IMP-07',
+    mark: 'H2O',
+    accent: '#287fa6',
+    powderAccent: '#b9e2ee',
+    consumptionLabel: 'Not for consumption',
   },
   {
-    imageSetId: 'protein-powder',
     name: 'Protein Powder',
     category: 'Pantry Staples',
     quantity: '1kg',
+    batchCode: 'PAN-01',
+    mark: 'PRO',
+    accent: '#78956c',
+    powderAccent: '#d5dfbc',
+    consumptionLabel: null,
   },
   {
-    imageSetId: 'powdered-campfire',
     name: 'Powdered Campfire',
     category: 'Outdoors',
     quantity: '200g',
+    batchCode: 'OUT-05',
+    mark: 'FIR',
+    accent: '#c3774e',
+    powderAccent: '#e7b78f',
+    consumptionLabel: 'Not for consumption',
   },
-].flatMap((bag) => {
-  const visual = getProductVisual(bag.imageSetId);
-  return visual ? [{ ...bag, visual }] : [];
-});
+];
 
 export function HeroSection() {
   return (
@@ -65,16 +73,8 @@ export function HeroSection() {
         <div aria-hidden="true" className="powder-measurements absolute inset-4" />
         {heroBags.map((bag, index) => (
           <BagArtwork
-            key={bag.imageSetId}
-            shape="paper-square"
-            decoration="paired-ovals"
-            name={bag.name}
-            category={bag.category}
-            quantity={bag.quantity}
-            batchCode={bag.visual.batchCode}
-            mark={bag.visual.mark}
-            accent={bag.visual.labelColor}
-            powderAccent={bag.visual.powderColor}
+            key={bag.name}
+            {...bag}
             ariaLabel={index === 0 ? `${bag.name} powder bag` : ''}
             className={`powder-hero-bag powder-hero-bag-${index} absolute object-contain mix-blend-multiply`}
           />

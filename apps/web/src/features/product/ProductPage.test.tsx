@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import type { Product } from '@shop/contracts';
+import type { Product } from '@shop/contracts/products';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
 import { ProductPage } from './ProductPage';
@@ -31,14 +31,6 @@ const product = (overrides: Partial<Product> = {}): Product => ({
   priceCents: 12999,
   compareAtPriceCents: 16999,
   imageSetId: 'powdered-water',
-  images: [
-    {
-      src: '/images/powdered-water-primary.webp',
-      alt: 'Powdered Water powder bag',
-      width: 1200,
-      height: 1200,
-    },
-  ],
   category: 'Impossible',
   stock: 8,
   slug: 'powdered-water',

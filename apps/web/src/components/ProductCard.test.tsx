@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Product } from '@shop/contracts';
+import type { Product } from '@shop/contracts/products';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -21,14 +21,14 @@ const product = (overrides: Partial<Product> = {}): Product => ({
   priceCents: 7999,
   compareAtPriceCents: 9999,
   imageSetId: 'powdered-water',
-  images: [
-    {
-      src: '/contract-image.webp',
-      alt: 'Contract image',
-      width: 720,
-      height: 720,
-    },
-  ],
+  packaging: {
+    labelColor: '#287fa6',
+    powderColor: '#b9e2ee',
+    mark: 'H2O',
+    batchCode: 'IMP-07',
+    quantity: 'Conceptual quantity',
+    consumptionLabel: 'Not for consumption',
+  },
   category: 'Impossible',
   stock: 10,
   slug: 'powdered-water',

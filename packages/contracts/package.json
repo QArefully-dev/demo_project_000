@@ -9,6 +9,42 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./common": {
+      "types": "./dist/common.d.ts",
+      "import": "./dist/common.js"
+    },
+    "./products": {
+      "types": "./dist/products.d.ts",
+      "import": "./dist/products.js"
+    },
+    "./cart": {
+      "types": "./dist/cart.d.ts",
+      "import": "./dist/cart.js"
+    },
+    "./auth": {
+      "types": "./dist/auth.d.ts",
+      "import": "./dist/auth.js"
+    },
+    "./favourites": {
+      "types": "./dist/favourites.d.ts",
+      "import": "./dist/favourites.js"
+    },
+    "./promos": {
+      "types": "./dist/promos.d.ts",
+      "import": "./dist/promos.js"
+    },
+    "./orders": {
+      "types": "./dist/orders.d.ts",
+      "import": "./dist/orders.js"
+    },
+    "./payments": {
+      "types": "./dist/payments.d.ts",
+      "import": "./dist/payments.js"
+    },
+    "./mailbox": {
+      "types": "./dist/mailbox.d.ts",
+      "import": "./dist/mailbox.js"
     }
   },
   "dependencies": {
@@ -16,6 +52,7 @@
   },
   "scripts": {
     "build": "tsc --build --force",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts"
   }
 }

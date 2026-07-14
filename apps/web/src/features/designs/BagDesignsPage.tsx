@@ -1,20 +1,16 @@
 import { Heart } from 'lucide-react';
-import { BagArtwork, type BagDecoration, type BagShape } from '@/components/BagArtwork';
+import { BagArtwork } from '@/components/BagArtwork';
 import { ProductGrid } from '@/components/ProductGrid';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 
 const designs: ReadonlyArray<{
-  shape: BagShape;
-  decoration: BagDecoration;
   option: string;
   title: string;
   note: string;
 }> = [
   {
-    shape: 'paper-square',
-    decoration: 'paired-ovals',
     option: 'C2-D',
     title: 'Paired ovals',
     note: 'The cleanest treatment: two overlapping powder shapes and very few dots.',
@@ -29,6 +25,7 @@ const artworkProps = {
   mark: 'H2O',
   accent: '#287fa6',
   powderAccent: '#b9e2ee',
+  consumptionLabel: 'Not for consumption',
 } as const;
 
 export function BagDesignsPage() {
@@ -59,12 +56,7 @@ export function BagDesignsPage() {
 
             <Card className="group flex h-full flex-col gap-0 overflow-hidden border-border/80 bg-surface-raised py-0 shadow-sm">
               <div className="relative aspect-4/5 overflow-hidden bg-surface-soft">
-                <BagArtwork
-                  shape={design.shape}
-                  decoration={design.decoration}
-                  {...artworkProps}
-                  className="h-full w-full object-contain p-4 sm:p-5"
-                />
+                <BagArtwork {...artworkProps} className="h-full w-full object-contain p-4 sm:p-5" />
                 <div className="pointer-events-none absolute top-3 left-3 flex flex-wrap gap-1.5">
                   <Badge
                     variant="secondary"

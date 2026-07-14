@@ -1,4 +1,4 @@
-import type { Product } from '@shop/contracts';
+import type { Product } from '@shop/contracts/products';
 import { Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -28,12 +28,8 @@ export function ProductPurchasePanel({
   const isOnSale =
     product.compareAtPriceCents != null && product.compareAtPriceCents > product.priceCents;
   const savings = isOnSale ? product.compareAtPriceCents! - product.priceCents : 0;
-  const notForConsumption = ['Household', 'Outdoors', 'Questionable', 'Impossible'].includes(
-    product.category,
-  );
-  const packSize = product.description.match(
-    /\b\d+(?:\.\d+)?\s?(?:g|kg)\b|conceptual quantity/i,
-  )?.[0];
+  const packSize = product.packaging?.quantity;
+  const consumptionLabel = product.packaging?.consumptionLabel;
 
   return (
     <aside className="product-purchase-panel self-start rounded-2xl border bg-surface-raised p-6 shadow-sm xl:p-8">
@@ -70,12 +66,12 @@ export function ProductPurchasePanel({
           <p className="mt-1 text-muted-foreground">Finely considered and clearly labelled.</p>
         </div>
       </div>
-      {notForConsumption && (
+      {consumptionLabel && (
         <p
           role="note"
           className="mt-4 rounded-lg border border-sale/40 bg-sale/10 px-4 py-3 text-sm font-semibold text-foreground"
         >
-          Not for consumption
+          {consumptionLabel}
         </p>
       )}
 

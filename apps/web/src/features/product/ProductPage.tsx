@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import type { Product } from '@shop/contracts';
+import type { Product } from '@shop/contracts/products';
 import { ApiError } from '@/api/client';
 import { getProduct, getRelatedProducts } from '@/api/products';
 import { ErrorMessage } from '@/components/ErrorMessage';

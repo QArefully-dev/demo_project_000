@@ -55,6 +55,7 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
 ## Quality
 
 - Use repository scripts; run format, typecheck, lint, build, seed/reset, tests proportional to change.
+- Keep Vite/Vitest `--configLoader runner`; bundled config loader traverses sandbox-blocked Windows ancestors.
 - Tests: pure rule -> unit; repository/transaction -> SQLite integration; route/schema/auth -> Fastify `app.inject()`.
 - Destructive refactor -> characterization test first. Async UI -> stale-response, cancellation, error, retry coverage where relevant.
 - Keep coverage focused; preserve QA exercise gaps. No Playwright frontend/API E2E tests unless task overrides.

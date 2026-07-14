@@ -6,8 +6,8 @@ import type {
   ForgotPasswordBody,
   ResetPasswordBody,
   ChangePasswordBody,
-  SuccessResponse,
-} from '@shop/contracts';
+} from '@shop/contracts/auth';
+import type { SuccessResponse } from '@shop/contracts/common';
 
 /** Auth API module — signup, login, logout, session, forgot/reset password, password change. */
 

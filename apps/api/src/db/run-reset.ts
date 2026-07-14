@@ -1,7 +1,8 @@
-import { getDb, resetDatabase, seedDatabase } from './index.js';
+import { loadConfig } from '../config.js';
+import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from './index.js';
 
-const db = getDb();
+const db = openDatabase({ path: loadConfig().databasePath });
 resetDatabase(db);
 seedDatabase(db);
 console.log('Database reset and re-seeded.');
-db.close();
+closeDatabase(db);

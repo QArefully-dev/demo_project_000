@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import type { Product } from '@shop/contracts';
+import type { Product } from '@shop/contracts/products';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getBestsellers, getCategories, getProducts } from '@/api/products';
@@ -31,7 +31,6 @@ function product(id: string): Product {
     description: 'Test product',
     priceCents: 1000,
     imageSetId: 'powdered-water',
-    images: [{ src: '/images/products/test.webp', alt: `Product ${id}`, width: 720, height: 720 }],
     category: 'Impossible',
     stock: 5,
     slug: `product-${id}`,

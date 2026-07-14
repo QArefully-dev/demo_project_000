@@ -1,5 +1,5 @@
 import { apiFetch } from './client';
-import type { ValidatePromoBody, ValidatePromoResponse } from '@shop/contracts';
+import type { ValidatePromoBody, ValidatePromoResponse } from '@shop/contracts/promos';
 
 /**
  * Promo API module.

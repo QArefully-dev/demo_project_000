@@ -5,7 +5,7 @@ import { HeroSection } from '@/components/home/HeroSection';
 import { ProductShelf } from '@/components/home/ProductShelf';
 import { PromoBanner } from '@/components/home/PromoBanner';
 import { useCartContext } from '@/hooks/CartContext';
-import type { Product } from '@shop/contracts';
+import type { Product } from '@shop/contracts/products';
 
 interface ShelfState {
   products: Product[];
