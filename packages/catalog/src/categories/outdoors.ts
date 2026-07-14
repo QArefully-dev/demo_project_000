@@ -1,6 +1,11 @@
-import { createPackaging, type CatalogProduct, NOT_FOR_CONSUMPTION } from '../model.js';
+import {
+  createCatalogProducts,
+  createPackaging,
+  type CatalogProductDraft,
+  NOT_FOR_CONSUMPTION,
+} from '../model.js';
 
-export const outdoorsProducts = [
+export const outdoorsProducts = createCatalogProducts([
   {
     id: 27,
     name: 'Powdered Campfire',
@@ -93,4 +98,4 @@ export const outdoorsProducts = [
   },
 
   // Questionable â€” domestic concepts receive powders.,
-] as const satisfies readonly CatalogProduct[];
+] as const satisfies readonly CatalogProductDraft[]);

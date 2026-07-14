@@ -8,6 +8,12 @@ export const CATALOG_CATEGORIES = [
   'Impossible',
 ] as const;
 export type CatalogCategory = (typeof CATALOG_CATEGORIES)[number];
+export const MIXABLE_CATALOG_CATEGORIES = [
+  'Pantry Staples',
+  'Performance',
+  'Drinks',
+] as const satisfies readonly CatalogCategory[];
+export type MixableCatalogCategory = (typeof MIXABLE_CATALOG_CATEGORIES)[number];
 export const NOT_FOR_CONSUMPTION = 'Not for consumption' as const;
 export type ProductPackaging = Readonly<{
   labelColor: string;
@@ -29,9 +35,28 @@ export type CatalogProduct = Readonly<{
   newest_rank: number;
   image_set_id: string;
   slug: string;
+  mixable: boolean;
+  mixUnitGrams: number | null;
   consumption_warning?: typeof NOT_FOR_CONSUMPTION | null;
   packaging: ProductPackaging;
 }>;
+export type CatalogProductDraft = Omit<CatalogProduct, 'mixable' | 'mixUnitGrams'>;
+
+const mixableCategories = new Set<CatalogCategory>(MIXABLE_CATALOG_CATEGORIES);
+
+/** Adds canonical Powderizer eligibility metadata from each source bag's labelled weight. */
+export const createCatalogProducts = <T extends CatalogProductDraft>(
+  products: readonly T[],
+): readonly (T & Pick<CatalogProduct, 'mixable' | 'mixUnitGrams'>)[] =>
+  products.map((product) => {
+    const mixable = mixableCategories.has(product.category);
+    const sourceWeight = /^([1-9][0-9]*)g$/.exec(product.packaging.quantity);
+    return {
+      ...product,
+      mixable,
+      mixUnitGrams: mixable && sourceWeight ? Number(sourceWeight[1]) : null,
+    };
+  });
 export const createPackaging = (
   labelColor: string,
   powderColor: string,

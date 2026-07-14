@@ -3,6 +3,7 @@ import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { sendBadRequest, sendNotFound, sendPaymentError, sendConflict } from '../utils/errors.js';
 import {
   PaymentBody,
+  PaymentConflictResponse,
   PaymentErrorResponse,
   PaymentSuccessResponse,
 } from '@shop/contracts/payments';
@@ -21,7 +22,7 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
           201: PaymentSuccessResponse,
           400: ErrorResponse,
           402: PaymentErrorResponse,
-          409: ErrorResponse,
+          409: PaymentConflictResponse,
           500: ErrorResponse,
         },
       },
@@ -68,6 +69,21 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
           return;
         case 'IDEMPOTENT_CONFLICT':
           sendConflict(reply, 'Payment already submitted with different data');
+          return;
+        case 'MIX_REQUOTE_REQUIRED':
+          reply.code(409).send({
+            code: 'MIX_REQUOTE_REQUIRED',
+            error: 'Mix price changed. Requote required.',
+            mixes: result.mixes,
+          });
+          return;
+        case 'MIX_STOCK_UNAVAILABLE':
+          reply.code(409).send({
+            code: 'MIX_STOCK_UNAVAILABLE',
+            error: 'Mix ingredients are no longer in stock.',
+            mixIds: result.mixIds,
+            productIds: result.productIds,
+          });
           return;
         case 'IDEMPOTENT_IN_PROGRESS':
           sendConflict(reply, 'Payment is already being processed');

@@ -1,5 +1,6 @@
 import {
   CATALOG_CATEGORIES,
+  MIXABLE_CATALOG_CATEGORIES,
   NOT_FOR_CONSUMPTION,
   type CatalogCategory,
   type CatalogProduct,
@@ -11,6 +12,7 @@ const nonConsumableCategories = new Set<CatalogCategory>([
   'Questionable',
   'Impossible',
 ]);
+const mixableCategories = new Set<CatalogCategory>(MIXABLE_CATALOG_CATEGORIES);
 const assertUnique = (label: string, values: readonly (string | number)[]) => {
   if (new Set(values).size !== values.length) throw new Error(`Catalog has duplicate ${label}`);
 };
@@ -44,6 +46,8 @@ export function validateCatalog(products: readonly CatalogProduct[] = CATALOG_PR
   );
   if (products.filter((product) => product.compare_at_price_cents !== null).length !== 14)
     throw new Error('Catalog expected 14 sale products');
+  if (products.filter((product) => product.mixable).length !== 19)
+    throw new Error('Catalog expected 19 mixable products');
   for (const product of products) {
     if (!CATALOG_CATEGORIES.includes(product.category))
       throw new Error(`Catalog has unsupported category ${product.category}`);
@@ -63,9 +67,21 @@ export function validateCatalog(products: readonly CatalogProduct[] = CATALOG_PR
       throw new Error(`Invalid sale price for ${product.slug}`);
     if (!product.packaging.quantity || !product.packaging.mark || !product.packaging.batchCode)
       throw new Error(`Invalid packaging for ${product.slug}`);
+    if (product.mixable) {
+      const mixUnitGrams = product.mixUnitGrams;
+      if (!mixableCategories.has(product.category))
+        throw new Error(`Non-consumable category cannot be mixable for ${product.slug}`);
+      if (typeof mixUnitGrams !== 'number' || !Number.isInteger(mixUnitGrams) || mixUnitGrams <= 0)
+        throw new Error(`Invalid mix source grams for ${product.slug}`);
+      if ((product.packaging.consumptionLabel ?? product.consumption_warning) !== null)
+        throw new Error(`Mixable product must not have consumption warning for ${product.slug}`);
+    } else if (product.mixUnitGrams !== null) {
+      throw new Error(`Non-mixable product must not have mix source grams for ${product.slug}`);
+    }
     if (
       nonConsumableCategories.has(product.category) &&
-      (product.packaging.consumptionLabel ?? product.consumption_warning) !== NOT_FOR_CONSUMPTION
+      (product.mixable ||
+        (product.packaging.consumptionLabel ?? product.consumption_warning) !== NOT_FOR_CONSUMPTION)
     )
       throw new Error(`Missing consumption warning for ${product.slug}`);
   }

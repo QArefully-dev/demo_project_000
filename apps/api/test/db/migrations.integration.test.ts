@@ -14,7 +14,7 @@ import {
 } from '../../src/db/index.js';
 import { migrations } from '../../src/db/migrations/index.js';
 
-const expectedVersions = ['001', '002', '003', '004', '005', '006', '007'];
+const expectedVersions = ['001', '002', '003', '004', '005', '006', '007', '008'];
 
 function migrationVersions(db: Database.Database): string[] {
   return db
@@ -96,6 +96,20 @@ void test('migrations create a fresh schema, record every version, and remain id
       (column) => column.name === 'response_json',
     ),
   );
+  assert.deepEqual(
+    db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'powder_mixes'")
+      .get(),
+    { name: 'powder_mixes' },
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'powder_mix_stock_reservations'",
+      )
+      .get(),
+    { name: 'powder_mix_stock_reservations' },
+  );
   assert.ok(
     (db.prepare('PRAGMA table_info(payments)').all() as { name: string }[]).some(
       (column) => column.name === 'quote_json',
@@ -120,8 +134,18 @@ void test('migrations upgrade the legacy schema without losing known data', (t) 
 
   assert.deepEqual(migrationVersions(db), expectedVersions);
   assert.deepEqual(
-    db.prepare('SELECT name, image_set_id, slug FROM products WHERE id = 99').get(),
-    { name: 'Legacy powder', image_set_id: 'legacy-product-99', slug: '' },
+    db
+      .prepare(
+        'SELECT name, image_set_id, slug, mixable, mix_unit_grams FROM products WHERE id = 99',
+      )
+      .get(),
+    {
+      name: 'Legacy powder',
+      image_set_id: 'legacy-product-99',
+      slug: '',
+      mixable: 0,
+      mix_unit_grams: null,
+    },
   );
   assert.deepEqual(
     db

@@ -10,6 +10,7 @@ function orderFromQuote(
   return {
     id: String(orderId),
     items: quote.lines,
+    mixItems: quote.version === 2 ? quote.mixLines : [],
     subtotalCents: quote.subtotalCents,
     discountCents: quote.discountCents,
     totalCents: quote.totalCents,
@@ -40,14 +41,16 @@ export function finalizeAuthorizedCheckout(
       totalCents: quote.totalCents,
       userId: quote.userId,
       items: quote.lines,
+      mixItems: quote.version === 2 ? quote.mixLines : [],
       createdAt,
     });
+    dependencies.mixes.consumeReservedStock(idempotencyKey);
     if (quote.promoCode)
       dependencies.promos.commitReservation({ paymentIdempotencyKey: idempotencyKey, orderId });
     dependencies.mailbox.add({
       recipient: quote.customer.email,
       subject: `QArefully Powder Co. — order #${orderId} confirmed`,
-      body: `Your QArefully Powder Co. order #${orderId} has been recorded. Total: $${quote.totalCents / 100}. This was a simulated payment; no card was charged.`,
+      body: `Your QArefully Powder Co. order #${orderId} has been recorded. ${quote.version === 2 && quote.mixLines.length ? `Custom mixes: ${quote.mixLines.length}. ` : ''}Total: $${quote.totalCents / 100}. This was a simulated payment; no card was charged.`,
       kind: 'order_confirmation',
       createdAt,
     });

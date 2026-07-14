@@ -23,5 +23,7 @@ export function toProductContract(row: ProductRow): Product {
     slug: row.slug ?? '',
     compareAtPriceCents: row.compare_at_price_cents ?? undefined,
     salesCount: row.sales_count ?? 0,
+    mixable: row.mixable === 1,
+    mixUnitGrams: row.mix_unit_grams ?? undefined,
   };
 }

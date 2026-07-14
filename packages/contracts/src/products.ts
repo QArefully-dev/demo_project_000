@@ -24,6 +24,8 @@ export const Product = Type.Object({
   slug: Type.String(),
   compareAtPriceCents: Type.Optional(MoneyCents),
   salesCount: Type.Integer({ minimum: 0 }),
+  mixable: Type.Boolean(),
+  mixUnitGrams: Type.Optional(Type.Integer({ minimum: 1 })),
 });
 export type Product = Static<typeof Product>;
 

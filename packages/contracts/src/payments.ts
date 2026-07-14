@@ -1,6 +1,7 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { CustomerName, EmailAddress, PromoCodeValue, ShippingAddress, Uuid } from './common.js';
 import { PlaceOrderResponse } from './orders.js';
+import { PowderMixConflictResponse } from './powderizer.js';
 
 export const PaymentBody = Type.Object({
   cartId: Uuid,
@@ -25,6 +26,12 @@ export const PaymentErrorResponse = Type.Object({
   failureReason: Type.Optional(PaymentFailureReason),
 });
 export type PaymentErrorResponse = Static<typeof PaymentErrorResponse>;
+
+export const PaymentConflictResponse = Type.Union([
+  PowderMixConflictResponse,
+  Type.Object({ error: Type.String({ minLength: 1, maxLength: 500 }) }),
+]);
+export type PaymentConflictResponse = Static<typeof PaymentConflictResponse>;
 
 /** Successful checkout response returned by the payment endpoint. */
 export const PaymentSuccessResponse = PlaceOrderResponse;

@@ -3,8 +3,36 @@ import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import * as AuthContracts from '../src/auth.js';
 import { SignupBody } from '../src/auth.js';
-import { CartIdParam } from '../src/cart.js';
+import { Cart, CartIdParam } from '../src/cart.js';
+import { Order } from '../src/orders.js';
 import { PaymentBody } from '../src/payments.js';
+import { PowderMixConfigInput } from '../src/powderizer.js';
+
+const uuid = '123e4567-e89b-42d3-a456-426614174000';
+const powderMixConfig = {
+  components: [
+    { productId: '1', percentage: 50 },
+    { productId: '3', percentage: 50 },
+  ],
+  bagSizeGrams: 500,
+  fineness: 'fine',
+  customLabel: 'Breakfast blend',
+};
+
+const powderMixItem = {
+  mixId: uuid,
+  components: [
+    { productId: '1', productName: 'Protein Powder', percentage: 50, allocatedGrams: 250 },
+    { productId: '3', productName: 'Cocoa Powder', percentage: 50, allocatedGrams: 250 },
+  ],
+  bagSizeGrams: 500,
+  fineness: 'fine',
+  customLabel: 'Breakfast blend',
+  priceVersion: 'powderizer-v1',
+  unitPriceCents: 2500,
+  quantity: 1,
+  lineTotalCents: 2500,
+};
 
 void test('auth transport rejects unconstrained email and password values', () => {
   assert.equal(
@@ -26,7 +54,6 @@ void test('auth transport rejects unconstrained email and password values', () =
 });
 
 void test('cart and payment transports require UUID identifiers and bounded card fields', () => {
-  const uuid = '123e4567-e89b-42d3-a456-426614174000';
   assert.equal(Value.Check(CartIdParam, { cartId: 'cart-123' }), false);
   assert.equal(Value.Check(CartIdParam, { cartId: uuid }), true);
 
@@ -44,6 +71,72 @@ void test('cart and payment transports require UUID identifiers and bounded card
   assert.equal(Value.Check(PaymentBody, { ...payment, cardNumber: '4242-4242-4242-4242' }), true);
   assert.equal(Value.Check(PaymentBody, { ...payment, cardCvc: '1x3' }), false);
   assert.equal(Value.Check(PaymentBody, { ...payment, cardExpiry: '13/99' }), false);
+});
+
+void test('Powderizer transport accepts a valid two-component request', () => {
+  assert.equal(Value.Check(PowderMixConfigInput, powderMixConfig), true);
+  assert.equal(Value.Check(PowderMixConfigInput, { ...powderMixConfig, customLabel: '' }), true);
+});
+
+void test('Powderizer transport rejects invalid component counts and scalar values', () => {
+  assert.equal(
+    Value.Check(PowderMixConfigInput, {
+      ...powderMixConfig,
+      components: powderMixConfig.components.slice(0, 1),
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(PowderMixConfigInput, {
+      ...powderMixConfig,
+      components: [
+        { productId: '1', percentage: 50.5 },
+        { productId: '3', percentage: 49.5 },
+      ],
+    }),
+    false,
+  );
+  assert.equal(Value.Check(PowderMixConfigInput, { ...powderMixConfig, fineness: 'silky' }), false);
+  assert.equal(Value.Check(PowderMixConfigInput, { ...powderMixConfig, bagSizeGrams: 750 }), false);
+  assert.equal(
+    Value.Check(PowderMixConfigInput, { ...powderMixConfig, customLabel: 'x'.repeat(161) }),
+    false,
+  );
+});
+
+void test('cart and order transports accept empty and populated mix item arrays', () => {
+  const emptyCart = { id: uuid, items: [], mixItems: [], subtotalCents: 0, totalItems: 0 };
+  assert.equal(Value.Check(Cart, emptyCart), true);
+  assert.equal(
+    Value.Check(Cart, {
+      ...emptyCart,
+      mixItems: [powderMixItem],
+      subtotalCents: 2500,
+      totalItems: 1,
+    }),
+    true,
+  );
+
+  const emptyOrder = {
+    id: '1',
+    items: [],
+    mixItems: [],
+    subtotalCents: 0,
+    discountCents: 0,
+    totalCents: 0,
+    promoApplied: null,
+    createdAt: '2026-07-14T00:00:00.000Z',
+  };
+  assert.equal(Value.Check(Order, emptyOrder), true);
+  assert.equal(
+    Value.Check(Order, {
+      ...emptyOrder,
+      mixItems: [{ ...powderMixItem, snapshotVersion: 1 }],
+      subtotalCents: 2500,
+      totalCents: 2500,
+    }),
+    true,
+  );
 });
 
 void test('current-user transport contract accepts public user or null', () => {

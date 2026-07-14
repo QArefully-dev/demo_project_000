@@ -1,6 +1,8 @@
 import type { Cart } from '@shop/contracts/cart';
+import type { PowderMixCartItem } from '@shop/contracts/powderizer';
 import { toProductContract } from '../../mappers/product.js';
 import type { CartRepository } from './cartRepository.js';
+import type { PowderMixRepository } from '../powderizer/powderMixRepository.js';
 
 export interface CartService {
   create(): { cartId: string };
@@ -20,13 +22,17 @@ export interface CartService {
   ): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_IN_CART' | 'CART_RESERVED';
 }
 
-export function createCartService(repository: CartRepository): CartService {
+export function createCartService(
+  repository: CartRepository,
+  mixes?: PowderMixRepository,
+): CartService {
   return {
     create: () => createCart(repository),
-    get: (cartId) => getCart(repository, cartId),
-    add: (cartId, productId) => addItem(repository, cartId, productId),
-    update: (cartId, productId, quantity) => updateItem(repository, cartId, productId, quantity),
-    remove: (cartId, productId) => removeItem(repository, cartId, productId),
+    get: (cartId) => getCart(repository, cartId, mixes),
+    add: (cartId, productId) => addItem(repository, cartId, productId, mixes),
+    update: (cartId, productId, quantity) =>
+      updateItem(repository, cartId, productId, quantity, mixes),
+    remove: (cartId, productId) => removeItem(repository, cartId, productId, mixes),
   };
 }
 
@@ -36,7 +42,32 @@ export function createCart(repository: CartRepository): { cartId: string } {
   return { cartId };
 }
 
-export function getCart(repository: CartRepository, cartId: string): Cart | undefined {
+function toPowderMixCartItem(
+  row: ReturnType<PowderMixRepository['listForCart']>[number],
+): PowderMixCartItem {
+  return {
+    mixId: row.id,
+    components: row.components.map((component) => ({
+      productId: String(component.product_id),
+      productName: component.product_name,
+      percentage: component.percentage,
+      allocatedGrams: component.allocated_grams,
+    })),
+    bagSizeGrams: row.bag_size_grams as PowderMixCartItem['bagSizeGrams'],
+    fineness: row.fineness as PowderMixCartItem['fineness'],
+    customLabel: row.custom_label,
+    priceVersion: row.price_version as PowderMixCartItem['priceVersion'],
+    unitPriceCents: row.quoted_unit_price_cents,
+    quantity: row.quantity,
+    lineTotalCents: row.quoted_unit_price_cents * row.quantity,
+  };
+}
+
+export function getCart(
+  repository: CartRepository,
+  cartId: string,
+  mixes?: PowderMixRepository,
+): Cart | undefined {
   if (!repository.exists(cartId)) return undefined;
   const items = repository.listLines(cartId).map((row) => ({
     productId: String(row.product_id),
@@ -44,11 +75,13 @@ export function getCart(repository: CartRepository, cartId: string): Cart | unde
     quantity: row.quantity,
     lineTotalCents: row.price_cents * row.quantity,
   }));
+  const mixItems = mixes?.listForCart(cartId).map(toPowderMixCartItem) ?? [];
   return {
     id: cartId,
     items,
-    subtotalCents: items.reduce((total, item) => total + item.lineTotalCents, 0),
-    totalItems: items.reduce((total, item) => total + item.quantity, 0),
+    mixItems,
+    subtotalCents: [...items, ...mixItems].reduce((total, item) => total + item.lineTotalCents, 0),
+    totalItems: [...items, ...mixItems].reduce((total, item) => total + item.quantity, 0),
   };
 }
 
@@ -56,13 +89,14 @@ export function addItem(
   repository: CartRepository,
   cartId: string,
   productId: string,
+  mixes?: PowderMixRepository,
 ): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_FOUND' | 'CART_RESERVED' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
   if (repository.isReserved(cartId)) return 'CART_RESERVED';
   if (!repository.productExists(productId)) return 'PRODUCT_NOT_FOUND';
   repository.addLine(cartId, productId);
   repository.touch(cartId);
-  return getCart(repository, cartId) ?? 'CART_NOT_FOUND';
+  return getCart(repository, cartId, mixes) ?? 'CART_NOT_FOUND';
 }
 
 export function updateItem(
@@ -70,6 +104,7 @@ export function updateItem(
   cartId: string,
   productId: string,
   quantity: number,
+  mixes?: PowderMixRepository,
 ): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_IN_CART' | 'CART_RESERVED' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
   if (repository.isReserved(cartId)) return 'CART_RESERVED';
@@ -79,17 +114,18 @@ export function updateItem(
       : repository.updateLine(cartId, productId, quantity);
   if (!changed) return 'PRODUCT_NOT_IN_CART';
   repository.touch(cartId);
-  return getCart(repository, cartId) ?? 'CART_NOT_FOUND';
+  return getCart(repository, cartId, mixes) ?? 'CART_NOT_FOUND';
 }
 
 export function removeItem(
   repository: CartRepository,
   cartId: string,
   productId: string,
+  mixes?: PowderMixRepository,
 ): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_IN_CART' | 'CART_RESERVED' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
   if (repository.isReserved(cartId)) return 'CART_RESERVED';
   if (!repository.removeLine(cartId, productId)) return 'PRODUCT_NOT_IN_CART';
   repository.touch(cartId);
-  return getCart(repository, cartId) ?? 'CART_NOT_FOUND';
+  return getCart(repository, cartId, mixes) ?? 'CART_NOT_FOUND';
 }

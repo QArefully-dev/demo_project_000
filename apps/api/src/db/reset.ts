@@ -6,8 +6,9 @@ import type Database from 'better-sqlite3';
  * are removed before the canonical powder catalogue is re-seeded.
  * Does NOT drop tables — schema is preserved.
  *
- * Reset order: checkout reservations -> payments -> promo redemptions -> favourites ->
- *   reset tokens -> sessions -> mailbox -> order line items ->
+ * Reset order: mix stock reservations -> checkout reservations -> payments ->
+ *   promo redemptions -> favourites -> reset tokens -> sessions -> mailbox ->
+ *   mix components -> powder mixes -> order mix snapshots -> order line items ->
  *   orders -> cart line items -> carts -> promo codes -> products -> users.
  *
  * @param db The SQLite database instance.
@@ -15,6 +16,7 @@ import type Database from 'better-sqlite3';
 export function resetDatabase(db: Database.Database): void {
   const reset = db.transaction(() => {
     db.exec(`
+      DELETE FROM powder_mix_stock_reservations;
       DELETE FROM cart_reservations;
       DELETE FROM promo_reservations;
       DELETE FROM payments;
@@ -23,6 +25,9 @@ export function resetDatabase(db: Database.Database): void {
       DELETE FROM password_reset_tokens;
       DELETE FROM sessions;
       DELETE FROM dev_mailbox;
+      DELETE FROM powder_mix_components;
+      DELETE FROM powder_mixes;
+      DELETE FROM order_powder_mix_items;
       DELETE FROM order_line_items;
       DELETE FROM orders;
       DELETE FROM cart_line_items;

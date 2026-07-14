@@ -8,3 +8,4 @@ export * from './promos.js';
 export * from './orders.js';
 export * from './payments.js';
 export * from './mailbox.js';
+export * from './powderizer.js';

@@ -1,6 +1,6 @@
-import { createPackaging, type CatalogProduct } from '../model.js';
+import { createCatalogProducts, createPackaging, type CatalogProductDraft } from '../model.js';
 
-export const performanceProducts = [
+export const performanceProducts = createCatalogProducts([
   {
     id: 8,
     name: 'Electrolyte Powder',
@@ -94,4 +94,4 @@ export const performanceProducts = [
   },
 
   // Drinks â€” normal objects, granulated.,
-] as const satisfies readonly CatalogProduct[];
+] as const satisfies readonly CatalogProductDraft[]);

@@ -12,6 +12,7 @@ import authRoutes from './routes/auth.js';
 import favouritesRoutes from './routes/favourites.js';
 import paymentRoutes from './routes/payments.js';
 import mailboxRoutes from './routes/mailbox.js';
+import powderizerRoutes from './routes/powderizer.js';
 import { createAuthService, type AuthService, type Clock } from './features/auth/authService.js';
 import { createSessionRepository } from './features/auth/sessionRepository.js';
 import { createSessionService, type SessionService } from './features/auth/sessionService.js';
@@ -46,6 +47,11 @@ import { createPromoService, type PromoService } from './features/promos/promoSe
 import { createPaymentRepository } from './features/payments/paymentRepository.js';
 import { simulatedPaymentGateway } from './features/payments/paymentGateway.js';
 import { createUnitOfWork } from './db/unitOfWork.js';
+import { createPowderMixRepository } from './features/powderizer/powderMixRepository.js';
+import {
+  createPowderizerService,
+  type PowderizerService,
+} from './features/powderizer/powderizerService.js';
 
 export interface AppDependencies {
   db: Database.Database;
@@ -65,6 +71,7 @@ export interface AppServices {
   orders: OrderService;
   checkout: CheckoutService;
   favourites: FavouritesService;
+  powderizer: PowderizerService;
 }
 
 export type AppContext = { services: AppServices };
@@ -75,6 +82,8 @@ function createAppServices(dependencies: AppDependencies): AppServices {
   const carts = createCartRepository(dependencies.db);
   const promos = createPromoRepository(dependencies.db);
   const orders = createOrderRepository(dependencies.db);
+  const products = createProductRepository(dependencies.db);
+  const mixes = createPowderMixRepository(dependencies.db);
   return {
     auth: createAuthService({ users: createUserRepository(dependencies.db), clock }),
     sessions: createSessionService({ sessions: createSessionRepository(dependencies.db), clock }),
@@ -86,9 +95,9 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       tokenSource: dependencies.resetTokenSource,
     }),
     mailbox,
-    products: createProductService(createProductRepository(dependencies.db)),
-    carts: createCartService(carts),
-    promos: createPromoService({ promos, carts, clock }),
+    products: createProductService(products),
+    carts: createCartService(carts, mixes),
+    promos: createPromoService({ promos, carts, mixes, clock }),
     orders: createOrderService(orders),
     checkout: createCheckoutService({
       unitOfWork: createUnitOfWork(dependencies.db),
@@ -99,8 +108,16 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       mailbox,
       gateway: simulatedPaymentGateway,
       clock,
+      mixes,
+      products,
     }),
     favourites: createFavouritesService(createFavouritesRepository(dependencies.db)),
+    powderizer: createPowderizerService({
+      unitOfWork: createUnitOfWork(dependencies.db),
+      carts,
+      products,
+      mixes,
+    }),
   };
 }
 
@@ -141,6 +158,7 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(favouritesRoutes, context);
   await app.register(paymentRoutes, context);
   await app.register(mailboxRoutes, context);
+  await app.register(powderizerRoutes, context);
 
   return app;
 }

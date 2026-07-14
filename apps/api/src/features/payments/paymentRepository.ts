@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import type { ValidCard } from './cardValidation.js';
+import type { PowderMixOrderItem } from '@shop/contracts/powderizer';
 
 export type IntentPaymentStatus =
   | 'prepared'
@@ -10,7 +11,7 @@ export type IntentPaymentStatus =
   | 'timed_out'
   | 'failed_pre_gateway';
 
-export interface PersistedCheckoutQuote {
+export interface PersistedCheckoutQuoteV1 {
   version: 1;
   cartId: string;
   customer: { name: string; email: string; shippingAddress: string };
@@ -28,6 +29,13 @@ export interface PersistedCheckoutQuote {
   }>;
   createdAt: string;
 }
+
+export interface PersistedCheckoutQuoteV2 extends Omit<PersistedCheckoutQuoteV1, 'version'> {
+  version: 2;
+  mixLines: PowderMixOrderItem[];
+}
+
+export type PersistedCheckoutQuote = PersistedCheckoutQuoteV1 | PersistedCheckoutQuoteV2;
 
 export interface PaymentRecord {
   idempotencyKey: string;
@@ -88,19 +96,7 @@ export function parsePersistedCheckoutQuote(value: string): PersistedCheckoutQuo
   }
   if (
     !isRecord(parsed) ||
-    !hasOnlyKeys(parsed, [
-      'version',
-      'cartId',
-      'customer',
-      'userId',
-      'promoCode',
-      'subtotalCents',
-      'discountCents',
-      'totalCents',
-      'lines',
-      'createdAt',
-    ]) ||
-    parsed.version !== 1 ||
+    (parsed.version !== 1 && parsed.version !== 2) ||
     typeof parsed.cartId !== 'string' ||
     !isRecord(parsed.customer) ||
     !hasOnlyKeys(parsed.customer, ['name', 'email', 'shippingAddress']) ||
@@ -133,6 +129,83 @@ export function parsePersistedCheckoutQuote(value: string): PersistedCheckoutQuo
   ) {
     throw new Error('Invalid persisted checkout quote');
   }
+  if (parsed.version === 2) {
+    if (
+      !('mixLines' in parsed) ||
+      !Array.isArray(parsed.mixLines) ||
+      !hasOnlyKeys(parsed, [
+        'version',
+        'cartId',
+        'customer',
+        'userId',
+        'promoCode',
+        'subtotalCents',
+        'discountCents',
+        'totalCents',
+        'lines',
+        'mixLines',
+        'createdAt',
+      ])
+    )
+      throw new Error('Invalid persisted checkout quote');
+    for (const mix of parsed.mixLines) {
+      if (
+        !isRecord(mix) ||
+        !hasOnlyKeys(mix, [
+          'mixId',
+          'components',
+          'bagSizeGrams',
+          'fineness',
+          'customLabel',
+          'priceVersion',
+          'unitPriceCents',
+          'quantity',
+          'lineTotalCents',
+          'snapshotVersion',
+        ]) ||
+        mix.snapshotVersion !== 1 ||
+        typeof mix.mixId !== 'string' ||
+        !Array.isArray(mix.components) ||
+        ![250, 500, 1000].includes(mix.bagSizeGrams as number) ||
+        !['coarse', 'standard', 'fine'].includes(mix.fineness as string) ||
+        !(typeof mix.customLabel === 'string' || mix.customLabel === null) ||
+        mix.priceVersion !== 'powderizer-v1' ||
+        !isNonNegativeInteger(mix.unitPriceCents) ||
+        !isNonNegativeInteger(mix.quantity) ||
+        mix.quantity < 1 ||
+        !isNonNegativeInteger(mix.lineTotalCents) ||
+        mix.lineTotalCents !== mix.unitPriceCents * mix.quantity ||
+        mix.components.length < 2 ||
+        mix.components.length > 5 ||
+        mix.components.some(
+          (component) =>
+            !isRecord(component) ||
+            !hasOnlyKeys(component, ['productId', 'productName', 'percentage', 'allocatedGrams']) ||
+            typeof component.productId !== 'string' ||
+            typeof component.productName !== 'string' ||
+            !isNonNegativeInteger(component.percentage) ||
+            component.percentage < 1 ||
+            !isNonNegativeInteger(component.allocatedGrams) ||
+            component.allocatedGrams < 1,
+        )
+      )
+        throw new Error('Invalid persisted checkout quote');
+    }
+  } else if (
+    !hasOnlyKeys(parsed, [
+      'version',
+      'cartId',
+      'customer',
+      'userId',
+      'promoCode',
+      'subtotalCents',
+      'discountCents',
+      'totalCents',
+      'lines',
+      'createdAt',
+    ])
+  )
+    throw new Error('Invalid persisted checkout quote');
   return parsed as unknown as PersistedCheckoutQuote;
 }
 

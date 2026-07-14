@@ -14,3 +14,24 @@ void test('catalog validation rejects duplicate stable artwork IDs', () => {
   );
   assert.throws(() => validateCatalog(duplicate), /duplicate artwork IDs/);
 });
+
+void test('Powderizer eligibility covers only consumable source bags', () => {
+  const mixable = CATALOG_PRODUCTS.filter((product) => product.mixable);
+  assert.equal(mixable.length, 19);
+  assert.ok(
+    mixable.every(
+      (product) =>
+        ['Pantry Staples', 'Performance', 'Drinks'].includes(product.category) &&
+        Number.isInteger(product.mixUnitGrams) &&
+        (product.mixUnitGrams ?? 0) > 0 &&
+        product.packaging.consumptionLabel === null,
+    ),
+  );
+  assert.ok(
+    CATALOG_PRODUCTS.filter((product) => !product.mixable).every(
+      (product) =>
+        product.mixUnitGrams === null &&
+        !['Pantry Staples', 'Performance', 'Drinks'].includes(product.category),
+    ),
+  );
+});

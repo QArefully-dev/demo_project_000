@@ -1,6 +1,11 @@
-import { createPackaging, type CatalogProduct, NOT_FOR_CONSUMPTION } from '../model.js';
+import {
+  createCatalogProducts,
+  createPackaging,
+  type CatalogProductDraft,
+  NOT_FOR_CONSUMPTION,
+} from '../model.js';
 
-export const questionableProducts = [
+export const questionableProducts = createCatalogProducts([
   {
     id: 33,
     name: 'Powdered House',
@@ -94,4 +99,4 @@ export const questionableProducts = [
   },
 
   // Impossible â€” hero product is intentionally the bestseller.,
-] as const satisfies readonly CatalogProduct[];
+] as const satisfies readonly CatalogProductDraft[]);

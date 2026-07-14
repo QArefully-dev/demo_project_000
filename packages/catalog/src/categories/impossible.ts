@@ -1,6 +1,11 @@
-import { createPackaging, type CatalogProduct, NOT_FOR_CONSUMPTION } from '../model.js';
+import {
+  createCatalogProducts,
+  createPackaging,
+  type CatalogProductDraft,
+  NOT_FOR_CONSUMPTION,
+} from '../model.js';
 
-export const impossibleProducts = [
+export const impossibleProducts = createCatalogProducts([
   {
     id: 39,
     name: 'Powdered Five More Minutes',
@@ -111,4 +116,4 @@ export const impossibleProducts = [
     consumption_warning: NOT_FOR_CONSUMPTION,
     packaging: createPackaging('#287fa6', '#b9e2ee', 'H2O', 'IMP-07', 'conceptual quantity'),
   },
-] as const satisfies readonly CatalogProduct[];
+] as const satisfies readonly CatalogProductDraft[]);

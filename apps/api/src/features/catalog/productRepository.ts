@@ -12,6 +12,8 @@ export interface ProductRow {
   slug: string;
   compare_at_price_cents: number | null;
   sales_count: number;
+  mixable?: number;
+  mix_unit_grams?: number | null;
 }
 
 export interface ProductList {
@@ -27,6 +29,8 @@ export interface ProductRepository {
   listCategories(): string[];
   listBestsellers(limit?: number): ProductRow[];
   listRelated(productId: number, limit?: number): ProductRow[];
+  listEligibleMixProducts(): ProductRow[];
+  listMixProducts(productIds: readonly number[]): ProductRow[];
 }
 
 function escapeLike(value: string): string {
@@ -93,6 +97,22 @@ export function createProductRepository(db: Database.Database): ProductRepositor
            AND id != ? ORDER BY id ASC LIMIT ?`,
         )
         .all(productId, productId, limit) as ProductRow[];
+    },
+    listEligibleMixProducts() {
+      return db
+        .prepare(
+          `SELECT * FROM products
+           WHERE mixable = 1 AND mix_unit_grams IS NOT NULL AND mix_unit_grams > 0
+           ORDER BY id ASC`,
+        )
+        .all() as ProductRow[];
+    },
+    listMixProducts(productIds) {
+      if (productIds.length === 0) return [];
+      const placeholders = productIds.map(() => '?').join(', ');
+      return db
+        .prepare(`SELECT * FROM products WHERE id IN (${placeholders}) ORDER BY id ASC`)
+        .all(...productIds) as ProductRow[];
     },
   };
 }

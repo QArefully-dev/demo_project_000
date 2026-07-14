@@ -131,9 +131,9 @@ export function seedDatabase(db: Database.Database): void {
   const seed = db.transaction(() => {
     const upsertProduct = db.prepare(`
       INSERT INTO products
-        (id, name, description, price_cents, category, stock_count, image_set_id, slug, compare_at_price_cents, sales_count)
+        (id, name, description, price_cents, category, stock_count, image_set_id, slug, compare_at_price_cents, sales_count, mixable, mix_unit_grams)
       VALUES
-        (@id, @name, @description, @price_cents, @category, @stock_count, @image_set_id, @slug, @compare_at_price_cents, @sales_count)
+        (@id, @name, @description, @price_cents, @category, @stock_count, @image_set_id, @slug, @compare_at_price_cents, @sales_count, @mixable, @mix_unit_grams)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         description = excluded.description,
@@ -143,9 +143,17 @@ export function seedDatabase(db: Database.Database): void {
         image_set_id = excluded.image_set_id,
         slug = excluded.slug,
         compare_at_price_cents = excluded.compare_at_price_cents,
-        sales_count = excluded.sales_count
+        sales_count = excluded.sales_count,
+        mixable = excluded.mixable,
+        mix_unit_grams = excluded.mix_unit_grams
     `);
-    for (const product of CATALOG_PRODUCTS) upsertProduct.run(product);
+    for (const product of CATALOG_PRODUCTS) {
+      upsertProduct.run({
+        ...product,
+        mixable: product.mixable ? 1 : 0,
+        mix_unit_grams: product.mixUnitGrams,
+      });
+    }
 
     // Existing promo redemption counts must not be reset by a normal seed.
     const insertPromo = db.prepare(`

@@ -4,6 +4,11 @@ import { createSafeFingerprint, type PaymentRecord } from '../payments/paymentRe
 import { validatePromo } from '../promos/promoService.js';
 import { createCheckoutQuote } from './checkoutQuote.js';
 import { finalizeAuthorizedCheckout } from './checkoutFinalizer.js';
+import {
+  calculatePowderMixStockRequirements,
+  quotePowderMix,
+} from '../powderizer/powderMixRules.js';
+import type { PowderMixProduct, PowderMixStockRequirement } from '../powderizer/powderizerTypes.js';
 import type {
   CheckoutDependencies,
   CheckoutParams,
@@ -19,6 +24,121 @@ export type {
 } from './checkoutTypes.js';
 
 type Preparation = CheckoutResult | { quoteTotalCents: number; card: ValidCard } | { resume: true };
+
+function toMixProduct(
+  row: NonNullable<ReturnType<CheckoutDependencies['products']['findById']>>,
+): PowderMixProduct {
+  return {
+    id: row.id,
+    name: row.name,
+    priceCents: row.price_cents,
+    mixable: row.mixable === 1,
+    mixUnitGrams: row.mix_unit_grams ?? null,
+  };
+}
+
+function prepareMixes(
+  cartId: string,
+  dependencies: CheckoutDependencies,
+):
+  | { requirements: readonly PowderMixStockRequirement[] }
+  | Extract<CheckoutResult, { success: false }> {
+  const persisted = dependencies.mixes.listForCart(cartId);
+  const stockLines: Array<{
+    allocations: Array<{ productId: number; allocatedGrams: number }>;
+    quantity: number;
+  }> = [];
+  const requotes: Array<{ mixId: string; oldUnitPriceCents: number; newUnitPriceCents: number }> =
+    [];
+  for (const mix of persisted) {
+    const components = mix.components.map((component) => ({
+      productId: component.product_id,
+      percentage: component.percentage,
+    }));
+    const products = components
+      .map((component) => dependencies.products.findById(component.productId))
+      .filter((product): product is NonNullable<typeof product> => product !== undefined)
+      .map(toMixProduct);
+    try {
+      const quoted = quotePowderMix(
+        {
+          components: components.map((component) => ({
+            ...component,
+            productId: String(component.productId),
+          })),
+          bagSizeGrams: mix.bag_size_grams,
+          fineness: mix.fineness,
+          customLabel: mix.custom_label ?? undefined,
+        },
+        products,
+      );
+      if (
+        quoted.priceVersion !== mix.price_version ||
+        quoted.unitPriceCents !== mix.quoted_unit_price_cents
+      ) {
+        requotes.push({
+          mixId: mix.id,
+          oldUnitPriceCents: mix.quoted_unit_price_cents,
+          newUnitPriceCents: quoted.unitPriceCents,
+        });
+        continue;
+      }
+      stockLines.push({ allocations: [...quoted.allocations], quantity: mix.quantity });
+    } catch {
+      requotes.push({
+        mixId: mix.id,
+        oldUnitPriceCents: mix.quoted_unit_price_cents,
+        newUnitPriceCents: mix.quoted_unit_price_cents,
+      });
+    }
+  }
+  if (requotes.length) return { success: false, error: 'MIX_REQUOTE_REQUIRED', mixes: requotes };
+  const ids = [
+    ...new Set(
+      stockLines.flatMap((line) => line.allocations.map((allocation) => allocation.productId)),
+    ),
+  ];
+  const products = ids
+    .map((id) => dependencies.products.findById(id))
+    .filter((product): product is NonNullable<typeof product> => product !== undefined)
+    .map(toMixProduct);
+  let requirements: readonly PowderMixStockRequirement[];
+  try {
+    requirements = calculatePowderMixStockRequirements(stockLines, products);
+  } catch {
+    return {
+      success: false,
+      error: 'MIX_REQUOTE_REQUIRED',
+      mixes: persisted.map((mix) => ({
+        mixId: mix.id,
+        oldUnitPriceCents: mix.quoted_unit_price_cents,
+        newUnitPriceCents: mix.quoted_unit_price_cents,
+      })),
+    };
+  }
+  const unavailable = requirements.filter((requirement) => {
+    const product = dependencies.products.findById(requirement.productId);
+    return (
+      !product ||
+      product.stock_count - dependencies.mixes.reservedStock(requirement.productId) <
+        requirement.bagEquivalents
+    );
+  });
+  if (unavailable.length) {
+    const unavailableIds = new Set(unavailable.map((requirement) => requirement.productId));
+    return {
+      success: false,
+      error: 'MIX_STOCK_UNAVAILABLE',
+      mixIds: persisted
+        .filter((mix) =>
+          mix.components.some((component) => unavailableIds.has(component.product_id)),
+        )
+        .map((mix) => mix.id),
+      productIds: unavailable.map((requirement) => String(requirement.productId)),
+    };
+  }
+  return { requirements };
+}
 
 function replay(
   payment: PaymentRecord,
@@ -61,14 +181,14 @@ function prepare(
       createdAt: dependencies.clock.now().toISOString(),
     });
     if (!reservation.reserved) return replay(reservation.payment, fingerprint, dependencies);
-    const cart = getCart(dependencies.carts, params.cartId);
+    const cart = getCart(dependencies.carts, params.cartId, dependencies.mixes);
     if (!cart)
       return failPreparation(
         params.idempotencyKey,
         { success: false, error: 'CART_NOT_FOUND' },
         dependencies,
       );
-    if (cart.items.length === 0)
+    if (cart.totalItems === 0)
       return failPreparation(
         params.idempotencyKey,
         { success: false, error: 'CART_EMPTY' },
@@ -96,6 +216,9 @@ function prepare(
         },
         dependencies,
       );
+    const mixPreparation = prepareMixes(params.cartId, dependencies);
+    if ('error' in mixPreparation)
+      return failPreparation(params.idempotencyKey, mixPreparation, dependencies);
     const createdAt = dependencies.clock.now().toISOString();
     const quote = createCheckoutQuote({
       cart,
@@ -126,6 +249,7 @@ function prepare(
         dependencies,
       );
     }
+    dependencies.mixes.reserveStock(params.idempotencyKey, mixPreparation.requirements);
     if (
       !dependencies.payments.persistQuote({
         idempotencyKey: params.idempotencyKey,
@@ -176,6 +300,7 @@ function providerFailure(
     });
     dependencies.carts.releaseReservation(idempotencyKey);
     dependencies.promos.releaseReservation(idempotencyKey);
+    dependencies.mixes.releaseStockReservation(idempotencyKey);
     return result;
   });
 }

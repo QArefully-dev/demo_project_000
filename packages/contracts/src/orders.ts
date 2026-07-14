@@ -8,6 +8,7 @@ import {
   Uuid,
   PositiveIntegerString,
 } from './common.js';
+import { PowderMixOrderItem } from './powderizer.js';
 
 export const OrderLineItem = Type.Object({
   productId: Type.String({ minLength: 1 }),
@@ -20,6 +21,7 @@ export type OrderLineItem = Static<typeof OrderLineItem>;
 export const Order = Type.Object({
   id: PositiveIntegerString,
   items: Type.Array(OrderLineItem),
+  mixItems: Type.Array(PowderMixOrderItem),
   subtotalCents: MoneyCents,
   discountCents: MoneyCents,
   totalCents: MoneyCents,

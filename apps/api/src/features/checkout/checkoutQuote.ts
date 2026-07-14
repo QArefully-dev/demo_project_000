@@ -14,7 +14,7 @@ export function createCheckoutQuote(params: {
     ? calculateDiscount({ promo: params.promo, subtotalCents: params.cart.subtotalCents })
     : 0;
   return {
-    version: 1,
+    version: 2,
     cartId: params.cart.id,
     customer: {
       name: params.checkout.customerName.trim(),
@@ -33,6 +33,7 @@ export function createCheckoutQuote(params: {
       quantity: item.quantity,
       lineTotalCents: item.lineTotalCents,
     })),
+    mixLines: params.cart.mixItems.map((item) => ({ ...item, snapshotVersion: 1 })),
     createdAt: params.createdAt,
   };
 }
