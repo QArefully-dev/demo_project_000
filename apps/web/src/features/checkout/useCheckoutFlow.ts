@@ -19,7 +19,7 @@ import { usePromoQuote } from './usePromoQuote';
 
 /** CheckoutPage compatibility facade. Feature concerns live in focused modules. */
 export function useCheckoutFlow() {
-  const { cart, cartId, clearCart, retryCart } = useCartContext();
+  const { cart, cartId, clearCart, requoteMix, retryCart } = useCartContext();
   const [state, dispatch] = useReducer(checkoutReducer, undefined, initialCheckoutState);
   const quoteKey = createCartQuoteKey(cart);
   const contactErrors = useMemo(() => validateContact(state.contact), [state.contact]);
@@ -83,6 +83,14 @@ export function useCheckoutFlow() {
     () => dispatch({ type: 'promo-removed', idempotencyKey: createIdempotencyKey() }),
     [],
   );
+  const acceptUpdatedPrices = useCallback(async () => {
+    if (state.mixConflict?.code !== 'MIX_REQUOTE_REQUIRED') return false;
+    for (const { mixId } of state.mixConflict.mixes) {
+      if (!(await requoteMix(mixId))) return false;
+    }
+    dispatch({ type: 'quote-changed', idempotencyKey: createIdempotencyKey() });
+    return true;
+  }, [requoteMix, state.mixConflict]);
   const fieldError = useCallback(
     (field: Field) =>
       state.touched[field] ? (contactErrors[field] ?? cardErrors[field]) : undefined,
@@ -104,6 +112,7 @@ export function useCheckoutFlow() {
     isPromoEligible: cart ? isEligibleForPromo(cart.totalItems) : false,
     submitting: state.submitting,
     paymentError: state.paymentError,
+    mixConflict: state.mixConflict,
     cartRecoveryMessage: state.cartRecoveryMessage,
     fieldError,
     updateContact,
@@ -114,6 +123,7 @@ export function useCheckoutFlow() {
     updatePromoCode,
     applyPromo,
     removePromo,
+    acceptUpdatedPrices,
     submitPayment,
   };
 }

@@ -1,7 +1,43 @@
 import { useCallback } from 'react';
 import { ApiError } from '@/api/client';
 import { pay } from '@/api/payments';
-import type { CardField, CheckoutEvent, CheckoutState } from './checkoutState';
+import type { CardField, CheckoutEvent, CheckoutState, MixCheckoutConflict } from './checkoutState';
+
+function mixConflict(error: unknown): MixCheckoutConflict | null {
+  if (!(error instanceof ApiError) || error.status !== 409 || !error.response) return null;
+  const response = error.response as Record<string, unknown>;
+  if (
+    response.code === 'MIX_REQUOTE_REQUIRED' &&
+    Array.isArray(response.mixes) &&
+    response.mixes.every(
+      (mix) =>
+        typeof mix === 'object' &&
+        mix !== null &&
+        typeof (mix as Record<string, unknown>).mixId === 'string' &&
+        typeof (mix as Record<string, unknown>).oldUnitPriceCents === 'number' &&
+        typeof (mix as Record<string, unknown>).newUnitPriceCents === 'number',
+    )
+  ) {
+    return {
+      code: 'MIX_REQUOTE_REQUIRED',
+      mixes: response.mixes as Array<{
+        mixId: string;
+        oldUnitPriceCents: number;
+        newUnitPriceCents: number;
+      }>,
+    };
+  }
+  if (
+    response.code === 'MIX_STOCK_UNAVAILABLE' &&
+    Array.isArray(response.mixIds) &&
+    Array.isArray(response.productIds) &&
+    response.mixIds.every((id) => typeof id === 'string') &&
+    response.productIds.every((id) => typeof id === 'string')
+  ) {
+    return { code: 'MIX_STOCK_UNAVAILABLE', mixIds: response.mixIds, productIds: response.productIds };
+  }
+  return null;
+}
 
 type UsePaymentSubmissionArgs = {
   cartId: string | null;
@@ -48,6 +84,11 @@ export function usePaymentSubmission({
       clearCart();
       replaceWithOrder(order.id);
     } catch (error) {
+      const conflict = mixConflict(error);
+      if (conflict) {
+        dispatch({ type: 'mix-conflict', conflict });
+        return;
+      }
       dispatch({
         type: 'submission-failed',
         error:

@@ -1,6 +1,6 @@
 # Powderizer Implementation Plan
 
-Status: Phases 0-6 complete; Phases 7-10 deferred
+Status: Phases 0-9 complete; Phase 10 pending
 
 Audience: implementation agent
 
@@ -511,7 +511,7 @@ Gate:
 - Idempotency tests prove one order and one stock decrement.
 - Standard product-only checkout tests unchanged.
 
-## Phase 7 - Web API, State, Route Shell
+## Phase 7 - Web API, State, Route Shell [Complete]
 
 Goal: establish typed client and deterministic builder state.
 
@@ -555,7 +555,7 @@ Gate:
 - Route loads from typed config endpoint.
 - No cart mutation yet required from rendered form.
 
-## Phase 8 - Builder UI and Bag Preview
+## Phase 8 - Builder UI and Bag Preview [Complete]
 
 Goal: complete keyboard-accessible quote-to-cart builder.
 
@@ -610,7 +610,7 @@ Gate:
 - User completes builder without mouse.
 - Responsive layout works at 320px width and desktop.
 
-## Phase 9 - Cart, Checkout, Confirmation UI
+## Phase 9 - Cart, Checkout, Confirmation UI [Complete]
 
 Goal: display and manage custom lines through full purchase journey.
 
@@ -666,9 +666,23 @@ Gate:
 - Full custom mix purchase flow completes.
 - Standard product flow remains unchanged.
 
-## Phase 10 - Verification and Handoff
+## Phase 10 - Verification and Handoff [Pending]
 
 Goal: prove complete vertical slice and preserve baseline.
+
+Status record (2026-07-14):
+
+- Phases 7-9: implementation complete; independent review complete.
+- Phase 10: full verification, browser QA, acceptance journeys, handoff pending.
+- P2 test gaps:
+  - Rendered mix-cart coverage: mix-only state, display, quantity, remove, edit.
+  - `MIX_STOCK_UNAVAILABLE` UI render and edit/remove actions.
+  - Confirmation proves snapshots source from `Order.mixItems`.
+  - Requote acceptance clears promo and changes payment idempotency key.
+- Current full-check blockers:
+  - Legacy fixtures lack required `mixable` and `mixItems` fields; full typecheck blocked.
+  - Root lint reports unrelated API errors.
+  - Root format reports Phase 7/9 files; no clean full-format result.
 
 Automated checks:
 

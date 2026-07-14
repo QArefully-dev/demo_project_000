@@ -26,8 +26,16 @@ export const wishlistItem: NavItem = {
   enabled: true,
 };
 
+export const powderizerItem: NavItem = {
+  key: 'powderizer',
+  label: 'Powderizer',
+  icon: 'FlaskConical',
+  enabled: true,
+};
+
 export const navItems: Record<string, NavItem> = {
   search: searchItem,
   account: accountItem,
   wishlist: wishlistItem,
+  powderizer: powderizerItem,
 };

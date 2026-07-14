@@ -46,6 +46,15 @@ export function CheckoutSummary({
               <span>{formatMoney(item.lineTotalCents)}</span>
             </div>
           ))}
+          {cart.mixItems.map((item) => (
+            <div key={item.mixId} className="flex items-center justify-between text-sm">
+              <span>
+                {item.customLabel ?? 'Custom powder mix'}{' '}
+                <span className="text-muted-foreground">× {item.quantity}</span>
+              </span>
+              <span>{formatMoney(item.lineTotalCents)}</span>
+            </div>
+          ))}
         </div>
         <Separator />
         <div className="flex items-center justify-between text-sm">

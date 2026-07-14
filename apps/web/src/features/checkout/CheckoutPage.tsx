@@ -4,6 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useCartContext } from '@/hooks/CartContext';
+import { formatMoney } from '@/lib/formatMoney';
 import { CheckoutSummary } from './CheckoutSummary';
 import { ContactDetailsStep } from './ContactDetailsStep';
 import { PaymentDetailsStep } from './PaymentDetailsStep';
@@ -28,7 +29,7 @@ export function CheckoutPage() {
       />
     );
   }
-  if (flow.cart.items.length === 0) {
+  if (flow.cart.totalItems === 0) {
     return (
       <div className="mx-auto max-w-2xl space-y-4 py-12 text-center">
         {flow.cartRecoveryMessage && (
@@ -69,6 +70,33 @@ export function CheckoutPage() {
         >
           {flow.cartRecoveryMessage}
         </p>
+      )}
+      {flow.mixConflict?.code === 'MIX_REQUOTE_REQUIRED' && (
+        <div role="alert" className="mb-6 space-y-3 rounded-lg border border-amber-500/50 bg-amber-50 p-4 text-sm">
+          <p className="font-medium">Mix prices have changed. Review and accept updated prices before paying.</p>
+          <ul className="space-y-1 text-muted-foreground">
+            {flow.mixConflict.mixes.map((mix) => (
+              <li key={mix.mixId}>
+                {formatMoney(mix.oldUnitPriceCents)} → {formatMoney(mix.newUnitPriceCents)}{' '}
+                <Link className="text-primary underline-offset-4 hover:underline" to={`/powderizer?edit=${mix.mixId}`}>Edit mix</Link>
+              </li>
+            ))}
+          </ul>
+          <Button type="button" onClick={() => void flow.acceptUpdatedPrices()}>
+            Accept updated price
+          </Button>
+        </div>
+      )}
+      {flow.mixConflict?.code === 'MIX_STOCK_UNAVAILABLE' && (
+        <div role="alert" className="mb-6 space-y-2 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+          <p>One or more custom mixes no longer have enough ingredient stock.</p>
+          <div className="flex flex-wrap gap-3">
+            {flow.mixConflict.mixIds.map((mixId) => (
+              <Link key={mixId} className="underline-offset-4 hover:underline" to={`/powderizer?edit=${mixId}`}>Edit mix</Link>
+            ))}
+            <Link className="underline-offset-4 hover:underline" to="/cart">Remove from cart</Link>
+          </div>
+        </div>
       )}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

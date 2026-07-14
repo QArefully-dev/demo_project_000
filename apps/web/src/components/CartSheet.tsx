@@ -5,6 +5,7 @@ import { Separator } from '@/components/ui/separator';
 import { LoadingSpinner } from './LoadingSpinner';
 import { ErrorMessage } from './ErrorMessage';
 import { CartLineItem } from './CartLineItem';
+import { PowderMixCartLineItem } from '@/features/cart/PowderMixCartLineItem';
 import { formatMoney } from '@/lib/formatMoney';
 import { useCartContext } from '@/hooks/CartContext';
 import { Link } from 'react-router-dom';
@@ -18,6 +19,8 @@ export function CartSheet() {
     error,
     updateQuantity,
     removeItem,
+    updateMixQuantity,
+    removeMix,
     retryCart,
     isActionPending,
   } = useCartContext();
@@ -63,7 +66,7 @@ export function CartSheet() {
               </Button>
             </div>
           )}
-          {!isInitializing && !isLoading && cart && cart.items.length === 0 && (
+          {!isInitializing && !isLoading && cart && cart.totalItems === 0 && (
             <p className="py-8 text-center text-muted-foreground">Your powder cart is empty</p>
           )}
           {!isInitializing &&
@@ -79,8 +82,21 @@ export function CartSheet() {
                 onRemove={removeItem}
               />
             ))}
+          {!isInitializing &&
+            !isLoading &&
+            cart &&
+            cart.mixItems.map((item) => (
+              <PowderMixCartLineItem
+                key={item.mixId}
+                item={item}
+                isUpdating={isActionPending(`mix:${item.mixId}`, 'mix-update')}
+                isRemoving={isActionPending(`mix:${item.mixId}`, 'mix-remove')}
+                onUpdateQuantity={updateMixQuantity}
+                onRemove={removeMix}
+              />
+            ))}
         </div>
-        {!isInitializing && cart && cart.items.length > 0 && (
+        {!isInitializing && cart && cart.totalItems > 0 && (
           <div className="border-t pt-4 space-y-3">
             <div className="flex items-center justify-between text-sm">
               <span>Subtotal</span>

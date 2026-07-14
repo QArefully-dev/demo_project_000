@@ -66,6 +66,22 @@ export function OrderConfirmationPage() {
                 <span>{formatMoney(item.lineTotalCents)}</span>
               </div>
             ))}
+            {order.mixItems.map((item) => (
+              <div key={item.mixId} className="flex items-center justify-between text-sm">
+                <span>
+                  {item.customLabel ?? 'Custom powder mix'}{' '}
+                  <span className="text-muted-foreground">× {item.quantity}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {item.components
+                      .map(({ productName, percentage }) => `${productName} ${percentage}%`)
+                      .join(' · ')}
+                    {' · '}
+                    {item.bagSizeGrams}g · {item.fineness}
+                  </span>
+                </span>
+                <span>{formatMoney(item.lineTotalCents)}</span>
+              </div>
+            ))}
           </div>
           <Separator />
 

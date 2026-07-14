@@ -44,6 +44,13 @@ export function CategoryNav() {
           </Link>
         ))}
       <Link
+        to="/powderizer"
+        aria-current={pathname === '/powderizer' ? 'page' : undefined}
+        className={linkClassName(pathname === '/powderizer')}
+      >
+        Powderizer
+      </Link>
+      <Link
         to="/catalog?onSale=true&sort=bestselling"
         aria-current={isDealsActive ? 'page' : undefined}
         className={cn(

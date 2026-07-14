@@ -4,6 +4,7 @@ import { Separator } from '@/components/ui/separator';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { CartLineItem } from '@/components/CartLineItem';
+import { PowderMixCartLineItem } from './PowderMixCartLineItem';
 import { formatMoney } from '@/lib/formatMoney';
 import { useCartContext } from '@/hooks/CartContext';
 
@@ -15,6 +16,8 @@ export function CartPage() {
     error,
     updateQuantity,
     removeItem,
+    updateMixQuantity,
+    removeMix,
     retryCart,
     isActionPending,
   } = useCartContext();
@@ -36,7 +39,7 @@ export function CartPage() {
           </Button>
         </div>
       )}
-      {!cart || cart.items.length === 0 ? (
+      {!cart || cart.totalItems === 0 ? (
         <div className="py-12 text-center space-y-4">
           <p className="text-muted-foreground">Your powder cart is empty</p>
           <Button variant="outline" render={<Link to="/" />}>
@@ -53,6 +56,16 @@ export function CartPage() {
               isRemoving={isActionPending(item.productId, 'remove')}
               onUpdateQuantity={updateQuantity}
               onRemove={removeItem}
+            />
+          ))}
+          {cart.mixItems.map((item) => (
+            <PowderMixCartLineItem
+              key={item.mixId}
+              item={item}
+              isUpdating={isActionPending(`mix:${item.mixId}`, 'mix-update')}
+              isRemoving={isActionPending(`mix:${item.mixId}`, 'mix-remove')}
+              onUpdateQuantity={updateMixQuantity}
+              onRemove={removeMix}
             />
           ))}
           <Separator className="my-4" />
