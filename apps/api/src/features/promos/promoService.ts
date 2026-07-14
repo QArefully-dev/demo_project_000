@@ -1,5 +1,6 @@
 import type { CartRepository } from '../cart/cartRepository.js';
 import { getCart } from '../cart/cartService.js';
+import type { Clock } from '../auth/authService.js';
 import type { PromoRecord, PromoRepository } from './promoRepository.js';
 
 export type PromoValidationError =
@@ -25,19 +26,17 @@ export type PromoValidation =
   | { valid: false; error: string; errorCode: PromoValidationError };
 
 export interface PromoService {
-  validate(params: {
-    code: string;
-    cartId: string;
-    userId: number | null;
-    now?: Date;
-  }): PromoValidation;
+  validate(params: { code: string; cartId: string; userId: number | null }): PromoValidation;
 }
 
 export function createPromoService(dependencies: {
   promos: PromoRepository;
   carts: CartRepository;
+  clock: Clock;
 }): PromoService {
-  return { validate: (params) => validatePromo(params, dependencies) };
+  return {
+    validate: (params) => validatePromo({ ...params, now: dependencies.clock.now() }, dependencies),
+  };
 }
 
 function invalid(error: string, errorCode: PromoValidationError): PromoValidation {
@@ -56,12 +55,12 @@ function asValidPromo(promo: PromoRecord): ValidPromo {
 }
 
 export function validatePromo(
-  params: { code: string; cartId: string; userId: number | null; now?: Date },
+  params: { code: string; cartId: string; userId: number | null; now: Date },
   dependencies: { promos: PromoRepository; carts: CartRepository },
 ): PromoValidation {
   const promo = dependencies.promos.findByCode(params.code);
   if (!promo || !promo.active) return invalid('Promo code not found or inactive', 'INVALID');
-  const now = params.now ?? new Date();
+  const { now } = params;
   if (promo.startAt && now < new Date(promo.startAt))
     return invalid('This promo code is not yet active', 'NOT_STARTED');
   if (promo.endAt && now >= new Date(promo.endAt))
@@ -71,11 +70,17 @@ export function validatePromo(
   if (
     promo.perUserLimit !== null &&
     params.userId !== null &&
-    dependencies.promos.redemptionCountForUser(promo.code, params.userId) >= promo.perUserLimit
+    dependencies.promos.redemptionCountForUser(promo.code, params.userId) +
+      dependencies.promos.activeReservationCountForUser(promo.code, params.userId) >=
+      promo.perUserLimit
   ) {
     return invalid('You have already used this promo code', 'USAGE_LIMIT');
   }
-  if (promo.maxRedemptions !== null && promo.redemptionCount >= promo.maxRedemptions)
+  if (
+    promo.maxRedemptions !== null &&
+    promo.redemptionCount + dependencies.promos.activeReservationCount(promo.code) >=
+      promo.maxRedemptions
+  )
     return invalid('This promo code has reached its usage limit', 'USAGE_LIMIT');
   const cart = getCart(dependencies.carts, params.cartId);
   if (!cart) return invalid('Cart not found', 'INVALID');

@@ -1,10 +1,11 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Cart } from '@shop/contracts/cart';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
 import { pay } from '@/api/payments';
+import { validatePromo } from '@/api/promo';
 import type { useCart } from '@/hooks/useCart';
 import { CheckoutPage } from './CheckoutPage';
 
@@ -91,6 +92,7 @@ describe('CheckoutPage', () => {
     const { useCartContext } = await import('@/hooks/CartContext');
     vi.mocked(useCartContext).mockReturnValue(cartContext);
     vi.mocked(pay).mockReset();
+    vi.mocked(validatePromo).mockReset();
     clearCart.mockClear();
   });
 
@@ -156,6 +158,57 @@ describe('CheckoutPage', () => {
     await user.click(screen.getByRole('button', { name: 'Simulate payment' }));
     await waitFor(() => expect(pay).toHaveBeenCalledTimes(2));
     expect(vi.mocked(pay).mock.calls[1]![0].idempotencyKey).toBe(firstKey);
+  });
+
+  it('cancels visible validation for edited promo code and applies the new request', async () => {
+    let resolveFirst!: (value: Awaited<ReturnType<typeof validatePromo>>) => void;
+    let resolveSecond!: (value: Awaited<ReturnType<typeof validatePromo>>) => void;
+    const first = new Promise<Awaited<ReturnType<typeof validatePromo>>>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const second = new Promise<Awaited<ReturnType<typeof validatePromo>>>((resolve) => {
+      resolveSecond = resolve;
+    });
+    const eligibleCart = {
+      ...cart,
+      items: [{ ...cart.items[0]!, quantity: 5, lineTotalCents: 5000 }],
+      subtotalCents: 5000,
+      totalItems: 5,
+    };
+    const { useCartContext } = await import('@/hooks/CartContext');
+    vi.mocked(useCartContext).mockReturnValue({
+      ...cartContext,
+      cart: eligibleCart,
+      cartId: eligibleCart.id,
+    });
+    vi.mocked(validatePromo).mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const user = userEvent.setup();
+    renderCheckout();
+    const promoInput = screen.getByLabelText('Powder promotion');
+
+    await user.type(promoInput, 'SAVE10');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(screen.getByRole('button', { name: 'Checking...' })).toBeDisabled();
+
+    await user.clear(promoInput);
+    await user.type(promoInput, 'SAVE20');
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(validatePromo).toHaveBeenNthCalledWith(2, eligibleCart.id, 'SAVE20');
+
+    await act(async () => {
+      resolveFirst({ valid: false, error: 'Old promo invalid' });
+      await first;
+    });
+    expect(screen.getByRole('button', { name: 'Checking...' })).toBeDisabled();
+    expect(screen.queryByText('Old promo invalid')).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveSecond({ valid: false, error: 'New promo invalid' });
+      await second;
+    });
+    await screen.findByText('New promo invalid');
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeEnabled();
   });
 
   it('clears cart state and replaces checkout with confirmation after payment success', async () => {

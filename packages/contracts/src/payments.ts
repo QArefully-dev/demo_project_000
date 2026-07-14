@@ -1,5 +1,6 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { CustomerName, EmailAddress, PromoCodeValue, ShippingAddress, Uuid } from './common.js';
+import { PlaceOrderResponse } from './orders.js';
 
 export const PaymentBody = Type.Object({
   cartId: Uuid,
@@ -24,3 +25,7 @@ export const PaymentErrorResponse = Type.Object({
   failureReason: Type.Optional(PaymentFailureReason),
 });
 export type PaymentErrorResponse = Static<typeof PaymentErrorResponse>;
+
+/** Successful checkout response returned by the payment endpoint. */
+export const PaymentSuccessResponse = PlaceOrderResponse;
+export type PaymentSuccessResponse = Static<typeof PaymentSuccessResponse>;

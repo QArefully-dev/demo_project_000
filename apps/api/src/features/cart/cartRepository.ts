@@ -14,6 +14,9 @@ export interface CartRepository {
   addLine(cartId: string, productId: string): void;
   updateLine(cartId: string, productId: string, quantity: number): boolean;
   removeLine(cartId: string, productId: string): boolean;
+  reserve(cartId: string, paymentIdempotencyKey: string, createdAt: string): boolean;
+  releaseReservation(paymentIdempotencyKey: string): boolean;
+  isReserved(cartId: string): boolean;
   touch(cartId: string): void;
   remove(cartId: string): void;
 }
@@ -55,6 +58,35 @@ export function createCartRepository(db: Database.Database): CartRepository {
         db
           .prepare('DELETE FROM cart_line_items WHERE cart_id = ? AND product_id = ?')
           .run(cartId, productId).changes > 0
+      );
+    },
+    reserve(cartId, paymentIdempotencyKey, createdAt) {
+      const result = db
+        .prepare(
+          `INSERT INTO cart_reservations (cart_id, payment_idempotency_key, created_at)
+           VALUES (?, ?, ?)
+           ON CONFLICT(cart_id) DO NOTHING`,
+        )
+        .run(cartId, paymentIdempotencyKey, createdAt);
+      if (result.changes === 1) return true;
+      return (
+        db
+          .prepare(
+            'SELECT 1 FROM cart_reservations WHERE cart_id = ? AND payment_idempotency_key = ?',
+          )
+          .get(cartId, paymentIdempotencyKey) !== undefined
+      );
+    },
+    releaseReservation(paymentIdempotencyKey) {
+      return (
+        db
+          .prepare('DELETE FROM cart_reservations WHERE payment_idempotency_key = ?')
+          .run(paymentIdempotencyKey).changes > 0
+      );
+    },
+    isReserved(cartId) {
+      return (
+        db.prepare('SELECT 1 FROM cart_reservations WHERE cart_id = ?').get(cartId) !== undefined
       );
     },
     touch(cartId) {

@@ -1,6 +1,6 @@
 import { apiFetch } from './client';
+import { PaymentSuccessResponse } from '@shop/contracts/payments';
 import type { PaymentBody } from '@shop/contracts/payments';
-import type { PlaceOrderResponse } from '@shop/contracts/orders';
 
 /**
  * Payment API module.
@@ -11,8 +11,8 @@ import type { PlaceOrderResponse } from '@shop/contracts/orders';
  * - 409: idempotency conflict (reused key with changed payload)
  */
 
-export function pay(body: PaymentBody): Promise<PlaceOrderResponse> {
-  return apiFetch<PlaceOrderResponse>('/api/payments/pay', {
+export function pay(body: PaymentBody) {
+  return apiFetch(PaymentSuccessResponse, '/api/payments/pay', {
     method: 'POST',
     body: JSON.stringify(body),
   });

@@ -5,13 +5,19 @@ import type { CartRepository } from './cartRepository.js';
 export interface CartService {
   create(): { cartId: string };
   get(cartId: string): Cart | undefined;
-  add(cartId: string, productId: string): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_FOUND';
+  add(
+    cartId: string,
+    productId: string,
+  ): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_FOUND' | 'CART_RESERVED';
   update(
     cartId: string,
     productId: string,
     quantity: number,
-  ): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_IN_CART';
-  remove(cartId: string, productId: string): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_IN_CART';
+  ): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_IN_CART' | 'CART_RESERVED';
+  remove(
+    cartId: string,
+    productId: string,
+  ): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_IN_CART' | 'CART_RESERVED';
 }
 
 export function createCartService(repository: CartRepository): CartService {
@@ -50,8 +56,9 @@ export function addItem(
   repository: CartRepository,
   cartId: string,
   productId: string,
-): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_FOUND' {
+): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_FOUND' | 'CART_RESERVED' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
+  if (repository.isReserved(cartId)) return 'CART_RESERVED';
   if (!repository.productExists(productId)) return 'PRODUCT_NOT_FOUND';
   repository.addLine(cartId, productId);
   repository.touch(cartId);
@@ -63,8 +70,9 @@ export function updateItem(
   cartId: string,
   productId: string,
   quantity: number,
-): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_IN_CART' {
+): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_IN_CART' | 'CART_RESERVED' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
+  if (repository.isReserved(cartId)) return 'CART_RESERVED';
   const changed =
     quantity === 0
       ? repository.removeLine(cartId, productId)
@@ -78,8 +86,9 @@ export function removeItem(
   repository: CartRepository,
   cartId: string,
   productId: string,
-): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_IN_CART' {
+): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_IN_CART' | 'CART_RESERVED' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
+  if (repository.isReserved(cartId)) return 'CART_RESERVED';
   if (!repository.removeLine(cartId, productId)) return 'PRODUCT_NOT_IN_CART';
   repository.touch(cartId);
   return getCart(repository, cartId) ?? 'CART_NOT_FOUND';

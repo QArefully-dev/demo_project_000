@@ -29,7 +29,7 @@ void test('cart service coordinates cart repository and promo eligibility', (t) 
   assert.equal(updateItem(carts, cartId, '1', 2).totalItems, 2);
   assert.equal(
     validatePromo(
-      { code: 'SAVE10', cartId, userId: null },
+      { code: 'SAVE10', cartId, userId: null, now: new Date('2026-07-14T10:00:00.000Z') },
       { carts, promos: createPromoRepository(db) },
     ).errorCode,
     'MIN_ITEMS',

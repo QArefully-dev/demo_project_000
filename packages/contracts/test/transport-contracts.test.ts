@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
+import * as AuthContracts from '../src/auth.js';
 import { SignupBody } from '../src/auth.js';
 import { CartIdParam } from '../src/cart.js';
 import { PaymentBody } from '../src/payments.js';
@@ -43,4 +44,20 @@ void test('cart and payment transports require UUID identifiers and bounded card
   assert.equal(Value.Check(PaymentBody, { ...payment, cardNumber: '4242-4242-4242-4242' }), true);
   assert.equal(Value.Check(PaymentBody, { ...payment, cardCvc: '1x3' }), false);
   assert.equal(Value.Check(PaymentBody, { ...payment, cardExpiry: '13/99' }), false);
+});
+
+void test('current-user transport contract accepts public user or null', () => {
+  assert.ok('CurrentUserResponse' in AuthContracts, 'Missing CurrentUserResponse contract');
+  const schema = (AuthContracts as Record<string, unknown>).CurrentUserResponse;
+  assert.ok(schema && typeof schema === 'object');
+  assert.equal(Value.Check(schema as Parameters<typeof Value.Check>[0], null), true);
+  assert.equal(
+    Value.Check(schema as Parameters<typeof Value.Check>[0], {
+      id: '1',
+      email: 'shopper@example.test',
+      displayName: 'Shopper',
+      role: 'customer',
+    }),
+    true,
+  );
 });

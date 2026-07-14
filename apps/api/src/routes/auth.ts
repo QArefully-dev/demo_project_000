@@ -1,6 +1,5 @@
 import { FastifyInstance } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
-import { Type } from '@sinclair/typebox';
 import { sendBadRequest, sendUnauthorized, sendConflict } from '../utils/errors.js';
 import { createSession, destroySession, requireAuth } from '../plugins/auth.js';
 import {
@@ -11,6 +10,7 @@ import {
   ChangePasswordBody,
   SuccessResponse,
   PublicUser,
+  CurrentUserResponse,
 } from '@shop/contracts/auth';
 import { ErrorResponse } from '@shop/contracts/common';
 import { toPublicUser } from '../features/auth/authService.js';
@@ -160,7 +160,7 @@ export default function authRoutes(app: FastifyInstance, { services }: AppContex
     {
       schema: {
         response: {
-          200: Type.Union([PublicUser, Type.Null()]),
+          200: CurrentUserResponse,
         },
       },
     },

@@ -8,6 +8,8 @@ export const PublicUser = Type.Object({
   role: Type.Union([Type.Literal('customer'), Type.Literal('admin')]),
 });
 export type PublicUser = Static<typeof PublicUser>;
+export const CurrentUserResponse = Type.Union([PublicUser, Type.Null()]);
+export type CurrentUserResponse = Static<typeof CurrentUserResponse>;
 
 export const SignupBody = Type.Object({
   email: EmailAddress,

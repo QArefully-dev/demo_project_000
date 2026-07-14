@@ -43,6 +43,9 @@ import {
 } from './features/passwordReset/passwordResetService.js';
 import { createPromoRepository } from './features/promos/promoRepository.js';
 import { createPromoService, type PromoService } from './features/promos/promoService.js';
+import { createPaymentRepository } from './features/payments/paymentRepository.js';
+import { simulatedPaymentGateway } from './features/payments/paymentGateway.js';
+import { createUnitOfWork } from './db/unitOfWork.js';
 
 export interface AppDependencies {
   db: Database.Database;
@@ -70,6 +73,8 @@ function createAppServices(dependencies: AppDependencies): AppServices {
   const clock = dependencies.clock ?? { now: () => new Date() };
   const mailbox = createMailboxRepository(dependencies.db);
   const carts = createCartRepository(dependencies.db);
+  const promos = createPromoRepository(dependencies.db);
+  const orders = createOrderRepository(dependencies.db);
   return {
     auth: createAuthService({ users: createUserRepository(dependencies.db), clock }),
     sessions: createSessionService({ sessions: createSessionRepository(dependencies.db), clock }),
@@ -83,9 +88,18 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     mailbox,
     products: createProductService(createProductRepository(dependencies.db)),
     carts: createCartService(carts),
-    promos: createPromoService({ promos: createPromoRepository(dependencies.db), carts }),
-    orders: createOrderService(createOrderRepository(dependencies.db)),
-    checkout: createCheckoutService({ db: dependencies.db, mailbox }),
+    promos: createPromoService({ promos, carts, clock }),
+    orders: createOrderService(orders),
+    checkout: createCheckoutService({
+      unitOfWork: createUnitOfWork(dependencies.db),
+      carts,
+      promos,
+      payments: createPaymentRepository(dependencies.db),
+      orders,
+      mailbox,
+      gateway: simulatedPaymentGateway,
+      clock,
+    }),
     favourites: createFavouritesService(createFavouritesRepository(dependencies.db)),
   };
 }

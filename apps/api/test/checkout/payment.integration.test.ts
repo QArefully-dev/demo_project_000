@@ -4,11 +4,45 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { checkout, type CheckoutParams } from '../../src/features/checkout/checkoutService.js';
-import type { GatewayResult, PaymentGateway } from '../../src/features/payments/paymentGateway.js';
+import {
+  createCheckoutService,
+  type CheckoutParams,
+} from '../../src/features/checkout/checkoutService.js';
+import type {
+  GatewayResult,
+  PaymentGateway,
+  PaymentGatewayRequest,
+} from '../../src/features/payments/paymentGateway.js';
 import { createCartRepository } from '../../src/features/cart/cartRepository.js';
 import { addItem, createCart, getCart } from '../../src/features/cart/cartService.js';
 import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
+import { createPromoRepository } from '../../src/features/promos/promoRepository.js';
+import { createPaymentRepository } from '../../src/features/payments/paymentRepository.js';
+import { createOrderRepository } from '../../src/features/checkout/orderRepository.js';
+import { createMailboxRepository } from '../../src/features/mailbox/mailboxRepository.js';
+import { createUnitOfWork } from '../../src/db/unitOfWork.js';
+import { simulatedPaymentGateway } from '../../src/features/payments/paymentGateway.js';
+
+function checkout(
+  params: CheckoutParams,
+  dependencies: {
+    db: import('better-sqlite3').Database;
+    gateway?: PaymentGateway;
+    now?: () => Date;
+  },
+) {
+  const carts = createCartRepository(dependencies.db);
+  return createCheckoutService({
+    unitOfWork: createUnitOfWork(dependencies.db),
+    carts,
+    promos: createPromoRepository(dependencies.db),
+    payments: createPaymentRepository(dependencies.db),
+    orders: createOrderRepository(dependencies.db),
+    mailbox: createMailboxRepository(dependencies.db),
+    gateway: dependencies.gateway ?? simulatedPaymentGateway,
+    clock: { now: dependencies.now ?? (() => new Date()) },
+  }).process(params);
+}
 
 function deferredGateway(): { gateway: PaymentGateway; resolve: (result: GatewayResult) => void } {
   let resolve!: (result: GatewayResult) => void;
@@ -20,6 +54,26 @@ function deferredGateway(): { gateway: PaymentGateway; resolve: (result: Gateway
         }),
     },
     resolve: (result) => resolve(result),
+  };
+}
+
+function spyGateway(result: GatewayResult = { status: 'success' }): {
+  gateway: PaymentGateway;
+  calls: () => number;
+  requests: () => PaymentGatewayRequest[];
+} {
+  let count = 0;
+  const requests: PaymentGatewayRequest[] = [];
+  return {
+    gateway: {
+      process: (request) => {
+        count += 1;
+        requests.push(request);
+        return Promise.resolve(result);
+      },
+    },
+    calls: () => count,
+    requests: () => requests,
   };
 }
 
@@ -100,6 +154,20 @@ void test('atomic checkout orchestration', async (t) => {
     },
   );
 
+  await t.test('rejects same-key changed card expiry without another gateway request', async () => {
+    const cartId = freshCart();
+    const gateway = spyGateway();
+    const params = payment(cartId, 'expiry-conflict');
+    assert.equal((await checkout(params, { db, gateway: gateway.gateway })).success, true);
+
+    const conflict = await checkout(
+      { ...params, cardExpiry: '11/99' },
+      { db, gateway: gateway.gateway },
+    );
+    assert.deepEqual(conflict, { success: false, error: 'IDEMPOTENT_CONFLICT' });
+    assert.equal(gateway.calls(), 1);
+  });
+
   await t.test('replays decline and timeout deterministically', async () => {
     for (const result of [{ status: 'declined' }, { status: 'timeout' }] as const) {
       const cartId = freshCart();
@@ -112,15 +180,92 @@ void test('atomic checkout orchestration', async (t) => {
     }
   });
 
-  await t.test('re-reads cart and promo eligibility after the gateway wait', async () => {
+  await t.test('does not call gateway when cart is missing', async () => {
+    resetDatabase(db);
+    seedDatabase(db);
+    const gateway = spyGateway();
+
+    const result = await checkout(payment('missing-cart', 'missing-cart'), {
+      db,
+      gateway: gateway.gateway,
+    });
+
+    assert.deepEqual(result, { success: false, error: 'CART_NOT_FOUND' });
+    assert.equal(gateway.calls(), 0);
+  });
+
+  await t.test('does not call gateway when cart is empty', async () => {
+    resetDatabase(db);
+    seedDatabase(db);
+    const { cartId } = createCart(carts);
+    const gateway = spyGateway();
+
+    const result = await checkout(payment(cartId, 'empty-cart'), { db, gateway: gateway.gateway });
+
+    assert.deepEqual(result, { success: false, error: 'CART_EMPTY' });
+    assert.equal(gateway.calls(), 0);
+  });
+
+  await t.test('does not call gateway for invalid or ineligible promos', async () => {
+    const invalidCartId = freshCart();
+    const invalidGateway = spyGateway();
+    const invalid = await checkout(
+      { ...payment(invalidCartId, 'invalid-promo'), promoCode: 'NOT-A-PROMO' },
+      { db, gateway: invalidGateway.gateway },
+    );
+
+    const ineligibleCartId = freshCart();
+    const ineligibleGateway = spyGateway();
+    const ineligible = await checkout(
+      { ...payment(ineligibleCartId, 'ineligible-promo'), promoCode: 'SAVE10' },
+      { db, gateway: ineligibleGateway.gateway },
+    );
+    assert.equal(invalid.error, 'PROMO_INVALID');
+    assert.equal(ineligible.error, 'PROMO_INVALID');
+    assert.equal(invalidGateway.calls(), 0);
+    assert.equal(ineligibleGateway.calls(), 0);
+  });
+
+  await t.test('uses checkout clock at promo expiry boundary', async () => {
+    const cartId = freshCart();
+    for (const productId of ['2', '3']) addItem(carts, cartId, productId);
+    const checkoutClock = new Date('2024-12-31T23:59:59.999Z');
+
+    const result = await checkout(
+      { ...payment(cartId, 'clock-boundary'), promoCode: 'EXPIRED10' },
+      { db, now: () => checkoutClock },
+    );
+
+    assert.equal(result.success, true);
+    if (result.success) {
+      assert.equal(result.order.promoApplied, 'EXPIRED10');
+      assert.equal(result.order.createdAt, checkoutClock.toISOString());
+    }
+  });
+
+  await t.test('charges the persisted server quote total', async () => {
+    const cartId = freshCart();
+    const gateway = spyGateway();
+    const expectedTotal = getCart(carts, cartId)?.subtotalCents;
+    const result = await checkout(payment(cartId, 'quoted-amount'), {
+      db,
+      gateway: gateway.gateway,
+    });
+
+    assert.equal(result.success, true);
+    assert.equal(gateway.requests()[0]?.amountCents, expectedTotal);
+    if (result.success) assert.equal(result.order.totalCents, expectedTotal);
+  });
+
+  await t.test('locks the quote and promo reservation before the gateway wait', async () => {
     const cartId = freshCart();
     const deferred = deferredGateway();
     const first = checkout(payment(cartId, 'cart-change'), { db, gateway: deferred.gateway });
-    addItem(carts, cartId, '2');
+    assert.equal(addItem(carts, cartId, '2'), 'CART_RESERVED');
     deferred.resolve({ status: 'success' });
     const result = await first;
     assert.equal(result.success, true);
-    if (result.success) assert.equal(result.order.items.length, 2);
+    if (result.success) assert.equal(result.order.items.length, 1);
 
     const promoCartId = freshCart();
     for (const productId of ['2', '3', '4', '5']) addItem(carts, promoCartId, productId);
@@ -129,18 +274,12 @@ void test('atomic checkout orchestration', async (t) => {
     const pending = checkout(promoPayment, { db, gateway: promoDeferred.gateway });
     db.prepare("UPDATE promo_codes SET active = 0 WHERE code = 'SAVE10'").run();
     promoDeferred.resolve({ status: 'success' });
-    const expectedPromoFailure = {
-      success: false,
-      error: 'PROMO_INVALID',
-      promoError: 'Promo code not found or inactive',
-      promoErrorCode: 'INVALID',
-    } as const;
-    assert.deepEqual(await pending, expectedPromoFailure);
-    assert.deepEqual(
-      await checkout(promoPayment, { db, gateway: promoDeferred.gateway }),
-      expectedPromoFailure,
+    assert.equal((await pending).success, true);
+    assert.equal(
+      (await checkout(promoPayment, { db, gateway: promoDeferred.gateway })).success,
+      true,
     );
-    assert.equal(getCart(carts, promoCartId)?.totalItems, 5);
+    assert.equal(getCart(carts, promoCartId), undefined);
   });
 
   await t.test('rolls back order and redemption writes together', async () => {
@@ -150,16 +289,41 @@ void test('atomic checkout orchestration', async (t) => {
       `CREATE TRIGGER abort_checkout_mailbox BEFORE INSERT ON dev_mailbox BEGIN SELECT RAISE(ABORT, 'mailbox failure'); END`,
     );
     const result = await checkout({ ...payment(cartId, 'rollback'), promoCode: 'SAVE10' }, { db });
-    assert.deepEqual(result, { success: false, error: 'CHECKOUT_FAILED' });
+    assert.deepEqual(result, { success: false, error: 'IDEMPOTENT_IN_PROGRESS' });
     assert.equal(getCart(carts, cartId)?.totalItems, 5);
     assert.equal(
       (db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }).count,
       0,
     );
+    db.exec('DROP TRIGGER IF EXISTS abort_checkout_mailbox');
     assert.equal(
       (db.prepare('SELECT COUNT(*) AS count FROM promo_redemptions').get() as { count: number })
         .count,
       0,
+    );
+  });
+
+  await t.test('keeps gateway-success finalization failure resumable', async () => {
+    const cartId = freshCart();
+    db.exec('DROP TRIGGER IF EXISTS abort_checkout_mailbox');
+    db.exec(
+      `CREATE TRIGGER abort_checkout_mailbox BEFORE INSERT ON dev_mailbox BEGIN SELECT RAISE(ABORT, 'mailbox failure'); END`,
+    );
+
+    const result = await checkout(payment(cartId, 'resume-after-finalize'), { db });
+    const stored = db
+      .prepare('SELECT status, response_json FROM payments WHERE idempotency_key = ?')
+      .get('resume-after-finalize') as { status: string; response_json: string | null };
+
+    assert.notDeepEqual(result, { success: false, error: 'CHECKOUT_FAILED' });
+    assert.equal(stored.status, 'authorized_pending_finalize');
+    assert.equal(stored.response_json, null);
+    db.exec('DROP TRIGGER IF EXISTS abort_checkout_mailbox');
+    const resumed = await checkout(payment(cartId, 'resume-after-finalize'), { db });
+    assert.equal(resumed.success, true);
+    assert.equal(
+      (db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }).count,
+      1,
     );
   });
 

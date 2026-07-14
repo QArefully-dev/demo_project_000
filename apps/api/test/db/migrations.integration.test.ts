@@ -14,7 +14,7 @@ import {
 } from '../../src/db/index.js';
 import { migrations } from '../../src/db/migrations/index.js';
 
-const expectedVersions = ['001', '002', '003', '004', '005', '006'];
+const expectedVersions = ['001', '002', '003', '004', '005', '006', '007'];
 
 function migrationVersions(db: Database.Database): string[] {
   return db
@@ -54,11 +54,27 @@ function createLegacyFixture(db: Database.Database): void {
       total_cents INTEGER NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER,
+      idempotency_key TEXT NOT NULL UNIQUE,
+      request_fingerprint TEXT NOT NULL,
+      status TEXT NOT NULL,
+      amount_cents INTEGER NOT NULL,
+      card_last4 TEXT NOT NULL,
+      card_brand TEXT NOT NULL,
+      failure_reason TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      response_json TEXT
+    );
     INSERT INTO products (id, name, description, price_cents, category, stock_count)
     VALUES (99, 'Legacy powder', 'Preserve me', 1234, 'Legacy', 3);
     INSERT INTO promo_codes (code, discount_percent) VALUES ('LEGACY10', 10);
     INSERT INTO orders (customer_name, customer_email, shipping_address, subtotal_cents, total_cents)
     VALUES ('Legacy customer', 'legacy@example.test', '99 Legacy Lane', 1234, 1234);
+    INSERT INTO payments
+      (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand, response_json)
+    VALUES ('legacy-payment', 'safe-fingerprint', 'success', 1234, '4242', 'Visa', '{"success":true}');
   `);
 }
 
@@ -78,6 +94,11 @@ void test('migrations create a fresh schema, record every version, and remain id
   assert.ok(
     (db.prepare('PRAGMA table_info(payments)').all() as { name: string }[]).some(
       (column) => column.name === 'response_json',
+    ),
+  );
+  assert.ok(
+    (db.prepare('PRAGMA table_info(payments)').all() as { name: string }[]).some(
+      (column) => column.name === 'quote_json',
     ),
   );
 
@@ -112,6 +133,14 @@ void test('migrations upgrade the legacy schema without losing known data', (t) 
     customer_name: 'Legacy customer',
     user_id: null,
   });
+  assert.deepEqual(
+    db
+      .prepare(
+        'SELECT status, response_json, cart_id, quote_json FROM payments WHERE idempotency_key = ?',
+      )
+      .get('legacy-payment'),
+    { status: 'success', response_json: '{"success":true}', cart_id: null, quote_json: null },
+  );
 });
 
 void test('migration failure rolls back schema changes and propagates', (t) => {

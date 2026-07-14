@@ -29,7 +29,7 @@ export function validateCard(input: {
   cardNumber: string;
   cardExpiry: string;
   cardCvc: string;
-  now?: Date;
+  now: Date;
 }): ValidCard | undefined {
   const digits = input.cardNumber.replace(/\D/g, '');
   if (digits.length < 12 || digits.length > 19 || !luhnCheck(digits)) return undefined;
@@ -38,7 +38,7 @@ export function validateCard(input: {
   if (!expiry) return undefined;
   const month = Number(expiry[1]);
   const year = Number(expiry[2]);
-  const now = input.now ?? new Date();
+  const { now } = input;
   if (
     month < 1 ||
     month > 12 ||

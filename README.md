@@ -57,7 +57,11 @@ All scripts run via `npm run` — no separate shell scripts directory needed.
 
 ## Architecture
 
-Dependencies flow one way: `@shop/contracts` owns transport schemas, `@shop/catalog` owns canonical catalog and packaging data, the API owns persistence and workflows, and the web app consumes API contracts only. Packages and scripts cannot import app-private source; the web app cannot import API source.
+Dependencies flow one way: `@shop/contracts` owns shared request and response schemas, `@shop/catalog` owns canonical catalog and packaging data, the API owns persistence and workflows, and the web app consumes API contracts only. The browser validates every successful API response against its shared schema before feature code receives it. Packages and scripts cannot import app-private source; the web app cannot import API source.
+
+Checkout is a server-owned payment-intent workflow. The API validates the cart, promo, customer details, and card before it reserves the cart and promo capacity, persists an immutable quote, and calls the simulated gateway with that quote total. Finalization creates the order from the saved quote, so later cart changes cannot alter an authorized payment.
+
+Each checkout request includes an idempotency key. Retrying the same key with the same request replays a completed outcome or safely resumes an authorized finalization; using the same key with different checkout data returns a conflict. Card numbers and CVC values are not stored in quotes, fingerprints, or payment responses.
 
 `npm run lint` also reports authored source files above 300 logical lines and fails above 400 unless `scripts/authored-size-policy.json` records a cohesive, single-responsibility exception. Generated files, migrations, fixtures, and framework UI adapters are excluded from this review.
 

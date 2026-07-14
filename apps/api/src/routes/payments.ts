@@ -1,8 +1,11 @@
 import { FastifyInstance } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { sendBadRequest, sendNotFound, sendPaymentError, sendConflict } from '../utils/errors.js';
-import { PaymentBody, PaymentErrorResponse } from '@shop/contracts/payments';
-import { PlaceOrderResponse } from '@shop/contracts/orders';
+import {
+  PaymentBody,
+  PaymentErrorResponse,
+  PaymentSuccessResponse,
+} from '@shop/contracts/payments';
 import { ErrorResponse } from '@shop/contracts/common';
 import type { AppContext } from '../app.js';
 
@@ -15,7 +18,7 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
       schema: {
         body: PaymentBody,
         response: {
-          201: PlaceOrderResponse,
+          201: PaymentSuccessResponse,
           400: ErrorResponse,
           402: PaymentErrorResponse,
           409: ErrorResponse,

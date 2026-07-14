@@ -39,7 +39,7 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
     {
       schema: {
         params: CartIdParam,
-        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse },
+        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse },
       },
     },
     async (request, reply) => {
@@ -59,7 +59,7 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
       schema: {
         params: CartIdParam,
         body: AddToCartBody,
-        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse },
+        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse },
       },
     },
     async (request, reply) => {
@@ -72,6 +72,8 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
         sendNotFound(reply, 'Product');
         return;
       }
+      if (cart === 'CART_RESERVED')
+        return reply.code(409).send({ error: 'Cart is reserved for checkout' });
       return cart;
     },
   );
@@ -83,7 +85,7 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
       schema: {
         params: CartIdParam,
         body: UpdateCartLineBody,
-        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse },
+        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse },
       },
     },
     async (request, reply) => {
@@ -100,6 +102,8 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
         sendNotFound(reply, 'Product in cart');
         return;
       }
+      if (result === 'CART_RESERVED')
+        return reply.code(409).send({ error: 'Cart is reserved for checkout' });
       return result;
     },
   );
@@ -110,7 +114,7 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
     {
       schema: {
         params: CartIdAndProductIdParam,
-        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse },
+        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse },
       },
     },
     async (request, reply) => {
@@ -123,6 +127,8 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
         sendNotFound(reply, 'Product in cart');
         return;
       }
+      if (result === 'CART_RESERVED')
+        return reply.code(409).send({ error: 'Cart is reserved for checkout' });
       return result;
     },
   );
