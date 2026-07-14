@@ -10,8 +10,6 @@ Local department-store codebase for QA education and repository-scale agent demo
 
 ## Context
 
-- direction: `plans/demo_project_high_level_plan.md`
-- active expansion: `plans/catalog_reviews_audit_seed_content_implementation_plan.md`
 - task scope: named plan/specification
 - implementation truth: code, manifests, migrations
 
@@ -55,6 +53,7 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
 ## Quality
 
 - Use repository scripts; run format, typecheck, lint, build, seed/reset, tests proportional to change.
+- Prettier formats code and config only; Markdown (`*.md`) stays excluded through `.prettierignore`.
 - Keep Vite/Vitest `--configLoader runner`; bundled config loader traverses sandbox-blocked Windows ancestors.
 - Tests: pure rule -> unit; repository/transaction -> SQLite integration; route/schema/auth -> Fastify `app.inject()`.
 - Destructive refactor -> characterization test first. Async UI -> stale-response, cancellation, error, retry coverage where relevant.

@@ -123,7 +123,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
 
 /** Build the HTTP application. The caller owns database lifecycle and listening. */
 export async function buildApp(dependencies: AppDependencies) {
-  const app = Fastify({ logger: true }).withTypeProvider<TypeBoxTypeProvider>();
+  const app = Fastify({ logger: false }).withTypeProvider<TypeBoxTypeProvider>();
   const context: AppContext = { services: createAppServices(dependencies) };
 
   app.setErrorHandler((error: FastifyError, _request, reply) => {
