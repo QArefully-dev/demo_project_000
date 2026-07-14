@@ -4,12 +4,12 @@ Status: current product direction.
 
 ## Purpose
 
-Local, production-style department-store codebase for course exercises and large-repository harness demos. Deployment remains non-live demo; code follows production defaults.
+Local QArefully Powder Co. codebase for course exercises and large-repository harness demos. Deployment remains non-live demo; code follows production defaults.
 
 Goals:
 
-- immediate recognition: ordinary online department store
-- no domain explanation: browse -> cart -> checkout -> track or return order
+- immediate recognition: powder shop with credible-to-impossible catalog progression
+- clear domain journey: browse -> bag -> checkout -> confirmation
 - modern polished UI
 - deterministic local behavior
 - meaningful growth to 150k+ authored LOC
@@ -20,16 +20,16 @@ Goals:
 
 ## Product Direction
 
-General-purpose department store. Customer-facing experience remains only required product concept.
+QArefully Powder Co. sells powders, from pantry staples through fictional conceptual goods. Brand voice: dry, confident, precise, mildly absurd. Household, conceptual, and impossible goods remain clearly marked `Not for consumption`.
 
 Core journey:
 
-`home -> catalog -> product -> cart -> checkout -> payment -> confirmation -> order history`
+`home -> powder catalog -> powder detail -> cart -> checkout -> payment -> confirmation -> order history`
 
 Extended familiar journeys:
 
 - search, filter, sort, paginate
-- select product variant
+- select product options when an additive catalog slice introduces them
 - apply promotion or gift card
 - save address and payment preference metadata
 - track, cancel, or return order
@@ -54,9 +54,9 @@ Avoid visible platform complexity:
 - launch: `npm ci` -> `npm run dev`
 - external services: none
 - implemented: auth, catalog, search, filters, sorting, product pages, cart, promotions, checkout, simulated payment, orders, favourites, account, dev mailbox
-- seed: deterministic products, users, promotions, favourites
+- seed: 45 deterministic powder products across 7 categories, plus users, promotions, and favourites
 - tests: focused unit and SQLite integration baseline required; broad API and E2E coverage reserved for course
-- active expansion: `plans/catalog_reviews_audit_seed_content_implementation_plan.md`
+- active expansion: catalog, review, and audit slices in `plans/catalog_reviews_audit_seed_content_implementation_plan.md`; each slice remains additive to the powder storefront
 
 ## Hard Constraints
 
@@ -117,9 +117,11 @@ Avoid empty scaffolding, copied framework internals, vendored projects, generate
 
 Implementation plan: `plans/catalog_reviews_audit_seed_content_implementation_plan.md`.
 
+Direction reconciliation: its generic-store catalog capabilities are additive engineering work. Product naming, seed content, imagery, and customer copy remain QArefully Powder Co. unless a later approved plan changes this direction.
+
 Scope:
 
-- product variants, specifications, bundles, comparison
+- powder product options, specifications, bundles, comparison
 - customer reviews and verified-purchase summaries
 - deterministic similar products
 - price, date, name filters and stable sorting
@@ -131,7 +133,7 @@ Scope:
 ## Expansion Order
 
 1. Active catalog and review expansion
-   - sizes, colors, capacities, SKUs
+   - powder pack sizes, SKU-compatible options, specifications
    - variant price and stock, specifications, bundles, comparisons
    - customer reviews, deterministic similar products
    - price, date, name filtering and stable sorting
@@ -155,6 +157,11 @@ Scope:
    - local job queue, notifications, retry policy, captured webhooks, failure injection
 10. Secondary admin
    - products, orders, refunds, reviews, users, feature flags, expanded audit tooling
+
+11. Powderizer (deferred additive vertical slice)
+   - Phase 7: server-authoritative custom mixes, configuration validation, quotes, and immutable order snapshots
+   - Phase 8: accessible `/powderizer` builder and cart/edit checkout flow
+   - not part of required rebrand completion
 
 ## Agentic AI and QA Surface
 
@@ -245,27 +252,21 @@ Exclude:
 
 Rule: database product does not imply unique committed image.
 
-Use reusable image-set library:
+Use deterministic powder-bag artwork generated from checked-in catalog visual tokens:
 
-- target image sets: 80-150
-- many products reference same `imageSetId`
-- product variants share parent image set
-- color or capacity variants reuse photography when difference need not be visible
-- seed may create thousands of products without duplicating image files
+- 45 stable image-set IDs, one per canonical powder product
+- thumbnail, card, and detail WebP renditions generated locally
+- product variants may share the parent bag art when appearance does not change
+- no source photos, remote CDN, or private asset inputs
 
 Stored asset format:
 
-- detail image: WebP or AVIF, 600-800px
-- optional thumbnail: WebP or AVIF, 250-350px
-- no committed full-resolution originals
-- immutable hashed filenames when practical; avoid binary churn in Git history
+- thumbnail: WebP, 320px
+- card: WebP, 720px
+- detail: WebP, 1200px
+- immutable hashed filenames and a checked-in manifest
 
-Catalog mix:
-
-- 50-80 polished images for prominent products
-- 50-100 generic product or category images for long-tail reuse
-- deterministic generated SVG artwork for bulk seeded products and missing assets
-- UI badges, labels, gradients, and backgrounds rendered separately from product image
+Catalog artwork uses standing bags with a readable product label, category color band, batch code, and controlled powder-color variation. UI badges and layout remain separate from product art.
 
 Data relation:
 
@@ -275,24 +276,22 @@ Example:
 
 ```ts
 {
-  name: "Studio Wireless Headphones X2",
-  imageSetId: "headphones/studio-black"
+  name: "Powdered Water",
+  imageSetId: "powdered-water"
 }
 ```
 
-Runtime SVG option:
-
-`product ID + category + palette + label -> deterministic local SVG response`
+Fallback: unknown or corrupt image records receive deterministic local SVG; normal catalog records use manifest-backed WebP.
 
 Asset budget:
 
-- built-in product assets target: 5-15 MB
-- same source may serve catalog and product detail when performance remains acceptable
-- optional high-resolution asset pack distributed separately from default clone
+- built-in product assets stay within repository asset checks
+- card and detail use role-specific local renditions
 
 Avoid:
 
-- one photo set per seeded SKU
+- external or private source-photo setup
+- missing manifest entries for canonical powder products
 - committed PNG or large JPEG originals
 - Git LFS in default student flow
 - remote CDN dependency for required product rendering
@@ -300,9 +299,9 @@ Avoid:
 
 Fallback behavior:
 
-- missing image -> deterministic local category SVG
+- missing image -> deterministic local SVG
 - offline use -> complete visual journey remains available
-- optional asset pack absent -> no broken layout or network request
+- no broken layout or network request
 
 ## Delivery Principles
 

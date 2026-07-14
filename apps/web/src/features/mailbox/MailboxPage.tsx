@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getMailbox } from '@/api/mailbox';
-import type { MailboxMessage } from '@shop/contracts';
+import type { MailboxMessage } from '@shop/contracts/mailbox';
 
 /**
  * Dev mailbox page.
@@ -57,19 +57,19 @@ export function MailboxPage() {
 
   /**
    * Parse the reset link from a mailbox body.
-   * Looks for the http://127.0.0.1:5173/reset-password?token=... pattern.
+   * Looks for a reset-password link in the message body.
    */
   function extractResetLink(body: string): string | null {
-    const match = body.match(/http:\/\/127\.0\.0\.1:5173\/reset-password\?token=[^\s]+/);
+    const match = body.match(/https?:\/\/[^\s]+\/reset-password\?token=[^\s]+/);
     return match ? match[0] : null;
   }
 
   return (
     <div className="mx-auto max-w-2xl py-10">
-      <h1 className="text-2xl font-bold">Dev Mailbox</h1>
+      <h1 className="text-2xl font-bold">QArefully Powder Co. Dev Mailbox</h1>
 
       {messages.length === 0 ? (
-        <p className="mt-8 text-center text-muted-foreground">No messages yet.</p>
+        <p className="mt-8 text-center text-muted-foreground">No powder correspondence yet.</p>
       ) : (
         <ul className="mt-6 space-y-4">
           {messages.map((msg) => {

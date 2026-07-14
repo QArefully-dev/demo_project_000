@@ -1,8 +1,8 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
-import type { Product } from '@shop/contracts';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import type { Product } from '@shop/contracts/products';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCategories } from '@/hooks/useCategories';
 import { useProducts } from '@/hooks/useProducts';
 import { CatalogPage } from './CatalogPage';
@@ -24,14 +24,13 @@ vi.mock('@/components/WishlistButton', () => ({
 
 const catalogProduct: Product = {
   id: '1',
-  name: 'Catalog product',
-  description: 'Test product',
+  name: 'Powdered Water',
+  description: 'Just-add-water water powder, 300g. Dry until required.',
   priceCents: 1000,
-  imageSetId: 'headphones',
-  images: [{ src: '/images/products/test.webp', alt: 'Catalog product', width: 720, height: 720 }],
-  category: 'Audio',
+  imageSetId: 'powdered-water',
+  category: 'Impossible',
   stock: 5,
-  slug: 'catalog-product',
+  slug: 'powdered-water',
   salesCount: 0,
 };
 
@@ -43,6 +42,9 @@ function LocationControls() {
       <output data-testid="location">{`${location.pathname}${location.search}`}</output>
       <button type="button" onClick={() => navigate(-1)}>
         Back
+      </button>
+      <button type="button" onClick={() => navigate(1)}>
+        Forward
       </button>
     </>
   );
@@ -63,7 +65,7 @@ function renderCatalog(initialEntry: string) {
 describe('CatalogPage URL state', () => {
   beforeEach(() => {
     vi.mocked(useCategories).mockReturnValue({
-      categories: ['Accessories', 'Audio'],
+      categories: ['Impossible', 'Pantry Staples'],
       isLoading: false,
       error: null,
     });
@@ -75,17 +77,18 @@ describe('CatalogPage URL state', () => {
       currentPage: 1,
       currentPageSize: 12,
       refetch: vi.fn().mockResolvedValue(undefined),
-      debouncedFetch: vi.fn(),
     });
   });
 
   it('parses a shareable query and clear-all keeps sorting and page size', async () => {
     const user = userEvent.setup();
-    renderCatalog('/catalog?q=audio&category=Audio&onSale=true&sort=price_desc&page=2&pageSize=24');
+    renderCatalog(
+      '/catalog?q=water&category=Impossible&onSale=true&sort=price_desc&page=2&pageSize=24',
+    );
 
     expect(vi.mocked(useProducts)).toHaveBeenLastCalledWith({
-      q: 'audio',
-      category: 'Audio',
+      q: 'water',
+      category: 'Impossible',
       onSale: true,
       sort: 'price_desc',
       page: 2,
@@ -97,23 +100,66 @@ describe('CatalogPage URL state', () => {
     );
   });
 
-  it('preserves selected filters after a product route and history back', async () => {
+  it('preserves selected filters through product-route history back and forward', async () => {
     const user = userEvent.setup();
-    renderCatalog('/catalog?q=audio&sort=price_desc&page=2&pageSize=24');
+    renderCatalog('/catalog?q=water&sort=price_desc&page=2&pageSize=24');
 
-    await user.click(screen.getByRole('button', { name: 'Accessories' }));
+    await user.click(screen.getByRole('button', { name: 'Pantry Staples' }));
     expect(screen.getByTestId('location')).toHaveTextContent(
-      '/catalog?q=audio&sort=price_desc&pageSize=24&category=Accessories',
+      '/catalog?q=water&sort=price_desc&pageSize=24&category=Pantry+Staples',
     );
     await user.click(
-      within(screen.getByRole('heading', { name: 'Catalog product' })).getByRole('link'),
+      within(screen.getByRole('heading', { name: 'Powdered Water' })).getByRole('link'),
     );
     await waitFor(() => expect(screen.getByText('Product route')).toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: 'Back' }));
 
     expect(screen.getByTestId('location')).toHaveTextContent(
-      '/catalog?q=audio&sort=price_desc&pageSize=24&category=Accessories',
+      '/catalog?q=water&sort=price_desc&pageSize=24&category=Pantry+Staples',
     );
-    expect(screen.getByRole('heading', { name: 'Accessories' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Pantry Staples' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Forward' }));
+    await waitFor(() => expect(screen.getByText('Product route')).toBeInTheDocument());
+    expect(screen.getByTestId('location')).toHaveTextContent('/products/1');
+
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/catalog?q=water&sort=price_desc&pageSize=24&category=Pantry+Staples',
+      ),
+    );
+  });
+
+  it('debounces URL search updates before requesting products', async () => {
+    vi.useFakeTimers();
+    renderCatalog('/catalog');
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search powders' }), {
+      target: { value: 'water' },
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(299);
+    });
+    expect(vi.mocked(useProducts)).not.toHaveBeenLastCalledWith(
+      expect.objectContaining({ q: 'water' }),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(screen.getByTestId('location')).toHaveTextContent('/catalog?q=water');
+    expect(vi.mocked(useProducts)).toHaveBeenLastCalledWith({
+      q: 'water',
+      category: undefined,
+      onSale: undefined,
+      sort: undefined,
+      page: 1,
+      pageSize: 12,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 });

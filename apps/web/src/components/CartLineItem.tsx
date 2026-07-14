@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatMoney } from '@/lib/formatMoney';
-import type { CartLine } from '@shop/contracts';
+import type { CartLine } from '@shop/contracts/cart';
 import { ProductMedia } from '@/components/ProductMedia';
 
 interface CartLineItemProps {
@@ -44,15 +44,13 @@ export function CartLineItem({
   return (
     <div className="flex items-center gap-3 py-3">
       <div className="h-16 w-16 shrink-0 rounded-md bg-muted flex items-center justify-center overflow-hidden">
-        <ProductMedia
-          product={item.product}
-          role="thumbnail"
-          className="h-full w-full object-cover"
-        />
+        <ProductMedia product={item.product} className="h-full w-full object-cover" />
       </div>
       <div className="flex flex-1 flex-col gap-1">
         <p className="text-sm font-medium leading-tight">{item.product.name}</p>
-        <p className="text-xs text-muted-foreground">{formatMoney(item.product.priceCents)} each</p>
+        <p className="text-xs text-muted-foreground">
+          {formatMoney(item.product.priceCents)} per bag
+        </p>
         <div className="flex items-center gap-2 mt-1">
           <Button
             variant="outline"

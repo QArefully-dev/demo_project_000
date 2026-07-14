@@ -41,10 +41,10 @@ export function CatalogSidebar({
         )}
       </div>
       <fieldset>
-        <legend className="mb-2 text-sm font-semibold">Department</legend>
+        <legend className="mb-2 text-sm font-semibold">Powder type</legend>
         <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 lg:mx-0 lg:block lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">
           <FilterButton active={!category} onClick={() => onCategoryChange(undefined)}>
-            All departments
+            All powders
           </FilterButton>
           {categories.map((item) => (
             <FilterButton

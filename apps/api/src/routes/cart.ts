@@ -1,25 +1,20 @@
 import { FastifyInstance } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
-import {
-  createCart,
-  getCart,
-  addItemToCart,
-  updateCartItem,
-  removeCartItem,
-} from '../domains/cart.js';
 import { sendNotFound } from '../utils/errors.js';
 import {
   Cart,
   AddToCartBody,
   UpdateCartLineBody,
   CreateCartResponse,
-  ErrorResponse,
   CartIdParam,
   CartIdAndProductIdParam,
-} from '@shop/contracts';
+} from '@shop/contracts/cart';
+import { ErrorResponse } from '@shop/contracts/common';
+import type { AppContext } from '../app.js';
 
-export default function cartRoutes(app: FastifyInstance): void {
+export default function cartRoutes(app: FastifyInstance, { services }: AppContext): void {
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
+  const { carts } = services;
 
   // Create cart
   typed.post(
@@ -32,7 +27,7 @@ export default function cartRoutes(app: FastifyInstance): void {
       },
     },
     async (_, reply) => {
-      const { cartId } = createCart();
+      const { cartId } = carts.create();
       reply.code(201);
       return { cartId };
     },
@@ -44,11 +39,11 @@ export default function cartRoutes(app: FastifyInstance): void {
     {
       schema: {
         params: CartIdParam,
-        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse },
+        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse },
       },
     },
     async (request, reply) => {
-      const cart = getCart(request.params.cartId);
+      const cart = carts.get(request.params.cartId);
       if (!cart) {
         sendNotFound(reply, 'Cart');
         return;
@@ -64,11 +59,11 @@ export default function cartRoutes(app: FastifyInstance): void {
       schema: {
         params: CartIdParam,
         body: AddToCartBody,
-        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse },
+        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse },
       },
     },
     async (request, reply) => {
-      const cart = addItemToCart(request.params.cartId, request.body.productId);
+      const cart = carts.add(request.params.cartId, request.body.productId);
       if (cart === 'CART_NOT_FOUND') {
         sendNotFound(reply, 'Cart');
         return;
@@ -77,6 +72,8 @@ export default function cartRoutes(app: FastifyInstance): void {
         sendNotFound(reply, 'Product');
         return;
       }
+      if (cart === 'CART_RESERVED')
+        return reply.code(409).send({ error: 'Cart is reserved for checkout' });
       return cart;
     },
   );
@@ -88,11 +85,11 @@ export default function cartRoutes(app: FastifyInstance): void {
       schema: {
         params: CartIdParam,
         body: UpdateCartLineBody,
-        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse },
+        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse },
       },
     },
     async (request, reply) => {
-      const result = updateCartItem(
+      const result = carts.update(
         request.params.cartId,
         request.body.productId,
         request.body.quantity,
@@ -105,6 +102,8 @@ export default function cartRoutes(app: FastifyInstance): void {
         sendNotFound(reply, 'Product in cart');
         return;
       }
+      if (result === 'CART_RESERVED')
+        return reply.code(409).send({ error: 'Cart is reserved for checkout' });
       return result;
     },
   );
@@ -115,11 +114,11 @@ export default function cartRoutes(app: FastifyInstance): void {
     {
       schema: {
         params: CartIdAndProductIdParam,
-        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse },
+        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse },
       },
     },
     async (request, reply) => {
-      const result = removeCartItem(request.params.cartId, request.params.productId);
+      const result = carts.remove(request.params.cartId, request.params.productId);
       if (result === 'CART_NOT_FOUND') {
         sendNotFound(reply, 'Cart');
         return;
@@ -128,6 +127,8 @@ export default function cartRoutes(app: FastifyInstance): void {
         sendNotFound(reply, 'Product in cart');
         return;
       }
+      if (result === 'CART_RESERVED')
+        return reply.code(409).send({ error: 'Cart is reserved for checkout' });
       return result;
     },
   );

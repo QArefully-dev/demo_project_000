@@ -1,24 +1,54 @@
-import { ArrowRight, Sparkles } from 'lucide-react';
-import type { ImgHTMLAttributes } from 'react';
+import { ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { BagArtwork } from '@/components/BagArtwork';
 import { Button } from '@/components/ui/button';
 
-const heroImagePriority = {
-  fetchpriority: 'high',
-} as unknown as ImgHTMLAttributes<HTMLImageElement>;
+const heroBags = [
+  {
+    name: 'Powdered Water',
+    category: 'Impossible',
+    quantity: 'Conceptual quantity',
+    batchCode: 'IMP-07',
+    mark: 'H2O',
+    accent: '#287fa6',
+    powderAccent: '#b9e2ee',
+    consumptionLabel: 'Not for consumption',
+  },
+  {
+    name: 'Protein Powder',
+    category: 'Pantry Staples',
+    quantity: '1kg',
+    batchCode: 'PAN-01',
+    mark: 'PRO',
+    accent: '#78956c',
+    powderAccent: '#d5dfbc',
+    consumptionLabel: null,
+  },
+  {
+    name: 'Powdered Campfire',
+    category: 'Outdoors',
+    quantity: '200g',
+    batchCode: 'OUT-05',
+    mark: 'FIR',
+    accent: '#c3774e',
+    powderAccent: '#e7b78f',
+    consumptionLabel: 'Not for consumption',
+  },
+];
 
 export function HeroSection() {
   return (
-    <section className="relative grid min-h-[430px] overflow-hidden rounded-3xl bg-primary text-primary-foreground lg:grid-cols-[1.05fr_0.95fr]">
+    <section className="powder-hero relative grid min-h-[430px] overflow-hidden rounded-2xl border-2 border-foreground bg-primary text-primary-foreground lg:grid-cols-[1.05fr_0.95fr]">
       <div className="relative z-10 flex flex-col items-start justify-center px-7 py-12 sm:px-12 lg:px-16">
-        <p className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary-foreground/75">
-          <Sparkles className="size-4" /> Everyday finds, thoughtfully chosen
+        <p className="powder-stamp mb-4 text-xs font-bold uppercase tracking-[0.18em] text-primary-foreground">
+          QArefully Powder Co. / Batch 001
         </p>
         <h1 className="max-w-2xl text-4xl font-semibold tracking-[-0.045em] sm:text-5xl lg:text-6xl">
-          Make room for things that work beautifully.
+          We will powder anything.
         </h1>
         <p className="mt-5 max-w-xl text-base leading-7 text-primary-foreground/78 sm:text-lg">
-          Discover useful technology and everyday essentials selected for simpler, better routines.
+          Credible powders through impossible powders, packed with measured confidence and no
+          unnecessary explanation.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Button
@@ -27,28 +57,28 @@ export function HeroSection() {
             nativeButton={false}
             render={<Link to="/catalog" />}
           >
-            Shop the collection <ArrowRight />
+            Shop powders <ArrowRight />
           </Button>
           <Button
             size="lg"
             nativeButton={false}
-            className="border-primary-foreground/35 bg-transparent text-primary-foreground hover:bg-primary-foreground/10"
-            render={<Link to="/catalog?onSale=true&sort=bestselling" />}
+            className="border-primary-foreground/65 bg-transparent text-primary-foreground hover:bg-primary-foreground/10"
+            render={<Link to="/catalog?category=Impossible" />}
           >
-            Explore deals
+            Browse impossible powders
           </Button>
         </div>
       </div>
-      <div className="relative min-h-72 overflow-hidden bg-surface-soft lg:min-h-full">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_45%,rgba(255,255,255,0.9),rgba(230,225,212,0.65)_55%,rgba(18,55,100,0.22))]" />
-        <img
-          src="/images/products/wireless-headphones.detail.09cd9a0b2710.1200.webp"
-          width="1200"
-          height="1200"
-          alt="Wireless headphones from the collection"
-          className="absolute inset-0 h-full w-full object-contain p-8 mix-blend-multiply lg:p-14"
-          {...heroImagePriority}
-        />
+      <div className="powder-hero-art relative min-h-72 overflow-hidden bg-surface-soft lg:min-h-full">
+        <div aria-hidden="true" className="powder-measurements absolute inset-4" />
+        {heroBags.map((bag, index) => (
+          <BagArtwork
+            key={bag.name}
+            {...bag}
+            ariaLabel={index === 0 ? `${bag.name} powder bag` : ''}
+            className={`powder-hero-bag powder-hero-bag-${index} absolute object-contain mix-blend-multiply`}
+          />
+        ))}
       </div>
     </section>
   );

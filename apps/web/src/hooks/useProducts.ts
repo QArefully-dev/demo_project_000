@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getProducts } from '../api/products';
-import type { Product, ProductQuery } from '@shop/contracts';
+import type { Product, ProductQuery } from '@shop/contracts/products';
 import type { GetProductsParams } from '../api/products';
 
 export interface UseProductsParams {
@@ -27,8 +27,9 @@ export function useProducts(params?: UseProductsParams) {
   const [currentPage, setCurrentPage] = useState(page ?? 1);
   const [currentPageSize, setCurrentPageSize] = useState(pageSize ?? 12);
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(false);
+  const requestIdRef = useRef(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Stable params object from destructured primitives — avoids new reference each render
   const stableParams: GetProductsParams = { q, category, onSale, sort, page, pageSize };
@@ -36,36 +37,30 @@ export function useProducts(params?: UseProductsParams) {
   const fetchProducts = useCallback(
     async (fetchParams?: GetProductsParams) => {
       if (!mountedRef.current) return;
+      const requestId = ++requestIdRef.current;
+      abortControllerRef.current?.abort();
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+      const isCurrentRequest = () =>
+        mountedRef.current && requestId === requestIdRef.current && !abortController.signal.aborted;
+
       setIsLoading(true);
       setError(null);
       try {
-        const data = await getProducts(fetchParams ?? stableParams);
-        if (!mountedRef.current) return;
+        const data = await getProducts(fetchParams ?? stableParams, abortController.signal);
+        if (!isCurrentRequest()) return;
         setProducts(data.items);
         setTotal(data.total);
         setCurrentPage(data.page);
         setCurrentPageSize(data.pageSize);
       } catch (err) {
-        if (!mountedRef.current) return;
+        if (!isCurrentRequest()) return;
         setError(err instanceof Error ? err.message : 'Failed to load products');
       } finally {
-        if (mountedRef.current) setIsLoading(false);
+        if (isCurrentRequest()) setIsLoading(false);
       }
     },
     [q, category, onSale, sort, page, pageSize],
-  );
-
-  // Debounced fetch for search queries
-  const debouncedFetch = useCallback(
-    (fetchParams: GetProductsParams) => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-      debounceRef.current = setTimeout(() => {
-        void fetchProducts(fetchParams);
-      }, 300);
-    },
-    [fetchProducts],
   );
 
   useEffect(() => {
@@ -73,7 +68,8 @@ export function useProducts(params?: UseProductsParams) {
     void fetchProducts();
     return () => {
       mountedRef.current = false;
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+      ++requestIdRef.current;
+      abortControllerRef.current?.abort();
     };
   }, [q, category, onSale, sort, page, pageSize]);
 
@@ -85,6 +81,5 @@ export function useProducts(params?: UseProductsParams) {
     currentPage,
     currentPageSize,
     refetch: () => fetchProducts(),
-    debouncedFetch,
   };
 }

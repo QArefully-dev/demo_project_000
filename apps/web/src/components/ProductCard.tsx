@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { WishlistButton } from '@/components/WishlistButton';
 import { formatMoney } from '@/lib/formatMoney';
-import type { Product } from '@shop/contracts';
+import type { Product } from '@shop/contracts/products';
 import { ProductMedia } from '@/components/ProductMedia';
 
 interface ProductCardProps {
@@ -26,6 +26,7 @@ export function ProductCard({
   const isOnSale =
     product.compareAtPriceCents != null && product.compareAtPriceCents > product.priceCents;
   const isBestseller = product.salesCount >= 250;
+  const packSize = product.packaging?.quantity;
 
   useEffect(() => {
     setActionError(null);
@@ -46,7 +47,6 @@ export function ProductCard({
         >
           <ProductMedia
             product={product}
-            loading="lazy"
             className="h-full w-full object-contain p-4 transition-transform duration-200 group-hover:scale-[1.035] sm:p-5"
           />
         </Link>
@@ -67,7 +67,7 @@ export function ProductCard({
       </div>
       <CardContent className="flex flex-1 flex-col gap-2 p-4 pt-4 sm:p-5 sm:pt-4">
         <p className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          {product.category}
+          Powder type: {product.category}
         </p>
         <h3 className="line-clamp-2 min-h-11 text-base font-semibold leading-[1.35] tracking-tight">
           <Link
@@ -77,6 +77,7 @@ export function ProductCard({
             {product.name}
           </Link>
         </h3>
+        {packSize && <p className="text-xs text-muted-foreground">Pack: {packSize}</p>}
         <div className="mt-auto pt-2">
           <div className="flex flex-wrap items-baseline gap-2">
             {isOnSale ? (
@@ -104,11 +105,11 @@ export function ProductCard({
             }}
           >
             {!isCartAvailable
-              ? 'Cart Unavailable'
+              ? 'Cart unavailable'
               : isAdding
                 ? 'Adding...'
                 : inStock
-                  ? 'Add to Cart'
+                  ? 'Add powder'
                   : 'Unavailable'}
           </Button>
           {actionError && (

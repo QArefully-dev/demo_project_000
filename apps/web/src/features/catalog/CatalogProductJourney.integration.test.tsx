@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import type { Product } from '@shop/contracts';
+import type { Product } from '@shop/contracts/products';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getProduct, getRelatedProducts } from '@/api/products';
 import { useCategories } from '@/hooks/useCategories';
@@ -30,14 +30,13 @@ vi.mock('@/components/WishlistButton', () => ({
 
 const catalogProduct: Product = {
   id: 'catalog-product',
-  name: 'Catalog product',
-  description: 'Test product',
+  name: 'Powdered Water',
+  description: 'Just-add-water water powder, 300g. Dry until required.',
   priceCents: 1000,
-  imageSetId: 'headphones',
-  images: [{ src: '/images/products/test.webp', alt: 'Catalog product', width: 720, height: 720 }],
-  category: 'Accessories',
+  imageSetId: 'powdered-water',
+  category: 'Impossible',
   stock: 5,
-  slug: 'catalog-product',
+  slug: 'powdered-water',
   salesCount: 0,
 };
 
@@ -57,7 +56,7 @@ function NavigationControls() {
 describe('catalog to product journey', () => {
   beforeEach(() => {
     vi.mocked(useCategories).mockReturnValue({
-      categories: ['Accessories', 'Audio'],
+      categories: ['Impossible', 'Pantry Staples'],
       isLoading: false,
       error: null,
     });
@@ -69,7 +68,6 @@ describe('catalog to product journey', () => {
       currentPage: 1,
       currentPageSize: 24,
       refetch: vi.fn().mockResolvedValue(undefined),
-      debouncedFetch: vi.fn(),
     });
     vi.mocked(getProduct).mockResolvedValue(catalogProduct);
     vi.mocked(getRelatedProducts).mockResolvedValue([]);
@@ -78,7 +76,7 @@ describe('catalog to product journey', () => {
   it('keeps the selected catalog filter after product navigation and browser back', async () => {
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/catalog?q=audio&sort=price_desc&page=2&pageSize=24']}>
+      <MemoryRouter initialEntries={['/catalog?q=water&sort=price_desc&page=2&pageSize=24']}>
         <NavigationControls />
         <Routes>
           <Route path="/catalog" element={<CatalogPage />} />
@@ -87,22 +85,22 @@ describe('catalog to product journey', () => {
       </MemoryRouter>,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Accessories' }));
+    await user.click(screen.getByRole('button', { name: 'Pantry Staples' }));
     expect(screen.getByTestId('location')).toHaveTextContent(
-      '/catalog?q=audio&sort=price_desc&pageSize=24&category=Accessories',
+      '/catalog?q=water&sort=price_desc&pageSize=24&category=Pantry+Staples',
     );
 
     await user.click(
-      within(screen.getByRole('heading', { name: 'Catalog product' })).getByRole('link'),
+      within(screen.getByRole('heading', { name: 'Powdered Water' })).getByRole('link'),
     );
-    expect(await screen.findByRole('heading', { name: 'Catalog product', level: 1 })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Powdered Water', level: 1 })).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: 'Back' }));
     await waitFor(() =>
       expect(screen.getByTestId('location')).toHaveTextContent(
-        '/catalog?q=audio&sort=price_desc&pageSize=24&category=Accessories',
+        '/catalog?q=water&sort=price_desc&pageSize=24&category=Pantry+Staples',
       ),
     );
-    expect(screen.getByRole('heading', { name: 'Accessories' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Pantry Staples' })).toBeVisible();
   });
 });

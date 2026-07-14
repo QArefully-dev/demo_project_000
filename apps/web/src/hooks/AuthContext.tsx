@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { PublicUser } from '@shop/contracts';
+import type { PublicUser } from '@shop/contracts/auth';
 import { getMe, login as loginApi, signup as signupApi, logout as logoutApi } from '@/api/auth';
 
 interface AuthState {

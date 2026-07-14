@@ -4,16 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "dev": "vite --configLoader runner",
+    "build": "tsc && vite build --configLoader runner",
     "typecheck": "tsc --noEmit",
     "test": "npm run test:unit",
-    "test:unit": "tsx --test src/features/checkout/cartValidation.test.ts && vitest run --exclude 'src/features/checkout/cartValidation.test.ts' --exclude 'src/**/*.integration.test.{ts,tsx}'",
-    "test:integration": "vitest run --config vitest.integration.config.ts --passWithNoTests"
+    "test:unit": "tsx --test src/features/checkout/cartValidation.test.ts && vitest run --configLoader runner --exclude 'src/features/checkout/cartValidation.test.ts' --exclude 'src/**/*.integration.test.{ts,tsx}'",
+    "test:integration": "vitest run --configLoader runner --config vitest.integration.config.ts --passWithNoTests"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
     "@fontsource-variable/geist": "^5.2.9",
+    "@sinclair/typebox": "^0.34.0",
     "@shop/contracts": "*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

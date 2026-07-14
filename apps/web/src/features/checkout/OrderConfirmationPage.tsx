@@ -7,7 +7,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { formatMoney } from '@/lib/formatMoney';
 import { getOrder } from '../../api/orders';
-import type { Order } from '@shop/contracts';
+import type { Order } from '@shop/contracts/orders';
 
 export function OrderConfirmationPage() {
   const { orderId } = useParams<{ orderId: string }>();
@@ -45,13 +45,15 @@ export function OrderConfirmationPage() {
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-6 text-center">
-        <h1 className="text-2xl font-bold text-green-700">Order Confirmed!</h1>
-        <p className="text-muted-foreground">Thank you for your purchase.</p>
+        <h1 className="text-2xl font-bold text-green-700">Your powders are confirmed.</h1>
+        <p className="text-muted-foreground">
+          QArefully Powder Co. has recorded this simulated order. A receipt is in the Dev Mailbox.
+        </p>
       </div>
 
       <Card className="transition-shadow hover:shadow-md">
         <CardHeader>
-          <CardTitle>Order #{order.id}</CardTitle>
+          <CardTitle>Powder order #{order.id}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -100,7 +102,7 @@ export function OrderConfirmationPage() {
       </Card>
 
       <div className="mt-6 text-center">
-        <Button render={<Link to="/" />}>Continue Shopping</Button>
+        <Button render={<Link to="/catalog" />}>Shop more powders</Button>
       </div>
     </div>
   );

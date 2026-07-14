@@ -38,8 +38,3 @@ export function sendNotFound(reply: FastifyReply, resource: string): void {
 export function sendConflict(reply: FastifyReply, message: string): void {
   sendError(reply, 409, message);
 }
-
-/** Shorthand for 501 not-implemented errors (stubs). */
-export function sendNotImplemented(reply: FastifyReply): void {
-  sendError(reply, 501, 'Not implemented');
-}

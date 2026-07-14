@@ -8,14 +8,14 @@ import { CartSheet } from './CartSheet';
 /** Composes the sticky storefront navigation and customer controls. */
 export function Header() {
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-background/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/85">
+    <header className="sticky top-0 z-50 border-b border-border bg-background shadow-sm">
       <div className="content-shell">
         <div className="grid min-h-[4.5rem] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 py-3 sm:gap-x-4 lg:h-[4.5rem] lg:grid-cols-[auto_minmax(20rem,1fr)_auto] lg:gap-x-7 lg:py-0">
           <Link
             to="/"
-            className="w-fit rounded-md text-lg font-bold tracking-[-0.045em] text-primary transition-colors hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:text-xl"
+            className="w-fit rounded-md font-semibold tracking-[-0.055em] text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:text-xl"
           >
-            Shop <span className="text-foreground">Qarefully</span>
+            <span className="font-black text-primary">QA</span>refully Powder Co.
           </Link>
           <div
             role="group"
@@ -33,7 +33,7 @@ export function Header() {
         <div className="content-shell flex h-11 items-center justify-between gap-4 overflow-x-auto [scrollbar-width:none]">
           <CategoryNav />
           <p className="hidden shrink-0 whitespace-nowrap text-xs font-medium text-muted-foreground xl:block">
-            Curated essentials · Demo checkout · No real payment
+            Anything. Finely considered. · Simulated checkout
           </p>
         </div>
       </div>

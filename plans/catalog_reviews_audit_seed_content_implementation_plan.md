@@ -1,10 +1,71 @@
 # Catalog, Reviews, Audit, Seed, Content Implementation Plan
 
-Status: planned.
+Status: implementation handoff.
 
 Audience: coding agents.
 
 Source direction: `plans/demo_project_high_level_plan.md`.
+
+Execution mode: one phase per agent task. Never continue into next phase without new user request.
+
+Next ready phase: Phase 0.
+
+## Agent Handoff Protocol
+
+Assignment rule: implement first pending phase whose prerequisites show `complete`. User may name different ready phase.
+
+Before coding:
+
+1. Read root `CLAUDE.md`.
+2. Read `plans/demo_project_high_level_plan.md`.
+3. Read this file fully.
+4. Inspect current worktree, relevant manifests, schema, contracts, tests.
+5. Confirm prerequisite phases in ledger. Code remains implementation truth.
+
+During phase:
+
+- scope: current phase only
+- preserve unrelated work
+- keep compatibility called out by phase
+- use `apply_patch` for edits
+- add only phase-required tests
+- run narrow checks during work; run phase verification before handoff
+- no commit, stage, branch, push, or PR unless user requests
+- blocker: stop after safe investigation; record exact blocker and required decision
+
+After phase:
+
+1. Satisfy every exit-gate item.
+2. Update phase ledger status and `Next ready phase`.
+3. Replace phase `Handoff` value with concise completion record.
+4. Record schema/API compatibility notes needed by next phase.
+5. Report changed files, checks, remaining risks.
+6. Stop. Do not start next phase.
+
+Status values: `pending`, `in_progress`, `complete`, `blocked`.
+
+Handoff format:
+
+`Handoff: complete YYYY-MM-DD; checks: <commands>; notes: <compatibility or follow-up>`
+
+Blocked format:
+
+`Handoff: blocked YYYY-MM-DD; blocker: <fact>; needs: <decision or external change>`
+
+## Phase Ledger
+
+- Phase 0: `pending` -> migration foundation
+- Phase 1: `pending` -> contracts and pure domain packages
+- Phase 2: `pending` -> variant catalog persistence and API
+- Phase 3: `pending` -> variant cart, order, product UI
+- Phase 4: `pending` -> specifications, filters, sorting
+- Phase 5: `pending` -> comparison and similar products
+- Phase 6: `pending` -> bundles
+- Phase 7: `pending` -> customer reviews
+- Phase 8: `pending` -> append-only audit
+- Phase 9: `pending` -> seed scenario tooling
+- Phase 10: `pending` -> help and policy content
+- Phase 11: `pending` -> focused verification and documentation
 
 ## Objective
 
@@ -93,9 +154,11 @@ New files:
 
 - `apps/api/src/db/migrations/types.ts`
 - `apps/api/src/db/migrations/001-baseline.ts`
-- `apps/api/src/db/migrations/002-catalog-depth.ts`
-- `apps/api/src/db/migrations/003-reviews.ts`
-- `apps/api/src/db/migrations/004-audit.ts`
+- `apps/api/src/db/migrations/002-product-variants.ts`
+- `apps/api/src/db/migrations/003-specifications-tags.ts`
+- `apps/api/src/db/migrations/004-bundles.ts`
+- `apps/api/src/db/migrations/005-reviews.ts`
+- `apps/api/src/db/migrations/006-audit.ts`
 - `apps/api/src/db/migrations/index.ts`
 - `apps/api/src/db/migrate.ts`
 
@@ -546,146 +609,681 @@ Repository rules:
 - pagination at database boundary
 - validate JSON before response mapping
 
-## Delivery Phases
+## Implementation Phases
 
-### Phase 0: Foundation
+Strict order: `0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10 -> 11`.
 
-- add migration runner and ledger
-- split contracts without behavior change
-- add pure domain workspaces with first real rules
-- record current migration and seed behavior in focused integration tests
+### Phase 0: Migration Foundation
 
-Exit: fresh and existing databases converge; storefront unchanged; checks pass.
+Status: `pending`.
 
-### Phase 1: Variant Catalog
+Prerequisites: none.
 
-- add option, value, variant schema and default backfill
-- implement catalog aggregation
-- update product list/detail contracts
-- update cart and order variant identity
-- build selector and URL state
-- seed catalog-rich combinations
+Goal: ordered migration runner replacing further `ensureSchema()` growth without behavior change.
 
-Exit: every active product has default variant; cart/order retain SKU; unavailable variant rejected; existing carts preserved.
+Owned files:
 
-### Phase 2: Specifications, Filters, Sorting
+- `apps/api/src/db/connection.ts`
+- `apps/api/src/db/migrations/**`
+- `apps/api/src/db/migrate.ts`
+- migration-focused files under `apps/api/test/**`
 
-- add specifications and tags
-- expand query contract and predicate builder
-- add price, date, name controls and sorts
-- preserve URL state through navigation and browser back
+Work:
 
-Exit: count and item queries match; URL represents state; sorts stable across pages.
+1. Add `schema_migrations` ledger.
+2. Move current schema setup into baseline migration compatible with fresh and existing databases.
+3. Add ordered runner with per-migration transaction and duplicate-application guard.
+4. Call runner before repositories or seed execute.
+5. Preserve `SHOP_DB_PATH`, in-memory database, reset, seed behavior.
+6. Add migration test helpers for fresh database and copied pre-runner fixture.
 
-### Phase 3: Comparison and Similar Products
+Required tests:
 
-- implement matrix helper and scorer
-- add compare and similar API reads
-- add context, tray, route, matrix
-- replace related shelf
+- fresh database -> current schema plus migration ledger
+- existing database -> baseline recorded without data loss
+- second run -> no schema or ledger change
+- failing migration -> transaction rollback, version absent
 
-Exit: 2-4 products compare through shareable URL; missing product tolerated; similarity deterministic.
+Verification:
 
-### Phase 4: Bundles
+```powershell
+npm run typecheck
+npm run test:integration -w @shop/api
+npm run lint
+git diff --check
+```
 
-- add schema, repository, detail section
-- add atomic cart operation
-- seed available and unavailable bundles
+Exit gate:
 
-Exit: all components mutate or none; total current; blocker identifies unavailable component.
+- fresh and existing databases converge
+- existing rows preserved
+- startup, seed, reset still work
+- no product, cart, order, auth behavior change
 
-### Phase 5: Customer Reviews
+Suggested commit: `refactor(db): add ordered SQLite migrations`
 
-- add schema, repository, service
-- attach authenticated user to new orders
-- add verified-purchase lookup
-- add customer mutations and admin hide/restore routes
-- add summary, list, form, owner controls
+Handoff: `pending`.
 
-Exit: ownership and uniqueness server-enforced; summary published-only; verification evidence-based.
+### Phase 1: Contracts and Pure Domain Packages
 
-### Phase 6: Append-Only Audit
+Status: `pending`.
 
-- add schema, triggers, repository, service
-- add request context and sanitizer
-- integrate target events
-- add admin-only reads and minimal protected audit page
+Prerequisites: Phase 0 `complete`.
 
-Exit: SQL update/delete fail; secrets absent; required audit failure rolls back mutation; non-admin reads rejected.
+Goal: split transport schemas; establish catalog, review, audit workspaces with real pure rules only.
 
-### Phase 7: Seed Scenarios
+Owned files:
 
-- extract factories and repositories
-- implement scenario composition, fixed clock, CLI, validation
-- migrate canonical seed to `standard`
-- add catalog-rich, reviews, edge-cases
+- `packages/contracts/src/**`
+- `packages/catalog/**`
+- `packages/reviews/**`
+- `packages/audit/**`
+- root and workspace manifests
+- package unit tests
 
-Exit: repeat application identical; reset counts documented; startup preserves user rows; validator errors actionable.
+Work:
 
-### Phase 8: Help and Policy Content
+1. Split monolithic contract file into domain files listed under `Contracts`.
+2. Preserve every current export through `packages/contracts/src/index.ts`.
+3. Add workspace manifests and TypeScript configs.
+4. Add catalog option normalization, SKU normalization, stable sort identifiers.
+5. Add review rating and text validation primitives.
+6. Add audit action type and forbidden-metadata key set.
+7. Wire root typecheck and unit scripts through workspaces.
 
-- add registry, layouts, routes, footer
-- add truthful demo wording
+Required tests:
 
-Exit: links resolve; content works without API; FAQ and size guide keyboard-readable; no live-service claim.
+- current contract exports compile unchanged
+- SKU and option normalization deterministic
+- review primitive bounds enforced
+- audit forbidden-key match case-insensitive
 
-### Phase 9: Focused Verification
+Verification:
 
-- fill core gaps below
-- run static, test, asset, seed checks
-- inspect changed pages at supported viewports
-- update README feature and seed docs
+```powershell
+npm run typecheck
+npm run test:unit
+npm run lint
+git diff --check
+```
 
-Exit: checks pass; lesson-owned gaps remain; no obsolete plan or conflicting direction.
+Exit gate:
 
-## Core Tests
+- current API and web compile without consumer edits beyond imports
+- no empty package or placeholder module
+- pure packages import no app, Fastify, React, SQLite code
 
-Unit:
+Suggested commit: `refactor(contracts): split schemas and add domain packages`
 
-- option normalization, combination uniqueness, default selection
-- comparison ID normalization, URL precedence, matrix ordering
-- similarity score and tie-breakers
-- query validation and sort allowlist
-- bundle total and component validation
-- review bounds, ownership decisions, summary rounding
-- audit recursive sanitizer
-- seed pseudo-random determinism and dependency ordering
-- web variant combination behavior and query parse/serialize
+Handoff: `pending`.
 
-SQLite integration:
+### Phase 2: Variant Catalog Persistence and API
 
-- fresh and pre-runner migration paths
-- default-variant and cart-line backfill
-- unique SKU rejection
-- filtered count equals item query
-- bundle transaction commit and rollback
-- review uniqueness, ownership, verification, published summary
-- audit insert/read plus update/delete rejection
-- domain rollback on required audit failure
-- scenario idempotency, reset determinism, canonical counts
+Status: `pending`.
 
-Web components:
+Prerequisites: Phase 1 `complete`.
 
-- variant changes price, stock, SKU, submitted ID
-- comparison maximum, duplicates, missing values
-- filters update URL and reset page
-- review auth, validation, pending, error, owner controls
-- bundle unavailable and add-all states
-- footer and content targets
+Goal: variant authority for SKU, effective price, stock; product reads expose option matrix.
 
-Lesson-owned gaps:
+Owned files:
 
-- broad Fastify injection matrix
-- full browser journey automation
-- accessibility scanner suite
-- mutation and property-based testing
-- performance and load testing
-- exhaustive malformed inputs
-- full audit taxonomy coverage
-- exhaustive responsive snapshots
-- comprehensive review abuse and concurrency coverage
+- catalog migration
+- `apps/api/src/domains/catalog/**`
+- product routes and mapping
+- catalog contracts and rules
+- minimal compatibility updates in current seed
+- catalog repository integration tests
 
-## Commands
+Work:
+
+1. Add option, value, variant, variant-value tables and constraints.
+2. Backfill one active default variant per existing product.
+3. Update current seed path to create default variant for newly seeded product.
+4. Add variant repository and explicit row mappers.
+5. Derive product summary price from minimum active variant price.
+6. Derive product summary stock from active variant stock sum.
+7. Extend product detail with options, variants, default variant ID.
+8. Retain product-level price and stock columns as read compatibility only.
+9. Keep current cart and order writes unchanged until Phase 3.
+
+Required tests:
+
+- migration backfill creates one default variant per product
+- SKU and option combination uniqueness enforced
+- inactive variant excluded from effective price and stock
+- seeded product always receives default variant
+- product list and detail mapping deterministic
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run test:unit
+npm run test:integration -w @shop/api
+npm run lint
+git diff --check
+```
+
+Exit gate:
+
+- every active product has active default variant
+- list and detail responses expose stable variant data
+- existing catalog output remains valid
+- no cart or order migration yet
+
+Suggested commit: `feat(catalog): add product options and variants`
+
+Handoff: `pending`.
+
+### Phase 3: Variant Cart, Order, Product UI
+
+Status: `pending`.
+
+Prerequisites: Phase 2 `complete`.
+
+Goal: selected variant survives product selection -> cart -> checkout -> order snapshot.
+
+Owned files:
+
+- cart and order migration
+- cart, order, payment domains and routes
+- cart and order contracts
+- web product purchase panel and variant selector
+- cart/order rendering
+- focused API, SQLite, web tests
+
+Work:
+
+1. Add nullable cart `variant_id`; backfill product default variant.
+2. Rebuild cart-line uniqueness as `(cart_id, variant_id)`; require variant after backfill.
+3. Add nullable historical order `variant_id`; add `sku`, `variant_label` snapshots.
+4. Extend cart mutation body with `variantId`; temporary omission resolves default variant.
+5. Enforce active variant and variant stock on add/update.
+6. Capture selected SKU, option label, unit price in new orders.
+7. Build option selector from valid variant combinations.
+8. Add `variant` URL parameter and deterministic default selection.
+9. Update cart, checkout, confirmation displays with variant label.
+10. Keep `SAVE10` behavior unchanged.
+
+Required tests:
+
+- cart migration preserves product and quantity
+- duplicate selected variant increments matching line only
+- unavailable variant rejected
+- order snapshot remains stable after variant changes
+- selector disables impossible combination
+- URL variant wins when valid; default used when invalid
+- add action submits exact variant ID once
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run test:unit
+npm run test:integration
+npm run lint
+npm run assets:check
+git diff --check
+```
+
+Exit gate:
+
+- selected variant retained across core purchase path
+- historical carts and orders remain readable
+- product without explicit selection uses default variant
+- promo gate and payment behavior unchanged
+
+Suggested commit: `feat(cart): retain selected variant through order snapshot`
+
+Handoff: `pending`.
+
+### Phase 4: Specifications, Filters, Sorting
+
+Status: `pending`.
+
+Prerequisites: Phase 3 `complete`.
+
+Goal: structured specifications plus URL-owned price, date, name catalog controls.
+
+Owned files:
+
+- specifications and tags migration
+- catalog query domain, repository, contracts, routes
+- catalog sidebar, toolbar, query-state helpers
+- product specification detail components
+- focused query and web tests
+
+Work:
+
+1. Add specification and tag tables with uniqueness rules.
+2. Add repository reads and detail response mapping.
+3. Add shared SQL predicate builder used by count and item queries.
+4. Add name, min/max price, added-from/to filters.
+5. Add oldest, name ascending, name descending sorts.
+6. Apply effective variant price to filter and sort.
+7. Add stable ID tie-breaker to every sort.
+8. Extend URL parse, serialize, clear-all, page-reset behavior.
+9. Render grouped semantic specifications on detail page.
+10. Add minimal current-seed specification and tag data needed for manual use.
+
+Required tests:
+
+- invalid price/date ranges return stable error
+- count predicate matches item predicate
+- boundary price and dates inclusive
+- sorting stable across pages
+- browser back restores filters
+- missing specifications hide detail section
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run test:unit
+npm run test:integration
+npm run lint
+git diff --check
+```
+
+Exit gate:
+
+- query string represents every filter and sort
+- count matches result set
+- SQL identifiers remain allowlisted
+- existing q, category, sale filters remain compatible
+
+Suggested commit: `feat(catalog): add specifications and advanced filters`
+
+Handoff: `pending`.
+
+### Phase 5: Comparison and Similar Products
+
+Status: `pending`.
+
+Prerequisites: Phase 4 `complete`.
+
+Goal: anonymous shareable comparison plus deterministic explainable similarity.
+
+Owned files:
+
+- catalog comparison and similarity rules
+- catalog repository and routes
+- comparison web feature
+- product card, product detail, app routing
+- focused unit, API, web tests
+
+Work:
+
+1. Implement comparison ID normalization and 2-4 product limit.
+2. Add ordered compare API response with missing IDs.
+3. Implement specification matrix with differing rows first.
+4. Implement weighted similarity scorer from specified category, tag, price, specification weights.
+5. Fetch bounded candidate pool; apply deterministic tie-breakers.
+6. Add similar endpoint; retain `/related` compatibility alias.
+7. Add comparison context, local storage, tray, page, matrix.
+8. Add comparison controls to cards and detail page.
+9. Replace related shelf with isolated similar shelf.
+
+Required tests:
+
+- duplicate and excess comparison IDs handled
+- requested order preserved
+- missing product returned separately
+- URL selection overrides local storage
+- matrix orders differing rows first
+- similarity score weights and tie-breakers exact
+- similar endpoint excludes source and inactive product
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run test:unit
+npm run test:integration
+npm run lint
+git diff --check
+```
+
+Exit gate:
+
+- direct comparison URL works without auth
+- comparison persists latest valid selection
+- 2-4 product limit enforced client and server
+- similar failure never hides product detail
+
+Suggested commit: `feat(catalog): add comparison and deterministic similarity`
+
+Handoff: `pending`.
+
+### Phase 6: Bundles
+
+Status: `pending`.
+
+Prerequisites: Phase 5 `complete`.
+
+Goal: curated component groups with atomic add-all cart behavior; no discount logic.
+
+Owned files:
+
+- bundle migration
+- catalog bundle rules, repository, service, routes
+- cart bundle transaction
+- bundle contracts and product-detail components
+- minimal seed compatibility data
+- focused transaction and web tests
+
+Work:
+
+1. Add bundle and bundle-item tables.
+2. Validate two-component minimum, positive quantity, no nesting.
+3. Resolve omitted component variant to default variant.
+4. Calculate current component total server-side.
+5. Add product-detail bundle reads.
+6. Add atomic cart bundle mutation.
+7. Return exact unavailable component failure.
+8. Render component links, total, pending, success, failure states.
+9. Add one available and one unavailable deterministic bundle to current seed.
+
+Required tests:
+
+- bundle validation rejects one component and invalid quantity
+- default component variant resolution deterministic
+- bundle total uses current variant prices
+- add-all commits all lines
+- unavailable component rolls back all lines
+- repeated add increments correct variant lines
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run test:unit
+npm run test:integration
+npm run lint
+git diff --check
+```
+
+Exit gate:
+
+- bundle display and add-all work from product detail
+- cart contains ordinary variant lines
+- no discount, allocation, nesting logic added
+- failed add leaves cart unchanged
+
+Suggested commit: `feat(catalog): add atomic product bundles`
+
+Handoff: `pending`.
+
+### Phase 7: Customer Reviews
+
+Status: `pending`.
+
+Prerequisites: Phase 6 `complete`.
+
+Goal: authenticated customer review lifecycle with evidence-based verified purchase.
+
+Owned files:
+
+- review and order-user migration
+- review domain package, repository, service, routes
+- auth/order/payment integration for order ownership
+- review contracts
+- product-detail review UI
+- focused domain, SQLite, web tests
+
+Work:
+
+1. Add review table and nullable order `user_id`.
+2. Attach authenticated user to new order without blocking anonymous checkout.
+3. Implement create, update, delete ownership rules.
+4. Enforce one review per user/product and text/rating bounds.
+5. Derive verified purchase from owned paid order evidence.
+6. Add published-only summary and star distribution.
+7. Add list sorts: newest, oldest, highest, lowest.
+8. Add admin hide/restore API; defer moderation UI.
+9. Add review summary, list, form, owner controls.
+10. Preserve login return path.
+
+Required tests:
+
+- unauthenticated mutation rejected
+- duplicate review rejected
+- non-owner update/delete rejected
+- verified purchase true only with matching paid order
+- anonymous order never verifies
+- hidden review excluded from list and summary
+- summary average rounding stable
+- form exposes validation, pending, failure, owner states
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run test:unit
+npm run test:integration
+npm run lint
+git diff --check
+```
+
+Exit gate:
+
+- review lifecycle usable from product detail
+- authorization server-enforced
+- no fake ratings or reviews
+- moderation limited to hide/restore API
+
+Suggested commit: `feat(reviews): add customer reviews and rating summaries`
+
+Handoff: `pending`.
+
+### Phase 8: Append-Only Audit
+
+Status: `pending`.
+
+Prerequisites: Phase 7 `complete`.
+
+Goal: immutable mutation history with secret-safe metadata and admin reads.
+
+Owned files:
+
+- audit migration and triggers
+- audit domain package, repository, service
+- API request context and routes
+- auth, cart, order, payment, review transaction integration
+- minimal protected audit page
+- focused audit and rollback tests
+
+Work:
+
+1. Add audit table, indexes, update/delete rejection triggers.
+2. Add append, get, list repository only.
+3. Add request ID generation and propagation.
+4. Add recursive metadata sanitizer.
+5. Integrate actions listed under `Append-Only Audit`.
+6. Share transaction for domain mutation and required audit insert.
+7. Keep login-failure audit outside auth result decision.
+8. Add admin-only paginated reads and filters.
+9. Add minimal protected audit list/detail page.
+
+Required tests:
+
+- update and delete rejected at SQLite layer
+- forbidden nested key rejected case-insensitively
+- required audit failure rolls back mutation
+- login-failure audit failure does not alter auth result
+- non-admin reads rejected
+- list filters and pagination stable
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run test:unit
+npm run test:integration
+npm run lint
+git diff --check
+```
+
+Exit gate:
+
+- no audit mutation route or repository method
+- forbidden data absent from persisted metadata and logs
+- core mutation actions recorded once
+- admin can inspect events; customer cannot
+
+Suggested commit: `feat(audit): add immutable events and admin reads`
+
+Handoff: `pending`.
+
+### Phase 9: Seed Scenario Tooling
+
+Status: `pending`.
+
+Prerequisites: Phase 8 `complete`.
+
+Goal: composable deterministic scenarios replacing monolithic seed implementation.
+
+Owned files:
+
+- `apps/api/src/db/seed/**`
+- seed and reset entry points
+- root and API scripts
+- README seed documentation
+- scenario validation tests
+
+Work:
+
+1. Extract context, stable IDs, fixed clock, seeded random helper.
+2. Extract factories listed under `Seed Tooling`.
+3. Build dependency-aware scenario composition.
+4. Port canonical data into `standard` without visible behavior loss.
+5. Add `catalog-rich`, `reviews`, `edge-cases`.
+6. Add `--scenario` parsing to seed and reset.
+7. Add `seed:check` validation command.
+8. Preserve startup idempotency and non-seed user rows.
+9. Emit `seed.scenario_applied` audit event without non-deterministic canonical data.
+10. Document credentials, counts, notable triggers.
+
+Required tests:
+
+- same scenario twice -> same canonical state
+- reset plus same scenario -> same IDs, values, relations, counts
+- startup seed preserves user-created rows
+- scenario dependency failure actionable
+- validator catches SKU, option, bundle, review, audit defects
+- fixed random seed and clock stable
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run test:unit
+npm run test:integration
+npm run seed:check -- --scenario standard
+npm run seed:check -- --scenario catalog-rich
+npm run seed:check -- --scenario reviews
+npm run seed:check -- --scenario edge-cases
+npm run lint
+git diff --check
+```
+
+Exit gate:
+
+- default `npm run dev` still uses `standard`
+- all scenarios validate
+- monolithic seed file removed or reduced to entry adapter
+- reset and startup semantics documented
+
+Suggested commit: `refactor(seed): add deterministic scenario tooling`
+
+Handoff: `pending`.
+
+### Phase 10: Help and Policy Content
+
+Status: `pending`.
+
+Prerequisites: Phase 9 `complete`.
+
+Goal: static customer guidance and policy routes without API or CMS dependency.
+
+Owned files:
+
+- `apps/web/src/features/content/**`
+- `apps/web/src/components/Footer.tsx`
+- app routing and layout
+- focused content component tests
+
+Work:
+
+1. Add typed content registry and shared article layout.
+2. Add help index, FAQ, shipping, returns, size guide, privacy, terms content.
+3. Use native `details`/`summary` for FAQ.
+4. Use semantic data tables for size guide.
+5. Add footer navigation to every route.
+6. Route missing content key to not-found page.
+7. State local demo data and service limits truthfully.
+
+Required tests:
+
+- every footer target resolves
+- registry keys unique
+- FAQ keyboard interaction uses native controls
+- missing content key renders not-found state
+- content rendering makes no API call
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run test:unit -w @shop/web
+npm run build -w @shop/web
+npm run lint
+git diff --check
+```
+
+Exit gate:
+
+- all content routes reachable
+- no real fulfilment, returns, compliance, payment claim
+- customer app remains usable without API for content routes
+
+Suggested commit: `feat(web): add help and policy content`
+
+Handoff: `pending`.
+
+### Phase 11: Focused Verification and Documentation
+
+Status: `pending`.
+
+Prerequisites: Phases 0-10 `complete`.
+
+Goal: close core gaps, verify integrated result, update human docs, preserve lesson work.
+
+Owned files:
+
+- focused tests needed by completion audit
+- README and active plan status
+- package scripts only when verification gap requires change
+
+Work:
+
+1. Audit completion definition against code and prior handoffs.
+2. Add only missing core tests listed by phase.
+3. Run every scenario validator.
+4. Run complete static, unit, integration, asset checks.
+5. Run targeted Prettier for all files touched across program; run repository format report.
+6. Inspect catalog, product, comparison, review, audit, content pages at supported viewports.
+7. Update README features, routes, commands, scenarios, credentials.
+8. Mark plan status `complete`; mark Phase 11 and ledger complete.
+9. Record known lesson-owned gaps; do not implement them.
+
+Required tests:
+
+- no new broad suite
+- missing phase-required test only
+- one integrated smoke path where current harness already supports it
+
+Verification:
 
 ```powershell
 npm run typecheck
@@ -698,24 +1296,36 @@ npm run seed:check -- --scenario standard
 npm run seed:check -- --scenario catalog-rich
 npm run seed:check -- --scenario reviews
 npm run seed:check -- --scenario edge-cases
+git diff --check
 ```
 
-## Delivery Slices
+Exit gate:
 
-1. `refactor(db): add ordered SQLite migrations`
-2. `refactor(contracts): split transport schemas by domain`
-3. `feat(catalog): add product options and variants`
-4. `feat(cart): retain selected variant through order snapshot`
-5. `feat(catalog): add specifications and advanced filters`
-6. `feat(catalog): add comparison and deterministic similarity`
-7. `feat(catalog): add atomic bundles`
-8. `feat(reviews): add customer reviews and summaries`
-9. `feat(audit): add immutable events and admin reads`
-10. `refactor(seed): add deterministic scenario tooling`
-11. `feat(web): add help and policy content`
-12. `test(core): cover new invariants and SQLite transactions`
+- completion definition satisfied
+- all required checks pass or known unrelated baseline recorded exactly
+- README matches shipped behavior
+- lesson-owned gaps remain
+- no stale compatibility alias unless explicitly retained and documented
 
-Each slice compiles independently. Migration, contract, API, UI, seed, tests may share slice when compatibility requires atomic change.
+Suggested commit: `test(core): verify catalog expansion program`
+
+Handoff: `pending`.
+
+## Test Boundary
+
+Each phase owns required tests listed inside phase. Phase 11 adds only missing core coverage found during completion audit.
+
+Lesson-owned gaps:
+
+- broad Fastify injection matrix
+- full browser journey automation
+- accessibility scanner suite
+- mutation and property-based testing
+- performance and load testing
+- exhaustive malformed inputs
+- full audit taxonomy coverage
+- exhaustive responsive snapshots
+- comprehensive review abuse and concurrency coverage
 
 ## Completion Definition
 

@@ -1,0 +1,99 @@
+import type Database from 'better-sqlite3';
+import type { ProductRow } from '../catalog/productRepository.js';
+
+export interface CartLineRow extends ProductRow {
+  product_id: number;
+  quantity: number;
+}
+
+export interface CartRepository {
+  create(id: string): void;
+  exists(cartId: string): boolean;
+  listLines(cartId: string): CartLineRow[];
+  productExists(productId: string): boolean;
+  addLine(cartId: string, productId: string): void;
+  updateLine(cartId: string, productId: string, quantity: number): boolean;
+  removeLine(cartId: string, productId: string): boolean;
+  reserve(cartId: string, paymentIdempotencyKey: string, createdAt: string): boolean;
+  releaseReservation(paymentIdempotencyKey: string): boolean;
+  isReserved(cartId: string): boolean;
+  touch(cartId: string): void;
+  remove(cartId: string): void;
+}
+
+export function createCartRepository(db: Database.Database): CartRepository {
+  return {
+    create(id) {
+      db.prepare('INSERT INTO carts (id) VALUES (?)').run(id);
+    },
+    exists(cartId) {
+      return db.prepare('SELECT 1 FROM carts WHERE id = ?').get(cartId) !== undefined;
+    },
+    listLines(cartId) {
+      return db
+        .prepare(
+          `SELECT cli.product_id, cli.quantity, p.* FROM cart_line_items cli
+           JOIN products p ON p.id = cli.product_id WHERE cli.cart_id = ?`,
+        )
+        .all(cartId) as CartLineRow[];
+    },
+    productExists(productId) {
+      return db.prepare('SELECT 1 FROM products WHERE id = ?').get(productId) !== undefined;
+    },
+    addLine(cartId, productId) {
+      db.prepare(
+        `INSERT INTO cart_line_items (cart_id, product_id, quantity) VALUES (?, ?, 1)
+         ON CONFLICT(cart_id, product_id) DO UPDATE SET quantity = quantity + 1`,
+      ).run(cartId, productId);
+    },
+    updateLine(cartId, productId, quantity) {
+      return (
+        db
+          .prepare('UPDATE cart_line_items SET quantity = ? WHERE cart_id = ? AND product_id = ?')
+          .run(quantity, cartId, productId).changes > 0
+      );
+    },
+    removeLine(cartId, productId) {
+      return (
+        db
+          .prepare('DELETE FROM cart_line_items WHERE cart_id = ? AND product_id = ?')
+          .run(cartId, productId).changes > 0
+      );
+    },
+    reserve(cartId, paymentIdempotencyKey, createdAt) {
+      const result = db
+        .prepare(
+          `INSERT INTO cart_reservations (cart_id, payment_idempotency_key, created_at)
+           VALUES (?, ?, ?)
+           ON CONFLICT(cart_id) DO NOTHING`,
+        )
+        .run(cartId, paymentIdempotencyKey, createdAt);
+      if (result.changes === 1) return true;
+      return (
+        db
+          .prepare(
+            'SELECT 1 FROM cart_reservations WHERE cart_id = ? AND payment_idempotency_key = ?',
+          )
+          .get(cartId, paymentIdempotencyKey) !== undefined
+      );
+    },
+    releaseReservation(paymentIdempotencyKey) {
+      return (
+        db
+          .prepare('DELETE FROM cart_reservations WHERE payment_idempotency_key = ?')
+          .run(paymentIdempotencyKey).changes > 0
+      );
+    },
+    isReserved(cartId) {
+      return (
+        db.prepare('SELECT 1 FROM cart_reservations WHERE cart_id = ?').get(cartId) !== undefined
+      );
+    },
+    touch(cartId) {
+      db.prepare("UPDATE carts SET updated_at = datetime('now') WHERE id = ?").run(cartId);
+    },
+    remove(cartId) {
+      db.prepare('DELETE FROM carts WHERE id = ?').run(cartId);
+    },
+  };
+}

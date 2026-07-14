@@ -1,7 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import type { Product, PublicUser } from '@shop/contracts';
+import type { Product } from '@shop/contracts/products';
+import type { PublicUser } from '@shop/contracts/auth';
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ProductPurchasePanel } from './ProductPurchasePanel';
@@ -26,23 +27,23 @@ vi.mock('@/hooks/useFavourites', () => ({
 }));
 
 const product = (overrides: Partial<Product> = {}): Product => ({
-  id: 'headphones',
-  name: 'Wireless headphones',
-  description: 'Comfortable over-ear headphones.',
+  id: 'powdered-water',
+  name: 'Powdered Water',
+  description: 'Just-add-water water powder, 300g. Dry until required.',
   priceCents: 12999,
   compareAtPriceCents: 16999,
-  imageSetId: 'headphones',
-  images: [
-    {
-      src: '/images/headphones.webp',
-      alt: 'Wireless headphones',
-      width: 1200,
-      height: 1200,
-    },
-  ],
-  category: 'Audio',
+  imageSetId: 'powdered-water',
+  packaging: {
+    labelColor: '#287fa6',
+    powderColor: '#b9e2ee',
+    mark: 'H2O',
+    batchCode: 'IMP-07',
+    quantity: '300g',
+    consumptionLabel: 'Not for consumption',
+  },
+  category: 'Impossible',
   stock: 8,
-  slug: 'wireless-headphones',
+  slug: 'powdered-water',
   salesCount: 12,
   ...overrides,
 });
@@ -51,7 +52,7 @@ function renderPanel(overrides: Partial<ComponentProps<typeof ProductPurchasePan
   const onAddToCart = vi.fn(async () => {});
   const onRetryCart = vi.fn();
   const result = render(
-    <MemoryRouter initialEntries={['/products/headphones']}>
+    <MemoryRouter initialEntries={['/products/powdered-water']}>
       <Routes>
         <Route
           path="*"
@@ -97,6 +98,8 @@ describe('ProductPurchasePanel', () => {
 
     expect(screen.getByText('Sale')).toBeInTheDocument();
     expect(screen.getByText('Save $40.00')).toBeInTheDocument();
+    expect(screen.getByText('Not for consumption')).toBeInTheDocument();
+    expect(screen.getByText('300g')).toBeInTheDocument();
 
     rerender(
       <MemoryRouter>
@@ -152,7 +155,7 @@ describe('ProductPurchasePanel', () => {
     favouriteState.favouriteIds = new Set();
     favouriteState.toggleFavourite.mockReset();
     render(
-      <MemoryRouter initialEntries={['/products/headphones']}>
+      <MemoryRouter initialEntries={['/products/powdered-water']}>
         <Routes>
           <Route
             path="*"
@@ -191,8 +194,8 @@ describe('ProductPurchasePanel', () => {
     const authenticated = renderPanel();
     await user.click(screen.getByRole('button', { name: 'Add to wishlist' }));
     expect(favouriteState.toggleFavourite).toHaveBeenCalledWith(
-      'headphones',
-      expect.objectContaining({ id: 'headphones' }),
+      'powdered-water',
+      expect.objectContaining({ id: 'powdered-water' }),
     );
     authenticated.unmount();
   });

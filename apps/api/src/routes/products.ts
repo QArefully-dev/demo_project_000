@@ -1,57 +1,22 @@
 import { FastifyInstance } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
-import {
-  listProducts,
-  getProductById,
-  getCategories,
-  getBestsellers,
-  getRelatedProducts,
-} from '../domains/products.js';
 import { sendNotFound, sendBadRequest } from '../utils/errors.js';
-import { getApiProductImages } from '../domains/productMedia.js';
+import { toProductContract } from '../mappers/product.js';
 import {
   ProductDetailResponse,
-  ErrorResponse,
   ProductIdParam,
   CategoriesResponse,
   BestsellersResponse,
   RelatedResponse,
   ProductListPaginatedResponse,
   ProductQuery,
-  type Product,
-} from '@shop/contracts';
+} from '@shop/contracts/products';
+import { ErrorResponse } from '@shop/contracts/common';
+import type { AppContext } from '../app.js';
 
-/** Map a database product row to the API contract shape. */
-function mapProduct(row: {
-  id: number;
-  name: string;
-  description: string;
-  price_cents: number;
-  category: string;
-  stock_count: number;
-  image_set_id: string | null;
-  slug: string;
-  compare_at_price_cents: number | null;
-  sales_count: number;
-}): Product {
-  const imageSetId = row.image_set_id || 'unknown';
-  return {
-    id: String(row.id),
-    name: row.name,
-    description: row.description,
-    priceCents: row.price_cents,
-    imageSetId,
-    images: getApiProductImages(row.image_set_id, row.category, row.name),
-    category: row.category,
-    stock: row.stock_count,
-    slug: row.slug ?? '',
-    compareAtPriceCents: row.compare_at_price_cents ?? undefined,
-    salesCount: row.sales_count ?? 0,
-  };
-}
-
-export default function productsRoutes(app: FastifyInstance): void {
+export default function productsRoutes(app: FastifyInstance, { services }: AppContext): void {
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
+  const { products } = services;
 
   // Static routes registered before /:id
 
@@ -66,7 +31,7 @@ export default function productsRoutes(app: FastifyInstance): void {
       },
     },
     () => {
-      return getCategories();
+      return products.listCategories();
     },
   );
 
@@ -81,7 +46,7 @@ export default function productsRoutes(app: FastifyInstance): void {
       },
     },
     () => {
-      return getBestsellers().map(mapProduct);
+      return products.listBestsellers().map(toProductContract);
     },
   );
 
@@ -97,9 +62,9 @@ export default function productsRoutes(app: FastifyInstance): void {
       },
     },
     (request) => {
-      const result = listProducts(request.query);
+      const result = products.list(request.query);
       return {
-        items: result.items.map(mapProduct),
+        items: result.items.map(toProductContract),
         total: result.total,
         page: result.page,
         pageSize: result.pageSize,
@@ -130,12 +95,12 @@ export default function productsRoutes(app: FastifyInstance): void {
         return;
       }
 
-      const product = getProductById(productId);
+      const product = products.findById(productId);
       if (!product) {
         sendNotFound(reply, 'Product');
         return;
       }
-      return mapProduct(product);
+      return toProductContract(product);
     },
   );
 
@@ -162,13 +127,13 @@ export default function productsRoutes(app: FastifyInstance): void {
       }
 
       // Verify the product exists
-      const product = getProductById(productId);
+      const product = products.findById(productId);
       if (!product) {
         sendNotFound(reply, 'Product');
         return;
       }
 
-      return getRelatedProducts(productId).map(mapProduct);
+      return products.listRelated(productId).map(toProductContract);
     },
   );
 }

@@ -1,6 +1,6 @@
-# Shop Qarefully v000
+# QArefully Powder Co.
 
-Production-style department-store demo for QA education and repository-scale engineering exercises. Local and non-live by design; no external services required.
+QArefully Powder Co. is a local, non-live powder shop built for QA education and repository-scale engineering exercises. Browse credible pantry powders, questionable household powders, and impossible powders; every customer journey runs without external services.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ npm run dev
 
 Open [http://127.0.0.1:5173](http://127.0.0.1:5173) in your browser.
 
-`npm ci` installs the locked dependencies and builds the shared contracts package automatically.
+`npm ci` installs the locked dependencies and builds the shared contracts and catalog packages automatically.
 
 ## What's Running
 
@@ -48,11 +48,22 @@ SQLite database is created automatically on first `npm run dev` at `data/shop.db
 | `npm run test:unit`  | Run web and API unit tests                                                                          |
 | `npm run test:integration` | Run API SQLite integration tests                                                            |
 | `npm run smoke`      | Run typecheck plus unit and integration tests                                                      |
-| `npm run lint`       | Run ESLint across entire project                                                                    |
+| `npm run lint`       | Enforce import boundaries and report authored files over 300 logical lines                          |
 | `npm run format`     | Check formatting with Prettier                                                                      |
 | `npm run format:fix` | Auto-fix formatting with Prettier                                                                   |
+| `npm run verify`     | Run format, typecheck, lint, tests, and every workspace build                                       |
 
 All scripts run via `npm run` — no separate shell scripts directory needed.
+
+## Architecture
+
+Dependencies flow one way: `@shop/contracts` owns shared request and response schemas, `@shop/catalog` owns canonical catalog and packaging data, the API owns persistence and workflows, and the web app consumes API contracts only. The browser validates every successful API response against its shared schema before feature code receives it. Packages and scripts cannot import app-private source; the web app cannot import API source.
+
+Checkout is a server-owned payment-intent workflow. The API validates the cart, promo, customer details, and card before it reserves the cart and promo capacity, persists an immutable quote, and calls the simulated gateway with that quote total. Finalization creates the order from the saved quote, so later cart changes cannot alter an authorized payment.
+
+Each checkout request includes an idempotency key. Retrying the same key with the same request replays a completed outcome or safely resumes an authorized finalization; using the same key with different checkout data returns a conflict. Card numbers and CVC values are not stored in quotes, fingerprints, or payment responses.
+
+`npm run lint` also reports authored source files above 300 logical lines and fails above 400 unless `scripts/authored-size-policy.json` records a cohesive, single-responsibility exception. Generated files, migrations, fixtures, and framework UI adapters are excluded from this review.
 
 ## Features
 
@@ -68,10 +79,12 @@ All scripts run via `npm run` — no separate shell scripts directory needed.
 
 ## Seeded Data
 
-- **45 products** across 10 categories: Audio, Peripherals, Displays, Accessories, Storage, Networking, Power, Cables, Wearables, Smart Home
+- **45 products** across 7 powder categories: Pantry Staples, Performance, Drinks, Household, Outdoors, Questionable, and Impossible
 - **14 sale products** with compare-at prices
 - **3 users** (credentials below)
 - **7 promo codes** (details below)
+
+The catalog moves from everyday powders to deliberate nonsense. Household, conceptual, and impossible products are clearly marked “Not for consumption.” `Powdered Water` is the featured bestseller.
 
 ### User Credentials
 
@@ -151,7 +164,9 @@ demo_project_000/
 │   ├── api/          # Fastify API server (port 3001)
 │   └── web/          # React + Vite frontend (port 5173)
 ├── packages/
-│   └── contracts/    # Shared TypeScript types & schemas
+│   ├── catalog/      # Canonical catalog and packaging data
+│   └── contracts/    # Shared transport schemas and types
+├── scripts/          # Repository quality checks
 ├── data/             # SQLite database (auto-created)
-└── plans/          # Design & implementation plans
+└── plans/            # Design and implementation plans
 ```

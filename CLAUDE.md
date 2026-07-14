@@ -1,108 +1,68 @@
-# Demo Project Agent Instructions
+# Agent Instructions
 
-## Project
+## Scope
 
-Local production-style department-store codebase for QA education and large-repository agent demos. Non-live demo runtime; production implementation defaults.
+Local department-store codebase for QA education and repository-scale agent demos. Non-live runtime; production-grade boundaries.
 
-Priorities:
+- Product: familiar webshop; browse -> cart -> checkout -> order
+- Runtime: deterministic, local-first, low setup
+- Engineering: realistic rules; strict validation, auth, migrations, transactions, errors
 
-- familiar customer journey
-- modern, predictable UI
-- meaningful business-rule depth
-- deterministic local execution
-- low setup friction
-- clear code navigation for humans and agents
-- production-grade migrations, validation, authorization, transactions, and error handling
+## Context
 
-## Context Sources
+- direction: `plans/demo_project_high_level_plan.md`
+- active expansion: `plans/catalog_reviews_audit_seed_content_implementation_plan.md`
+- task scope: named plan/specification
+- implementation truth: code, manifests, migrations
 
-- `CLAUDE.md`: durable repository guardrails
-- `plans/demo_project_high_level_plan.md`: current product direction, constraints, growth strategy
-- `plans/catalog_reviews_audit_seed_content_implementation_plan.md`: active catalog, review, audit, seed, and content expansion
-- task-specific plan or specification: named scope, acceptance criteria, sequencing
-- code, manifests, migrations: current implementation truth
+Precedence: user request -> task plan -> high-level plan -> repository defaults.
 
-Read only plans relevant to current task. Do not treat old status, evidence, handoff, or completed orchestration files as active instructions unless user names them.
+Read task-relevant plans only. Ignore old status, evidence, handoff, completed orchestration unless user names it. Unresolved product/course conflict -> request decision.
 
-Conflict handling:
+## Constraints
 
-`explicit user request -> applicable task plan -> high-level plan -> repository defaults`
+- Keep normal customer path simple; keep admin/diagnostics outside it.
+- Check high-level plan before changing course scenarios. Avoid later-course spoilers in early UI, comments, filenames, starter artifacts.
+- Support Windows and macOS; no Docker, cloud service, account, API key, or post-install network.
+- Keep one install flow, one dev command, deterministic seed/reset.
+- Keep simulated integrations local and controllable; retain production boundaries.
 
-Unresolved product or course-behavior conflict -> stop and request decision.
+## Architecture
 
-## Product Guardrails
+Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite; shared TypeScript contracts. Inspect manifests for exact versions/scripts.
 
-- keep main experience recognizable as ordinary webshop
-- preserve direct journey: browse -> cart -> checkout -> order
-- keep operational complexity behind familiar customer actions
-- avoid required explanation of architecture or business domain
-- keep optional admin or diagnostic surfaces outside normal customer journey
-- check high-level plan before changing established course scenario
-- avoid spoilers for later course material in earlier UI, code comments, filenames, or starter artifacts
-
-## Runtime Guardrails
-
-- cross-platform: Windows and macOS
-- local-first: no required cloud service, account, API key, or network after install
-- no Docker requirement
-- one documented install flow and one development command
-- deterministic seed and reset
-- fake third-party integrations remain local and controllable
-- first-run reliability outranks infrastructure realism
-
-## Architecture Defaults
-
-Current shape:
-
-- npm workspaces monorepo
-- React + Vite + TypeScript web application
-- Fastify + TypeScript API
-- SQLite persistence
-- shared TypeScript contracts
-
-Exact versions and scripts -> inspect workspace manifests.
-
-Design rules:
-
-- modular monolith by default
-- frontend -> API contracts -> domain rules -> persistence
-- backend authoritative for money, inventory, orders, payments, permissions
-- integer minor units for money
-- shared contract packages contain transport types and schemas, not domain behavior
-- thin routes; business rules in named domain modules
-- additive schema migrations; preserve existing user data
-- external service split only when named demo requires distributed behavior
+- Default: modular monolith. Split service only for named distributed-behavior demo.
+- Flow: frontend -> API contracts -> domain -> persistence.
+- Backend owns money, inventory, orders, payments, permissions. Money uses integer minor units.
+- Contracts own transport types/schemas; shared data owns canonical static catalog/content.
+- Web never imports API source. Packages/scripts never import app-private source.
+- Backend: thin routes -> workflow services -> repositories owning SQL/row types. One transport mapper per record type.
+- Composition root owns database, clock, IDs, config, adapters. Imports perform no listen, seed, migration, or persistent-resource opening.
+- Use ordered versioned migrations; preserve data; surface unknown migration errors.
+- Transaction owner covers full business invariant.
 
 ## Change Rules
 
-- preserve unrelated user work
-- make smallest coherent change satisfying current scope
-- keep current public behavior unless task requests change
-- avoid empty scaffolding, speculative abstraction, vendored code, generated-code padding
-- do not use demo status to justify shortcuts in schema design, authorization, validation, transactions, or data integrity
-- simulated local integrations replace live services; surrounding code still follows production boundaries
-- do not edit `reference/` or `.cursor/` unless task explicitly includes them
-- intentional course-visible behavior change -> inspect affected course artifacts before implementation
+- Preserve unrelated work; make smallest coherent scoped change; retain public behavior unless requested.
+- Phased work: complete assigned ready packet, pass exit checks, update status, stop.
+- Avoid empty scaffolding, speculative abstractions, vendored code, generated padding.
+- Remove obsolete path after final consumer moves; avoid parallel legacy/new implementations.
+- Separate static data, generated artifacts, transport schemas, domain rules, persistence, rendering.
+- No mutable module-global request, cart, session, or database lifecycle state.
+- Demo status never relaxes schema, auth, validation, transaction, integrity standards.
+- Do not edit `reference/` or `.cursor/` unless scoped. Course-visible change -> inspect affected course artifacts first.
 
 ## Quality
 
-- use repository scripts for formatting, type checking, linting, build, seed, reset, and tests
-- run checks proportional to changed surface
-- add essential unit and integration tests with new code; prioritize critical rules, boundaries, and smoke-test paths
-- keep coverage focused, not exhaustive; preserve meaningful gaps for QA exercises
-- no Playwright frontend or API E2E tests; leave E2E automation for lessons
-- follow narrower test scope from current task or active plan
-- verify customer journey when UI or business behavior changes
-- keep failures deterministic and reproducible
-- preserve useful error boundaries and exact domain errors
-- document seeded credentials, triggers, or operator steps in human-facing README when users need them
-- stop only servers started by current task
-
-## Code Style
-
-- clear names, types, contracts, module boundaries
-- TSDoc for public or non-obvious contracts
-- comments explain rationale, invariants, or risk
-- no comments narrating obvious code
-- reuse established patterns before adding dependencies or frameworks
-- keep business rules traceable across frontend and backend
+- Use repository scripts; run format, typecheck, lint, build, seed/reset, tests proportional to change.
+- Keep Vite/Vitest `--configLoader runner`; bundled config loader traverses sandbox-blocked Windows ancestors.
+- Tests: pure rule -> unit; repository/transaction -> SQLite integration; route/schema/auth -> Fastify `app.inject()`.
+- Destructive refactor -> characterization test first. Async UI -> stale-response, cancellation, error, retry coverage where relevant.
+- Keep coverage focused; preserve QA exercise gaps. No Playwright frontend/API E2E tests unless task overrides.
+- UI/business change -> verify customer journey. Keep failures deterministic and domain errors exact.
+- One module -> one owner/reason to change. Review above 300 logical lines; split mixed responsibility before 400, never by line count alone. Generated source, migrations, fixtures, framework adapters, cohesive declarative renderers exempt with rationale.
+- Type ownership: persistence rows -> repositories; transport types -> contracts; UI state -> owning feature/provider. Derive request types from schemas; avoid bypass casts.
+- Async UI work aborts or ignores stale completion. Keep payment/auth secrets out of logs, persistent fingerprints, browser storage.
+- TSDoc public/non-obvious contracts. Comments explain rationale, invariants, risk; never obvious code.
+- Reuse established patterns before dependencies/frameworks. Keep business rules traceable frontend-to-backend.
+- User-needed credentials, triggers, operator steps -> human-facing README. Stop only current-task servers.

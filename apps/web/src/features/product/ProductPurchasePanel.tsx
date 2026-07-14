@@ -1,4 +1,4 @@
-import type { Product } from '@shop/contracts';
+import type { Product } from '@shop/contracts/products';
 import { Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -28,10 +28,12 @@ export function ProductPurchasePanel({
   const isOnSale =
     product.compareAtPriceCents != null && product.compareAtPriceCents > product.priceCents;
   const savings = isOnSale ? product.compareAtPriceCents! - product.priceCents : 0;
+  const packSize = product.packaging?.quantity;
+  const consumptionLabel = product.packaging?.consumptionLabel;
 
   return (
     <aside className="product-purchase-panel self-start rounded-2xl border bg-surface-raised p-6 shadow-sm xl:p-8">
-      <p className="section-eyebrow">{product.category}</p>
+      <p className="section-eyebrow">Powder type: {product.category}</p>
       <div className="mt-3 flex flex-wrap items-start gap-2">
         <h1 className="min-w-0 flex-1 text-3xl font-semibold tracking-tight sm:text-4xl">
           {product.name}
@@ -54,6 +56,24 @@ export function ProductPurchasePanel({
       </div>
 
       <p className="mt-6 leading-7 text-muted-foreground">{product.description}</p>
+      <div className="mt-5 grid gap-3 rounded-xl border border-border/80 bg-surface-soft p-4 text-sm sm:grid-cols-2">
+        <div>
+          <p className="font-semibold">Bag format</p>
+          <p className="mt-1 text-muted-foreground">{packSize ?? 'Powder bag'}</p>
+        </div>
+        <div>
+          <p className="font-semibold">Batch handling</p>
+          <p className="mt-1 text-muted-foreground">Finely considered and clearly labelled.</p>
+        </div>
+      </div>
+      {consumptionLabel && (
+        <p
+          role="note"
+          className="mt-4 rounded-lg border border-sale/40 bg-sale/10 px-4 py-3 text-sm font-semibold text-foreground"
+        >
+          {consumptionLabel}
+        </p>
+      )}
 
       <ul
         aria-label="Shopping details"
@@ -61,11 +81,11 @@ export function ProductPurchasePanel({
       >
         <li className="flex items-center gap-2">
           <Check className="size-4 shrink-0 text-success" aria-hidden="true" />
-          Cart linked to this browser
+          Powder bag linked to this browser cart
         </li>
         <li className="flex items-center gap-2">
           <Check className="size-4 shrink-0 text-success" aria-hidden="true" />
-          Adjust quantities before checkout
+          Adjust bag quantities before checkout
         </li>
         <li className="flex items-center gap-2">
           <Check className="size-4 shrink-0 text-success" aria-hidden="true" />
@@ -96,7 +116,7 @@ export function ProductPurchasePanel({
             : isAdding
               ? 'Adding…'
               : inStock
-                ? 'Add to cart'
+                ? 'Add powder'
                 : 'Unavailable'}
         </Button>
         <div className="rounded-lg border bg-background" title="Add to wishlist">
@@ -120,8 +140,8 @@ export function ProductPurchasePanel({
 
       <dl className="mt-8 grid gap-4 border-t pt-6 text-sm sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
         <div>
-          <dt className="font-semibold">Checkout</dt>
-          <dd className="mt-1 text-muted-foreground">Simulated payment, no charge</dd>
+          <dt className="font-semibold">Payment simulation</dt>
+          <dd className="mt-1 text-muted-foreground">No card is charged or stored.</dd>
         </div>
         <div>
           <dt className="font-semibold">Delivery &amp; returns</dt>

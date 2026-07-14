@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import type { Product } from '@shop/contracts';
+import type { Product } from '@shop/contracts/products';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getBestsellers, getCategories, getProducts } from '@/api/products';
@@ -30,9 +30,8 @@ function product(id: string): Product {
     name: `Product ${id}`,
     description: 'Test product',
     priceCents: 1000,
-    imageSetId: 'headphones',
-    images: [{ src: '/images/products/test.webp', alt: `Product ${id}`, width: 720, height: 720 }],
-    category: 'Audio',
+    imageSetId: 'powdered-water',
+    category: 'Impossible',
     stock: 5,
     slug: `product-${id}`,
     salesCount: 0,
@@ -46,9 +45,9 @@ describe('HomePage', () => {
     vi.mocked(getProducts).mockReset();
   });
 
-  it('keeps demo-safe trust copy while a failed shelf leaves other content available', async () => {
+  it('keeps powder assurances while a failed shelf leaves other content available', async () => {
     vi.mocked(getBestsellers).mockRejectedValue(new Error('Bestsellers unavailable'));
-    vi.mocked(getCategories).mockResolvedValue(['Audio']);
+    vi.mocked(getCategories).mockResolvedValue(['Impossible']);
     vi.mocked(getProducts).mockResolvedValue({
       items: [product('new')],
       total: 1,
@@ -62,9 +61,13 @@ describe('HomePage', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('Local demo delivery')).toBeInTheDocument();
+    expect(screen.getByText('Powdered to order')).toBeInTheDocument();
+    expect(screen.getByText('Finely packed')).toBeInTheDocument();
     expect(screen.getByText('Simulated checkout')).toBeInTheDocument();
     expect(screen.getByText('No real payment is processed')).toBeInTheDocument();
+    expect(screen.getByText('Frequently powdered')).toBeInTheDocument();
+    expect(screen.getByText('Fresh from the mill')).toBeInTheDocument();
+    expect(screen.getByLabelText('Powder process')).toHaveTextContent('Choose it→Powder it→Bag it');
     await waitFor(() => expect(screen.getByText('Product new')).toBeInTheDocument());
     expect(screen.getByText('This collection is temporarily unavailable.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /browse the catalog/i })).toHaveAttribute(

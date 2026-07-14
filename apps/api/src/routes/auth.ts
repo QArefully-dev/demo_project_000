@@ -1,31 +1,23 @@
-import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { FastifyInstance } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
-import { Type } from '@sinclair/typebox';
 import { sendBadRequest, sendUnauthorized, sendConflict } from '../utils/errors.js';
 import { createSession, destroySession, requireAuth } from '../plugins/auth.js';
-import {
-  signup as signupDomain,
-  login as loginDomain,
-  forgotPassword,
-  resetPassword,
-  changePassword,
-} from '../domains/auth.js';
 import {
   SignupBody,
   LoginBody,
   ForgotPasswordBody,
   ResetPasswordBody,
   ChangePasswordBody,
-  ErrorResponse,
   SuccessResponse,
   PublicUser,
-} from '@shop/contracts';
+  CurrentUserResponse,
+} from '@shop/contracts/auth';
+import { ErrorResponse } from '@shop/contracts/common';
+import { toPublicUser } from '../features/auth/authService.js';
+import type { AppContext } from '../app.js';
 
-/**
- * Auth routes.
- * Signup, login, logout, forgot/reset password, /me, change password (W2.B stub).
- */
-export default function authRoutes(app: FastifyInstance): void {
+/** Auth routes. */
+export default function authRoutes(app: FastifyInstance, { services }: AppContext): void {
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
 
   // POST /signup
@@ -41,14 +33,10 @@ export default function authRoutes(app: FastifyInstance): void {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      const { email, password, displayName } = request.body as {
-        email: string;
-        password: string;
-        displayName: string;
-      };
+    async (request, reply) => {
+      const { email, password, displayName } = request.body;
 
-      const result = await signupDomain({ email, password, displayName });
+      const result = await services.auth.signup({ email, password, displayName });
 
       if (!result.ok) {
         if (result.error === 'EMAIL_EXISTS') {
@@ -59,14 +47,8 @@ export default function authRoutes(app: FastifyInstance): void {
         return;
       }
 
-      createSession(reply, result.user.id);
-
-      reply.code(201).send({
-        id: String(result.user.id),
-        email: result.user.email,
-        displayName: result.user.displayName,
-        role: result.user.role,
-      });
+      createSession(services.sessions, reply, result.userId);
+      reply.code(201).send(result.user);
     },
   );
 
@@ -83,24 +65,18 @@ export default function authRoutes(app: FastifyInstance): void {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      const { email, password } = request.body as { email: string; password: string };
+    async (request, reply) => {
+      const { email, password } = request.body;
 
-      const result = await loginDomain({ email, password });
+      const result = await services.auth.login({ email, password });
 
       if (!result.ok) {
         sendUnauthorized(reply, 'Invalid email or password');
         return;
       }
 
-      createSession(reply, result.user.id);
-
-      reply.code(200).send({
-        id: String(result.user.id),
-        email: result.user.email,
-        displayName: result.user.displayName,
-        role: result.user.role,
-      });
+      createSession(services.sessions, reply, result.userId);
+      reply.code(200).send(result.user);
     },
   );
 
@@ -114,8 +90,8 @@ export default function authRoutes(app: FastifyInstance): void {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      destroySession(request, reply);
+    async (request, reply) => {
+      destroySession(services.sessions, request, reply);
       reply.code(200).send({ success: true as const });
     },
   );
@@ -132,9 +108,9 @@ export default function authRoutes(app: FastifyInstance): void {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      const { email } = request.body as { email: string };
-      forgotPassword(email);
+    async (request, reply) => {
+      const { email } = request.body;
+      services.passwordReset.request(email);
       // Always return success — no user enumeration.
       reply.code(200).send({ success: true as const });
     },
@@ -152,15 +128,10 @@ export default function authRoutes(app: FastifyInstance): void {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      const { token, newPassword } = request.body as { token: string; newPassword: string };
+    async (request, reply) => {
+      const { token, newPassword } = request.body;
 
-      if (newPassword.length < 8 || newPassword.length > 128) {
-        sendBadRequest(reply, 'Password must be 8-128 characters');
-        return;
-      }
-
-      const result = await resetPassword({ token, newPassword });
+      const result = await services.passwordReset.reset({ token, newPassword });
 
       if (result === 'INVALID_TOKEN') {
         sendBadRequest(reply, 'Invalid or missing reset token');
@@ -174,6 +145,10 @@ export default function authRoutes(app: FastifyInstance): void {
         sendBadRequest(reply, 'Reset token has already been used');
         return;
       }
+      if (result === 'WEAK_PASSWORD') {
+        sendBadRequest(reply, 'Password must be 8-128 characters');
+        return;
+      }
 
       reply.code(200).send({ success: true as const });
     },
@@ -185,22 +160,17 @@ export default function authRoutes(app: FastifyInstance): void {
     {
       schema: {
         response: {
-          200: Type.Union([PublicUser, Type.Null()]),
+          200: CurrentUserResponse,
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
+    async (request, reply) => {
       const user = request.authenticatedUser;
       if (!user) {
         reply.code(200).send(null);
         return;
       }
-      reply.code(200).send({
-        id: String(user.id),
-        email: user.email,
-        displayName: user.displayName,
-        role: user.role,
-      });
+      reply.code(200).send(toPublicUser(user));
     },
   );
 
@@ -208,7 +178,7 @@ export default function authRoutes(app: FastifyInstance): void {
   typed.patch(
     '/password',
     {
-      preHandler: requireAuth,
+      preHandler: requireAuth(services.sessions),
       schema: {
         body: ChangePasswordBody,
         response: {
@@ -218,25 +188,18 @@ export default function authRoutes(app: FastifyInstance): void {
         },
       },
     },
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      const { currentPassword, newPassword } = request.body as {
-        currentPassword: string;
-        newPassword: string;
-      };
+    async (request, reply) => {
+      const { currentPassword, newPassword } = request.body;
 
       const user = request.authenticatedUser!;
       const sessionToken = request.sessionToken;
 
-      if (newPassword.length < 8 || newPassword.length > 128) {
-        sendBadRequest(reply, 'Password must be 8-128 characters');
-        return;
-      }
-
-      const result = await changePassword({
+      const result = await services.auth.changePassword({
         userId: user.id,
         currentPassword,
         newPassword,
-        currentSessionToken: sessionToken ?? '',
+        invalidateOtherSessions: () =>
+          services.sessions.invalidateOtherForUser(user.id, sessionToken ?? ''),
       });
 
       if (result === 'INVALID_CURRENT') {
@@ -245,6 +208,10 @@ export default function authRoutes(app: FastifyInstance): void {
       }
       if (result === 'SAME_PASSWORD') {
         sendBadRequest(reply, 'New password must be different from current password');
+        return;
+      }
+      if (result === 'WEAK_PASSWORD') {
+        sendBadRequest(reply, 'Password must be 8-128 characters');
         return;
       }
 

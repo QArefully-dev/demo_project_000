@@ -44,7 +44,7 @@ export function CartSheet() {
       </SheetTrigger>
       <SheetContent className="flex flex-col w-full sm:w-auto">
         <SheetHeader>
-          <SheetTitle>Shopping Cart ({itemCount})</SheetTitle>
+          <SheetTitle>Powder cart ({itemCount} bags)</SheetTitle>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto py-4">
           {isInitializing && <LoadingSpinner />}
@@ -64,7 +64,7 @@ export function CartSheet() {
             </div>
           )}
           {!isInitializing && !isLoading && cart && cart.items.length === 0 && (
-            <p className="py-8 text-center text-muted-foreground">Your cart is empty</p>
+            <p className="py-8 text-center text-muted-foreground">Your powder cart is empty</p>
           )}
           {!isInitializing &&
             !isLoading &&

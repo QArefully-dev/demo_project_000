@@ -1,17 +1,6 @@
 import { apiFetch } from './client';
-import type { PlaceOrderBody, PlaceOrderResponse, OrderDetailResponse } from '@shop/contracts';
-
-/**
- * Orders (legacy checkout) API module.
- */
-
-export function placeOrder(body: PlaceOrderBody): Promise<PlaceOrderResponse> {
-  return apiFetch<PlaceOrderResponse>('/api/checkout', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
-}
+import { OrderDetailResponse } from '@shop/contracts/orders';
 
 export function getOrder(orderId: string): Promise<OrderDetailResponse> {
-  return apiFetch<OrderDetailResponse>(`/api/orders/${orderId}`);
+  return apiFetch(OrderDetailResponse, `/api/orders/${orderId}`);
 }

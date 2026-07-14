@@ -6,20 +6,20 @@
     "packages/*"
   ],
   "scripts": {
-    "postinstall": "npm run build -w @shop/contracts",
+    "postinstall": "npm run build -w @shop/contracts && npm run build -w @shop/catalog",
     "dev": "npm run seed && concurrently -n api,web -c blue,green --kill-others \"npm run dev -w @shop/api\" \"npm run dev -w @shop/web\"",
     "seed": "npm run seed -w @shop/api",
     "reset": "npm run reset -w @shop/api",
-    "assets:build": "node scripts/build-product-images.mjs build",
-    "assets:check": "node scripts/build-product-images.mjs check",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:unit": "npm run test:unit -w @shop/web && npm run test:unit -w @shop/api",
     "test:integration": "npm run test:integration -w @shop/web && npm run test:integration -w @shop/api",
     "smoke": "npm run typecheck && npm run test:unit && npm run test:integration",
-    "lint": "eslint .",
+    "authored:size": "tsx scripts/report-authored-size.ts",
+    "lint": "eslint . && npm run authored:size",
     "format": "prettier --check .",
-    "format:fix": "prettier --write ."
+    "format:fix": "prettier --write .",
+    "verify": "npm run format && npm run typecheck && npm run lint && npm test && npm run build --workspaces --if-present"
   },
   "engines": {
     "node": ">=22.0.0 <23.0.0"
@@ -29,7 +29,6 @@
     "concurrently": "^10.0.3",
     "eslint": "^9.18.0",
     "prettier": "^3.4.0",
-    "sharp": "^0.35.3",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.21.0"

@@ -1,13 +1,79 @@
 import { ArrowUpRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { BagArtwork, type BagArtworkProps } from '@/components/BagArtwork';
 import { Button } from '@/components/ui/button';
 
-const tileImages: Readonly<Record<string, string>> = {
-  accessories: '/images/products/usb-hub.card.9b304cc40aad.720.webp',
-  audio: '/images/products/wireless-headphones.card.1bec8d07bb59.720.webp',
-  displays: '/images/products/desktop-monitor.card.60700175c6db.720.webp',
-  peripherals: '/images/products/mechanical-keyboard.card.24a705d3f3c5.720.webp',
-  'smart home': '/images/products/webcam.card.61c6d85cc7a0.720.webp',
+const tileArtwork: Readonly<Record<string, Omit<BagArtworkProps, 'ariaLabel' | 'className'>>> = {
+  'pantry staples': {
+    name: 'Protein Powder',
+    category: 'Pantry Staples',
+    quantity: '1kg',
+    batchCode: 'PAN-01',
+    mark: 'PRO',
+    accent: '#78956c',
+    powderAccent: '#d5dfbc',
+    consumptionLabel: null,
+  },
+  performance: {
+    name: 'Electrolyte Powder',
+    category: 'Performance',
+    quantity: '300g',
+    batchCode: 'PER-02',
+    mark: 'ELC',
+    accent: '#e1a156',
+    powderAccent: '#f2d8a6',
+    consumptionLabel: null,
+  },
+  drinks: {
+    name: 'Matcha Powder',
+    category: 'Drinks',
+    quantity: '200g',
+    batchCode: 'DRK-03',
+    mark: 'MTC',
+    accent: '#849b58',
+    powderAccent: '#c7d486',
+    consumptionLabel: null,
+  },
+  household: {
+    name: 'Laundry Powder',
+    category: 'Household',
+    quantity: '500g',
+    batchCode: 'HOU-04',
+    mark: 'LND',
+    accent: '#6c9cb3',
+    powderAccent: '#c8e0eb',
+    consumptionLabel: 'Not for consumption',
+  },
+  outdoors: {
+    name: 'Powdered Campfire',
+    category: 'Outdoors',
+    quantity: '200g',
+    batchCode: 'OUT-05',
+    mark: 'FIR',
+    accent: '#c3774e',
+    powderAccent: '#e7b78f',
+    consumptionLabel: 'Not for consumption',
+  },
+  questionable: {
+    name: 'Powdered House',
+    category: 'Questionable',
+    quantity: '1 unit',
+    batchCode: 'QUE-06',
+    mark: 'HSE',
+    accent: '#8c7ba8',
+    powderAccent: '#d0c3df',
+    consumptionLabel: 'Not for consumption',
+  },
+  impossible: {
+    name: 'Powdered Water',
+    category: 'Impossible',
+    quantity: 'Conceptual quantity',
+    batchCode: 'IMP-07',
+    mark: 'H2O',
+    accent: '#287fa6',
+    powderAccent: '#b9e2ee',
+    consumptionLabel: 'Not for consumption',
+  },
 };
 
 interface CategoryTilesProps {
@@ -20,20 +86,20 @@ interface CategoryTilesProps {
 export function CategoryTiles({ categories, isLoading, error, onRetry }: CategoryTilesProps) {
   return (
     <section aria-labelledby="category-heading">
-      <p className="section-eyebrow">Browse your way</p>
+      <p className="section-eyebrow">Choose your material</p>
       <h2 id="category-heading" className="section-heading mt-2">
-        Shop by department
+        Shop by powder type
       </h2>
       {error ? (
         <div role="status" className="mt-6 rounded-2xl border bg-surface-raised p-5 text-sm">
-          <p className="text-muted-foreground">Departments are temporarily unavailable.</p>
+          <p className="text-muted-foreground">Powder types are temporarily unavailable.</p>
           <Button variant="outline" size="sm" className="mt-3" onClick={onRetry}>
             Try again
           </Button>
         </div>
       ) : isLoading ? (
         <div
-          aria-label="Loading departments"
+          aria-label="Loading powder types"
           className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
         >
           {Array.from({ length: 4 }, (_, index) => (
@@ -43,21 +109,18 @@ export function CategoryTiles({ categories, isLoading, error, onRetry }: Categor
       ) : categories.length === 0 ? null : (
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {categories.slice(0, 4).map((category) => {
-            const image = tileImages[category.toLowerCase()];
+            const artwork = tileArtwork[category.toLowerCase()];
             return (
               <Link
                 key={category}
                 to={`/catalog?category=${encodeURIComponent(category)}`}
-                className="group relative aspect-[4/3] overflow-hidden rounded-2xl bg-surface-soft shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-foreground/20 bg-surface-soft shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                {image ? (
-                  <img
-                    src={image}
-                    alt=""
-                    width="720"
-                    height="720"
-                    loading="lazy"
-                    className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                {artwork ? (
+                  <BagArtwork
+                    {...artwork}
+                    ariaLabel=""
+                    className="h-full w-full object-cover p-3 transition-transform duration-200 group-hover:scale-105"
                   />
                 ) : (
                   <div

@@ -1,4 +1,6 @@
-import type { ErrorResponse } from '@shop/contracts';
+import { type Static, type TSchema } from '@sinclair/typebox';
+import { Value } from '@sinclair/typebox/value';
+import type { ErrorResponse } from '@shop/contracts/common';
 
 /**
  * Core fetch wrapper for the Shop Qarefully API.
@@ -31,6 +33,18 @@ export class ApiError extends Error {
   }
 }
 
+export class ApiContractError extends Error {
+  readonly path: string;
+  readonly validationSummary: string;
+
+  constructor(path: string, validationSummary: string) {
+    super(`Response contract violation for ${path}: ${validationSummary}`);
+    this.name = 'ApiContractError';
+    this.path = path;
+    this.validationSummary = validationSummary;
+  }
+}
+
 export function isMissingCartError(error: unknown): error is ApiError {
   return error instanceof ApiError && error.status === 404 && error.message === 'Cart not found';
 }
@@ -39,7 +53,11 @@ export function isMissingCartError(error: unknown): error is ApiError {
  * Core fetch function. Sends credentials with every request.
  * All feature API modules delegate to this.
  */
-export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+async function fetchWithResponseSchema<T extends TSchema>(
+  schema: T,
+  path: string,
+  options?: RequestInit,
+): Promise<Static<T>> {
   const mergedHeaders = new Headers(options?.headers);
   if (options?.body && typeof options.body === 'string') {
     mergedHeaders.set('Content-Type', 'application/json');
@@ -63,5 +81,18 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
       errorResponse,
     );
   }
-  return res.json() as Promise<T>;
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch {
+    throw new ApiContractError(path, 'successful response did not contain valid JSON');
+  }
+  if (!Value.Check(schema, body)) {
+    const error = [...Value.Errors(schema, body)][0];
+    const summary = error ? `${error.path || '/'}: ${error.message}` : 'schema validation failed';
+    throw new ApiContractError(path, summary);
+  }
+  return body;
 }
+
+export { fetchWithResponseSchema as apiFetch };

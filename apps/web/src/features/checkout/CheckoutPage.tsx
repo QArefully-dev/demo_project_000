@@ -1,34 +1,16 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Separator } from '@/components/ui/separator';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { Card, CardContent } from '@/components/ui/card';
 import { ErrorMessage } from '@/components/ErrorMessage';
-import { formatMoney } from '@/lib/formatMoney';
-import { useCheckout } from '@/hooks/useCheckout';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useCartContext } from '@/hooks/CartContext';
+import { CheckoutSummary } from './CheckoutSummary';
+import { ContactDetailsStep } from './ContactDetailsStep';
+import { PaymentDetailsStep } from './PaymentDetailsStep';
+import { useCheckoutFlow } from './useCheckoutFlow';
 
 export function CheckoutPage() {
-  const {
-    cart,
-    form,
-    updateField,
-    blurField,
-    getFieldError,
-    promoCode,
-    setPromoCode,
-    appliedPromo,
-    discountCents,
-    promoError,
-    promoValidating,
-    isPromoEligible,
-    totalCents,
-    validatePromo,
-    removePromo,
-    submitOrder,
-    cartRecoveryMessage,
-  } = useCheckout();
+  const flow = useCheckoutFlow();
   const {
     isInitializing: isCartInitializing,
     isLoading: isCartLoading,
@@ -38,7 +20,7 @@ export function CheckoutPage() {
   } = useCartContext();
 
   if (isCartInitializing || isCartLoading) return <LoadingSpinner />;
-  if (!cart) {
+  if (!flow.cart) {
     return (
       <ErrorMessage
         message={cartError ?? 'Your cart is unavailable.'}
@@ -46,37 +28,29 @@ export function CheckoutPage() {
       />
     );
   }
-  if (cart.items.length === 0) {
+  if (flow.cart.items.length === 0) {
     return (
-      <div className="mx-auto max-w-2xl py-12 text-center space-y-4">
-        {cartRecoveryMessage && (
+      <div className="mx-auto max-w-2xl space-y-4 py-12 text-center">
+        {flow.cartRecoveryMessage && (
           <p
             role="status"
             className="rounded-lg border border-border bg-muted/60 px-4 py-3 text-sm"
           >
-            {cartRecoveryMessage}
+            {flow.cartRecoveryMessage}
           </p>
         )}
-        <p className="text-muted-foreground">Your cart is empty</p>
-        <Button render={<Link to="/" />}>Continue Shopping</Button>
+        <p className="text-muted-foreground">Your powder cart is empty</p>
+        <Button render={<Link to="/catalog" />}>Shop powders</Button>
       </div>
     );
   }
 
-  const customerNameError = getFieldError('customerName');
-  const customerEmailError = getFieldError('customerEmail');
-  const shippingAddressError = getFieldError('shippingAddress');
-
   return (
-    <form
-      className="mx-auto max-w-5xl"
-      noValidate
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submitOrder();
-      }}
-    >
-      <h1 className="mb-6 text-2xl font-bold">Checkout</h1>
+    <div className="mx-auto max-w-5xl">
+      <h1 className="mb-2 text-2xl font-bold">Checkout your powders</h1>
+      <p className="mb-6 text-sm text-muted-foreground">
+        This is a simulated checkout. No payment card will be charged.
+      </p>
       {cartError && (
         <div
           role="alert"
@@ -84,178 +58,66 @@ export function CheckoutPage() {
         >
           <p className="text-sm text-destructive">{cartError}</p>
           <Button type="button" variant="outline" size="sm" onClick={() => void retryCart()}>
-            Retry Cart
+            Retry cart
           </Button>
         </div>
       )}
-      {cartRecoveryMessage && (
+      {flow.cartRecoveryMessage && (
         <p
           role="status"
           className="mb-6 rounded-lg border border-border bg-muted/60 px-4 py-3 text-sm text-foreground"
         >
-          {cartRecoveryMessage}
+          {flow.cartRecoveryMessage}
         </p>
       )}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
-          <CardHeader>
-            <CardTitle>Customer & Shipping</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-1.5">
-              <label htmlFor="customerName" className="text-sm font-medium">
-                Full Name
-              </label>
-              <Input
-                id="customerName"
-                value={form.customerName}
-                onChange={(e) => updateField('customerName', e.target.value)}
-                onBlur={() => blurField('customerName')}
-                autoComplete="name"
-                aria-invalid={Boolean(customerNameError)}
-                aria-describedby={customerNameError ? 'customerName-error' : undefined}
+          <CardContent className="pt-6">
+            {flow.step === 'contact' ? (
+              <ContactDetailsStep
+                contact={flow.contact}
+                fieldError={flow.fieldError}
+                onChange={flow.updateContact}
+                onBlur={flow.touchField}
+                onContinue={flow.goToPayment}
+                disabled={flow.promoValidating || !isCartAvailable}
               />
-              {customerNameError && (
-                <p id="customerName-error" role="alert" className="text-xs text-destructive">
-                  {customerNameError}
-                </p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <label htmlFor="customerEmail" className="text-sm font-medium">
-                Email
-              </label>
-              <Input
-                id="customerEmail"
-                type="email"
-                value={form.customerEmail}
-                onChange={(e) => updateField('customerEmail', e.target.value)}
-                onBlur={() => blurField('customerEmail')}
-                autoComplete="email"
-                aria-invalid={Boolean(customerEmailError)}
-                aria-describedby={customerEmailError ? 'customerEmail-error' : undefined}
+            ) : (
+              <PaymentDetailsStep
+                card={flow.card}
+                fieldError={flow.fieldError}
+                onChange={flow.updateCard}
+                onBlur={flow.touchField}
+                onBack={flow.goToContact}
+                onSubmit={() => void flow.submitPayment()}
+                submitting={flow.submitting}
+                disabled={flow.submitting || !isCartAvailable}
               />
-              {customerEmailError && (
-                <p id="customerEmail-error" role="alert" className="text-xs text-destructive">
-                  {customerEmailError}
-                </p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <label htmlFor="shippingAddress" className="text-sm font-medium">
-                Shipping Address
-              </label>
-              <Input
-                id="shippingAddress"
-                value={form.shippingAddress}
-                onChange={(e) => updateField('shippingAddress', e.target.value)}
-                onBlur={() => blurField('shippingAddress')}
-                autoComplete="street-address"
-                aria-invalid={Boolean(shippingAddressError)}
-                aria-describedby={shippingAddressError ? 'shippingAddress-error' : undefined}
-              />
-              {shippingAddressError && (
-                <p id="shippingAddress-error" role="alert" className="text-xs text-destructive">
-                  {shippingAddressError}
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Order Summary</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              {cart.items.map((item) => (
-                <div key={item.productId} className="flex items-center justify-between text-sm">
-                  <span>
-                    {item.product.name}{' '}
-                    <span className="text-muted-foreground">× {item.quantity}</span>
-                  </span>
-                  <span>{formatMoney(item.lineTotalCents)}</span>
-                </div>
-              ))}
-            </div>
-            <Separator />
-
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span>{formatMoney(cart.subtotalCents)}</span>
-            </div>
-
-            <div className="space-y-2">
-              <label htmlFor="promoCode" className="text-sm font-medium">
-                Promo Code
-              </label>
-              {!appliedPromo ? (
-                <div className="flex gap-2">
-                  <Input
-                    id="promoCode"
-                    value={promoCode}
-                    onChange={(e) => setPromoCode(e.target.value)}
-                    placeholder={isPromoEligible ? 'Promo code' : 'Add 5+ items to unlock promo'}
-                    disabled={!isPromoEligible}
-                    className="flex-1"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        void validatePromo();
-                      }
-                    }}
-                    aria-describedby={promoError ? 'promo-error' : undefined}
-                    aria-invalid={Boolean(promoError)}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={!isPromoEligible || !promoCode.trim() || promoValidating}
-                    onClick={() => {
-                      void validatePromo();
-                    }}
-                  >
-                    {promoValidating ? 'Checking...' : 'Apply'}
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between rounded-md bg-muted px-3 py-2">
-                  <span className="text-sm font-medium text-green-700">{appliedPromo} applied</span>
-                  <Button type="button" variant="ghost" size="sm" onClick={removePromo}>
-                    Remove
-                  </Button>
-                </div>
-              )}
-              {promoError && (
-                <p id="promo-error" role="alert" className="text-xs text-destructive">
-                  {promoError}
-                </p>
-              )}
-            </div>
-
-            {discountCents > 0 && (
-              <div className="flex items-center justify-between text-sm text-green-700">
-                <span>Discount</span>
-                <span>−{formatMoney(discountCents)}</span>
-              </div>
             )}
-
-            <Separator />
-
-            <div className="flex items-center justify-between text-lg font-bold">
-              <span>Total</span>
-              <span>{formatMoney(totalCents)}</span>
-            </div>
+            {flow.paymentError && (
+              <p
+                role="alert"
+                className="mt-4 rounded-md bg-destructive/5 p-3 text-sm text-destructive"
+              >
+                {flow.paymentError}
+              </p>
+            )}
           </CardContent>
         </Card>
+        <CheckoutSummary
+          cart={flow.cart}
+          promoCode={flow.promoCode}
+          appliedPromo={flow.appliedPromo}
+          discountCents={flow.discountCents}
+          totalCents={flow.totalCents}
+          promoError={flow.promoError}
+          promoValidating={flow.promoValidating}
+          isPromoEligible={flow.isPromoEligible}
+          onPromoChange={flow.updatePromoCode}
+          onApplyPromo={() => void flow.applyPromo()}
+          onRemovePromo={flow.removePromo}
+        />
       </div>
-
-      <div className="mt-6 flex justify-end">
-        <Button type="submit" size="lg" disabled={promoValidating || !isCartAvailable}>
-          Proceed to Payment
-        </Button>
-      </div>
-    </form>
+    </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { getFavourites, addFavourite, removeFavourite } from '@/api/favourites';
-import type { Product } from '@shop/contracts';
+import type { Product } from '@shop/contracts/products';
 
 interface UseFavouritesResult {
   /** Full product objects for the wishlist page. */

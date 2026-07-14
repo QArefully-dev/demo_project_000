@@ -1,12 +1,12 @@
 import { apiFetch } from './client';
-import type {
+import {
   ProductListPaginatedResponse,
   ProductDetailResponse,
   CategoriesResponse,
   BestsellersResponse,
   RelatedResponse,
-  ProductQuery,
-} from '@shop/contracts';
+} from '@shop/contracts/products';
+import type { ProductQuery } from '@shop/contracts/products';
 
 /**
  * Products API module.
@@ -22,7 +22,10 @@ export interface GetProductsParams {
   pageSize?: number;
 }
 
-export function getProducts(params?: GetProductsParams): Promise<ProductListPaginatedResponse> {
+export function getProducts(
+  params?: GetProductsParams,
+  signal?: AbortSignal,
+): Promise<ProductListPaginatedResponse> {
   const searchParams = new URLSearchParams();
   if (params?.q) searchParams.set('q', params.q);
   if (params?.category) searchParams.set('category', params.category);
@@ -32,21 +35,21 @@ export function getProducts(params?: GetProductsParams): Promise<ProductListPagi
   if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
 
   const qs = searchParams.toString();
-  return apiFetch<ProductListPaginatedResponse>(`/api/products${qs ? `?${qs}` : ''}`);
+  return apiFetch(ProductListPaginatedResponse, `/api/products${qs ? `?${qs}` : ''}`, { signal });
 }
 
 export function getProduct(id: string): Promise<ProductDetailResponse> {
-  return apiFetch<ProductDetailResponse>(`/api/products/${id}`);
+  return apiFetch(ProductDetailResponse, `/api/products/${id}`);
 }
 
 export function getCategories(): Promise<CategoriesResponse> {
-  return apiFetch<CategoriesResponse>('/api/products/categories');
+  return apiFetch(CategoriesResponse, '/api/products/categories');
 }
 
 export function getBestsellers(): Promise<BestsellersResponse> {
-  return apiFetch<BestsellersResponse>('/api/products/bestsellers');
+  return apiFetch(BestsellersResponse, '/api/products/bestsellers');
 }
 
 export function getRelatedProducts(id: string): Promise<RelatedResponse> {
-  return apiFetch<RelatedResponse>(`/api/products/${id}/related`);
+  return apiFetch(RelatedResponse, `/api/products/${id}/related`);
 }
