@@ -1,6 +1,19 @@
 import type { Order } from '@shop/contracts/orders';
+import { DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME } from '@shop/contracts/powderizer';
+import type { PowderMixOrderItem } from '@shop/contracts/powderizer';
 import { parsePersistedCheckoutQuote } from '../payments/paymentRepository.js';
 import type { CheckoutDependencies, CheckoutResult } from './checkoutTypes.js';
+
+function normalizeOrderMixItem(mix: PowderMixOrderItem): Order['mixItems'][number] {
+  if (mix.snapshotVersion === 1) {
+    return {
+      ...mix,
+      bagColourScheme: DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
+      usageLabel: 'Check ingredient labels',
+    };
+  }
+  return mix;
+}
 
 function orderFromQuote(
   orderId: number,
@@ -10,7 +23,7 @@ function orderFromQuote(
   return {
     id: String(orderId),
     items: quote.lines,
-    mixItems: quote.version === 2 ? quote.mixLines : [],
+    mixItems: quote.version === 1 ? [] : quote.mixLines.map(normalizeOrderMixItem),
     subtotalCents: quote.subtotalCents,
     discountCents: quote.discountCents,
     totalCents: quote.totalCents,
@@ -41,7 +54,7 @@ export function finalizeAuthorizedCheckout(
       totalCents: quote.totalCents,
       userId: quote.userId,
       items: quote.lines,
-      mixItems: quote.version === 2 ? quote.mixLines : [],
+      mixItems: quote.version === 1 ? [] : quote.mixLines,
       createdAt,
     });
     dependencies.mixes.consumeReservedStock(idempotencyKey);
@@ -50,7 +63,7 @@ export function finalizeAuthorizedCheckout(
     dependencies.mailbox.add({
       recipient: quote.customer.email,
       subject: `QArefully Powder Co. — order #${orderId} confirmed`,
-      body: `Your QArefully Powder Co. order #${orderId} has been recorded. ${quote.version === 2 && quote.mixLines.length ? `Custom mixes: ${quote.mixLines.length}. ` : ''}Total: $${quote.totalCents / 100}. This was a simulated payment; no card was charged.`,
+      body: `Your QArefully Powder Co. order #${orderId} has been recorded. ${quote.version !== 1 && quote.mixLines.length ? `Custom mixes: ${quote.mixLines.length}. ` : ''}Total: $${quote.totalCents / 100}. This was a simulated payment; no card was charged.`,
       kind: 'order_confirmation',
       createdAt,
     });

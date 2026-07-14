@@ -71,6 +71,7 @@ void test('cart reads persisted mixes as first-class lines and promos count bag 
     ],
     bagSizeGrams: 500,
     fineness: 'fine',
+    bagColourScheme: 'ultraviolet-cyan',
     customLabel: 'Breakfast blend',
   });
   assert.equal(typeof mixId, 'string');
@@ -90,11 +91,13 @@ void test('cart reads persisted mixes as first-class lines and promos count bag 
     ],
     bagSizeGrams: 500,
     fineness: 'fine',
+    bagColourScheme: 'ultraviolet-cyan',
     customLabel: 'Breakfast blend',
     priceVersion: 'powderizer-v1',
     unitPriceCents: 1715,
     quantity: 5,
     lineTotalCents: 8575,
+    usageLabel: 'Consumable powder',
   });
   assert.equal(cart.totalItems, 6);
   assert.equal(cart.subtotalCents, 8575 + cart.items[0].lineTotalCents);

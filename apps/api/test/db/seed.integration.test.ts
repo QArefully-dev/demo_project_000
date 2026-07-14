@@ -18,7 +18,7 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   seedDatabase(db);
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM products').get() as { count: number }).count,
-    45,
+    50,
   );
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM users').get() as { count: number }).count,
@@ -30,7 +30,7 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
         count: number;
       }
     ).count,
-    19,
+    50,
   );
   db.prepare("UPDATE users SET display_name = 'Local' WHERE email = 'alice@example.com'").run();
   db.prepare(
@@ -49,12 +49,20 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
     (db.prepare('SELECT name FROM products WHERE id = 99').get() as { name: string }).name,
     'Local',
   );
+  db.prepare(
+    "UPDATE products SET name = 'Old Campfire', mixable = 0, mix_unit_grams = NULL WHERE id = 27",
+  ).run();
+  seedDatabase(db);
+  assert.deepEqual(
+    db.prepare('SELECT name, mixable, mix_unit_grams FROM products WHERE id = 27').get(),
+    { name: 'Campfire', mixable: 1, mix_unit_grams: 200 },
+  );
 
   db.prepare("INSERT INTO carts (id) VALUES ('seed-reset-cart')").run();
   db.prepare(
     `INSERT INTO powder_mixes
-      (id, cart_id, quantity, bag_size_grams, fineness, custom_label, price_version, quoted_unit_price_cents, created_at, updated_at)
-     VALUES ('seed-reset-mix', 'seed-reset-cart', 1, 500, 'standard', NULL, 'powderizer-v1', 1000, 'now', 'now')`,
+      (id, cart_id, quantity, bag_size_grams, fineness, bag_colour_scheme, custom_label, price_version, quoted_unit_price_cents, created_at, updated_at)
+     VALUES ('seed-reset-mix', 'seed-reset-cart', 1, 500, 'standard', 'solar-flare', NULL, 'powderizer-v1', 1000, 'now', 'now')`,
   ).run();
   db.prepare(
     `INSERT INTO powder_mix_components (mix_id, product_id, percentage, allocated_grams)
@@ -84,8 +92,10 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   seedDatabase(db);
   assert.equal(db.prepare('SELECT name FROM products WHERE id = 99').get(), undefined);
   assert.deepEqual(
-    db.prepare('SELECT id, slug FROM products WHERE id BETWEEN 1 AND 45 ORDER BY id').all(),
-    CATALOG_PRODUCTS.map(({ id, slug }) => ({ id, slug })),
+    db.prepare('SELECT id, slug FROM products WHERE id BETWEEN 1 AND 50 ORDER BY id').all(),
+    CATALOG_PRODUCTS.map(({ id, slug }) => ({ id, slug })).sort(
+      (left, right) => left.id - right.id,
+    ),
   );
   assert.equal(
     (
@@ -93,7 +103,7 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
         count: number;
       }
     ).count,
-    19,
+    50,
   );
   for (const table of [
     'powder_mixes',

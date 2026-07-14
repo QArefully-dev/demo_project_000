@@ -17,6 +17,7 @@ const quote = {
     bagSizeGrams: 500,
     fineness: 'standard',
     customLabel: null,
+    bagColourScheme: 'ultraviolet-cyan',
   },
   allocations: [
     { productId: '1', percentage: 50, allocatedGrams: 250 },
@@ -25,6 +26,7 @@ const quote = {
   packagingFeeCents: 400,
   finenessSurchargeCents: 0,
   unitPriceCents: 1400,
+  usageLabel: 'Consumable powder',
 } satisfies PowderMixQuote;
 
 function withComponents(ids: readonly string[]) {
@@ -125,6 +127,8 @@ describe('powderizerReducer', () => {
         bagSizeGrams: 500,
         fineness: 'fine',
         customLabel: 'Training blend',
+        bagColourScheme: 'ultraviolet-cyan',
+        usageLabel: 'Consumable powder',
         priceVersion: 'powderizer-v1',
         unitPriceCents: 1500,
         quantity: 1,

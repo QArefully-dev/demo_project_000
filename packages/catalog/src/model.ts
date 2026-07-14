@@ -9,9 +9,7 @@ export const CATALOG_CATEGORIES = [
 ] as const;
 export type CatalogCategory = (typeof CATALOG_CATEGORIES)[number];
 export const MIXABLE_CATALOG_CATEGORIES = [
-  'Pantry Staples',
-  'Performance',
-  'Drinks',
+  ...CATALOG_CATEGORIES,
 ] as const satisfies readonly CatalogCategory[];
 export type MixableCatalogCategory = (typeof MIXABLE_CATALOG_CATEGORIES)[number];
 export const NOT_FOR_CONSUMPTION = 'Not for consumption' as const;
@@ -42,19 +40,29 @@ export type CatalogProduct = Readonly<{
 }>;
 export type CatalogProductDraft = Omit<CatalogProduct, 'mixable' | 'mixUnitGrams'>;
 
-const mixableCategories = new Set<CatalogCategory>(MIXABLE_CATALOG_CATEGORIES);
+export const CONCEPTUAL_QUANTITY = 'conceptual quantity' as const;
+
+/** Converts a labelled source package into the grams reserved by Powderizer. */
+export const parseMixUnitGrams = (quantity: string): number | null => {
+  if (quantity === CONCEPTUAL_QUANTITY) return 1000;
+
+  const grams = /^([1-9][0-9]*)g$/.exec(quantity);
+  const kilograms = /^([1-9][0-9]*)kg$/.exec(quantity);
+  const amount = grams ? Number(grams[1]) : kilograms ? Number(kilograms[1]) * 1000 : NaN;
+
+  return Number.isSafeInteger(amount) && amount > 0 ? amount : null;
+};
 
 /** Adds canonical Powderizer eligibility metadata from each source bag's labelled weight. */
 export const createCatalogProducts = <T extends CatalogProductDraft>(
   products: readonly T[],
 ): readonly (T & Pick<CatalogProduct, 'mixable' | 'mixUnitGrams'>)[] =>
   products.map((product) => {
-    const mixable = mixableCategories.has(product.category);
-    const sourceWeight = /^([1-9][0-9]*)g$/.exec(product.packaging.quantity);
+    const mixable = true;
     return {
       ...product,
       mixable,
-      mixUnitGrams: mixable && sourceWeight ? Number(sourceWeight[1]) : null,
+      mixUnitGrams: parseMixUnitGrams(product.packaging.quantity),
     };
   });
 export const createPackaging = (

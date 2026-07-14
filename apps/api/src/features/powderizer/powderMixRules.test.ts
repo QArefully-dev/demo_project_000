@@ -3,6 +3,9 @@ import test from 'node:test';
 import {
   allocatePowderMixGrams,
   calculatePowderMixStockRequirements,
+  createPowderMixQuoteKey,
+  derivePowderMixUsageLabel,
+  normalizePowderMixBagColourScheme,
   normalizePowderMixConfig,
   normalizePowderMixLabel,
   parsePowderMixPriceVersion,
@@ -43,6 +46,7 @@ void test('normalizes valid two, three, and five component mixes into product ID
     { productId: 3, percentage: 50 },
   ]);
   assert.equal(two.customLabel, 'Breakfast blend');
+  assert.equal(two.bagColourScheme, 'ultraviolet-cyan');
 
   const three = normalizePowderMixConfig(
     {
@@ -74,6 +78,41 @@ void test('normalizes valid two, three, and five component mixes into product ID
     five.components.map((component) => component.productId),
     [2, 3, 5, 7, 11],
   );
+});
+
+void test('normalizes all bag colour schemes and includes them in quote identity only', () => {
+  for (const bagColourScheme of [
+    'ultraviolet-cyan',
+    'solar-flare',
+    'deep-space',
+    'acid-lilac',
+    'monochrome-glitch',
+  ]) {
+    assert.equal(normalizePowderMixBagColourScheme(bagColourScheme), bagColourScheme);
+  }
+  expectCode('MIX_BAG_COLOUR_INVALID', () => normalizePowderMixBagColourScheme('brown-paper'));
+
+  const defaultQuote = quotePowderMix(validInput, products);
+  const alternateQuote = quotePowderMix({ ...validInput, bagColourScheme: 'deep-space' }, products);
+  assert.notEqual(
+    createPowderMixQuoteKey(defaultQuote.config),
+    createPowderMixQuoteKey(alternateQuote.config),
+  );
+  assert.equal(defaultQuote.unitPriceCents, alternateQuote.unitPriceCents);
+  assert.deepEqual(defaultQuote.allocations, alternateQuote.allocations);
+});
+
+void test('derives usage labels from canonical warnings without affecting price or allocation', () => {
+  assert.equal(derivePowderMixUsageLabel(products), 'Consumable powder');
+  const unsafeProducts = products.map((product) =>
+    product.id === 2 ? { ...product, consumptionWarning: 'Not for consumption' as const } : product,
+  );
+  const safeQuote = quotePowderMix(validInput, products);
+  const unsafeQuote = quotePowderMix(validInput, unsafeProducts);
+  assert.equal(safeQuote.usageLabel, 'Consumable powder');
+  assert.equal(unsafeQuote.usageLabel, 'Not for consumption');
+  assert.equal(unsafeQuote.unitPriceCents, safeQuote.unitPriceCents);
+  assert.deepEqual(unsafeQuote.allocations, safeQuote.allocations);
 });
 
 void test('rejects every config validation category', () => {

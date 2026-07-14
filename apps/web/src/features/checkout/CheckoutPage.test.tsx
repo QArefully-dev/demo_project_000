@@ -252,6 +252,8 @@ describe('CheckoutPage', () => {
           ],
           bagSizeGrams: 500,
           fineness: 'standard',
+          bagColourScheme: 'ultraviolet-cyan',
+          usageLabel: 'Consumable powder',
           priceVersion: 'powderizer-v1',
           unitPriceCents: 1200,
           quantity: 1,

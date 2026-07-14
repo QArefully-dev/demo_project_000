@@ -57,6 +57,28 @@ const config: PowderizerConfigResponse = {
   finenessValues: ['coarse', 'standard', 'fine'],
   labelMaxGraphemes: 40,
   priceVersion: 'powderizer-v1',
+  bagColourSchemes: [
+    'ultraviolet-cyan',
+    'solar-flare',
+    'deep-space',
+    'acid-lilac',
+    'monochrome-glitch',
+  ],
+  defaultBagColourScheme: 'ultraviolet-cyan',
+  dailyRecipe: {
+    effectiveDate: '2026-07-14',
+    name: 'Test recipe',
+    config: {
+      components: [
+        { productId: '1', percentage: 50 },
+        { productId: '2', percentage: 50 },
+      ],
+      bagSizeGrams: 500,
+      fineness: 'standard',
+      customLabel: null,
+      bagColourScheme: 'ultraviolet-cyan',
+    },
+  },
 };
 
 const emptyCart: Cart = { id: cartId, items: [], mixItems: [], totalItems: 0, subtotalCents: 0 };
@@ -88,10 +110,16 @@ function quoteFrom(body: {
   bagSizeGrams: 250 | 500 | 1000;
   fineness: 'coarse' | 'standard' | 'fine';
   customLabel?: string;
+  bagColourScheme?:
+    'ultraviolet-cyan' | 'solar-flare' | 'deep-space' | 'acid-lilac' | 'monochrome-glitch';
 }): PowderMixQuote {
   return {
     priceVersion: 'powderizer-v1',
-    config: { ...body, customLabel: body.customLabel?.trim() || null },
+    config: {
+      ...body,
+      customLabel: body.customLabel?.trim() || null,
+      bagColourScheme: body.bagColourScheme ?? 'ultraviolet-cyan',
+    },
     allocations: body.components.map((component) => ({
       ...component,
       allocatedGrams: (body.bagSizeGrams * component.percentage) / 100,
@@ -99,6 +127,7 @@ function quoteFrom(body: {
     packagingFeeCents: 400,
     finenessSurchargeCents: 0,
     unitPriceCents: 1400,
+    usageLabel: 'Consumable powder',
   };
 }
 
@@ -184,6 +213,8 @@ describe('PowderizerPage', () => {
             bagSizeGrams: 500,
             fineness: 'standard',
             customLabel: 'Training',
+            bagColourScheme: 'ultraviolet-cyan',
+            usageLabel: 'Consumable powder',
             priceVersion: 'powderizer-v1',
             unitPriceCents: 1400,
             quantity: 1,

@@ -1,6 +1,6 @@
 # Powderizer Expansion Plan: Domain and Data
 
-Status: pending
+Status: complete
 
 Audience: orchestrator agent, implementation agents
 
@@ -401,6 +401,8 @@ Tests:
 Gate: server lifecycle preserves fields; no stale price, unsafe label, double charge, or double decrement.
 
 ## Phase 6 - Domain Verification and Handoff
+
+Status: complete
 
 Goal: freeze stable API surface for companion plan.
 

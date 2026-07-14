@@ -30,7 +30,7 @@ void test('product repository owns catalog SQL', (t) => {
       .list({ q: 'water', sort: 'newest' })
       .items.some((product) => product.name === 'Powdered Water'),
   );
-  assert.equal(products.list({ category: 'Impossible', sort: 'newest', pageSize: 48 }).total, 7);
+  assert.equal(products.list({ category: 'Impossible', sort: 'newest', pageSize: 48 }).total, 8);
   assert.ok(
     products
       .list({ onSale: true, sort: 'newest', pageSize: 48 })

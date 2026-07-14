@@ -1,4 +1,7 @@
 import { getCart } from '../cart/cartService.js';
+import { CATALOG_PRODUCTS } from '@shop/catalog';
+import type { Cart } from '@shop/contracts/cart';
+import type { PowderMixCartItem } from '@shop/contracts/powderizer';
 import { validateCard, type ValidCard } from '../payments/cardValidation.js';
 import { createSafeFingerprint, type PaymentRecord } from '../payments/paymentRepository.js';
 import { validatePromo } from '../promos/promoService.js';
@@ -6,6 +9,7 @@ import { createCheckoutQuote } from './checkoutQuote.js';
 import { finalizeAuthorizedCheckout } from './checkoutFinalizer.js';
 import {
   calculatePowderMixStockRequirements,
+  derivePowderMixUsageLabel,
   quotePowderMix,
 } from '../powderizer/powderMixRules.js';
 import type { PowderMixProduct, PowderMixStockRequirement } from '../powderizer/powderizerTypes.js';
@@ -34,6 +38,8 @@ function toMixProduct(
     priceCents: row.price_cents,
     mixable: row.mixable === 1,
     mixUnitGrams: row.mix_unit_grams ?? null,
+    consumptionWarning:
+      CATALOG_PRODUCTS.find((product) => product.id === row.id)?.packaging.consumptionLabel ?? null,
   };
 }
 
@@ -41,15 +47,25 @@ function prepareMixes(
   cartId: string,
   dependencies: CheckoutDependencies,
 ):
-  | { requirements: readonly PowderMixStockRequirement[] }
+  | { requirements: readonly PowderMixStockRequirement[]; mixItems: PowderMixCartItem[] }
   | Extract<CheckoutResult, { success: false }> {
-  const persisted = dependencies.mixes.listForCart(cartId);
+  let persisted: ReturnType<CheckoutDependencies['mixes']['listForCart']>;
+  try {
+    persisted = dependencies.mixes.listForCart(cartId);
+  } catch {
+    return {
+      success: false,
+      error: 'MIX_REQUOTE_REQUIRED',
+      mixes: [],
+    };
+  }
   const stockLines: Array<{
     allocations: Array<{ productId: number; allocatedGrams: number }>;
     quantity: number;
   }> = [];
   const requotes: Array<{ mixId: string; oldUnitPriceCents: number; newUnitPriceCents: number }> =
     [];
+  const mixItems: PowderMixCartItem[] = [];
   for (const mix of persisted) {
     const components = mix.components.map((component) => ({
       productId: component.product_id,
@@ -69,12 +85,23 @@ function prepareMixes(
           bagSizeGrams: mix.bag_size_grams,
           fineness: mix.fineness,
           customLabel: mix.custom_label ?? undefined,
+          bagColourScheme: mix.bag_colour_scheme,
         },
         products,
       );
       if (
         quoted.priceVersion !== mix.price_version ||
-        quoted.unitPriceCents !== mix.quoted_unit_price_cents
+        quoted.unitPriceCents !== mix.quoted_unit_price_cents ||
+        quoted.config.bagColourScheme !== mix.bag_colour_scheme ||
+        quoted.allocations.some(
+          (allocation) =>
+            !mix.components.some(
+              (component) =>
+                component.product_id === allocation.productId &&
+                component.percentage === allocation.percentage &&
+                component.allocated_grams === allocation.allocatedGrams,
+            ),
+        )
       ) {
         requotes.push({
           mixId: mix.id,
@@ -84,6 +111,24 @@ function prepareMixes(
         continue;
       }
       stockLines.push({ allocations: [...quoted.allocations], quantity: mix.quantity });
+      mixItems.push({
+        mixId: mix.id,
+        components: mix.components.map((component) => ({
+          productId: String(component.product_id),
+          productName: component.product_name,
+          percentage: component.percentage,
+          allocatedGrams: component.allocated_grams,
+        })),
+        bagSizeGrams: quoted.config.bagSizeGrams,
+        fineness: mix.fineness,
+        bagColourScheme: quoted.config.bagColourScheme,
+        customLabel: mix.custom_label,
+        priceVersion: quoted.priceVersion,
+        unitPriceCents: quoted.unitPriceCents,
+        quantity: mix.quantity,
+        lineTotalCents: quoted.unitPriceCents * mix.quantity,
+        usageLabel: derivePowderMixUsageLabel(products),
+      });
     } catch {
       requotes.push({
         mixId: mix.id,
@@ -137,7 +182,20 @@ function prepareMixes(
       productIds: unavailable.map((requirement) => String(requirement.productId)),
     };
   }
-  return { requirements };
+  return { requirements, mixItems };
+}
+
+function withPreparedMixes(cart: Cart, mixItems: PowderMixCartItem[]): Cart {
+  const subtotalCents = [...cart.items, ...mixItems].reduce(
+    (total, item) => total + item.lineTotalCents,
+    0,
+  );
+  return {
+    ...cart,
+    mixItems,
+    subtotalCents,
+    totalItems: [...cart.items, ...mixItems].reduce((total, item) => total + item.quantity, 0),
+  };
 }
 
 function replay(
@@ -219,9 +277,10 @@ function prepare(
     const mixPreparation = prepareMixes(params.cartId, dependencies);
     if ('error' in mixPreparation)
       return failPreparation(params.idempotencyKey, mixPreparation, dependencies);
+    const preparedCart = withPreparedMixes(cart, mixPreparation.mixItems);
     const createdAt = dependencies.clock.now().toISOString();
     const quote = createCheckoutQuote({
-      cart,
+      cart: preparedCart,
       checkout: params,
       promo: promo?.promoCode,
       createdAt,

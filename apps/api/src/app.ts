@@ -52,6 +52,7 @@ import {
   createPowderizerService,
   type PowderizerService,
 } from './features/powderizer/powderizerService.js';
+import { PowderMixDomainError } from './features/powderizer/powderizerTypes.js';
 
 export interface AppDependencies {
   db: Database.Database;
@@ -117,16 +118,24 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       carts,
       products,
       mixes,
+      utcDateProvider: () => clock.now(),
     }),
   };
 }
 
 /** Build the HTTP application. The caller owns database lifecycle and listening. */
 export async function buildApp(dependencies: AppDependencies) {
-  const app = Fastify({ logger: false }).withTypeProvider<TypeBoxTypeProvider>();
+  const app = Fastify({
+    logger: false,
+    ajv: { customOptions: { removeAdditional: false } },
+  }).withTypeProvider<TypeBoxTypeProvider>();
   const context: AppContext = { services: createAppServices(dependencies) };
 
   app.setErrorHandler((error: FastifyError, _request, reply) => {
+    if (error instanceof PowderMixDomainError) {
+      reply.code(400).send({ code: error.code, error: error.message, field: error.field });
+      return;
+    }
     if (error.validation) {
       reply.code(400).send({
         error: error.message,

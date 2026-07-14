@@ -1,7 +1,12 @@
 import type {
   PowderMixBagSizeGrams,
+  PowderMixBagColourScheme,
   PowderMixFineness,
   PowderMixPriceVersion,
+} from '@shop/contracts/powderizer';
+import {
+  DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
+  POWDER_MIX_BAG_COLOUR_SCHEME_VALUES,
 } from '@shop/contracts/powderizer';
 import {
   type NormalizedPowderMixConfig,
@@ -17,6 +22,7 @@ import {
 export const POWDER_MIX_PRICE_VERSION: PowderMixPriceVersion = 'powderizer-v1';
 export const POWDER_MIX_BAG_SIZES = [250, 500, 1000] as const;
 export const POWDER_MIX_FINENESS_VALUES = ['coarse', 'standard', 'fine'] as const;
+export const POWDER_MIX_BAG_COLOUR_SCHEMES = POWDER_MIX_BAG_COLOUR_SCHEME_VALUES;
 export const POWDER_MIX_LABEL_MAX_GRAPHEMES = 40;
 export const POWDER_MIX_PACKAGING_FEE_CENTS: Readonly<Record<number, number>> = {
   250: 250,
@@ -90,6 +96,26 @@ export function countPowderMixLabelGraphemes(value: string): number {
     .length;
 }
 
+export function normalizePowderMixBagColourScheme(value: unknown): PowderMixBagColourScheme {
+  if (value === undefined) return DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME;
+  if (
+    typeof value !== 'string' ||
+    !POWDER_MIX_BAG_COLOUR_SCHEMES.includes(value as PowderMixBagColourScheme)
+  ) {
+    domainError('MIX_BAG_COLOUR_INVALID', 'Mix bag colour scheme is invalid.', 'bagColourScheme');
+  }
+  return value as PowderMixBagColourScheme;
+}
+
+/** Derives Powderizer safety copy only from canonical product warnings. */
+export function derivePowderMixUsageLabel(
+  components: readonly Pick<PowderMixProduct, 'consumptionWarning'>[],
+): 'Consumable powder' | 'Not for consumption' {
+  return components.some((component) => component.consumptionWarning === 'Not for consumption')
+    ? 'Not for consumption'
+    : 'Consumable powder';
+}
+
 /** Validates untrusted config, resolves eligibility, and sorts components by numeric product ID. */
 export function normalizePowderMixConfig(
   input: unknown,
@@ -141,7 +167,19 @@ export function normalizePowderMixConfig(
     bagSizeGrams: input.bagSizeGrams as PowderMixBagSizeGrams,
     fineness: input.fineness as PowderMixFineness,
     customLabel: normalizePowderMixLabel(input.customLabel),
+    bagColourScheme: normalizePowderMixBagColourScheme(input.bagColourScheme),
   };
+}
+
+/** Stable quote identity from all normalized presentation-affecting config values. */
+export function createPowderMixQuoteKey(config: NormalizedPowderMixConfig): string {
+  return JSON.stringify({
+    components: config.components,
+    bagSizeGrams: config.bagSizeGrams,
+    fineness: config.fineness,
+    customLabel: config.customLabel,
+    bagColourScheme: config.bagColourScheme,
+  });
 }
 
 /** Allocates every bag gram; fractional remainder ties resolve to lowest product ID. */
@@ -233,6 +271,9 @@ export function quotePowderMix(
     config,
     allocations,
     ...calculatePowderMixPrice(allocations, products, config.bagSizeGrams),
+    usageLabel: derivePowderMixUsageLabel(
+      config.components.map((component) => findProduct(products, component.productId)),
+    ),
   };
 }
 

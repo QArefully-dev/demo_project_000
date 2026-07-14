@@ -1,4 +1,10 @@
 import type Database from 'better-sqlite3';
+import {
+  POWDER_MIX_BAG_COLOUR_SCHEME_VALUES,
+  type PowderMixBagColourScheme,
+  type PowderMixFineness,
+  type PowderMixPriceVersion,
+} from '@shop/contracts/powderizer';
 import type { PowderMixAllocation, PowderMixStockRequirement } from './powderizerTypes.js';
 
 export interface PowderMixRow {
@@ -6,9 +12,10 @@ export interface PowderMixRow {
   cart_id: string;
   quantity: number;
   bag_size_grams: number;
-  fineness: string;
+  fineness: PowderMixFineness;
+  bag_colour_scheme: PowderMixBagColourScheme;
   custom_label: string | null;
-  price_version: string;
+  price_version: PowderMixPriceVersion;
   quoted_unit_price_cents: number;
   created_at: string;
   updated_at: string;
@@ -34,11 +41,47 @@ export interface NewPowderMix {
   cartId: string;
   quantity: number;
   bagSizeGrams: number;
-  fineness: string;
+  fineness: PowderMixFineness;
+  bagColourScheme: PowderMixBagColourScheme;
   customLabel: string | null;
-  priceVersion: string;
+  priceVersion: PowderMixPriceVersion;
   quotedUnitPriceCents: number;
   allocations: readonly PowderMixAllocation[];
+}
+
+interface StoredPowderMixRow extends Omit<
+  PowderMixRow,
+  'bag_colour_scheme' | 'fineness' | 'price_version'
+> {
+  bag_colour_scheme: unknown;
+  fineness: unknown;
+  price_version: unknown;
+}
+
+function parseBagColourScheme(value: unknown): PowderMixBagColourScheme {
+  for (const scheme of POWDER_MIX_BAG_COLOUR_SCHEME_VALUES) {
+    if (value === scheme) return scheme;
+  }
+  throw new Error('Invalid persisted powder mix bag colour scheme.');
+}
+
+function parseFineness(value: unknown): PowderMixFineness {
+  if (value === 'coarse' || value === 'standard' || value === 'fine') return value;
+  throw new Error('Invalid persisted powder mix fineness.');
+}
+
+function parsePriceVersion(value: unknown): PowderMixPriceVersion {
+  if (value === 'powderizer-v1') return value;
+  throw new Error('Invalid persisted powder mix price version.');
+}
+
+function hydratePowderMixRow(row: StoredPowderMixRow): PowderMixRow {
+  return {
+    ...row,
+    bag_colour_scheme: parseBagColourScheme(row.bag_colour_scheme),
+    fineness: parseFineness(row.fineness),
+    price_version: parsePriceVersion(row.price_version),
+  };
 }
 
 export interface PowderMixRepository {
@@ -80,9 +123,10 @@ export function createPowderMixRepository(db: Database.Database): PowderMixRepos
 
   return {
     find(cartId, mixId) {
-      return db
+      const row = db
         .prepare('SELECT * FROM powder_mixes WHERE cart_id = ? AND id = ?')
-        .get(cartId, mixId) as PowderMixRow | undefined;
+        .get(cartId, mixId) as StoredPowderMixRow | undefined;
+      return row ? hydratePowderMixRow(row) : undefined;
     },
     listForCart(cartId) {
       const rows = db
@@ -94,7 +138,9 @@ export function createPowderMixRepository(db: Database.Database): PowderMixRepos
            WHERE m.cart_id = ?
            ORDER BY m.created_at ASC, m.id ASC, c.product_id ASC`,
         )
-        .all(cartId) as Array<PowderMixRow & PowderMixComponentRow & { product_name: string }>;
+        .all(cartId) as Array<
+        StoredPowderMixRow & PowderMixComponentRow & { product_name: string }
+      >;
       const mixes = new Map<string, CartPowderMixRow>();
       for (const row of rows) {
         const mix = mixes.get(row.id);
@@ -110,16 +156,7 @@ export function createPowderMixRepository(db: Database.Database): PowderMixRepos
           continue;
         }
         mixes.set(row.id, {
-          id: row.id,
-          cart_id: row.cart_id,
-          quantity: row.quantity,
-          bag_size_grams: row.bag_size_grams,
-          fineness: row.fineness,
-          custom_label: row.custom_label,
-          price_version: row.price_version,
-          quoted_unit_price_cents: row.quoted_unit_price_cents,
-          created_at: row.created_at,
-          updated_at: row.updated_at,
+          ...hydratePowderMixRow(row),
           components: [component],
         });
       }
@@ -133,15 +170,16 @@ export function createPowderMixRepository(db: Database.Database): PowderMixRepos
     create(mix) {
       db.prepare(
         `INSERT INTO powder_mixes
-          (id, cart_id, quantity, bag_size_grams, fineness, custom_label, price_version,
+          (id, cart_id, quantity, bag_size_grams, fineness, bag_colour_scheme, custom_label, price_version,
            quoted_unit_price_cents, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
       ).run(
         mix.id,
         mix.cartId,
         mix.quantity,
         mix.bagSizeGrams,
         mix.fineness,
+        mix.bagColourScheme,
         mix.customLabel,
         mix.priceVersion,
         mix.quotedUnitPriceCents,
@@ -152,13 +190,14 @@ export function createPowderMixRepository(db: Database.Database): PowderMixRepos
       const result = db
         .prepare(
           `UPDATE powder_mixes
-           SET bag_size_grams = ?, fineness = ?, custom_label = ?, price_version = ?,
+           SET bag_size_grams = ?, fineness = ?, bag_colour_scheme = ?, custom_label = ?, price_version = ?,
                quoted_unit_price_cents = ?, updated_at = datetime('now')
            WHERE id = ?`,
         )
         .run(
           mix.bagSizeGrams,
           mix.fineness,
+          mix.bagColourScheme,
           mix.customLabel,
           mix.priceVersion,
           mix.quotedUnitPriceCents,

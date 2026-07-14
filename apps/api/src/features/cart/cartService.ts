@@ -1,8 +1,10 @@
 import type { Cart } from '@shop/contracts/cart';
 import type { PowderMixCartItem } from '@shop/contracts/powderizer';
+import { CATALOG_PRODUCTS } from '@shop/catalog';
 import { toProductContract } from '../../mappers/product.js';
 import type { CartRepository } from './cartRepository.js';
 import type { PowderMixRepository } from '../powderizer/powderMixRepository.js';
+import { derivePowderMixUsageLabel } from '../powderizer/powderMixRules.js';
 
 export interface CartService {
   create(): { cartId: string };
@@ -54,12 +56,20 @@ function toPowderMixCartItem(
       allocatedGrams: component.allocated_grams,
     })),
     bagSizeGrams: row.bag_size_grams as PowderMixCartItem['bagSizeGrams'],
-    fineness: row.fineness as PowderMixCartItem['fineness'],
+    fineness: row.fineness,
+    bagColourScheme: row.bag_colour_scheme,
     customLabel: row.custom_label,
-    priceVersion: row.price_version as PowderMixCartItem['priceVersion'],
+    priceVersion: row.price_version,
     unitPriceCents: row.quoted_unit_price_cents,
     quantity: row.quantity,
     lineTotalCents: row.quoted_unit_price_cents * row.quantity,
+    usageLabel: derivePowderMixUsageLabel(
+      row.components.map((component) => ({
+        consumptionWarning:
+          CATALOG_PRODUCTS.find((product) => product.id === component.product_id)?.packaging
+            .consumptionLabel ?? null,
+      })),
+    ),
   };
 }
 

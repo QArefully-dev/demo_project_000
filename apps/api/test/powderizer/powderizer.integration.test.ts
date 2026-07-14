@@ -15,6 +15,7 @@ import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createCartRepository } from '../../src/features/cart/cartRepository.js';
 import { createCart } from '../../src/features/cart/cartService.js';
 import { createProductRepository } from '../../src/features/catalog/productRepository.js';
+import { DAILY_POWDER_MIX_RECIPES } from '../../src/features/powderizer/dailyRecipe.js';
 import { createPowderMixRepository } from '../../src/features/powderizer/powderMixRepository.js';
 import { createPowderizerService } from '../../src/features/powderizer/powderizerService.js';
 import { PowderMixDomainError } from '../../src/features/powderizer/powderizerTypes.js';
@@ -29,44 +30,74 @@ const validMix = {
   customLabel: ' Morning blend ',
 } as const;
 
-function createFixture(t: test.TestContext) {
+function createFixture(t: test.TestContext, date = new Date('1970-01-01T12:00:00.000Z')) {
   const directory = mkdtempSync(join(tmpdir(), 'shop-powderizer-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
   seedDatabase(db);
   const carts = createCartRepository(db);
   const mixes = createPowderMixRepository(db);
+  let utcDate = date;
   const powderizer = createPowderizerService({
     unitOfWork: createUnitOfWork(db),
     carts,
     products: createProductRepository(db),
     mixes,
+    utcDateProvider: () => utcDate,
   });
   t.after(() => {
     closeDatabase(db);
     rmSync(directory, { recursive: true, force: true });
   });
-  return { db, carts, mixes, powderizer };
+  return { db, carts, mixes, powderizer, setUtcDate: (nextDate: Date) => (utcDate = nextDate) };
 }
 
-void test('Powderizer config and quote are server-authoritative and stateless', async (t) => {
-  const { db, powderizer } = createFixture(t);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
+void test('Powderizer config and anonymous quotes expose all safe server-authoritative options', async (t) => {
+  const { db, powderizer, setUtcDate } = createFixture(t);
+  const app = await buildApp({
+    db,
+    resetBaseUrl: 'http://web.test',
+    clock: { now: () => new Date('1970-01-01T12:00:00.000Z') },
+  });
   t.after(() => app.close());
-
-  const config = await app.inject({ method: 'GET', url: '/api/powderizer/config' });
-  assert.equal(config.statusCode, 200);
-  const configBody = Value.Parse(PowderizerConfigResponse, config.json());
-  assert.equal(configBody.eligibleProducts.length, 19);
-  assert.deepEqual(configBody.bagSizesGrams, [250, 500, 1000]);
-  assert.deepEqual(configBody.finenessValues, ['coarse', 'standard', 'fine']);
-  assert.equal(configBody.labelMaxGraphemes, 40);
-  assert.equal(configBody.priceVersion, 'powderizer-v1');
 
   const before = (
     db.prepare('SELECT COUNT(*) AS count FROM powder_mixes').get() as { count: number }
   ).count;
+  const config = await app.inject({ method: 'GET', url: '/api/powderizer/config' });
+  assert.equal(config.statusCode, 200);
+  const configBody = Value.Parse(PowderizerConfigResponse, config.json());
+  assert.equal(configBody.eligibleProducts.length, 50);
+  assert.deepEqual(new Set(configBody.eligibleProducts.map((product) => product.category)).size, 7);
+  assert.deepEqual(configBody.bagSizesGrams, [250, 500, 1000]);
+  assert.deepEqual(configBody.finenessValues, ['coarse', 'standard', 'fine']);
+  assert.deepEqual(configBody.bagColourSchemes, [
+    'ultraviolet-cyan',
+    'solar-flare',
+    'deep-space',
+    'acid-lilac',
+    'monochrome-glitch',
+  ]);
+  assert.equal(configBody.defaultBagColourScheme, 'ultraviolet-cyan');
+  assert.equal(configBody.dailyRecipe.effectiveDate, '1970-01-01');
+  assert.equal(configBody.dailyRecipe.name, 'Literal Housewarming');
+  assert.equal(configBody.labelMaxGraphemes, 40);
+  assert.equal(configBody.priceVersion, 'powderizer-v1');
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM powder_mixes').get() as { count: number }).count,
+    before,
+  );
+
+  for (const [index, preset] of DAILY_POWDER_MIX_RECIPES.entries()) {
+    setUtcDate(new Date(index * 24 * 60 * 60 * 1000));
+    const daily = powderizer.config().dailyRecipe;
+    assert.equal(daily.name, preset.name);
+    assert.equal(powderizer.quote(daily.config).config.bagColourScheme, 'ultraviolet-cyan');
+  }
+
   const quote = powderizer.quote(validMix);
   assert.deepEqual(quote.config.components, validMix.components);
+  assert.equal(quote.config.bagColourScheme, 'ultraviolet-cyan');
+  assert.equal(quote.usageLabel, 'Consumable powder');
   assert.deepEqual(quote.allocations, [
     { productId: '1', percentage: 50, allocatedGrams: 250 },
     { productId: '2', percentage: 50, allocatedGrams: 250 },
@@ -76,6 +107,25 @@ void test('Powderizer config and quote are server-authoritative and stateless', 
     (db.prepare('SELECT COUNT(*) AS count FROM powder_mixes').get() as { count: number }).count,
     before,
   );
+
+  for (const product of configBody.eligibleProducts.filter(
+    (candidate, index, products) =>
+      products.findIndex((other) => other.category === candidate.category) === index,
+  )) {
+    const companion = product.id === '1' ? '2' : '1';
+    const categoryQuote = await app.inject({
+      method: 'POST',
+      url: '/api/powderizer/quote',
+      payload: {
+        ...validMix,
+        components: [
+          { productId: product.id, percentage: 50 },
+          { productId: companion, percentage: 50 },
+        ],
+      },
+    });
+    assert.equal(categoryQuote.statusCode, 200, product.category);
+  }
 
   const httpQuote = await app.inject({
     method: 'POST',
@@ -88,12 +138,52 @@ void test('Powderizer config and quote are server-authoritative and stateless', 
   const invalidQuote = await app.inject({
     method: 'POST',
     url: '/api/powderizer/quote',
-    payload: { ...validMix, components: [{ productId: '1', percentage: 100 }] },
+    payload: { ...validMix, bagColourScheme: 'unknown-scheme' },
   });
   assert.equal(invalidQuote.statusCode, 400);
   assert.equal(
     Value.Parse(PowderizerValidationErrorResponse, invalidQuote.json()).code,
-    'MIX_COMPONENT_COUNT',
+    'MIX_BAG_COLOUR_INVALID',
+  );
+
+  const derivedFieldQuote = await app.inject({
+    method: 'POST',
+    url: '/api/powderizer/quote',
+    payload: { ...validMix, usageLabel: 'Not for consumption' },
+  });
+  assert.equal(derivedFieldQuote.statusCode, 400);
+});
+
+void test('Powderizer derives safety labels and prices premium conceptual products exactly', (t) => {
+  const { db, powderizer } = createFixture(t);
+  const unsafeQuote = powderizer.quote({
+    ...validMix,
+    components: [
+      { productId: '27', percentage: 50 },
+      { productId: '33', percentage: 50 },
+    ],
+  });
+  assert.equal(unsafeQuote.usageLabel, 'Not for consumption');
+
+  const premiumQuote = powderizer.quote({
+    ...validMix,
+    components: [
+      { productId: '49', percentage: 50 },
+      { productId: '50', percentage: 50 },
+    ],
+  });
+  assert.equal(premiumQuote.unitPriceCents, 750400);
+  assert.equal(Number.isSafeInteger(premiumQuote.unitPriceCents), true);
+
+  db.prepare('UPDATE products SET mixable = 0 WHERE id = 50').run();
+  assert.throws(
+    () => powderizer.quote(premiumQuote.config),
+    (error: unknown) =>
+      error instanceof PowderMixDomainError && error.code === 'MIX_COMPONENT_INELIGIBLE',
+  );
+  assert.equal(
+    powderizer.config().eligibleProducts.some((product) => product.id === '50'),
+    false,
   );
 });
 
@@ -105,6 +195,7 @@ void test('Powderizer persists anonymous mix mutations atomically and requotes f
   assert.equal(typeof mixId, 'string');
   if (typeof mixId !== 'string') throw new Error('Expected mix ID');
   assert.equal(mixes.find(cartId, mixId)?.custom_label, 'Morning blend');
+  assert.equal(mixes.find(cartId, mixId)?.bag_colour_scheme, 'ultraviolet-cyan');
   assert.deepEqual(mixes.listComponents(mixId), [
     { mix_id: mixId, product_id: 1, percentage: 50, allocated_grams: 250 },
     { mix_id: mixId, product_id: 2, percentage: 50, allocated_grams: 250 },
@@ -164,10 +255,7 @@ void test('Powderizer rejects unavailable inputs and cart mutation conflicts', (
     },
     {
       ...validMix,
-      components: [
-        { productId: '1', percentage: 50 },
-        { productId: '20', percentage: 50 },
-      ],
+      bagColourScheme: 'not-a-real-scheme',
     },
   ]) {
     assert.throws(

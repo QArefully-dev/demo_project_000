@@ -41,11 +41,12 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
   const mixId = powderizer.create(cartId, {
     components: [
       { productId: '1', percentage: 50 },
-      { productId: '2', percentage: 50 },
+      { productId: '27', percentage: 50 },
     ],
     bagSizeGrams: 500,
     fineness: 'fine',
     customLabel: 'Immutable blend',
+    bagColourScheme: 'deep-space',
   });
   assert.equal(typeof mixId, 'string');
   if (typeof mixId !== 'string') throw new Error('Expected mix ID');
@@ -79,6 +80,25 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
   assert.equal(result.order.items.length, 0);
   assert.equal(result.order.mixItems.length, 1);
   assert.equal(result.order.mixItems[0]?.mixId, mixId);
+  assert.equal(result.order.mixItems[0]?.bagColourScheme, 'deep-space');
+  assert.equal(result.order.mixItems[0]?.usageLabel, 'Not for consumption');
+  assert.equal(Number.isSafeInteger(result.order.totalCents), true);
+  assert.equal(
+    (
+      db
+        .prepare('SELECT quote_json FROM payments WHERE idempotency_key = ?')
+        .get(params.idempotencyKey) as { quote_json: string }
+    ).quote_json.includes('"version":3'),
+    true,
+  );
+  assert.equal(
+    (
+      db
+        .prepare('SELECT snapshot_json FROM order_powder_mix_items WHERE order_id = ?')
+        .get(Number(result.order.id)) as { snapshot_json: string }
+    ).snapshot_json.includes('"snapshotVersion":2'),
+    true,
+  );
   assert.equal(
     (
       db.prepare('SELECT COUNT(*) AS count FROM powder_mix_stock_reservations').get() as {
@@ -94,6 +114,21 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
       ?.productName,
     'Protein Powder',
   );
+  const orderedMix = result.order.mixItems[0];
+  if (!orderedMix) throw new Error('Expected ordered mix');
+  db.prepare('UPDATE order_powder_mix_items SET snapshot_json = ? WHERE order_id = ?').run(
+    JSON.stringify({
+      ...orderedMix,
+      bagColourScheme: undefined,
+      usageLabel: undefined,
+      snapshotVersion: 1,
+    }),
+    Number(result.order.id),
+  );
+  const legacyOrderMix = createOrderRepository(db).findById(Number(result.order.id))?.mixItems[0];
+  assert.equal(legacyOrderMix?.snapshotVersion, 1);
+  assert.equal(legacyOrderMix?.bagColourScheme, 'ultraviolet-cyan');
+  assert.equal(legacyOrderMix?.usageLabel, 'Check ingredient labels');
   db.prepare('UPDATE order_powder_mix_items SET snapshot_json = ? WHERE order_id = ?').run(
     JSON.stringify({ snapshotVersion: 1, mixId: mixId, components: [] }),
     Number(result.order.id),

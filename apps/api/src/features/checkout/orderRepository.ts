@@ -1,6 +1,10 @@
 import type Database from 'better-sqlite3';
-import type { Order, OrderLineItem } from '@shop/contracts/orders';
-import type { PowderMixOrderItem } from '@shop/contracts/powderizer';
+import type { NormalizedOrderPowderMixItem, Order, OrderLineItem } from '@shop/contracts/orders';
+import {
+  DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
+  parsePowderMixOrderItemSnapshot,
+  type PowderMixOrderItem,
+} from '@shop/contracts/powderizer';
 
 interface OrderRow {
   id: number;
@@ -110,79 +114,18 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
   };
 }
 
-function parseMixSnapshot(value: string): PowderMixOrderItem {
+function parseMixSnapshot(value: string): NormalizedOrderPowderMixItem {
   try {
-    const parsed = JSON.parse(value) as PowderMixOrderItem;
-    if (
-      !isRecord(parsed) ||
-      !hasOnlyKeys(parsed, [
-        'mixId',
-        'components',
-        'bagSizeGrams',
-        'fineness',
-        'customLabel',
-        'priceVersion',
-        'unitPriceCents',
-        'quantity',
-        'lineTotalCents',
-        'snapshotVersion',
-      ]) ||
-      parsed.snapshotVersion !== 1 ||
-      !isUuid(parsed.mixId) ||
-      !Array.isArray(parsed.components) ||
-      parsed.components.length < 2 ||
-      parsed.components.length > 5 ||
-      ![250, 500, 1000].includes(parsed.bagSizeGrams) ||
-      !['coarse', 'standard', 'fine'].includes(parsed.fineness) ||
-      !(typeof parsed.customLabel === 'string' || parsed.customLabel === null) ||
-      (typeof parsed.customLabel === 'string' && parsed.customLabel.length > 160) ||
-      parsed.priceVersion !== 'powderizer-v1' ||
-      !isNonNegativeInteger(parsed.unitPriceCents) ||
-      !isNonNegativeInteger(parsed.quantity) ||
-      parsed.quantity < 1 ||
-      !isNonNegativeInteger(parsed.lineTotalCents) ||
-      parsed.lineTotalCents !== parsed.unitPriceCents * parsed.quantity ||
-      parsed.components.some(
-        (component) =>
-          !isRecord(component) ||
-          !hasOnlyKeys(component, ['productId', 'productName', 'percentage', 'allocatedGrams']) ||
-          !isPositiveIntegerString(component.productId) ||
-          typeof component.productName !== 'string' ||
-          component.productName.length < 1 ||
-          component.productName.length > 200 ||
-          !isNonNegativeInteger(component.percentage) ||
-          component.percentage < 1 ||
-          component.percentage > 100 ||
-          !isNonNegativeInteger(component.allocatedGrams) ||
-          component.allocatedGrams < 1,
-      )
-    )
-      throw new Error('Invalid order mix snapshot');
+    const parsed = parsePowderMixOrderItemSnapshot(JSON.parse(value));
+    if (parsed.snapshotVersion === 1) {
+      return {
+        ...parsed,
+        bagColourScheme: DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
+        usageLabel: 'Check ingredient labels',
+      };
+    }
     return parsed;
   } catch {
     throw new Error('Invalid order mix snapshot');
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
-  return Object.keys(value).every((key) => keys.includes(key));
-}
-
-function isNonNegativeInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
-}
-
-function isPositiveIntegerString(value: unknown): value is string {
-  return typeof value === 'string' && /^[1-9][0-9]*$/.test(value);
-}
-
-function isUuid(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
-  );
 }

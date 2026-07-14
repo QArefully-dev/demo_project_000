@@ -8,7 +8,7 @@ import {
 export const outdoorsProducts = createCatalogProducts([
   {
     id: 27,
-    name: 'Powdered Campfire',
+    name: 'Campfire',
     description: 'Smoky campfire-scented powder, 200g. Sprinkle nowhere near an actual flame.',
     price_cents: 1695,
     compare_at_price_cents: null,

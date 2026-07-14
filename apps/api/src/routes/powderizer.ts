@@ -11,12 +11,22 @@ import {
   PowderizerValidationErrorResponse,
   UpdatePowderMixQuantityBody,
 } from '@shop/contracts/powderizer';
-import { PowderMixDomainError } from '../features/powderizer/powderizerTypes.js';
 import type { AppContext } from '../app.js';
 
 const CartIdParam = Type.Object({ cartId: Type.String({ format: 'uuid' }) });
-const UnvalidatedPowderMixBody = Type.Unknown();
+/** Allows domain validation to own field semantics while rejecting derived client fields. */
+const UnvalidatedPowderMixBody = Type.Object(
+  {
+    components: Type.Optional(Type.Unknown()),
+    bagSizeGrams: Type.Optional(Type.Unknown()),
+    fineness: Type.Optional(Type.Unknown()),
+    customLabel: Type.Optional(Type.Unknown()),
+    bagColourScheme: Type.Optional(Type.Unknown()),
+  },
+  { additionalProperties: false },
+);
 type UnvalidatedPowderMixBody = Static<typeof UnvalidatedPowderMixBody>;
+const PowderizerBadRequestResponse = Type.Union([PowderizerValidationErrorResponse, ErrorResponse]);
 
 function sendMutationError(
   reply: FastifyReply,
@@ -43,11 +53,6 @@ export default function powderizerRoutes(app: FastifyInstance, { services }: App
   const { powderizer, carts } = services;
 
   const returnCart = (cartId: string) => carts.get(cartId);
-  const handleDomainError = (error: unknown, reply: FastifyReply): void => {
-    if (!(error instanceof PowderMixDomainError)) throw error;
-    void reply.code(400).send({ code: error.code, error: error.message, field: error.field });
-  };
-
   typed.get(
     '/api/powderizer/config',
     { schema: { response: { 200: PowderizerConfigResponse } } },
@@ -59,17 +64,10 @@ export default function powderizerRoutes(app: FastifyInstance, { services }: App
     {
       schema: {
         body: UnvalidatedPowderMixBody,
-        response: { 200: PowderMixQuote, 400: PowderizerValidationErrorResponse },
+        response: { 200: PowderMixQuote, 400: PowderizerBadRequestResponse },
       },
     },
-    (request, reply) => {
-      try {
-        return powderizer.quote(request.body as never);
-      } catch (error) {
-        handleDomainError(error, reply);
-        return;
-      }
-    },
+    (request) => powderizer.quote(request.body as never),
   );
 
   typed.post(
@@ -80,24 +78,19 @@ export default function powderizerRoutes(app: FastifyInstance, { services }: App
         body: UnvalidatedPowderMixBody,
         response: {
           200: Cart,
-          400: PowderizerValidationErrorResponse,
+          400: PowderizerBadRequestResponse,
           404: ErrorResponse,
           409: ErrorResponse,
         },
       },
     },
     (request, reply) => {
-      try {
-        const result = powderizer.create(request.params.cartId, request.body as never);
-        if (isCartMutationError(result)) {
-          sendMutationError(reply, result);
-          return;
-        }
-        return returnCart(request.params.cartId);
-      } catch (error) {
-        handleDomainError(error, reply);
+      const result = powderizer.create(request.params.cartId, request.body as never);
+      if (isCartMutationError(result)) {
+        sendMutationError(reply, result);
         return;
       }
+      return returnCart(request.params.cartId);
     },
   );
 
@@ -109,28 +102,23 @@ export default function powderizerRoutes(app: FastifyInstance, { services }: App
         body: UnvalidatedPowderMixBody,
         response: {
           200: Cart,
-          400: PowderizerValidationErrorResponse,
+          400: PowderizerBadRequestResponse,
           404: Type.Union([ErrorResponse, PowderMixNotFoundErrorResponse]),
           409: ErrorResponse,
         },
       },
     },
     (request, reply) => {
-      try {
-        const result = powderizer.update(
-          request.params.cartId,
-          request.params.mixId,
-          request.body as never,
-        );
-        if (result) {
-          sendMutationError(reply, result);
-          return;
-        }
-        return returnCart(request.params.cartId);
-      } catch (error) {
-        handleDomainError(error, reply);
+      const result = powderizer.update(
+        request.params.cartId,
+        request.params.mixId,
+        request.body as never,
+      );
+      if (result) {
+        sendMutationError(reply, result);
         return;
       }
+      return returnCart(request.params.cartId);
     },
   );
 
@@ -168,24 +156,19 @@ export default function powderizerRoutes(app: FastifyInstance, { services }: App
         params: CartIdAndMixIdParam,
         response: {
           200: Cart,
-          400: PowderizerValidationErrorResponse,
+          400: PowderizerBadRequestResponse,
           404: Type.Union([ErrorResponse, PowderMixNotFoundErrorResponse]),
           409: ErrorResponse,
         },
       },
     },
     (request, reply) => {
-      try {
-        const result = powderizer.requote(request.params.cartId, request.params.mixId);
-        if (result) {
-          sendMutationError(reply, result);
-          return;
-        }
-        return returnCart(request.params.cartId);
-      } catch (error) {
-        handleDomainError(error, reply);
+      const result = powderizer.requote(request.params.cartId, request.params.mixId);
+      if (result) {
+        sendMutationError(reply, result);
         return;
       }
+      return returnCart(request.params.cartId);
     },
   );
 

@@ -1,5 +1,6 @@
 import type {
   PowderMixBagSizeGrams,
+  PowderMixBagColourScheme,
   PowderMixFineness,
   PowderMixPriceVersion,
 } from '@shop/contracts/powderizer';
@@ -12,6 +13,7 @@ export type PowderMixDomainErrorCode =
   | 'MIX_PERCENTAGE_TOTAL'
   | 'MIX_BAG_SIZE_INVALID'
   | 'MIX_FINENESS_INVALID'
+  | 'MIX_BAG_COLOUR_INVALID'
   | 'MIX_LABEL_INVALID'
   | 'MIX_REQUOTE_REQUIRED'
   | 'MIX_STOCK_UNAVAILABLE';
@@ -34,6 +36,7 @@ export interface PowderMixProduct {
   priceCents: number;
   mixable: boolean;
   mixUnitGrams: number | null;
+  consumptionWarning?: 'Not for consumption' | null;
 }
 
 export interface PowderMixComponent {
@@ -46,6 +49,7 @@ export interface NormalizedPowderMixConfig {
   bagSizeGrams: PowderMixBagSizeGrams;
   fineness: PowderMixFineness;
   customLabel: string | null;
+  bagColourScheme: PowderMixBagColourScheme;
 }
 
 export interface PowderMixAllocation extends PowderMixComponent {
@@ -62,6 +66,7 @@ export interface PowderMixPrice {
 export interface PowderMixQuote extends PowderMixPrice {
   config: NormalizedPowderMixConfig;
   allocations: readonly PowderMixAllocation[];
+  usageLabel: 'Consumable powder' | 'Not for consumption';
 }
 
 export interface PowderMixStockLine {

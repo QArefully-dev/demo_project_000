@@ -1,10 +1,10 @@
 # Powderizer Expansion Plan: Builder Experience
 
-Status: pending; starts after domain Phase 6 gate
+Status: ready; domain dependency implemented
 
 Audience: orchestrator agent, implementation agents
 
-Dependency: `plans/powderizer_expansion_domain_plan.md`
+Dependency: implemented `plans/powderizer_expansion_domain_plan.md`; current code, contracts, migrations, tests = domain truth
 
 ## Outcome
 
@@ -64,9 +64,16 @@ Non-scope:
 
 Required graph:
 
-`domain Phase 6 -> (Phase 7 || Phase 12) -> (Phase 8 || Phase 9) -> (Phase 10 || Phase 11) -> Phase 13`
+`preflight -> (Phase 7 || Phase 12) -> (Phase 8 || Phase 9) -> (Phase 10 || Phase 11) -> Phase 13`
 
 Phase `12` intentionally runs early; number reflects feature grouping, not execution order.
+
+Preflight:
+
+- Inspect current worktree, domain contracts, Powderizer API DTOs, existing web implementation, relevant tests.
+- Confirm implemented config, quote, cart, checkout, order surfaces required by experience phases. Do not reopen domain scope unless current code blocks experience behavior.
+- Run relevant existing checks before experience edits. Classify unrelated failures from current reproducible output.
+- Ignore domain phase status/evidence/review/handoff files unless user names one. Do not treat historical command output as current gate evidence.
 
 Parallel rules:
 
@@ -74,7 +81,7 @@ Parallel rules:
 - Wave 2: Phase 8 and Phase 9 in parallel after Phase 7 gate. Phase 8 owns page/controller/picker/actions. Phase 9 owns option/summary/visualization components and `index.css`.
 - Wave 3: Phase 10 and Phase 11 in parallel after Phases 8 and 9 gates. Phase 10 owns bag/cart/checkout rendering. Phase 11 owns history adapter/hook/shelf/page integration.
 - Phase 13: sequence-only final integration after Phases 10, 11, 12 gates.
-- No phase starts before domain Phase 6. No other parallel pairing approved without dependency and file-conflict review.
+- No other parallel pairing approved without dependency and file-conflict review.
 
 Agent rules:
 
@@ -82,7 +89,9 @@ Agent rules:
 - Parallel agents stay inside assigned file set. Cross-file need -> message orchestrator; do not create competing edits.
 - Before each wave: freeze props, exports, reducer events, test fixtures needed across tracks.
 - After each wave: merge, inspect diff, remove duplicate transforms/constants, run combined typecheck and focused tests, then advance.
-- Phase gate failure blocks dependants. Baseline exemptions require domain Phase 0 evidence.
+- Phase owner report to orchestrator: changed files, checks, failures, blockers, interface decisions. Reviewer reports findings directly.
+- Do not create per-phase status, evidence, review, handoff, or compile-gap Markdown. Persist only decisions absent from code, tests, or this plan.
+- Phase gate failure blocks dependants. Baseline exemptions require reproducible preflight evidence from current worktree.
 - Prefer one phase-sized commit after gate; do not require commits when repository workflow says otherwise.
 
 ## Locked UX Decisions
@@ -500,10 +509,11 @@ Final review:
 
 - Inspect diff for duplicate constants/transforms, layer violations, unsafe casts, oversized components, unstable keys, unrelated changes.
 - Verify no console error, stale quote submit, layout overflow, focus trap, unsafe consumability label.
-- Record commands, browser sizes, reduced-motion setting, failures, evidence.
+- Return commands, browser sizes, reduced-motion setting, failures, and evidence in final orchestrator report. Create no separate evidence file.
 
 Gate:
 
-- Full verification passes or unrelated failures match recorded domain baseline.
+- Full verification passes or unrelated failures match reproducible preflight classification.
 - Every phase gate satisfied.
 - Existing commerce behavior unchanged.
+- Set plan status `complete` only from Phase 13 test and browser evidence.

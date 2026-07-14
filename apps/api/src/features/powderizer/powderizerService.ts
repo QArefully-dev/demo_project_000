@@ -3,6 +3,11 @@ import type {
   PowderMixQuote as PowderMixQuoteContract,
   PowderizerConfigResponse,
 } from '@shop/contracts/powderizer';
+import {
+  DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
+  POWDER_MIX_BAG_COLOUR_SCHEME_VALUES,
+} from '@shop/contracts/powderizer';
+import { CATALOG_PRODUCTS } from '@shop/catalog';
 import { toProductContract } from '../../mappers/product.js';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { CartRepository } from '../cart/cartRepository.js';
@@ -13,6 +18,7 @@ import {
   POWDER_MIX_LABEL_MAX_GRAPHEMES,
   quotePowderMix,
 } from './powderMixRules.js';
+import { resolveDailyPowderMixRecipe } from './dailyRecipe.js';
 import type { PowderMixRepository, PowderMixRow } from './powderMixRepository.js';
 import {
   PowderMixDomainError,
@@ -45,12 +51,14 @@ export interface PowderizerService {
 }
 
 function toMixProduct(row: ProductRow): PowderMixProduct {
+  const canonicalProduct = CATALOG_PRODUCTS.find((product) => product.id === row.id);
   return {
     id: row.id,
     name: row.name,
     priceCents: row.price_cents,
     mixable: row.mixable === 1,
     mixUnitGrams: row.mix_unit_grams ?? null,
+    consumptionWarning: canonicalProduct?.packaging.consumptionLabel ?? null,
   };
 }
 
@@ -65,6 +73,7 @@ function toContractQuote(quote: PowderMixQuote): PowderMixQuoteContract {
       bagSizeGrams: quote.config.bagSizeGrams,
       fineness: quote.config.fineness,
       customLabel: quote.config.customLabel,
+      bagColourScheme: quote.config.bagColourScheme,
     },
     allocations: quote.allocations.map((allocation) => ({
       productId: String(allocation.productId),
@@ -74,6 +83,7 @@ function toContractQuote(quote: PowderMixQuote): PowderMixQuoteContract {
     packagingFeeCents: quote.packagingFeeCents,
     finenessSurchargeCents: quote.finenessSurchargeCents,
     unitPriceCents: quote.unitPriceCents,
+    usageLabel: quote.usageLabel,
   };
 }
 
@@ -83,6 +93,7 @@ export function createPowderizerService(dependencies: {
   carts: CartRepository;
   products: ProductRepository;
   mixes: PowderMixRepository;
+  utcDateProvider: () => Date;
 }): PowderizerService {
   const loadRequestedProducts = (productIds: readonly number[]): PowderMixProduct[] => {
     const uniqueIds = [...new Set(productIds)];
@@ -132,6 +143,7 @@ export function createPowderizerService(dependencies: {
         bagSizeGrams: row.bag_size_grams,
         fineness: row.fineness,
         customLabel: row.custom_label ?? undefined,
+        bagColourScheme: row.bag_colour_scheme,
       },
       products,
     );
@@ -148,12 +160,34 @@ export function createPowderizerService(dependencies: {
 
   return {
     config() {
+      const eligibleProducts = dependencies.products.listEligibleMixProducts();
+      const dailyRecipe = resolveDailyPowderMixRecipe(
+        dependencies.utcDateProvider(),
+        eligibleProducts,
+      );
+      const normalizedDailyRecipe = quote(dailyRecipe.config).config;
       return {
-        eligibleProducts: dependencies.products.listEligibleMixProducts().map(toProductContract),
+        eligibleProducts: eligibleProducts.map(toProductContract),
         bagSizesGrams: [...POWDER_MIX_BAG_SIZES],
         finenessValues: [...POWDER_MIX_FINENESS_VALUES],
         labelMaxGraphemes: POWDER_MIX_LABEL_MAX_GRAPHEMES,
         priceVersion: 'powderizer-v1',
+        bagColourSchemes: [...POWDER_MIX_BAG_COLOUR_SCHEME_VALUES],
+        defaultBagColourScheme: DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
+        dailyRecipe: {
+          effectiveDate: dailyRecipe.effectiveDate,
+          name: dailyRecipe.name,
+          config: {
+            components: normalizedDailyRecipe.components.map((component) => ({
+              productId: String(component.productId),
+              percentage: component.percentage,
+            })),
+            bagSizeGrams: normalizedDailyRecipe.bagSizeGrams,
+            fineness: normalizedDailyRecipe.fineness,
+            customLabel: normalizedDailyRecipe.customLabel,
+            bagColourScheme: normalizedDailyRecipe.bagColourScheme,
+          },
+        },
       };
     },
     quote(input) {
@@ -169,6 +203,7 @@ export function createPowderizerService(dependencies: {
           quantity: 1,
           bagSizeGrams: mixQuote.config.bagSizeGrams,
           fineness: mixQuote.config.fineness,
+          bagColourScheme: mixQuote.config.bagColourScheme,
           customLabel: mixQuote.config.customLabel,
           priceVersion: mixQuote.priceVersion,
           quotedUnitPriceCents: mixQuote.unitPriceCents,
@@ -184,6 +219,7 @@ export function createPowderizerService(dependencies: {
         dependencies.mixes.replace(mixId, {
           bagSizeGrams: mixQuote.config.bagSizeGrams,
           fineness: mixQuote.config.fineness,
+          bagColourScheme: mixQuote.config.bagColourScheme,
           customLabel: mixQuote.config.customLabel,
           priceVersion: mixQuote.priceVersion,
           quotedUnitPriceCents: mixQuote.unitPriceCents,
@@ -200,6 +236,7 @@ export function createPowderizerService(dependencies: {
         dependencies.mixes.updateQuote(mixId, {
           bagSizeGrams: mixQuote.config.bagSizeGrams,
           fineness: mixQuote.config.fineness,
+          bagColourScheme: mixQuote.config.bagColourScheme,
           customLabel: mixQuote.config.customLabel,
           priceVersion: mixQuote.priceVersion,
           quotedUnitPriceCents: mixQuote.unitPriceCents,
