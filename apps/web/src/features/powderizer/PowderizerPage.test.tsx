@@ -4,12 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Cart } from '@shop/contracts/cart';
 import type { PowderMixQuote, PowderizerConfigResponse } from '@shop/contracts/powderizer';
-import {
-  createPowderMix,
-  getPowderizerConfig,
-  quotePowderMix,
-  updatePowderMix,
-} from '@/api/powderizer';
+import { getPowderizerConfig, quotePowderMix } from '@/api/powderizer';
 import { useCartContext } from '@/hooks/CartContext';
 import { PowderizerPage } from './PowderizerPage';
 
@@ -19,10 +14,8 @@ vi.mock('@/api/powderizer', () => ({
   quotePowderMix: vi.fn(),
   updatePowderMix: vi.fn(),
 }));
-
 vi.mock('@/hooks/CartContext', () => ({ useCartContext: vi.fn() }));
 
-const mixId = '01234567-89ab-4def-8123-456789abcdef';
 const cartId = '01234567-89ab-4def-8123-456789abcdee';
 const config: PowderizerConfigResponse = {
   eligibleProducts: [
@@ -66,7 +59,7 @@ const config: PowderizerConfigResponse = {
   ],
   defaultBagColourScheme: 'ultraviolet-cyan',
   dailyRecipe: {
-    effectiveDate: '2026-07-14',
+    effectiveDate: '2026-07-15',
     name: 'Test recipe',
     config: {
       components: [
@@ -80,12 +73,35 @@ const config: PowderizerConfigResponse = {
     },
   },
 };
-
 const emptyCart: Cart = { id: cartId, items: [], mixItems: [], totalItems: 0, subtotalCents: 0 };
 
-function cartContext(cart: Cart): ReturnType<typeof useCartContext> {
+function product(id: string, category: string) {
+  return { ...config.eligibleProducts[0]!, id, name: `Powder ${id}`, category, slug: id };
+}
+const expandedConfig: PowderizerConfigResponse = {
+  ...config,
+  eligibleProducts: [
+    ...Array.from({ length: 10 }, (_, index) => product(`pantry-${index + 1}`, 'Pantry Staples')),
+    product('performance-1', 'Performance'),
+    product('drinks-1', 'Drinks'),
+    product('questionable-1', 'Questionable'),
+    product('impossible-1', 'Impossible'),
+  ],
+  dailyRecipe: {
+    ...config.dailyRecipe,
+    config: {
+      ...config.dailyRecipe.config,
+      components: [
+        { productId: 'pantry-1', percentage: 40 },
+        { productId: 'performance-1', percentage: 60 },
+      ],
+    },
+  },
+};
+
+function cartContext(): ReturnType<typeof useCartContext> {
   return {
-    cart,
+    cart: emptyCart,
     cartId,
     isCartAvailable: true,
     isLoading: false,
@@ -104,7 +120,6 @@ function cartContext(cart: Cart): ReturnType<typeof useCartContext> {
     clearCart: vi.fn(),
   };
 }
-
 function quoteFrom(body: {
   components: { productId: string; percentage: number }[];
   bagSizeGrams: 250 | 500 | 1000;
@@ -130,10 +145,9 @@ function quoteFrom(body: {
     usageLabel: 'Consumable powder',
   };
 }
-
-function renderPage(initialEntry = '/powderizer') {
+function renderPage() {
   return render(
-    <MemoryRouter initialEntries={[initialEntry]}>
+    <MemoryRouter initialEntries={['/powderizer']}>
       <Routes>
         <Route path="/powderizer" element={<PowderizerPage />} />
         <Route path="/cart" element={<p>Cart destination</p>} />
@@ -142,101 +156,13 @@ function renderPage(initialEntry = '/powderizer') {
   );
 }
 
-async function addValidComponents(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getAllByRole('button', { name: 'Add' })[0]!);
-  await user.click(screen.getAllByRole('button', { name: 'Add' })[0]!);
-  fireEvent.change(screen.getByLabelText('Protein Powder percentage'), { target: { value: '50' } });
-  fireEvent.change(screen.getByLabelText('Cocoa Powder percentage'), { target: { value: '50' } });
-}
-
 describe('PowderizerPage', () => {
   beforeEach(() => {
     vi.useRealTimers();
     vi.resetAllMocks();
     vi.mocked(getPowderizerConfig).mockResolvedValue(config);
     vi.mocked(quotePowderMix).mockImplementation((body) => Promise.resolve(quoteFrom(body)));
-    vi.mocked(useCartContext).mockReturnValue(cartContext(emptyCart));
-  });
-
-  it('blocks 99% and 101% totals, then creates only after a current quote', async () => {
-    const user = userEvent.setup();
-    vi.mocked(createPowderMix).mockResolvedValue(emptyCart);
-    renderPage();
-    await screen.findByRole('heading', { name: 'Powderizer' });
-    await addValidComponents(user);
-    fireEvent.change(screen.getByLabelText('Protein Powder percentage'), {
-      target: { value: '98' },
-    });
-    expect(screen.getByRole('alert')).toHaveTextContent('Ratios must total 100%.');
-    expect(screen.getByRole('button', { name: 'Add to cart' })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Protein Powder percentage'), {
-      target: { value: '100' },
-    });
-    expect(screen.getByRole('alert')).toHaveTextContent('Ratios must total 100%.');
-    fireEvent.change(screen.getByLabelText('Protein Powder percentage'), {
-      target: { value: '50' },
-    });
-    await waitFor(() => expect(quotePowderMix).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Add to cart' })).toBeEnabled());
-    await user.click(screen.getByRole('button', { name: 'Add to cart' }));
-    await waitFor(() =>
-      expect(createPowderMix).toHaveBeenCalledWith(
-        cartId,
-        expect.objectContaining({
-          components: [
-            { productId: '1', percentage: 50 },
-            { productId: '2', percentage: 50 },
-          ],
-        }),
-      ),
-    );
-    expect(screen.getByText('Cart destination')).toBeInTheDocument();
-  });
-
-  it('hydrates edit state and submits an update for the existing mix', async () => {
-    const user = userEvent.setup();
-    vi.mocked(useCartContext).mockReturnValue(
-      cartContext({
-        ...emptyCart,
-        mixItems: [
-          {
-            mixId,
-            components: [
-              {
-                productId: '1',
-                productName: 'Protein Powder',
-                percentage: 50,
-                allocatedGrams: 250,
-              },
-              { productId: '2', productName: 'Cocoa Powder', percentage: 50, allocatedGrams: 250 },
-            ],
-            bagSizeGrams: 500,
-            fineness: 'standard',
-            customLabel: 'Training',
-            bagColourScheme: 'ultraviolet-cyan',
-            usageLabel: 'Consumable powder',
-            priceVersion: 'powderizer-v1',
-            unitPriceCents: 1400,
-            quantity: 1,
-            lineTotalCents: 1400,
-          },
-        ],
-      }),
-    );
-    vi.mocked(updatePowderMix).mockResolvedValue(emptyCart);
-    renderPage(`/powderizer?edit=${mixId}`);
-    await screen.findByText('Editing custom mix');
-    await waitFor(() => expect(quotePowderMix).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Update cart' })).toBeEnabled());
-    await user.click(screen.getByRole('button', { name: 'Update cart' }));
-    await waitFor(() =>
-      expect(updatePowderMix).toHaveBeenCalledWith(
-        cartId,
-        mixId,
-        expect.objectContaining({ customLabel: 'Training' }),
-      ),
-    );
-    expect(screen.getByText('Cart destination')).toBeInTheDocument();
+    vi.mocked(useCartContext).mockReturnValue(cartContext());
   });
 
   it('retries a failed quote and moves focus to a newly added ratio input', async () => {
@@ -247,7 +173,8 @@ describe('PowderizerPage', () => {
     renderPage();
     await screen.findByRole('heading', { name: 'Powderizer' });
     await user.click(screen.getAllByRole('button', { name: 'Add' })[0]!);
-    await waitFor(() => expect(screen.getByLabelText('Protein Powder percentage')).toHaveFocus());
+    await waitFor(() => expect(screen.getByLabelText('Cocoa Powder percentage')).toHaveFocus());
+    await user.click(screen.getByRole('button', { name: 'Performance' }));
     await user.click(screen.getAllByRole('button', { name: 'Add' })[0]!);
     fireEvent.change(screen.getByLabelText('Protein Powder percentage'), {
       target: { value: '50' },
@@ -256,5 +183,47 @@ describe('PowderizerPage', () => {
     expect(await screen.findByRole('button', { name: 'Retry quote' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Retry quote' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Add to cart' })).toBeEnabled());
+  });
+
+  it('paginates every product and keeps a selected product when its category is hidden', async () => {
+    const user = userEvent.setup();
+    vi.mocked(getPowderizerConfig).mockResolvedValue(expandedConfig);
+    renderPage();
+    await screen.findByRole('heading', { name: 'Powderizer' });
+    expect(screen.getAllByRole('button', { name: 'Add' })).toHaveLength(8);
+    await user.click(screen.getAllByRole('button', { name: 'Add' })[0]!);
+    await user.click(screen.getByRole('button', { name: 'All powders' }));
+    await user.click(screen.getByRole('button', { name: 'Next page' }));
+    expect(screen.getByText(/Page 2 of 2/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Performance' }));
+    expect(screen.getByText(/1 of 5 powders selected/)).toBeInTheDocument();
+    expect(screen.getByText(/Page 1 of 1/)).toBeInTheDocument();
+  });
+
+  it('generates from active pool, lets Chaos ignore it, and requotes a loaded daily recipe once each', async () => {
+    const user = userEvent.setup();
+    vi.mocked(getPowderizerConfig).mockResolvedValue(expandedConfig);
+    renderPage();
+    await screen.findByRole('heading', { name: 'Powderizer' });
+    await user.click(screen.getByRole('button', { name: 'Randomize' }));
+    await waitFor(() => expect(quotePowderMix).toHaveBeenCalledTimes(1));
+    expect(
+      vi
+        .mocked(quotePowderMix)
+        .mock.calls[0]![0].components.every(({ productId }) => productId.startsWith('pantry-')),
+    ).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Chaos Mix' }));
+    await waitFor(() => expect(quotePowderMix).toHaveBeenCalledTimes(2));
+    expect(
+      vi
+        .mocked(quotePowderMix)
+        .mock.calls[1]![0].components.some(({ productId }) => !productId.startsWith('pantry-')),
+    ).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Load daily recipe' }));
+    await waitFor(() => expect(quotePowderMix).toHaveBeenCalledTimes(3));
+    expect(vi.mocked(quotePowderMix).mock.calls[2]![0]).toMatchObject({
+      ...expandedConfig.dailyRecipe.config,
+      customLabel: '',
+    });
   });
 });

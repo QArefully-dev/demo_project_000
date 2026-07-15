@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { Product } from '@shop/contracts/products';
-import { ComponentPicker } from './ComponentPicker';
+import { ComponentPicker, useComponentPicker } from './ComponentPicker';
 import { MixOptions } from './MixOptions';
 import { RatioEditor } from './RatioEditor';
 
@@ -35,6 +35,17 @@ const products: Product[] = [
   },
 ];
 
+function TestComponentPicker({
+  selectedProductIds,
+  onAdd,
+}: {
+  selectedProductIds: string[];
+  onAdd: (productId: string) => void;
+}) {
+  const picker = useComponentPicker(products, selectedProductIds);
+  return <ComponentPicker picker={picker} selectedProductIds={selectedProductIds} onAdd={onAdd} />;
+}
+
 describe('Powderizer builder controls', () => {
   it('exposes accessible selection and ratio controls, including live invalid totals', async () => {
     const user = userEvent.setup();
@@ -42,7 +53,7 @@ describe('Powderizer builder controls', () => {
     const onPercentageChange = vi.fn();
     render(
       <>
-        <ComponentPicker products={products} selectedProductIds={['1']} onAdd={onAdd} />
+        <TestComponentPicker selectedProductIds={['1']} onAdd={onAdd} />
         <RatioEditor
           components={[
             { productId: '1', percentage: 99 },
@@ -56,6 +67,7 @@ describe('Powderizer builder controls', () => {
       </>,
     );
     expect(screen.getByRole('button', { name: 'Selected' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Pantry Staples' }));
     await user.click(screen.getByRole('button', { name: 'Add' }));
     expect(onAdd).toHaveBeenCalledWith('2');
     expect(screen.getByText('Ratio total: 198% — must equal 100%')).toBeInTheDocument();
@@ -67,7 +79,13 @@ describe('Powderizer builder controls', () => {
     const onLabelChange = vi.fn();
     const { rerender } = render(
       <MixOptions
-        config={{ components: [], bagSizeGrams: 500, fineness: 'standard', customLabel: '' }}
+        config={{
+          components: [],
+          bagSizeGrams: 500,
+          fineness: 'standard',
+          customLabel: '',
+          bagColourScheme: 'ultraviolet-cyan',
+        }}
         bagSizes={[250, 500, 1000]}
         finenessValues={['coarse', 'standard', 'fine']}
         labelMaxGraphemes={40}
@@ -82,7 +100,13 @@ describe('Powderizer builder controls', () => {
     expect(onLabelChange).toHaveBeenLastCalledWith('🍫');
     rerender(
       <MixOptions
-        config={{ components: [], bagSizeGrams: 500, fineness: 'standard', customLabel: '🍫' }}
+        config={{
+          components: [],
+          bagSizeGrams: 500,
+          fineness: 'standard',
+          customLabel: '🍫',
+          bagColourScheme: 'ultraviolet-cyan',
+        }}
         bagSizes={[250, 500, 1000]}
         finenessValues={['coarse', 'standard', 'fine']}
         labelMaxGraphemes={40}

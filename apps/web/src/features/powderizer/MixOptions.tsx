@@ -70,7 +70,7 @@ export function MixOptions({
       </fieldset>
       <div>
         <label htmlFor="mix-label" className="block text-sm font-semibold">
-          5. Bag label <span className="font-normal text-muted-foreground">(optional)</span>
+          6. Bag label <span className="font-normal text-muted-foreground">(optional)</span>
         </label>
         <Input
           id="mix-label"

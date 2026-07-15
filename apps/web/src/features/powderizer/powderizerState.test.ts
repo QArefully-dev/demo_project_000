@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { PowderMixQuote } from '@shop/contracts/powderizer';
+import { selectGoodFor } from './powderizerCopy';
 import {
   builderQuoteKey,
   initialPowderizerState,
+  normalizeBuilderConfig,
   powderizerReducer,
   validateBuilderConfig,
 } from './powderizerState';
@@ -115,6 +117,31 @@ describe('powderizerReducer', () => {
     expect(state.quote.status).toBe('ready');
   });
 
+  it('atomically replaces full config, invalidates quote once, and rejects its stale response', () => {
+    let state = withComponents(['1', '2']);
+    state = powderizerReducer(state, { type: 'equal-split' });
+    const oldKey = builderQuoteKey(state.config);
+    state = powderizerReducer(state, { type: 'quote-started', key: oldKey, requestId: 1 });
+    state = powderizerReducer(state, {
+      type: 'config-replaced',
+      config: {
+        components: [
+          { productId: '3', percentage: 60 },
+          { productId: '4', percentage: 40 },
+        ],
+        bagSizeGrams: 250,
+        fineness: 'fine',
+        customLabel: 'Keep this',
+        bagColourScheme: 'deep-space',
+      },
+    });
+    expect(state.quote.status).toBe('idle');
+    expect(state.config).toMatchObject({ bagColourScheme: 'deep-space', customLabel: 'Keep this' });
+    expect(
+      powderizerReducer(state, { type: 'quote-succeeded', key: oldKey, requestId: 1, quote }),
+    ).toEqual(state);
+  });
+
   it('hydrates persisted edit configuration and reports missing targets', () => {
     const state = powderizerReducer(initialPowderizerState(), {
       type: 'edit-hydrated',
@@ -139,11 +166,59 @@ describe('powderizerReducer', () => {
       bagSizeGrams: 500,
       fineness: 'fine',
       customLabel: 'Training blend',
+      bagColourScheme: 'ultraviolet-cyan',
     });
     expect(state.config.components.map(({ productId }) => productId)).toEqual(['2', '1']);
     const missing = powderizerReducer(state, { type: 'edit-missing', mixId: 'missing' });
     expect(missing.editError).toMatch(/no longer/i);
     expect(powderizerReducer(state, { type: 'edit-cleared' })).toEqual(initialPowderizerState());
+  });
+
+  it('defaults legacy full configs and clears edit mode only for history hydration', () => {
+    const normalized = normalizeBuilderConfig({
+      components: [
+        { productId: '1', percentage: 50 },
+        { productId: '2', percentage: 50 },
+      ],
+      bagSizeGrams: 500,
+      fineness: 'standard',
+      customLabel: null,
+    });
+    expect(normalized).toMatchObject({ customLabel: '', bagColourScheme: 'ultraviolet-cyan' });
+    const editing = { ...initialPowderizerState(), editMixId: 'mix-1' };
+    const state = powderizerReducer(editing, { type: 'history-config-loaded', config: normalized });
+    expect(state.editMixId).toBeNull();
+    expect(state.config).toEqual(normalized);
+  });
+
+  it('uses scheme and canonical component order in quote identity', () => {
+    const config = {
+      ...initialPowderizerState().config,
+      components: [
+        { productId: '2', percentage: 40 },
+        { productId: '1', percentage: 60 },
+      ],
+      bagColourScheme: 'solar-flare' as const,
+    };
+    expect(builderQuoteKey(config)).toBe(
+      builderQuoteKey({ ...config, components: [...config.components].reverse() }),
+    );
+    expect(builderQuoteKey(config)).not.toBe(
+      builderQuoteKey({ ...config, bagColourScheme: 'deep-space' }),
+    );
+  });
+
+  it('uses lexical IDs for canonical quote and Good for identities', () => {
+    const config = {
+      ...initialPowderizerState().config,
+      components: [
+        { productId: 'powder-z', percentage: 40 },
+        { productId: 'powder-a', percentage: 60 },
+      ],
+    };
+    const reordered = { ...config, components: [...config.components].reverse() };
+    expect(builderQuoteKey(reordered)).toBe(builderQuoteKey(config));
+    expect(selectGoodFor(reordered)).toBe(selectGoodFor(config));
   });
 
   it('clears a quote error and creates a distinct retry request', () => {

@@ -25,4 +25,33 @@ describe('BagArtwork', () => {
     expect(screen.getByText('SUPERCALIFRAGILISTIC')).toBeInTheDocument();
     expect(screen.getByText('TINY TINY')).toBeInTheDocument();
   });
+
+  it('gives independently rendered painted bags distinct gradient identifiers', () => {
+    const { container } = render(
+      <>
+        <BagArtwork
+          name="First mix"
+          category="Custom mix"
+          quantity="500g"
+          batchCode="powderizer-v1"
+          mark="MIX"
+          paint={{ kind: 'linear-gradient', colors: ['#9b5de5', '#00d9ff'] }}
+          consumptionLabel={null}
+        />
+        <BagArtwork
+          name="Second mix"
+          category="Custom mix"
+          quantity="500g"
+          batchCode="powderizer-v1"
+          mark="MIX"
+          paint={{ kind: 'linear-gradient', colors: ['#ff7b00', '#ffe66d'] }}
+          consumptionLabel={null}
+        />
+      </>,
+    );
+
+    const gradients = Array.from(container.querySelectorAll('linearGradient'));
+    expect(gradients).toHaveLength(2);
+    expect(new Set(gradients.map((gradient) => gradient.id)).size).toBe(2);
+  });
 });

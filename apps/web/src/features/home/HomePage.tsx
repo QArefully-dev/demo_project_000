@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getBestsellers, getCategories, getProducts } from '@/api/products';
 import { CategoryTiles } from '@/components/home/CategoryTiles';
 import { HeroSection } from '@/components/home/HeroSection';
+import { PowderizerBanner } from '@/components/home/PowderizerBanner';
 import { ProductShelf } from '@/components/home/ProductShelf';
 import { PromoBanner } from '@/components/home/PromoBanner';
 import { useCartContext } from '@/hooks/CartContext';
@@ -100,6 +101,7 @@ export function HomePage() {
   return (
     <div className="space-y-16 pb-12 lg:space-y-20">
       <HeroSection />
+      <PowderizerBanner />
       <section
         aria-label="Store assurances"
         className="grid divide-y rounded-2xl border bg-surface-raised text-center shadow-sm sm:grid-cols-3 sm:divide-x sm:divide-y-0"

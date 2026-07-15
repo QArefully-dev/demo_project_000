@@ -1,51 +1,66 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import type { Product } from '@shop/contracts/products';
 import { Button } from '@/components/ui/button';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
-import { useCartContext } from '@/hooks/CartContext';
-import { ApiError } from '@/api/client';
-import {
-  createPowderMix,
-  getPowderizerConfig,
-  quotePowderMix,
-  updatePowderMix,
-} from '@/api/powderizer';
-import type { PowderizerConfigResponse } from '@shop/contracts/powderizer';
-import { ComponentPicker } from './ComponentPicker';
+import { BagColourSchemePicker } from './BagColourSchemePicker';
+import { ComponentPicker, useComponentPicker } from './ComponentPicker';
+import { DailyRecipeCard } from './DailyRecipeCard';
+import { IngredientReaction } from './IngredientReaction';
 import { MixOptions } from './MixOptions';
+import { PowderizerActions } from './PowderizerActions';
 import { PowderMixBagPreview } from './PowderMixBagPreview';
+import { PowderMixVisualization } from './PowderMixVisualization';
 import { PowderizerSummary } from './PowderizerSummary';
+import { PowderizerHistoryShelf } from './PowderizerHistoryShelf';
 import { RatioEditor } from './RatioEditor';
-import {
-  builderQuoteKey,
-  initialPowderizerState,
-  powderizerReducer,
-  toPowderMixConfigInput,
-  validateBuilderConfig,
-} from './powderizerState';
+import { usePowderizerHistory } from './usePowderizerHistory';
+import { usePowderizerController } from './usePowderizerController';
+import type { BuilderConfig } from './powderizerState';
 
-function messageFor(error: unknown, fallback: string): string {
-  if (error instanceof ApiError && error.isNetworkError)
-    return 'Unable to reach the shop server. Check that it is running and try again.';
-  return error instanceof Error ? error.message : fallback;
-}
+const EMPTY_PRODUCTS: readonly Product[] = [];
 
 export function PowderizerPage() {
-  const { cart, cartId, isInitializing, refreshCart } = useCartContext();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const [state, dispatch] = useReducer(powderizerReducer, undefined, initialPowderizerState);
-  const [remote, setRemote] = useState<{
-    data: PowderizerConfigResponse | null;
-    error: string | null;
-  }>({ data: null, error: null });
-  const hydratedEditRef = useRef<string | null>(null);
+  const historyRecordRef = useRef<(config: BuilderConfig) => void>(() => undefined);
+  const recordSuccessfulSubmit = useCallback(
+    (config: BuilderConfig) => historyRecordRef.current(config),
+    [],
+  );
+  const {
+    state,
+    dispatch,
+    powderizerConfig,
+    remoteError,
+    configLoadError,
+    validationError,
+    hasCurrentQuote,
+    canSubmit,
+    replaceConfig,
+    submit,
+  } = usePowderizerController({ onSubmitSuccess: recordSuccessfulSubmit });
+  const history = usePowderizerHistory(powderizerConfig?.eligibleProducts ?? EMPTY_PRODUCTS);
+  historyRecordRef.current = history.record;
+  const builderRef = useRef<HTMLElement>(null);
   const focusAddedComponentRef = useRef<string | null>(null);
-  const quoteRequestRef = useRef(0);
-  const editMixId = searchParams.get('edit');
-  const validationError = useMemo(() => validateBuilderConfig(state.config), [state.config]);
-  const quoteKey = useMemo(() => builderQuoteKey(state.config), [state.config]);
+  const picker = useComponentPicker(
+    powderizerConfig?.eligibleProducts ?? [],
+    state.config.components.map(({ productId }) => productId),
+  );
+  const ingredientWarnings = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          state.config.components.flatMap(({ productId }) => {
+            const warning = powderizerConfig?.eligibleProducts.find(({ id }) => id === productId)
+              ?.packaging?.consumptionLabel;
+            return warning ? [warning] : [];
+          }),
+        ),
+      ),
+    [powderizerConfig?.eligibleProducts, state.config.components],
+  );
 
   useEffect(() => {
     const productId = focusAddedComponentRef.current;
@@ -54,90 +69,17 @@ export function PowderizerPage() {
     focusAddedComponentRef.current = null;
   }, [state.config.components]);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    void getPowderizerConfig(controller.signal)
-      .then((data) => setRemote({ data, error: null }))
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted)
-          setRemote({
-            data: null,
-            error: messageFor(error, 'Failed to load Powderizer configuration.'),
-          });
-      });
-    return () => controller.abort();
-  }, []);
-
-  useEffect(() => {
-    if (!editMixId) {
-      hydratedEditRef.current = null;
-      if (state.editMixId !== null || state.editError !== null) dispatch({ type: 'edit-cleared' });
-      return;
-    }
-    if (isInitializing || hydratedEditRef.current === editMixId) return;
-    hydratedEditRef.current = editMixId;
-    const item = cart?.mixItems.find(({ mixId }) => mixId === editMixId);
-    dispatch(item ? { type: 'edit-hydrated', item } : { type: 'edit-missing', mixId: editMixId });
-  }, [cart?.mixItems, editMixId, isInitializing, state.editError, state.editMixId]);
-
-  useEffect(() => {
-    if (!remote.data || validationError) return;
-    const controller = new AbortController();
-    const requestId = ++quoteRequestRef.current;
-    const timer = window.setTimeout(() => {
-      dispatch({ type: 'quote-started', key: quoteKey, requestId });
-      void quotePowderMix(toPowderMixConfigInput(state.config), controller.signal)
-        .then((quote) => dispatch({ type: 'quote-succeeded', key: quoteKey, requestId, quote }))
-        .catch((error: unknown) => {
-          if (!controller.signal.aborted)
-            dispatch({
-              type: 'quote-failed',
-              key: quoteKey,
-              requestId,
-              error: messageFor(error, 'Unable to calculate this mix.'),
-            });
-        });
-    }, 250);
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [quoteKey, remote.data, state.config, state.quoteRetry, validationError]);
-
-  if (!remote.data)
-    return remote.error ? (
-      <ErrorMessage message={remote.error} onRetry={() => window.location.reload()} />
+  if (!powderizerConfig)
+    return remoteError ? (
+      <ErrorMessage message={remoteError} onRetry={() => window.location.reload()} />
     ) : (
       <LoadingSpinner />
     );
-  const powderizerConfig = remote.data;
+
   const namesByProductId = new Map(
     powderizerConfig.eligibleProducts.map((product) => [product.id, product.name]),
   );
-  const hasCurrentQuote = state.quote.status === 'ready' && state.quote.key === quoteKey;
-  const canSubmit = !validationError && hasCurrentQuote && state.mutation.status !== 'submitting';
-
-  const submit = async () => {
-    if (!canSubmit || !cartId) {
-      if (!cartId)
-        dispatch({
-          type: 'mutation-failed',
-          error: 'Your cart is still loading. Try again in a moment.',
-        });
-      return;
-    }
-    dispatch({ type: 'mutation-started' });
-    try {
-      const body = toPowderMixConfigInput(state.config);
-      if (state.editMixId) await updatePowderMix(cartId, state.editMixId, body);
-      else await createPowderMix(cartId, body);
-      await refreshCart();
-      dispatch({ type: 'mutation-finished' });
-      navigate('/cart');
-    } catch (error) {
-      dispatch({ type: 'mutation-failed', error: messageFor(error, 'Unable to save this mix.') });
-    }
-  };
+  const selectedProductIds = state.config.components.map(({ productId }) => productId);
 
   if (state.editError)
     return (
@@ -152,25 +94,21 @@ export function PowderizerPage() {
     );
 
   return (
-    <section className="mx-auto max-w-6xl space-y-5">
+    <section ref={builderRef} tabIndex={-1} className="mx-auto max-w-6xl space-y-5">
       <div>
         <h1 className="text-2xl font-bold">Powderizer</h1>
         <p className="mt-2 text-muted-foreground">
-          Build a custom consumable powder mix from Pantry, Performance, and Drinks powders.
+          Build a custom powder mix from every eligible category. Server safety labels always apply.
         </p>
       </div>
-      <p className="rounded-lg border border-border bg-surface-raised p-4 text-sm text-muted-foreground">
-        Only consumable Pantry, Performance, and Drinks powders are mixable in V1. Choose 2 to 5
-        powders, then set ratios totalling 100%.
-      </p>
       <div className="rounded-lg border border-border p-4">
         <p className="font-medium">{state.editMixId ? 'Editing custom mix' : 'New custom mix'}</p>
         <p className="mt-1 text-sm text-muted-foreground">
           {powderizerConfig.eligibleProducts.length} eligible powders available.
         </p>
-        {validationError && (
+        {(validationError || configLoadError) && (
           <p role="alert" className="mt-3 text-sm text-destructive">
-            {validationError}
+            {validationError ?? configLoadError}
           </p>
         )}
         {state.quote.status === 'loading' && (
@@ -196,11 +134,21 @@ export function PowderizerPage() {
           </p>
         )}
       </div>
+      <PowderizerActions
+        activeProducts={picker.activeProducts}
+        products={powderizerConfig.eligibleProducts}
+        baseConfig={state.config}
+        bagSizes={powderizerConfig.bagSizesGrams}
+        finenessValues={powderizerConfig.finenessValues}
+        bagColourSchemes={powderizerConfig.bagColourSchemes}
+        onConfigGenerated={replaceConfig}
+      />
+      <DailyRecipeCard recipe={powderizerConfig.dailyRecipe} onLoad={replaceConfig} />
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-5">
           <ComponentPicker
-            products={powderizerConfig.eligibleProducts}
-            selectedProductIds={state.config.components.map(({ productId }) => productId)}
+            picker={picker}
+            selectedProductIds={selectedProductIds}
             onAdd={(productId) => {
               focusAddedComponentRef.current = productId;
               dispatch({ type: 'component-added', productId });
@@ -224,12 +172,33 @@ export function PowderizerPage() {
             onFinenessChange={(fineness) => dispatch({ type: 'fineness-changed', fineness })}
             onLabelChange={(customLabel) => dispatch({ type: 'label-changed', customLabel })}
           />
+          <BagColourSchemePicker
+            schemes={powderizerConfig.bagColourSchemes}
+            value={state.config.bagColourScheme}
+            onChange={(bagColourScheme) =>
+              dispatch({ type: 'bag-colour-changed', bagColourScheme })
+            }
+          />
+          <PowderMixVisualization
+            components={state.config.components}
+            products={powderizerConfig.eligibleProducts}
+          />
+          <IngredientReaction
+            components={state.config.components}
+            products={powderizerConfig.eligibleProducts}
+          />
         </div>
         <aside className="space-y-5 lg:sticky lg:top-24">
-          <PowderMixBagPreview config={state.config} priceVersion={powderizerConfig.priceVersion} />
+          <PowderMixBagPreview
+            config={state.config}
+            priceVersion={powderizerConfig.priceVersion}
+            usageLabel={state.quote.status === 'ready' ? state.quote.quote.usageLabel : null}
+          />
           <PowderizerSummary
             quote={hasCurrentQuote ? state.quote.quote : null}
             namesByProductId={namesByProductId}
+            ingredientWarnings={ingredientWarnings}
+            config={state.config}
             canSubmit={canSubmit}
             isSubmitting={state.mutation.status === 'submitting'}
             editing={state.editMixId !== null}
@@ -237,6 +206,17 @@ export function PowderizerPage() {
           />
         </aside>
       </div>
+      <PowderizerHistoryShelf
+        entries={history.entries}
+        available={history.available}
+        onUseAgain={(entry) => {
+          dispatch({ type: 'history-config-loaded', config: entry.config });
+          navigate('/powderizer', { replace: true });
+          window.requestAnimationFrame(() => builderRef.current?.focus());
+        }}
+        onRemove={history.remove}
+        onClear={history.clear}
+      />
     </section>
   );
 }

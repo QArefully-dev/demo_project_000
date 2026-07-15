@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Minus, Plus } from 'lucide-react';
 import type { PowderMixCartItem } from '@shop/contracts/powderizer';
+import { BagArtwork } from '@/components/BagArtwork';
 import { Button } from '@/components/ui/button';
+import { powderMixBagSchemePresentation } from '@/components/powderMixBagScheme';
 import { formatMoney } from '@/lib/formatMoney';
 
 type PowderMixCartLineItemProps = {
@@ -26,6 +28,7 @@ export function PowderMixCartLineItem({
 }: PowderMixCartLineItemProps) {
   const [actionError, setActionError] = useState<string | null>(null);
   const isPending = isUpdating || isRemoving;
+  const scheme = powderMixBagSchemePresentation(item.bagColourScheme);
 
   useEffect(() => setActionError(null), [item.mixId]);
 
@@ -41,8 +44,19 @@ export function PowderMixCartLineItem({
 
   return (
     <div className="flex items-center gap-3 py-3">
-      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md bg-muted text-center text-xs font-medium">
-        Mix
+      <div className="h-16 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
+        <BagArtwork
+          name={mixName(item)}
+          category="Custom mix"
+          quantity={`${item.bagSizeGrams}g`}
+          batchCode={item.priceVersion}
+          mark="MIX"
+          paint={scheme.paint}
+          powderAccent={scheme.paint.colors[1]}
+          consumptionLabel={null}
+          ariaLabel=""
+          className="h-full w-full"
+        />
       </div>
       <div className="flex flex-1 flex-col gap-1">
         <p className="text-sm font-medium leading-tight">{mixName(item)}</p>
@@ -54,6 +68,8 @@ export function PowderMixCartLineItem({
         <p className="text-xs text-muted-foreground">
           {item.bagSizeGrams}g · {item.fineness}
         </p>
+        <p className="text-xs text-muted-foreground">{scheme.label}</p>
+        <p className="text-xs font-medium">{item.usageLabel}</p>
         <div className="mt-1 flex items-center gap-2">
           <Button
             variant="outline"

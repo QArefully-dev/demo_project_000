@@ -3,6 +3,7 @@ interface NavItem {
   label: string;
   icon: string;
   enabled: boolean;
+  className?: string;
 }
 
 export const searchItem: NavItem = {
@@ -31,6 +32,7 @@ export const powderizerItem: NavItem = {
   label: 'Powderizer',
   icon: 'FlaskConical',
   enabled: true,
+  className: 'powderizer-nav-link',
 };
 
 export const navItems: Record<string, NavItem> = {

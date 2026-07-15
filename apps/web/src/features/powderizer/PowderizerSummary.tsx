@@ -1,6 +1,8 @@
 import type { PowderMixQuote } from '@shop/contracts/powderizer';
 import { Button } from '@/components/ui/button';
 import { formatMoney } from '@/lib/formatMoney';
+import { selectGoodFor } from './powderizerCopy';
+import type { BuilderConfig } from './powderizerState';
 
 type PowderizerSummaryProps = {
   quote: PowderMixQuote | null;
@@ -9,6 +11,8 @@ type PowderizerSummaryProps = {
   isSubmitting: boolean;
   editing: boolean;
   onSubmit: () => void;
+  ingredientWarnings?: readonly string[];
+  config?: BuilderConfig;
 };
 
 export function PowderizerSummary({
@@ -18,7 +22,10 @@ export function PowderizerSummary({
   isSubmitting,
   editing,
   onSubmit,
+  ingredientWarnings = [],
+  config,
 }: PowderizerSummaryProps) {
+  const goodFor = config ? selectGoodFor(config) : null;
   return (
     <section
       className="rounded-xl border border-border bg-surface-raised p-4"
@@ -33,6 +40,12 @@ export function PowderizerSummary({
         </p>
       ) : (
         <div className="mt-3 space-y-3 text-sm">
+          <p
+            className="rounded-md border border-primary/35 bg-primary/10 px-3 py-2 font-semibold"
+            aria-label="Server usage label"
+          >
+            {quote.usageLabel}
+          </p>
           <ul className="space-y-1" aria-label="Mix components">
             {quote.allocations.map((component) => (
               <li key={component.productId} className="flex justify-between gap-3">
@@ -56,6 +69,18 @@ export function PowderizerSummary({
             </div>
           </div>
         </div>
+      )}
+      {ingredientWarnings.length > 0 && (
+        <ul className="mt-3 space-y-1 text-sm text-destructive" aria-label="Ingredient warnings">
+          {ingredientWarnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      )}
+      {goodFor && (
+        <p className="mt-3 text-sm text-muted-foreground">
+          <span className="font-semibold text-foreground">Good for:</span> {goodFor}
+        </p>
       )}
       <Button
         type="button"

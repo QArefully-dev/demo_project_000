@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { BagArtwork } from '@/components/BagArtwork';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { ErrorMessage } from '@/components/ErrorMessage';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { powderMixBagSchemePresentation } from '@/components/powderMixBagScheme';
 import { formatMoney } from '@/lib/formatMoney';
 import { getOrder } from '../../api/orders';
 import type { Order } from '@shop/contracts/orders';
@@ -24,8 +26,7 @@ export function OrderConfirmationPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await getOrder(orderId);
-      setOrder(data);
+      setOrder(await getOrder(orderId));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load order');
     } finally {
@@ -66,22 +67,42 @@ export function OrderConfirmationPage() {
                 <span>{formatMoney(item.lineTotalCents)}</span>
               </div>
             ))}
-            {order.mixItems.map((item) => (
-              <div key={item.mixId} className="flex items-center justify-between text-sm">
-                <span>
-                  {item.customLabel ?? 'Custom powder mix'}{' '}
-                  <span className="text-muted-foreground">× {item.quantity}</span>
-                  <span className="block text-xs text-muted-foreground">
-                    {item.components
-                      .map(({ productName, percentage }) => `${productName} ${percentage}%`)
-                      .join(' · ')}
-                    {' · '}
-                    {item.bagSizeGrams}g · {item.fineness}
-                  </span>
-                </span>
-                <span>{formatMoney(item.lineTotalCents)}</span>
-              </div>
-            ))}
+            {order.mixItems.map((item) => {
+              const scheme = powderMixBagSchemePresentation(item.bagColourScheme);
+              return (
+                <div key={item.mixId} className="flex items-center justify-between gap-2 text-sm">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <BagArtwork
+                      name={item.customLabel ?? 'Custom powder mix'}
+                      category="Custom mix"
+                      quantity={`${item.bagSizeGrams}g`}
+                      batchCode={item.priceVersion}
+                      mark="MIX"
+                      paint={scheme.paint}
+                      powderAccent={scheme.paint.colors[1]}
+                      consumptionLabel={null}
+                      ariaLabel=""
+                      className="h-12 w-12 shrink-0"
+                    />
+                    <span>
+                      {item.customLabel ?? 'Custom powder mix'}{' '}
+                      <span className="text-muted-foreground">× {item.quantity}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {item.components
+                          .map(({ productName, percentage }) => `${productName} ${percentage}%`)
+                          .join(' · ')}
+                        {' · '}
+                        {item.bagSizeGrams}g · {item.fineness}
+                      </span>
+                      <span className="block text-xs font-medium">
+                        {scheme.label} · {item.usageLabel}
+                      </span>
+                    </span>
+                  </div>
+                  <span>{formatMoney(item.lineTotalCents)}</span>
+                </div>
+              );
+            })}
           </div>
           <Separator />
 

@@ -1,7 +1,12 @@
 import type {
+  PowderMixBagColourScheme,
   PowderMixCartItem,
   PowderMixConfigInput,
   PowderMixQuote,
+} from '@shop/contracts/powderizer';
+import {
+  DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
+  POWDER_MIX_BAG_COLOUR_SCHEME_VALUES,
 } from '@shop/contracts/powderizer';
 
 export type BuilderComponent = { productId: string; percentage: number };
@@ -10,6 +15,13 @@ export type BuilderConfig = {
   bagSizeGrams: 250 | 500 | 1000;
   fineness: 'coarse' | 'standard' | 'fine';
   customLabel: string;
+  bagColourScheme: PowderMixBagColourScheme;
+};
+
+/** Config-shaped sources from edit, recipe, generation, and local history. */
+export type BuilderConfigSource = Omit<BuilderConfig, 'customLabel' | 'bagColourScheme'> & {
+  customLabel?: string | null;
+  bagColourScheme?: PowderMixBagColourScheme;
 };
 
 export type QuoteState =
@@ -36,7 +48,10 @@ export type PowderizerEvent =
   | { type: 'equal-split' }
   | { type: 'bag-size-changed'; bagSizeGrams: BuilderConfig['bagSizeGrams'] }
   | { type: 'fineness-changed'; fineness: BuilderConfig['fineness'] }
+  | { type: 'bag-colour-changed'; bagColourScheme: BuilderConfig['bagColourScheme'] }
   | { type: 'label-changed'; customLabel: string }
+  | { type: 'config-replaced'; config: BuilderConfigSource }
+  | { type: 'history-config-loaded'; config: BuilderConfigSource }
   | { type: 'edit-hydrated'; item: PowderMixCartItem }
   | { type: 'edit-missing'; mixId: string }
   | { type: 'edit-cleared' }
@@ -50,12 +65,29 @@ export type PowderizerEvent =
 
 export function initialPowderizerState(): PowderizerState {
   return {
-    config: { components: [], bagSizeGrams: 500, fineness: 'standard', customLabel: '' },
+    config: {
+      components: [],
+      bagSizeGrams: 500,
+      fineness: 'standard',
+      customLabel: '',
+      bagColourScheme: DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
+    },
     quote: { status: 'idle', key: null, requestId: null, quote: null, error: null },
     mutation: { status: 'idle', error: null },
     editMixId: null,
     editError: null,
     quoteRetry: 0,
+  };
+}
+
+/** Applies browser compatibility defaults at every full-config boundary. */
+export function normalizeBuilderConfig(source: BuilderConfigSource): BuilderConfig {
+  return {
+    components: source.components.map(({ productId, percentage }) => ({ productId, percentage })),
+    bagSizeGrams: source.bagSizeGrams,
+    fineness: source.fineness,
+    customLabel: source.customLabel ?? '',
+    bagColourScheme: source.bagColourScheme ?? DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
   };
 }
 
@@ -105,19 +137,33 @@ export function powderizerReducer(state: PowderizerState, event: PowderizerEvent
       return clearQuote(state, { ...state.config, bagSizeGrams: event.bagSizeGrams });
     case 'fineness-changed':
       return clearQuote(state, { ...state.config, fineness: event.fineness });
+    case 'bag-colour-changed':
+      return clearQuote(state, { ...state.config, bagColourScheme: event.bagColourScheme });
     case 'label-changed':
       return clearQuote(state, { ...state.config, customLabel: event.customLabel });
+    case 'config-replaced':
+      return clearQuote(state, normalizeBuilderConfig(event.config));
+    case 'history-config-loaded':
+      return {
+        ...clearQuote(state, normalizeBuilderConfig(event.config)),
+        editMixId: null,
+        editError: null,
+      };
     case 'edit-hydrated':
       return {
-        ...clearQuote(state, {
-          components: event.item.components.map(({ productId, percentage }) => ({
-            productId,
-            percentage,
-          })),
-          bagSizeGrams: event.item.bagSizeGrams,
-          fineness: event.item.fineness,
-          customLabel: event.item.customLabel ?? '',
-        }),
+        ...clearQuote(
+          state,
+          normalizeBuilderConfig({
+            components: event.item.components.map(({ productId, percentage }) => ({
+              productId,
+              percentage,
+            })),
+            bagSizeGrams: event.item.bagSizeGrams,
+            fineness: event.item.fineness,
+            customLabel: event.item.customLabel ?? '',
+            bagColourScheme: event.item.bagColourScheme,
+          }),
+        ),
         editMixId: event.item.mixId,
         editError: null,
       };
@@ -205,6 +251,13 @@ export function graphemeCount(value: string): number {
   return Segmenter ? [...new Segmenter().segment(value)].length : [...value].length;
 }
 
+/** Code-unit lexical order works for every transport product ID, not only numeric IDs. */
+export function compareBuilderProductIds(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 /** Browser-side feedback only. Server validation remains authoritative. */
 export function validateBuilderConfig(config: BuilderConfig): string | null {
   if (config.components.length < 2 || config.components.length > 5)
@@ -219,6 +272,8 @@ export function validateBuilderConfig(config: BuilderConfig): string | null {
     return 'Ratios must total 100%.';
   if (![250, 500, 1000].includes(config.bagSizeGrams)) return 'Choose a valid bag size.';
   if (!['coarse', 'standard', 'fine'].includes(config.fineness)) return 'Choose a valid fineness.';
+  if (!POWDER_MIX_BAG_COLOUR_SCHEME_VALUES.includes(config.bagColourScheme))
+    return 'Choose a valid bag colour scheme.';
   const label = config.customLabel.trim().normalize('NFC');
   if (graphemeCount(label) > 40 || /[<>&\p{Cc}\p{Cf}]/u.test(label))
     return 'Label contains unsupported characters.';
@@ -228,11 +283,12 @@ export function validateBuilderConfig(config: BuilderConfig): string | null {
 export function toPowderMixConfigInput(config: BuilderConfig): PowderMixConfigInput {
   return {
     components: [...config.components]
-      .sort((left, right) => Number(left.productId) - Number(right.productId))
+      .sort((left, right) => compareBuilderProductIds(left.productId, right.productId))
       .map(({ productId, percentage }) => ({ productId, percentage })),
     bagSizeGrams: config.bagSizeGrams,
     fineness: config.fineness,
     customLabel: config.customLabel,
+    bagColourScheme: config.bagColourScheme,
   };
 }
 
