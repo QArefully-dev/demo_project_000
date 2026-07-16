@@ -1,29 +1,28 @@
 import { useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import type { ProductQuery } from '@shop/contracts/products';
-import { PAGE_SIZES, SORT_OPTIONS } from './catalogOptions';
+import {
+  CATALOG_DISCOVERY_PARAM_KEYS,
+  type CatalogParamKey,
+  type CatalogParamValue,
+  parseCatalogQuery,
+  serializeCatalogQuery,
+} from '@/catalogQuery';
 
 export function useCatalogParams() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const q = searchParams.get('q') ?? undefined;
-  const category = searchParams.get('category') ?? undefined;
-  const onSale = searchParams.get('onSale') === 'true' || undefined;
-  const candidate = searchParams.get('sort') as ProductQuery['sort'] | null;
-  const sort = SORT_OPTIONS.some((option) => option.value === candidate)
-    ? (candidate ?? undefined)
-    : undefined;
-  const page = Math.max(1, Number(searchParams.get('page')) || 1);
-  const pageSizeValue = Number(searchParams.get('pageSize'));
-  const pageSize = PAGE_SIZES.includes(pageSizeValue) ? pageSizeValue : 12;
+  const query = parseCatalogQuery(searchParams);
 
   const setParam = useCallback(
-    (key: string, value: string | null) =>
+    (key: CatalogParamKey, value: CatalogParamValue) =>
       setSearchParams((previous) => {
         const next = new URLSearchParams(previous);
-        if (value === null) next.delete(key);
-        else next.set(key, value);
+        next.delete(key);
+        if (value !== null) {
+          const values = Array.isArray(value) ? value : [value];
+          for (const item of values) next.append(key, item);
+        }
         if (key !== 'page') next.delete('page');
-        return next;
+        return serializeCatalogQuery(parseCatalogQuery(next));
       }),
     [setSearchParams],
   );
@@ -31,11 +30,11 @@ export function useCatalogParams() {
     () =>
       setSearchParams((previous) => {
         const next = new URLSearchParams(previous);
-        ['q', 'category', 'onSale', 'page'].forEach((key) => next.delete(key));
-        return next;
+        [...CATALOG_DISCOVERY_PARAM_KEYS, 'page'].forEach((key) => next.delete(key));
+        return serializeCatalogQuery(parseCatalogQuery(next));
       }),
     [setSearchParams],
   );
 
-  return { q, category, onSale, sort, page, pageSize, setParam, clearFilters };
+  return { ...query, page: query.page ?? 1, pageSize: query.pageSize ?? 12, setParam, clearFilters };
 }
