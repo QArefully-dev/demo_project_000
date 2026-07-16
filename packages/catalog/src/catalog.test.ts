@@ -3,21 +3,94 @@ import test from 'node:test';
 import {
   CATALOG_ARTWORK_IDS,
   CATALOG_PRODUCTS,
+  catalogProductSpecifications,
+  createdAtFromNewestRank,
+  parsePackWeightGrams,
   parseMixUnitGrams,
   validateCatalog,
+  type CatalogProduct,
 } from './index.js';
+
+const firstCatalogProduct = (): CatalogProduct => {
+  const product = CATALOG_PRODUCTS.at(0);
+  if (!product) throw new Error('Catalog must contain at least one product');
+  return product;
+};
 void test('canonical catalog validates only when explicitly invoked', () => {
   assert.doesNotThrow(() => validateCatalog());
   assert.equal(CATALOG_PRODUCTS.length, 50);
   assert.equal(new Set(CATALOG_ARTWORK_IDS).size, CATALOG_PRODUCTS.length);
 });
 void test('catalog validation rejects duplicate stable artwork IDs', () => {
-  const firstArtworkId = CATALOG_PRODUCTS.at(0)?.image_set_id;
-  assert.ok(firstArtworkId);
+  const firstArtworkId = firstCatalogProduct().image_set_id;
   const duplicate = CATALOG_PRODUCTS.map((product, index) =>
     index === 1 ? { ...product, image_set_id: firstArtworkId } : product,
   );
   assert.throws(() => validateCatalog(duplicate), /duplicate artwork IDs/);
+});
+
+void test('catalog validation rejects duplicate tags and malformed metadata keys', () => {
+  const product = firstCatalogProduct();
+  assert.throws(
+    () =>
+      validateCatalog([
+        { ...product, tags: [...product.tags, product.tags[0]!] },
+        ...CATALOG_PRODUCTS.slice(1),
+      ]),
+    /duplicate tags/,
+  );
+  assert.throws(
+    () =>
+      validateCatalog([
+        { ...product, tags: [{ key: 'Bad key', label: 'Bad key' }] },
+        ...CATALOG_PRODUCTS.slice(1),
+      ]),
+    /Invalid tag key/,
+  );
+});
+
+void test('missing authoring facts stay absent from resolved specifications', () => {
+  const product = CATALOG_PRODUCTS.find((candidate) => candidate.specifications.source === null);
+  if (!product) throw new Error('Catalog must retain at least one missing source fact');
+  assert.equal(
+    catalogProductSpecifications(product).some((specification) => specification.key === 'source'),
+    false,
+  );
+});
+
+void test('validator rejects authoring attempts to override packaging-derived facts', () => {
+  const product = firstCatalogProduct();
+  const specifications = {
+    ...product.specifications,
+    packWeight: { key: '1g', label: '1g' },
+  };
+  assert.throws(
+    () =>
+      validateCatalog([
+        { ...product, specifications } as typeof product,
+        ...CATALOG_PRODUCTS.slice(1),
+      ]),
+    /Invalid authoring specification shape|Unexpected derived specification/,
+  );
+  const resolved = catalogProductSpecifications(product);
+  assert.deepEqual(
+    resolved.find((specification) => specification.key === 'pack-weight'),
+    {
+      key: 'pack-weight',
+      label: 'Pack weight',
+      group: 'pack-and-care',
+      groupLabel: 'Pack and care',
+      order: 1,
+      filterable: false,
+      valueKey: product.packaging.quantity,
+      displayValue: product.packaging.quantity,
+      numericValue: parsePackWeightGrams(product.packaging.quantity),
+    },
+  );
+  assert.equal(
+    resolved.find((specification) => specification.key === 'warning-class')?.displayValue,
+    product.packaging.consumptionLabel ?? 'None',
+  );
 });
 
 void test('Powderizer eligibility covers every canonical source bag', () => {
@@ -60,4 +133,17 @@ void test('expanded catalog preserves stable existing identities and premium pro
     Math.max(...CATALOG_PRODUCTS.map((product) => product.price_cents)),
   );
   assert.ok(CATALOG_PRODUCTS.every((product) => Number.isSafeInteger(product.price_cents)));
+});
+
+void test('converted timestamps preserve every legacy newest rank exactly', () => {
+  assert.deepEqual(
+    CATALOG_PRODUCTS.map((product) => product.created_at),
+    CATALOG_PRODUCTS.map((product) => createdAtFromNewestRank(product.id)),
+  );
+  assert.deepEqual(
+    [...CATALOG_PRODUCTS]
+      .sort((left, right) => right.created_at.localeCompare(left.created_at))
+      .map((product) => product.id),
+    Array.from({ length: 50 }, (_, index) => 50 - index),
+  );
 });

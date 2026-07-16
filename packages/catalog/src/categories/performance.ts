@@ -1,4 +1,9 @@
-import { createCatalogProducts, createPackaging, type CatalogProductDraft } from '../model.js';
+import {
+  createCatalogProducts,
+  createPackaging,
+  createdAtFromNewestRank,
+  type CatalogProductDraft,
+} from '../model.js';
 
 export const performanceProducts = createCatalogProducts([
   {
@@ -10,10 +15,21 @@ export const performanceProducts = createCatalogProducts([
     category: 'Performance',
     stock_count: 50,
     sales_count: 540,
-    newest_rank: 8,
+    active: true,
+    created_at: createdAtFromNewestRank(8),
+    tags: [
+      { key: 'electrolyte', label: 'Electrolyte' },
+      { key: 'citrus', label: 'Citrus' },
+    ],
+    specifications: {
+      texture: { key: 'powder', label: 'Powder' },
+      colour: null,
+      source: null,
+      intendedUse: { key: 'mixed-with-water', label: 'Mixed with water' },
+      storageGuidance: null,
+    },
     image_set_id: 'electrolyte-powder',
     slug: 'electrolyte-powder',
-    consumption_warning: null,
     packaging: createPackaging('#2476a8', '#b8dc48', 'E', 'PER-01', '300g'),
   },
   {
@@ -26,10 +42,21 @@ export const performanceProducts = createCatalogProducts([
     category: 'Performance',
     stock_count: 29,
     sales_count: 340,
-    newest_rank: 9,
+    active: true,
+    created_at: createdAtFromNewestRank(9),
+    tags: [
+      { key: 'cocoa', label: 'Cocoa' },
+      { key: 'recovery', label: 'Recovery' },
+    ],
+    specifications: {
+      texture: { key: 'mix', label: 'Mix' },
+      colour: null,
+      source: { key: 'cocoa', label: 'Cocoa' },
+      intendedUse: { key: 'post-exercise', label: 'Post-exercise' },
+      storageGuidance: null,
+    },
     image_set_id: 'recovery-cocoa',
     slug: 'recovery-cocoa',
-    consumption_warning: null,
     packaging: createPackaging('#51362f', '#8b583e', 'RC', 'PER-02', '500g'),
   },
   {
@@ -41,10 +68,18 @@ export const performanceProducts = createCatalogProducts([
     category: 'Performance',
     stock_count: 35,
     sales_count: 215,
-    newest_rank: 10,
+    active: true,
+    created_at: createdAtFromNewestRank(10),
+    tags: [{ key: 'beetroot', label: 'Beetroot' }],
+    specifications: {
+      texture: { key: 'powder', label: 'Powder' },
+      colour: null,
+      source: { key: 'beetroot', label: 'Beetroot' },
+      intendedUse: { key: 'drinks', label: 'Drinks' },
+      storageGuidance: null,
+    },
     image_set_id: 'beetroot-powder',
     slug: 'beetroot-powder',
-    consumption_warning: null,
     packaging: createPackaging('#a82d4b', '#bd3555', 'B', 'PER-03', '250g'),
   },
   {
@@ -56,10 +91,22 @@ export const performanceProducts = createCatalogProducts([
     category: 'Performance',
     stock_count: 34,
     sales_count: 305,
-    newest_rank: 11,
+    active: true,
+    created_at: createdAtFromNewestRank(11),
+    tags: [
+      { key: 'pea', label: 'Pea' },
+      { key: 'protein', label: 'Protein' },
+      { key: 'unflavoured', label: 'Unflavoured' },
+    ],
+    specifications: {
+      texture: { key: 'powder', label: 'Powder' },
+      colour: null,
+      source: { key: 'pea', label: 'Pea' },
+      intendedUse: null,
+      storageGuidance: null,
+    },
     image_set_id: 'pea-protein-powder',
     slug: 'pea-protein-powder',
-    consumption_warning: null,
     packaging: createPackaging('#658a47', '#c5d69c', 'PP', 'PER-04', '750g'),
   },
   {
@@ -71,10 +118,21 @@ export const performanceProducts = createCatalogProducts([
     category: 'Performance',
     stock_count: 40,
     sales_count: 330,
-    newest_rank: 12,
+    active: true,
+    created_at: createdAtFromNewestRank(12),
+    tags: [
+      { key: 'banana', label: 'Banana' },
+      { key: 'freeze-dried', label: 'Freeze-dried' },
+    ],
+    specifications: {
+      texture: { key: 'powder', label: 'Powder' },
+      colour: null,
+      source: { key: 'banana', label: 'Banana' },
+      intendedUse: { key: 'smoothies', label: 'Smoothies' },
+      storageGuidance: null,
+    },
     image_set_id: 'banana-powder',
     slug: 'banana-powder',
-    consumption_warning: null,
     packaging: createPackaging('#e0b82f', '#e5ce65', 'B', 'PER-05', '200g'),
   },
   {
@@ -86,10 +144,22 @@ export const performanceProducts = createCatalogProducts([
     category: 'Performance',
     stock_count: 45,
     sales_count: 365,
-    newest_rank: 13,
+    active: true,
+    created_at: createdAtFromNewestRank(13),
+    tags: [
+      { key: 'oat', label: 'Oat' },
+      { key: 'milk', label: 'Milk' },
+      { key: 'barista', label: 'Barista' },
+    ],
+    specifications: {
+      texture: { key: 'powder', label: 'Powder' },
+      colour: null,
+      source: { key: 'oat', label: 'Oat' },
+      intendedUse: null,
+      storageGuidance: null,
+    },
     image_set_id: 'oat-milk-powder',
     slug: 'oat-milk-powder',
-    consumption_warning: null,
     packaging: createPackaging('#b8894b', '#e3d2b0', 'OM', 'PER-06', '400g'),
   },
 

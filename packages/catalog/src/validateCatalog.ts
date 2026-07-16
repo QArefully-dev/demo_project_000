@@ -22,6 +22,14 @@ const nonConsumableCategories = new Set<CatalogCategory>([
   'Impossible',
 ]);
 
+const authoringSpecificationProperties = new Set([
+  'texture',
+  'colour',
+  'source',
+  'intendedUse',
+  'storageGuidance',
+]);
+
 const assertUnique = (label: string, values: readonly (string | number)[]) => {
   if (new Set(values).size !== values.length) throw new Error(`Catalog has duplicate ${label}`);
 };
@@ -129,7 +137,12 @@ export function validateCatalog(products: readonly CatalogProduct[] = CATALOG_PR
     );
     for (const tag of product.tags) assertKeyAndLabel(tag.key, tag.label, tagLabels, 'tag');
 
-    for (const [property, value] of Object.entries(product.specifications)) {
+    const specificationEntries = Object.entries(product.specifications);
+    if (specificationEntries.length !== authoringSpecificationProperties.size)
+      throw new Error(`Invalid authoring specification shape for ${product.slug}`);
+    for (const [property, value] of specificationEntries) {
+      if (!authoringSpecificationProperties.has(property))
+        throw new Error(`Unexpected derived specification ${property} for ${product.slug}`);
       const key = property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
       if (!catalogSpecificationByKey.has(key as CatalogSpecificationKey))
         throw new Error(`Unknown specification key ${key} for ${product.slug}`);

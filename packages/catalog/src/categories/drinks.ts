@@ -1,4 +1,9 @@
-import { createCatalogProducts, createPackaging, type CatalogProductDraft } from '../model.js';
+import {
+  createdAtFromNewestRank,
+  createCatalogProducts,
+  createPackaging,
+  type CatalogProductDraft,
+} from '../model.js';
 
 export const drinksProducts = createCatalogProducts([
   {
@@ -10,10 +15,21 @@ export const drinksProducts = createCatalogProducts([
     category: 'Drinks',
     stock_count: 33,
     sales_count: 520,
-    newest_rank: 14,
+    active: true,
+    created_at: createdAtFromNewestRank(14),
+    tags: [
+      { key: 'matcha', label: 'Matcha' },
+      { key: 'tea', label: 'Tea' },
+    ],
+    specifications: {
+      texture: { key: 'powder', label: 'Powder' },
+      colour: null,
+      source: { key: 'tea', label: 'Tea' },
+      intendedUse: { key: 'drink-preparation', label: 'Drink preparation' },
+      storageGuidance: null,
+    },
     image_set_id: 'matcha-powder',
     slug: 'matcha-powder',
-    consumption_warning: null,
     packaging: createPackaging('#476b35', '#77a94f', 'M', 'DRK-01', '30g'),
   },
   {
@@ -26,10 +42,21 @@ export const drinksProducts = createCatalogProducts([
     category: 'Drinks',
     stock_count: 48,
     sales_count: 610,
-    newest_rank: 15,
+    active: true,
+    created_at: createdAtFromNewestRank(15),
+    tags: [
+      { key: 'coffee', label: 'Coffee' },
+      { key: 'instant', label: 'Instant' },
+    ],
+    specifications: {
+      texture: { key: 'powder', label: 'Powder' },
+      colour: null,
+      source: { key: 'coffee', label: 'Coffee' },
+      intendedUse: { key: 'drink-preparation', label: 'Drink preparation' },
+      storageGuidance: null,
+    },
     image_set_id: 'coffee-powder',
     slug: 'coffee-powder',
-    consumption_warning: null,
     packaging: createPackaging('#56382d', '#8a5b3d', 'C', 'DRK-02', '100g'),
   },
   {
@@ -41,10 +68,21 @@ export const drinksProducts = createCatalogProducts([
     category: 'Drinks',
     stock_count: 52,
     sales_count: 270,
-    newest_rank: 16,
+    active: true,
+    created_at: createdAtFromNewestRank(16),
+    tags: [
+      { key: 'milk-drink', label: 'Milk drink' },
+      { key: 'strawberry', label: 'Strawberry' },
+    ],
+    specifications: {
+      texture: { key: 'powder', label: 'Powder' },
+      colour: { key: 'pink', label: 'Pink' },
+      source: { key: 'strawberry', label: 'Strawberry' },
+      intendedUse: { key: 'drink-preparation', label: 'Drink preparation' },
+      storageGuidance: null,
+    },
     image_set_id: 'strawberry-milk-powder',
     slug: 'strawberry-milk-powder',
-    consumption_warning: null,
     packaging: createPackaging('#d85475', '#ef9aac', 'SM', 'DRK-03', '350g'),
   },
   {
@@ -56,10 +94,21 @@ export const drinksProducts = createCatalogProducts([
     category: 'Drinks',
     stock_count: 58,
     sales_count: 305,
-    newest_rank: 17,
+    active: true,
+    created_at: createdAtFromNewestRank(17),
+    tags: [
+      { key: 'lemonade', label: 'Lemonade' },
+      { key: 'drink-mix', label: 'Drink mix' },
+    ],
+    specifications: {
+      texture: { key: 'powder', label: 'Powder' },
+      colour: null,
+      source: null,
+      intendedUse: { key: 'drink-preparation', label: 'Drink preparation' },
+      storageGuidance: null,
+    },
     image_set_id: 'lemonade-powder',
     slug: 'lemonade-powder',
-    consumption_warning: null,
     packaging: createPackaging('#d4ad25', '#f1e36e', 'L', 'DRK-04', '400g'),
   },
   {
@@ -71,10 +120,21 @@ export const drinksProducts = createCatalogProducts([
     category: 'Drinks',
     stock_count: 37,
     sales_count: 350,
-    newest_rank: 18,
+    active: true,
+    created_at: createdAtFromNewestRank(18),
+    tags: [
+      { key: 'chai', label: 'Chai' },
+      { key: 'spiced', label: 'Spiced' },
+    ],
+    specifications: {
+      texture: { key: 'powder', label: 'Powder' },
+      colour: null,
+      source: null,
+      intendedUse: { key: 'drink-preparation', label: 'Drink preparation' },
+      storageGuidance: null,
+    },
     image_set_id: 'chai-powder',
     slug: 'chai-powder',
-    consumption_warning: null,
     packaging: createPackaging('#a85e29', '#c98950', 'CH', 'DRK-05', '250g'),
   },
   {
@@ -86,12 +146,21 @@ export const drinksProducts = createCatalogProducts([
     category: 'Drinks',
     stock_count: 46,
     sales_count: 225,
-    newest_rank: 19,
+    active: true,
+    created_at: createdAtFromNewestRank(19),
+    tags: [
+      { key: 'cherry', label: 'Cherry' },
+      { key: 'soda', label: 'Soda' },
+    ],
+    specifications: {
+      texture: { key: 'powder', label: 'Powder' },
+      colour: null,
+      source: { key: 'cherry', label: 'Cherry' },
+      intendedUse: { key: 'drink-preparation', label: 'Drink preparation' },
+      storageGuidance: null,
+    },
     image_set_id: 'cherry-soda-powder',
     slug: 'cherry-soda-powder',
-    consumption_warning: null,
     packaging: createPackaging('#b52d45', '#dc4862', 'CS', 'DRK-06', '180g'),
   },
-
-  // Household â€” useful-looking, explicitly not edible.,
 ] as const satisfies readonly CatalogProductDraft[]);
