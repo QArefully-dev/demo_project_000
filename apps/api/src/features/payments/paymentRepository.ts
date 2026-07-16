@@ -1,6 +1,15 @@
 import { createHash } from 'node:crypto';
 import type Database from 'better-sqlite3';
+import { parsePersistedCheckoutQuote as parseContractPersistedCheckoutQuote } from '@shop/contracts/payments';
+import type { PersistedCheckoutQuote } from '@shop/contracts/payments';
 import type { ValidCard } from './cardValidation.js';
+
+export type {
+  PersistedCheckoutQuote,
+  PersistedCheckoutQuoteV1,
+  PersistedCheckoutQuoteV2,
+  PersistedCheckoutQuoteV3,
+} from '@shop/contracts/payments';
 
 export type IntentPaymentStatus =
   | 'prepared'
@@ -9,25 +18,6 @@ export type IntentPaymentStatus =
   | 'declined'
   | 'timed_out'
   | 'failed_pre_gateway';
-
-export interface PersistedCheckoutQuote {
-  version: 1;
-  cartId: string;
-  customer: { name: string; email: string; shippingAddress: string };
-  userId: number | null;
-  promoCode: string | null;
-  subtotalCents: number;
-  discountCents: number;
-  totalCents: number;
-  lines: Array<{
-    productId: string;
-    productName: string;
-    unitPriceCents: number;
-    quantity: number;
-    lineTotalCents: number;
-  }>;
-  createdAt: string;
-}
 
 export interface PaymentRecord {
   idempotencyKey: string;
@@ -66,18 +56,6 @@ const intentStatuses = new Set<IntentPaymentStatus>([
   'failed_pre_gateway',
 ]);
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function isNonNegativeInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
-}
-
-function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
-  return Object.keys(value).every((key) => keys.includes(key));
-}
-
 /** Rejects storage corruption before persisted quote data reaches checkout finalization. */
 export function parsePersistedCheckoutQuote(value: string): PersistedCheckoutQuote {
   let parsed: unknown;
@@ -86,54 +64,11 @@ export function parsePersistedCheckoutQuote(value: string): PersistedCheckoutQuo
   } catch {
     throw new Error('Invalid persisted checkout quote');
   }
-  if (
-    !isRecord(parsed) ||
-    !hasOnlyKeys(parsed, [
-      'version',
-      'cartId',
-      'customer',
-      'userId',
-      'promoCode',
-      'subtotalCents',
-      'discountCents',
-      'totalCents',
-      'lines',
-      'createdAt',
-    ]) ||
-    parsed.version !== 1 ||
-    typeof parsed.cartId !== 'string' ||
-    !isRecord(parsed.customer) ||
-    !hasOnlyKeys(parsed.customer, ['name', 'email', 'shippingAddress']) ||
-    typeof parsed.customer.name !== 'string' ||
-    typeof parsed.customer.email !== 'string' ||
-    typeof parsed.customer.shippingAddress !== 'string' ||
-    !(typeof parsed.userId === 'number' || parsed.userId === null) ||
-    !(typeof parsed.promoCode === 'string' || parsed.promoCode === null) ||
-    !isNonNegativeInteger(parsed.subtotalCents) ||
-    !isNonNegativeInteger(parsed.discountCents) ||
-    !isNonNegativeInteger(parsed.totalCents) ||
-    !Array.isArray(parsed.lines) ||
-    typeof parsed.createdAt !== 'string' ||
-    parsed.lines.some(
-      (line) =>
-        !isRecord(line) ||
-        !hasOnlyKeys(line, [
-          'productId',
-          'productName',
-          'unitPriceCents',
-          'quantity',
-          'lineTotalCents',
-        ]) ||
-        typeof line.productId !== 'string' ||
-        typeof line.productName !== 'string' ||
-        !isNonNegativeInteger(line.unitPriceCents) ||
-        !isNonNegativeInteger(line.quantity) ||
-        !isNonNegativeInteger(line.lineTotalCents),
-    )
-  ) {
+  try {
+    return parseContractPersistedCheckoutQuote(parsed);
+  } catch {
     throw new Error('Invalid persisted checkout quote');
   }
-  return parsed as unknown as PersistedCheckoutQuote;
 }
 
 export function serializePersistedCheckoutQuote(quote: PersistedCheckoutQuote): string {

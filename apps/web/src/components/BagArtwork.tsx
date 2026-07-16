@@ -1,3 +1,10 @@
+import { useId, type CSSProperties } from 'react';
+
+export type BagArtworkPaint = {
+  kind: 'linear-gradient';
+  colors: readonly [string, string];
+};
+
 export interface BagArtworkProps {
   name: string;
   category: string;
@@ -6,9 +13,11 @@ export interface BagArtworkProps {
   mark: string;
   accent?: string;
   powderAccent?: string;
+  paint?: BagArtworkPaint;
   consumptionLabel: string | null;
   ariaLabel?: string;
   className?: string;
+  style?: CSSProperties;
 }
 
 function ProductLabel({
@@ -19,7 +28,7 @@ function ProductLabel({
   mark,
   accent = '#9fb3aa',
   consumptionLabel,
-}: Omit<BagArtworkProps, 'ariaLabel' | 'className' | 'powderAccent'>) {
+}: Omit<BagArtworkProps, 'ariaLabel' | 'className' | 'style' | 'powderAccent'>) {
   const normalizedName = name.trim().toUpperCase() || 'POWDER';
   const titleWords = normalizedName.split(/\s+/);
   const splitIndex =
@@ -178,10 +187,15 @@ export function BagArtwork({
   mark,
   accent = '#9fb3aa',
   powderAccent = accent,
+  paint,
   consumptionLabel,
   ariaLabel,
   className,
+  style,
 }: BagArtworkProps) {
+  const paintId = `bag-art-paint-${useId().replace(/:/g, '')}`;
+  const labelPaint = paint ? `url(#${paintId})` : accent;
+
   return (
     <svg
       viewBox="0 0 720 720"
@@ -189,8 +203,17 @@ export function BagArtwork({
       aria-hidden={ariaLabel === '' ? true : undefined}
       aria-label={ariaLabel === '' ? undefined : (ariaLabel ?? `${name} powder bag`)}
       className={className}
+      style={style}
       xmlns="http://www.w3.org/2000/svg"
     >
+      {paint && (
+        <defs>
+          <linearGradient id={paintId} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor={paint.colors[0]} />
+            <stop offset="100%" stopColor={paint.colors[1]} />
+          </linearGradient>
+        </defs>
+      )}
       <ellipse cx="360" cy="632" rx="226" ry="30" fill="#252722" opacity="0.12" />
       <path
         d="M158 158L192 80H528L562 158L579 592Q579 622 551 630Q360 655 169 630Q141 622 141 592Z"
@@ -206,7 +229,9 @@ export function BagArtwork({
         <ellipse cx="330" cy="544" rx="76" ry="25" opacity="0.65" />
         <ellipse cx="399" cy="548" rx="88" ry="28" opacity="0.9" />
       </g>
-      <ProductLabel {...{ name, category, quantity, batchCode, mark, accent, consumptionLabel }} />
+      <ProductLabel
+        {...{ name, category, quantity, batchCode, mark, accent: labelPaint, consumptionLabel }}
+      />
     </svg>
   );
 }

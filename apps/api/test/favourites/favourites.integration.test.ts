@@ -23,5 +23,11 @@ void test('favourites service owns product-existence rule; repository owns persi
   assert.equal(addFavourite(favourites, 1, 1), true);
   assert.equal(addFavourite(favourites, 1, 9_999), 'NOT_FOUND');
   assert.ok(listFavourites(favourites, 1).some((product) => product.id === 1));
+  db.prepare('UPDATE products SET active = 0 WHERE id = 1').run();
+  assert.equal(addFavourite(favourites, 1, 1), 'NOT_FOUND');
+  assert.equal(
+    listFavourites(favourites, 1).some((product) => product.id === 1),
+    false,
+  );
   assert.equal(removeFavourite(favourites, 1, 1), true);
 });

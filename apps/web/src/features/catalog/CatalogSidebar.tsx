@@ -1,28 +1,65 @@
-import { X } from 'lucide-react';
-
-interface CatalogSidebarProps {
-  categories: string[];
-  category?: string;
-  onSale?: boolean;
-  query?: string;
-  hasFilters: boolean;
-  onCategoryChange: (category: string | undefined) => void;
-  onSaleChange: (onSale: boolean) => void;
-  onQueryClear: () => void;
-  onClearFilters: () => void;
-}
+import { useEffect, useState } from 'react';
+import { CatalogActiveFilters } from './CatalogActiveFilters';
+import { CatalogSidebarControls } from './CatalogSidebarControls';
+import type { CatalogSidebarProps } from './catalogSidebarTypes';
 
 export function CatalogSidebar({
   categories,
   category,
   onSale,
   query,
+  minPriceCents,
+  maxPriceCents,
+  addedFrom,
+  addedTo,
+  availability,
+  tags = [],
+  specs = [],
+  filterOptions,
+  filterOptionsLoading = false,
+  filterOptionsError,
   hasFilters,
   onCategoryChange,
   onSaleChange,
   onQueryClear,
+  onPriceRangeChange,
+  onDateRangeChange,
+  onAvailabilityChange,
+  onTagChange,
+  onSpecChange,
   onClearFilters,
 }: CatalogSidebarProps) {
+  const [minPriceDraft, setMinPriceDraft] = useState(minPriceCents?.toString() ?? '');
+  const [maxPriceDraft, setMaxPriceDraft] = useState(maxPriceCents?.toString() ?? '');
+  const [addedFromDraft, setAddedFromDraft] = useState(addedFrom ?? '');
+  const [addedToDraft, setAddedToDraft] = useState(addedTo ?? '');
+
+  useEffect(() => setMinPriceDraft(minPriceCents?.toString() ?? ''), [minPriceCents]);
+  useEffect(() => setMaxPriceDraft(maxPriceCents?.toString() ?? ''), [maxPriceCents]);
+  useEffect(() => setAddedFromDraft(addedFrom ?? ''), [addedFrom]);
+  useEffect(() => setAddedToDraft(addedTo ?? ''), [addedTo]);
+
+  const commitPriceRange = (minDraft: string, maxDraft: string) => {
+    const min = readNonNegativeInteger(minDraft);
+    const max = readNonNegativeInteger(maxDraft);
+    if (
+      (minDraft === '' || min !== undefined) &&
+      (maxDraft === '' || max !== undefined) &&
+      (min === undefined || max === undefined || min <= max)
+    )
+      onPriceRangeChange(min, max);
+  };
+  const commitDateRange = (fromDraft: string, toDraft: string) => {
+    const from = fromDraft || undefined;
+    const to = toDraft || undefined;
+    if (!from || !to || from <= to) onDateRangeChange(from, to);
+  };
+  const selectedSpecs = new Map<string, string>();
+  for (const token of specs) {
+    const [key, value] = token.split(':', 2);
+    if (key && value) selectedSpecs.set(key, value);
+  }
+
   return (
     <aside
       aria-label="Catalog filters"
@@ -40,75 +77,74 @@ export function CatalogSidebar({
           </button>
         )}
       </div>
-      <fieldset>
-        <legend className="mb-2 text-sm font-semibold">Powder type</legend>
-        <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 lg:mx-0 lg:block lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">
-          <FilterButton active={!category} onClick={() => onCategoryChange(undefined)}>
-            All powders
-          </FilterButton>
-          {categories.map((item) => (
-            <FilterButton
-              key={item}
-              active={category === item}
-              onClick={() => onCategoryChange(item)}
-            >
-              {item}
-            </FilterButton>
-          ))}
-        </div>
-      </fieldset>
-      <label className="flex cursor-pointer items-center gap-3 rounded-xl border bg-background p-3 text-sm font-medium">
-        <input
-          type="checkbox"
-          checked={onSale === true}
-          onChange={(event) => onSaleChange(event.target.checked)}
-          className="size-4 accent-primary"
-        />
-        On sale now
-      </label>
+      <CatalogSidebarControls
+        categories={categories}
+        category={category}
+        onSale={onSale}
+        minPriceDraft={minPriceDraft}
+        maxPriceDraft={maxPriceDraft}
+        addedFromDraft={addedFromDraft}
+        addedToDraft={addedToDraft}
+        availability={availability}
+        tags={tags}
+        selectedSpecs={selectedSpecs}
+        filterOptions={filterOptions}
+        filterOptionsLoading={filterOptionsLoading}
+        filterOptionsError={filterOptionsError}
+        onCategoryChange={onCategoryChange}
+        onSaleChange={onSaleChange}
+        onPriceDraftChange={(value, bound) => {
+          if (bound === 'min') {
+            setMinPriceDraft(value);
+            commitPriceRange(value, maxPriceDraft);
+          } else {
+            setMaxPriceDraft(value);
+            commitPriceRange(minPriceDraft, value);
+          }
+        }}
+        onDateDraftChange={(value, bound) => {
+          if (bound === 'from') {
+            setAddedFromDraft(value);
+            commitDateRange(value, addedToDraft);
+          } else {
+            setAddedToDraft(value);
+            commitDateRange(addedFromDraft, value);
+          }
+        }}
+        onAvailabilityChange={onAvailabilityChange}
+        onTagChange={onTagChange}
+        onSpecChange={onSpecChange}
+      />
       {hasFilters && (
-        <div className="flex flex-wrap gap-2" aria-label="Active filters">
-          {query && <FilterChip onClick={onQueryClear}>{query}</FilterChip>}
-          {category && (
-            <FilterChip onClick={() => onCategoryChange(undefined)}>{category}</FilterChip>
-          )}
-          {onSale && <FilterChip onClick={() => onSaleChange(false)}>On sale</FilterChip>}
-        </div>
+        <CatalogActiveFilters
+          query={query}
+          category={category}
+          onSale={onSale}
+          minPriceCents={minPriceCents}
+          maxPriceCents={maxPriceCents}
+          addedFrom={addedFrom}
+          addedTo={addedTo}
+          availability={availability}
+          tags={tags}
+          specs={specs}
+          selectedSpecs={selectedSpecs}
+          filterOptions={filterOptions}
+          onQueryClear={onQueryClear}
+          onCategoryChange={onCategoryChange}
+          onSaleChange={onSaleChange}
+          onPriceRangeChange={onPriceRangeChange}
+          onDateRangeChange={onDateRangeChange}
+          onAvailabilityChange={onAvailabilityChange}
+          onTagChange={onTagChange}
+          onSpecChange={onSpecChange}
+        />
       )}
     </aside>
   );
 }
 
-function FilterButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`shrink-0 rounded-lg px-3 py-2 text-left text-sm transition-colors lg:block lg:w-full ${active ? 'bg-accent font-semibold text-accent-foreground' : 'hover:bg-muted'}`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function FilterChip({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex items-center gap-1 rounded-full bg-secondary px-3 py-1.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      {children}
-      <X className="size-3" aria-hidden="true" />
-      <span className="sr-only">Remove filter</span>
-    </button>
-  );
+function readNonNegativeInteger(value: string): number | undefined {
+  if (value === '') return undefined;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
 }

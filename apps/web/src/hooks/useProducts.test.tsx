@@ -29,6 +29,11 @@ function response(name: string): ProductListPaginatedResponse {
         stock: 1,
         slug: name,
         salesCount: 0,
+        createdAt: '2026-07-14T00:00:00.000Z',
+        available: true,
+        tags: [],
+        specificationGroups: [],
+        mixable: false,
       },
     ],
     total: 1,
@@ -42,17 +47,37 @@ describe('useProducts', () => {
     vi.mocked(getProducts).mockReset();
   });
 
-  it('does not commit an out-of-order response', async () => {
+  it('aborts and does not commit an out-of-order expanded-filter response', async () => {
     const first = deferred<ProductListPaginatedResponse>();
     const second = deferred<ProductListPaginatedResponse>();
     vi.mocked(getProducts).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
 
-    const { result, rerender } = renderHook(({ q }) => useProducts({ q }), {
-      initialProps: { q: 'first' },
+    type ExpandedFilters = {
+      tag: string[];
+      spec: string[];
+      availability: 'available' | 'out_of_stock';
+    };
+    const initialProps: ExpandedFilters = {
+      tag: ['drink-mix'],
+      spec: ['texture:fine'],
+      availability: 'available',
+    };
+    const { result, rerender } = renderHook(
+      ({ tag, spec, availability }: ExpandedFilters) => useProducts({ tag, spec, availability }),
+      { initialProps },
+    );
+    rerender({
+      tag: ['pantry'],
+      spec: ['texture:granular'],
+      availability: 'out_of_stock',
     });
-    rerender({ q: 'second' });
 
     await waitFor(() => expect(getProducts).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(getProducts).mock.calls[1]?.[0]).toEqual({
+      tag: ['pantry'],
+      spec: ['texture:granular'],
+      availability: 'out_of_stock',
+    });
     const firstRequest = vi.mocked(getProducts).mock.calls[0];
     expect(firstRequest?.[1]?.aborted).toBe(true);
 

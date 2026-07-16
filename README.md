@@ -48,7 +48,7 @@ SQLite database is created automatically on first `npm run dev` at `data/shop.db
 | `npm run test:unit`  | Run web and API unit tests                                                                          |
 | `npm run test:integration` | Run API SQLite integration tests                                                            |
 | `npm run smoke`      | Run typecheck plus unit and integration tests                                                      |
-| `npm run lint`       | Enforce import boundaries and report authored files over 300 logical lines                          |
+| `npm run lint`       | Run ESLint checks                                                                                     |
 | `npm run format`     | Check formatting with Prettier                                                                      |
 | `npm run format:fix` | Auto-fix formatting with Prettier                                                                   |
 | `npm run verify`     | Run format, typecheck, lint, tests, and every workspace build                                       |
@@ -62,8 +62,6 @@ Dependencies flow one way: `@shop/contracts` owns shared request and response sc
 Checkout is a server-owned payment-intent workflow. The API validates the cart, promo, customer details, and card before it reserves the cart and promo capacity, persists an immutable quote, and calls the simulated gateway with that quote total. Finalization creates the order from the saved quote, so later cart changes cannot alter an authorized payment.
 
 Each checkout request includes an idempotency key. Retrying the same key with the same request replays a completed outcome or safely resumes an authorized finalization; using the same key with different checkout data returns a conflict. Card numbers and CVC values are not stored in quotes, fingerprints, or payment responses.
-
-`npm run lint` also reports authored source files above 300 logical lines and fails above 400 unless `scripts/authored-size-policy.json` records a cohesive, single-responsibility exception. Generated files, migrations, fixtures, and framework UI adapters are excluded from this review.
 
 ## Features
 

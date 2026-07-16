@@ -1,5 +1,7 @@
 import type { Cart } from '@shop/contracts/cart';
+import { BagArtwork } from '@/components/BagArtwork';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { powderMixBagSchemePresentation } from '@/components/powderMixBagScheme';
 import { Separator } from '@/components/ui/separator';
 import { formatMoney } from '@/lib/formatMoney';
 import { PromoCodeForm } from './PromoCodeForm';
@@ -46,6 +48,35 @@ export function CheckoutSummary({
               <span>{formatMoney(item.lineTotalCents)}</span>
             </div>
           ))}
+          {cart.mixItems.map((item) => {
+            const scheme = powderMixBagSchemePresentation(item.bagColourScheme);
+            return (
+              <div key={item.mixId} className="flex items-center justify-between gap-2 text-sm">
+                <div className="flex min-w-0 items-center gap-2">
+                  <BagArtwork
+                    name={item.customLabel ?? 'Custom powder mix'}
+                    category="Custom mix"
+                    quantity={`${item.bagSizeGrams}g`}
+                    batchCode={item.priceVersion}
+                    mark="MIX"
+                    paint={scheme.paint}
+                    powderAccent={scheme.paint.colors[1]}
+                    consumptionLabel={null}
+                    ariaLabel=""
+                    className="h-10 w-10 shrink-0"
+                  />
+                  <span>
+                    {item.customLabel ?? 'Custom powder mix'}{' '}
+                    <span className="text-muted-foreground">× {item.quantity}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {scheme.label} · {item.usageLabel}
+                    </span>
+                  </span>
+                </div>
+                <span>{formatMoney(item.lineTotalCents)}</span>
+              </div>
+            );
+          })}
         </div>
         <Separator />
         <div className="flex items-center justify-between text-sm">

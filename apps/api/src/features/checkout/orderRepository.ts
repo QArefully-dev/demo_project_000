@@ -1,5 +1,10 @@
 import type Database from 'better-sqlite3';
-import type { Order, OrderLineItem } from '@shop/contracts/orders';
+import type { NormalizedOrderPowderMixItem, Order, OrderLineItem } from '@shop/contracts/orders';
+import {
+  DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
+  parsePowderMixOrderItemSnapshot,
+  type PowderMixOrderItem,
+} from '@shop/contracts/powderizer';
 
 interface OrderRow {
   id: number;
@@ -28,6 +33,7 @@ export interface CreateOrderParams {
   totalCents: number;
   userId: number | null;
   items: OrderLineItem[];
+  mixItems: PowderMixOrderItem[];
   createdAt: string;
 }
 
@@ -70,6 +76,10 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
           item.lineTotalCents,
         );
       }
+      const insertMix = db.prepare(
+        'INSERT INTO order_powder_mix_items (order_id, snapshot_json) VALUES (?, ?)',
+      );
+      for (const mix of params.mixItems) insertMix.run(orderId, JSON.stringify(mix));
       return orderId;
     },
     findById(orderId) {
@@ -79,6 +89,11 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
       const items = db
         .prepare('SELECT * FROM order_line_items WHERE order_id = ?')
         .all(orderId) as OrderLineItemRow[];
+      const mixItems = db
+        .prepare(
+          'SELECT snapshot_json FROM order_powder_mix_items WHERE order_id = ? ORDER BY id ASC',
+        )
+        .all(orderId) as Array<{ snapshot_json: string }>;
       return {
         id: String(order.id),
         items: items.map((item) => ({
@@ -88,6 +103,7 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
           quantity: item.quantity,
           lineTotalCents: item.line_total_cents,
         })),
+        mixItems: mixItems.map((row) => parseMixSnapshot(row.snapshot_json)),
         subtotalCents: order.subtotal_cents,
         discountCents: order.discount_cents,
         totalCents: order.total_cents,
@@ -96,4 +112,20 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
       };
     },
   };
+}
+
+function parseMixSnapshot(value: string): NormalizedOrderPowderMixItem {
+  try {
+    const parsed = parsePowderMixOrderItemSnapshot(JSON.parse(value));
+    if (parsed.snapshotVersion === 1) {
+      return {
+        ...parsed,
+        bagColourScheme: DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
+        usageLabel: 'Check ingredient labels',
+      };
+    }
+    return parsed;
+  } catch {
+    throw new Error('Invalid order mix snapshot');
+  }
 }

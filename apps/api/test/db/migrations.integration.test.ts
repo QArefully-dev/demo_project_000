@@ -13,8 +13,13 @@ import {
   type Migration,
 } from '../../src/db/index.js';
 import { migrations } from '../../src/db/migrations/index.js';
+import { createPowderMixRepository } from '../../src/features/powderizer/powderMixRepository.js';
+import { toProductContract } from '../../src/mappers/product.js';
+import type { ProductRow } from '../../src/features/catalog/productRepository.js';
+import { Product } from '@shop/contracts/products';
+import { Value } from '@sinclair/typebox/value';
 
-const expectedVersions = ['001', '002', '003', '004', '005', '006', '007'];
+const expectedVersions = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010'];
 
 function migrationVersions(db: Database.Database): string[] {
   return db
@@ -67,8 +72,8 @@ function createLegacyFixture(db: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       response_json TEXT
     );
-    INSERT INTO products (id, name, description, price_cents, category, stock_count)
-    VALUES (99, 'Legacy powder', 'Preserve me', 1234, 'Legacy', 3);
+    INSERT INTO products (id, name, description, price_cents, category, stock_count, created_at)
+    VALUES (99, 'Legacy powder', 'Preserve me', 1234, 'Legacy', 3, '2024-12-31 23:59:59');
     INSERT INTO promo_codes (code, discount_percent) VALUES ('LEGACY10', 10);
     INSERT INTO orders (customer_name, customer_email, shipping_address, subtotal_cents, total_cents)
     VALUES ('Legacy customer', 'legacy@example.test', '99 Legacy Lane', 1234, 1234);
@@ -97,6 +102,42 @@ void test('migrations create a fresh schema, record every version, and remain id
     ),
   );
   assert.ok(
+    (db.prepare('PRAGMA table_info(products)').all() as { name: string }[]).some(
+      (column) => column.name === 'active',
+    ),
+  );
+  for (const table of ['catalog_tags', 'product_tags', 'product_specifications']) {
+    assert.deepEqual(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table),
+      { name: table },
+    );
+  }
+  for (const index of [
+    'products_active_created_at_id_idx',
+    'products_active_price_cents_id_idx',
+    'product_tags_tag_key_product_id_idx',
+    'product_specifications_key_value_product_id_idx',
+  ]) {
+    assert.deepEqual(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?").get(index),
+      { name: index },
+    );
+  }
+  assert.deepEqual(
+    db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'powder_mixes'")
+      .get(),
+    { name: 'powder_mixes' },
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'powder_mix_stock_reservations'",
+      )
+      .get(),
+    { name: 'powder_mix_stock_reservations' },
+  );
+  assert.ok(
     (db.prepare('PRAGMA table_info(payments)').all() as { name: string }[]).some(
       (column) => column.name === 'quote_json',
     ),
@@ -120,9 +161,25 @@ void test('migrations upgrade the legacy schema without losing known data', (t) 
 
   assert.deepEqual(migrationVersions(db), expectedVersions);
   assert.deepEqual(
-    db.prepare('SELECT name, image_set_id, slug FROM products WHERE id = 99').get(),
-    { name: 'Legacy powder', image_set_id: 'legacy-product-99', slug: '' },
+    db
+      .prepare(
+        'SELECT name, image_set_id, slug, mixable, mix_unit_grams, active, created_at FROM products WHERE id = 99',
+      )
+      .get(),
+    {
+      name: 'Legacy powder',
+      image_set_id: 'legacy-product-99',
+      slug: '',
+      mixable: 0,
+      mix_unit_grams: null,
+      active: 1,
+      created_at: '2024-12-31 23:59:59',
+    },
   );
+  const legacyRow = db.prepare('SELECT * FROM products WHERE id = 99').get() as ProductRow;
+  const legacyProduct = toProductContract(legacyRow);
+  assert.equal(legacyProduct.createdAt, '2024-12-31T23:59:59.000Z');
+  assert.equal(Value.Check(Product, legacyProduct), true);
   assert.deepEqual(
     db
       .prepare('SELECT code, kind, redemption_count FROM promo_codes WHERE code = ?')
@@ -219,6 +276,78 @@ void test('password reset migration revokes legacy raw tokens and removes their 
   );
 });
 
+void test('powderizer expansion upgrades 008 mixes with default scheme and rejects corrupt values', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-powderizer-expansion-'));
+  const db = new Database(join(directory, 'shop.db'));
+  db.pragma('foreign_keys = ON');
+  t.after(() => {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  migrateDatabase(db, migrations.slice(0, 8));
+  db.prepare("INSERT INTO carts (id) VALUES ('legacy-mix-cart')").run();
+  db.prepare(
+    `INSERT INTO powder_mixes
+      (id, cart_id, quantity, bag_size_grams, fineness, custom_label, price_version,
+       quoted_unit_price_cents, created_at, updated_at)
+     VALUES ('legacy-mix', 'legacy-mix-cart', 1, 500, 'standard', NULL, 'powderizer-v1', 1000, 'now', 'now')`,
+  ).run();
+
+  migrateDatabase(db);
+  assert.deepEqual(
+    db.prepare('SELECT bag_colour_scheme FROM powder_mixes WHERE id = ?').get('legacy-mix'),
+    { bag_colour_scheme: 'ultraviolet-cyan' },
+  );
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          "UPDATE powder_mixes SET bag_colour_scheme = 'brown-paper' WHERE id = 'legacy-mix'",
+        )
+        .run(),
+    /CHECK constraint failed/,
+  );
+
+  const mixes = createPowderMixRepository(db);
+  mixes.create({
+    id: 'new-mix',
+    cartId: 'legacy-mix-cart',
+    quantity: 1,
+    bagSizeGrams: 500,
+    fineness: 'standard',
+    bagColourScheme: 'solar-flare',
+    customLabel: null,
+    priceVersion: 'powderizer-v1',
+    quotedUnitPriceCents: 1000,
+    allocations: [],
+  });
+  assert.equal(mixes.find('legacy-mix-cart', 'new-mix')?.bag_colour_scheme, 'solar-flare');
+  assert.equal(
+    mixes.replace('new-mix', {
+      bagSizeGrams: 500,
+      fineness: 'standard',
+      bagColourScheme: 'deep-space',
+      customLabel: null,
+      priceVersion: 'powderizer-v1',
+      quotedUnitPriceCents: 1000,
+      allocations: [],
+    }),
+    true,
+  );
+  assert.equal(mixes.find('legacy-mix-cart', 'new-mix')?.bag_colour_scheme, 'deep-space');
+
+  db.pragma('ignore_check_constraints = ON');
+  db.prepare(
+    "UPDATE powder_mixes SET bag_colour_scheme = 'brown-paper' WHERE id = 'legacy-mix'",
+  ).run();
+  db.pragma('ignore_check_constraints = OFF');
+  assert.throws(
+    () => mixes.find('legacy-mix-cart', 'legacy-mix'),
+    /Invalid persisted powder mix bag colour scheme/,
+  );
+});
+
 void test('seed and reset operate on a migrated database', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-seed-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
@@ -234,7 +363,16 @@ void test('seed and reset operate on a migrated database', (t) => {
 
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM products').get() as { count: number }).count,
-    45,
+    50,
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM product_tags').get() as { count: number }).count > 0,
+    true,
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM product_specifications').get() as { count: number })
+      .count > 0,
+    true,
   );
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM carts').get() as { count: number }).count,

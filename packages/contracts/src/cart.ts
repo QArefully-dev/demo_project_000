@@ -1,6 +1,7 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { MoneyCents, Uuid } from './common.js';
 import { Product } from './products.js';
+import { PowderMixCartItem } from './powderizer.js';
 
 export const CartLine = Type.Object({
   productId: Type.String({ minLength: 1 }),
@@ -13,6 +14,7 @@ export type CartLine = Static<typeof CartLine>;
 export const Cart = Type.Object({
   id: Uuid,
   items: Type.Array(CartLine),
+  mixItems: Type.Array(PowderMixCartItem),
   subtotalCents: MoneyCents,
   totalItems: Type.Integer({ minimum: 0 }),
 });

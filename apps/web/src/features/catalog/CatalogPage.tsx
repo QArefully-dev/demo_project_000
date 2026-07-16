@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import type { ProductQuery } from '@shop/contracts/products';
 import { useProducts } from '@/hooks/useProducts';
 import { useCategories } from '@/hooks/useCategories';
+import { useProductFilterOptions } from '@/hooks/useProductFilterOptions';
 import { useCartContext } from '@/hooks/CartContext';
 import { ProductGrid } from '@/components/ProductGrid';
 import { ProductCard } from '@/components/ProductCard';
@@ -13,12 +15,69 @@ import { PAGE_SIZES, SORT_OPTIONS } from './catalogOptions';
 import { useCatalogParams } from './useCatalogParams';
 
 export function CatalogPage() {
-  const { q, category, onSale, sort, page, pageSize, setParam, clearFilters } = useCatalogParams();
+  const {
+    q,
+    category,
+    onSale,
+    minPriceCents,
+    maxPriceCents,
+    addedFrom,
+    addedTo,
+    tag = [],
+    spec = [],
+    availability,
+    sort,
+    page,
+    pageSize,
+    setParam,
+    setParams,
+    clearFilters,
+  } = useCatalogParams();
   const { categories } = useCategories();
+  const {
+    options: filterOptions,
+    isLoading: filterOptionsLoading,
+    error: filterOptionsError,
+  } = useProductFilterOptions();
+  // URL filter values are only safe to send after the server's filter registry
+  // has loaded successfully. Until then (or after an error), keep catalogue
+  // results usable with the non-metadata query fields alone.
+  const hasLoadedFilterOptions = filterOptions !== null && filterOptionsError === null;
+  const allowedTagKeys = new Set(filterOptions?.tags.map((option) => option.key));
+  const allowedSpecificationTokens = new Set(
+    filterOptions?.specificationGroups.flatMap((group) =>
+      group.specifications.flatMap((specification) =>
+        specification.values.map((value) => `${specification.key}:${value.key}`),
+      ),
+    ),
+  );
+  const visibleTags = hasLoadedFilterOptions
+    ? tag.filter((value) => allowedTagKeys.has(value))
+    : [];
+  const visibleSpecs = hasLoadedFilterOptions
+    ? spec.filter((value) => allowedSpecificationTokens.has(value))
+    : [];
+  const normalizeSupportedFilters = (query: ProductQuery): ProductQuery =>
+    !hasLoadedFilterOptions
+      ? query
+      : {
+          ...query,
+          tag: (query.tag ?? []).filter((value) => allowedTagKeys.has(value)),
+          spec: (query.spec ?? []).filter((value) => allowedSpecificationTokens.has(value)),
+        };
+  const setCatalogParam = (key: keyof ProductQuery, value: string | readonly string[] | null) =>
+    setParam(key, value, normalizeSupportedFilters);
   const { products, isLoading, error, total, refetch } = useProducts({
     q,
     category,
     onSale,
+    minPriceCents,
+    maxPriceCents,
+    addedFrom,
+    addedTo,
+    tag: visibleTags,
+    spec: visibleSpecs,
+    availability,
     sort,
     page,
     pageSize,
@@ -44,7 +103,7 @@ export function CatalogPage() {
   const updateSearch = (value: string) => {
     setLocalQ(value);
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setParam('q', value || null), 300);
+    timer.current = setTimeout(() => setCatalogParam('q', value || null), 300);
   };
 
   if (error && products.length === 0) {
@@ -52,7 +111,18 @@ export function CatalogPage() {
   }
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const hasFilters = Boolean(q || category || onSale);
+  const hasFilters = Boolean(
+    q ||
+    category ||
+    onSale ||
+    minPriceCents !== undefined ||
+    maxPriceCents !== undefined ||
+    addedFrom ||
+    addedTo ||
+    visibleTags.length > 0 ||
+    visibleSpecs.length > 0 ||
+    availability,
+  );
   const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const end = Math.min(page * pageSize, total);
   const resultSummary =
@@ -78,7 +148,7 @@ export function CatalogPage() {
         resultSummary={resultSummary}
         sort={sort}
         sortOptions={SORT_OPTIONS}
-        onSortChange={(value) => setParam('sort', value ?? null)}
+        onSortChange={(value) => setCatalogParam('sort', value ?? null)}
       />
       {cartError && (
         <div
@@ -97,10 +167,47 @@ export function CatalogPage() {
           category={category}
           onSale={onSale}
           query={q}
+          minPriceCents={minPriceCents}
+          maxPriceCents={maxPriceCents}
+          addedFrom={addedFrom}
+          addedTo={addedTo}
+          availability={availability}
+          tags={visibleTags}
+          specs={visibleSpecs}
+          filterOptions={filterOptions ?? undefined}
+          filterOptionsLoading={filterOptionsLoading}
+          filterOptionsError={filterOptionsError ?? undefined}
           hasFilters={hasFilters}
-          onCategoryChange={(value) => setParam('category', value ?? null)}
-          onSaleChange={(value) => setParam('onSale', value ? 'true' : null)}
-          onQueryClear={() => setParam('q', null)}
+          onCategoryChange={(value) => setCatalogParam('category', value ?? null)}
+          onSaleChange={(value) => setCatalogParam('onSale', value ? 'true' : null)}
+          onQueryClear={() => setCatalogParam('q', null)}
+          onPriceRangeChange={(min, max) =>
+            setParams(
+              {
+                minPriceCents: min === undefined ? null : String(min),
+                maxPriceCents: max === undefined ? null : String(max),
+              },
+              normalizeSupportedFilters,
+            )
+          }
+          onDateRangeChange={(from, to) =>
+            setParams({ addedFrom: from ?? null, addedTo: to ?? null }, normalizeSupportedFilters)
+          }
+          onAvailabilityChange={(value) => setCatalogParam('availability', value ?? null)}
+          onTagChange={(value, selected) =>
+            setCatalogParam(
+              'tag',
+              selected ? [...visibleTags, value] : visibleTags.filter((item) => item !== value),
+            )
+          }
+          onSpecChange={(key, value) =>
+            setCatalogParam(
+              'spec',
+              value
+                ? [...visibleSpecs.filter((item) => !item.startsWith(`${key}:`)), `${key}:${value}`]
+                : visibleSpecs.filter((item) => !item.startsWith(`${key}:`)),
+            )
+          }
           onClearFilters={clearFilters}
         />
         <div className="min-w-0">
@@ -136,7 +243,7 @@ export function CatalogPage() {
                 variant="outline"
                 size="sm"
                 disabled={page <= 1}
-                onClick={() => setParam('page', String(page - 1))}
+                onClick={() => setCatalogParam('page', String(page - 1))}
               >
                 Previous
               </Button>
@@ -147,7 +254,7 @@ export function CatalogPage() {
                 variant="outline"
                 size="sm"
                 disabled={page >= totalPages}
-                onClick={() => setParam('page', String(page + 1))}
+                onClick={() => setCatalogParam('page', String(page + 1))}
               >
                 Next
               </Button>
@@ -158,7 +265,7 @@ export function CatalogPage() {
                 id="page-size"
                 className="rounded-md border bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 value={pageSize}
-                onChange={(event) => setParam('pageSize', event.target.value)}
+                onChange={(event) => setCatalogParam('pageSize', event.target.value)}
               >
                 {PAGE_SIZES.map((size) => (
                   <option key={size}>{size}</option>

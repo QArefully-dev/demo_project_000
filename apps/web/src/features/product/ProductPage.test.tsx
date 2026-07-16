@@ -36,6 +36,11 @@ const product = (overrides: Partial<Product> = {}): Product => ({
   slug: 'powdered-water',
   salesCount: 12,
   ...overrides,
+  createdAt: overrides.createdAt ?? '2026-07-14T00:00:00.000Z',
+  available: overrides.available ?? true,
+  tags: overrides.tags ?? [],
+  specificationGroups: overrides.specificationGroups ?? [],
+  mixable: overrides.mixable ?? false,
 });
 
 function renderPage(path = '/products/powdered-water') {

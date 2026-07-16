@@ -35,6 +35,11 @@ function product(id: string): Product {
     stock: 5,
     slug: `product-${id}`,
     salesCount: 0,
+    createdAt: '2026-07-14T00:00:00.000Z',
+    available: true,
+    tags: [],
+    specificationGroups: [],
+    mixable: false,
   };
 }
 
@@ -65,6 +70,15 @@ describe('HomePage', () => {
     expect(screen.getByText('Finely packed')).toBeInTheDocument();
     expect(screen.getByText('Simulated checkout')).toBeInTheDocument();
     expect(screen.getByText('No real payment is processed')).toBeInTheDocument();
+    const powderizerBanner = screen.getByRole('region', { name: 'Powderizer builder' });
+    const assurances = screen.getByRole('region', { name: 'Store assurances' });
+    expect(powderizerBanner.compareDocumentPosition(assurances)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(screen.getByRole('link', { name: /open powderizer/i })).toHaveAttribute(
+      'href',
+      '/powderizer',
+    );
     expect(screen.getByText('Frequently powdered')).toBeInTheDocument();
     expect(screen.getByText('Fresh from the mill')).toBeInTheDocument();
     expect(screen.getByLabelText('Powder process')).toHaveTextContent('Choose it→Powder it→Bag it');

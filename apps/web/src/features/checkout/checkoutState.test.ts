@@ -62,6 +62,7 @@ describe('checkoutState', () => {
         { productId: 'b', quantity: 1, lineTotalCents: 200 },
         { productId: 'a', quantity: 1, lineTotalCents: 100 },
       ],
+      mixItems: [],
     };
     const reordered = { ...first, items: [...first.items].reverse() };
 

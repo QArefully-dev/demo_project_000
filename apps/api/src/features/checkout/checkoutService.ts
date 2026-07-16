@@ -1,9 +1,12 @@
 import { getCart } from '../cart/cartService.js';
+import type { Cart } from '@shop/contracts/cart';
+import type { PowderMixCartItem } from '@shop/contracts/powderizer';
 import { validateCard, type ValidCard } from '../payments/cardValidation.js';
 import { createSafeFingerprint, type PaymentRecord } from '../payments/paymentRepository.js';
 import { validatePromo } from '../promos/promoService.js';
 import { createCheckoutQuote } from './checkoutQuote.js';
 import { finalizeAuthorizedCheckout } from './checkoutFinalizer.js';
+import { prepareMixes } from './checkoutMixPreparation.js';
 import type {
   CheckoutDependencies,
   CheckoutParams,
@@ -19,6 +22,19 @@ export type {
 } from './checkoutTypes.js';
 
 type Preparation = CheckoutResult | { quoteTotalCents: number; card: ValidCard } | { resume: true };
+
+function withPreparedMixes(cart: Cart, mixItems: PowderMixCartItem[]): Cart {
+  const subtotalCents = [...cart.items, ...mixItems].reduce(
+    (total, item) => total + item.lineTotalCents,
+    0,
+  );
+  return {
+    ...cart,
+    mixItems,
+    subtotalCents,
+    totalItems: [...cart.items, ...mixItems].reduce((total, item) => total + item.quantity, 0),
+  };
+}
 
 function replay(
   payment: PaymentRecord,
@@ -61,14 +77,14 @@ function prepare(
       createdAt: dependencies.clock.now().toISOString(),
     });
     if (!reservation.reserved) return replay(reservation.payment, fingerprint, dependencies);
-    const cart = getCart(dependencies.carts, params.cartId);
+    const cart = getCart(dependencies.carts, params.cartId, dependencies.mixes);
     if (!cart)
       return failPreparation(
         params.idempotencyKey,
         { success: false, error: 'CART_NOT_FOUND' },
         dependencies,
       );
-    if (cart.items.length === 0)
+    if (cart.totalItems === 0)
       return failPreparation(
         params.idempotencyKey,
         { success: false, error: 'CART_EMPTY' },
@@ -96,9 +112,13 @@ function prepare(
         },
         dependencies,
       );
+    const mixPreparation = prepareMixes(params.cartId, dependencies);
+    if ('error' in mixPreparation)
+      return failPreparation(params.idempotencyKey, mixPreparation, dependencies);
+    const preparedCart = withPreparedMixes(cart, mixPreparation.mixItems);
     const createdAt = dependencies.clock.now().toISOString();
     const quote = createCheckoutQuote({
-      cart,
+      cart: preparedCart,
       checkout: params,
       promo: promo?.promoCode,
       createdAt,
@@ -126,6 +146,7 @@ function prepare(
         dependencies,
       );
     }
+    dependencies.mixes.reserveStock(params.idempotencyKey, mixPreparation.requirements);
     if (
       !dependencies.payments.persistQuote({
         idempotencyKey: params.idempotencyKey,
@@ -176,6 +197,7 @@ function providerFailure(
     });
     dependencies.carts.releaseReservation(idempotencyKey);
     dependencies.promos.releaseReservation(idempotencyKey);
+    dependencies.mixes.releaseStockReservation(idempotencyKey);
     return result;
   });
 }

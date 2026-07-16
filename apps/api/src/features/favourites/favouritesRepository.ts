@@ -14,12 +14,15 @@ export function createFavouritesRepository(db: Database.Database): FavouritesRep
       return db
         .prepare(
           `SELECT p.* FROM favourites f JOIN products p ON f.product_id = p.id
-           WHERE f.user_id = ? ORDER BY f.created_at DESC`,
+           WHERE f.user_id = ? AND p.active = 1 ORDER BY f.created_at DESC`,
         )
         .all(userId) as ProductRow[];
     },
     productExists(productId) {
-      return db.prepare('SELECT 1 FROM products WHERE id = ?').get(productId) !== undefined;
+      return (
+        db.prepare('SELECT 1 FROM products WHERE id = ? AND active = 1').get(productId) !==
+        undefined
+      );
     },
     add(userId, productId) {
       db.prepare('INSERT OR IGNORE INTO favourites (user_id, product_id) VALUES (?, ?)').run(

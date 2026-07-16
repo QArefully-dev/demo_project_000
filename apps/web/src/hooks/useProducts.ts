@@ -1,38 +1,23 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getProducts } from '../api/products';
-import type { Product, ProductQuery } from '@shop/contracts/products';
+import type { Product } from '@shop/contracts/products';
 import type { GetProductsParams } from '../api/products';
+import { serializeCatalogQuery } from '@/catalogQuery';
 
-export interface UseProductsParams {
-  q?: string;
-  category?: string;
-  onSale?: boolean;
-  sort?: ProductQuery['sort'];
-  page?: number;
-  pageSize?: number;
-}
+export type UseProductsParams = GetProductsParams;
 
 export function useProducts(params?: UseProductsParams) {
-  const q = params?.q;
-  const category = params?.category;
-  const onSale = params?.onSale;
-  const sort = params?.sort;
-  const page = params?.page;
-  const pageSize = params?.pageSize;
-
+  const paramsKey = serializeCatalogQuery(params).toString();
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
-  const [currentPage, setCurrentPage] = useState(page ?? 1);
-  const [currentPageSize, setCurrentPageSize] = useState(pageSize ?? 12);
+  const [currentPage, setCurrentPage] = useState(params?.page ?? 1);
+  const [currentPageSize, setCurrentPageSize] = useState(params?.pageSize ?? 12);
 
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
-
-  // Stable params object from destructured primitives — avoids new reference each render
-  const stableParams: GetProductsParams = { q, category, onSale, sort, page, pageSize };
 
   const fetchProducts = useCallback(
     async (fetchParams?: GetProductsParams) => {
@@ -47,7 +32,7 @@ export function useProducts(params?: UseProductsParams) {
       setIsLoading(true);
       setError(null);
       try {
-        const data = await getProducts(fetchParams ?? stableParams, abortController.signal);
+        const data = await getProducts(fetchParams ?? params, abortController.signal);
         if (!isCurrentRequest()) return;
         setProducts(data.items);
         setTotal(data.total);
@@ -60,7 +45,7 @@ export function useProducts(params?: UseProductsParams) {
         if (isCurrentRequest()) setIsLoading(false);
       }
     },
-    [q, category, onSale, sort, page, pageSize],
+    [paramsKey],
   );
 
   useEffect(() => {
@@ -71,7 +56,7 @@ export function useProducts(params?: UseProductsParams) {
       ++requestIdRef.current;
       abortControllerRef.current?.abort();
     };
-  }, [q, category, onSale, sort, page, pageSize]);
+  }, [fetchProducts]);
 
   return {
     products,

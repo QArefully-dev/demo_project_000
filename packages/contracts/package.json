@@ -45,6 +45,10 @@
     "./mailbox": {
       "types": "./dist/mailbox.d.ts",
       "import": "./dist/mailbox.js"
+    },
+    "./powderizer": {
+      "types": "./dist/powderizer.d.ts",
+      "import": "./dist/powderizer.js"
     }
   },
   "dependencies": {

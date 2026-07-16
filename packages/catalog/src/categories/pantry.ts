@@ -1,6 +1,6 @@
-import { createPackaging, type CatalogProduct } from '../model.js';
+import { createCatalogProducts, createPackaging, type CatalogProductDraft } from '../model.js';
 
-export const pantryProducts = [
+export const pantryProducts = createCatalogProducts([
   {
     id: 1,
     name: 'Protein Powder',
@@ -11,10 +11,22 @@ export const pantryProducts = [
     category: 'Pantry Staples',
     stock_count: 42,
     sales_count: 680,
-    newest_rank: 1,
+    active: true,
+    created_at: '2025-01-01T00:00:00.000Z',
+    tags: [
+      { key: 'protein', label: 'Protein' },
+      { key: 'vanilla', label: 'Vanilla' },
+      { key: 'whey', label: 'Whey' },
+    ],
+    specifications: {
+      texture: { key: 'powder', label: 'Powder' },
+      colour: null,
+      source: { key: 'whey', label: 'Whey' },
+      intendedUse: { key: 'shakes', label: 'Shakes' },
+      storageGuidance: null,
+    },
     image_set_id: 'protein-powder',
     slug: 'protein-powder',
-    consumption_warning: null,
     packaging: createPackaging('#d9583b', '#f4dfb5', 'P', 'PAN-01', '900g'),
   },
   {
@@ -26,10 +38,22 @@ export const pantryProducts = [
     category: 'Pantry Staples',
     stock_count: 56,
     sales_count: 410,
-    newest_rank: 2,
+    active: true,
+    created_at: '2025-01-02T00:00:00.000Z',
+    tags: [
+      { key: 'oat', label: 'Oat' },
+      { key: 'flour', label: 'Flour' },
+      { key: 'stone-ground', label: 'Stone-ground' },
+    ],
+    specifications: {
+      texture: { key: 'flour', label: 'Flour' },
+      colour: null,
+      source: { key: 'oat', label: 'Oat' },
+      intendedUse: { key: 'porridge', label: 'Porridge' },
+      storageGuidance: null,
+    },
     image_set_id: 'powdered-oats',
     slug: 'powdered-oats',
-    consumption_warning: null,
     packaging: createPackaging('#d5a12d', '#dac18b', 'O', 'PAN-02', '750g'),
   },
   {
@@ -41,10 +65,18 @@ export const pantryProducts = [
     category: 'Pantry Staples',
     stock_count: 38,
     sales_count: 495,
-    newest_rank: 3,
+    active: true,
+    created_at: '2025-01-03T00:00:00.000Z',
+    tags: [{ key: 'cocoa', label: 'Cocoa' }],
+    specifications: {
+      texture: { key: 'powder', label: 'Powder' },
+      colour: null,
+      source: { key: 'cocoa', label: 'Cocoa' },
+      intendedUse: { key: 'baking', label: 'Baking' },
+      storageGuidance: null,
+    },
     image_set_id: 'cocoa-powder',
     slug: 'cocoa-powder',
-    consumption_warning: null,
     packaging: createPackaging('#71412c', '#6a3828', 'C', 'PAN-03', '250g'),
   },
   {
@@ -57,10 +89,22 @@ export const pantryProducts = [
     category: 'Pantry Staples',
     stock_count: 44,
     sales_count: 360,
-    newest_rank: 4,
+    active: true,
+    created_at: '2025-01-04T00:00:00.000Z',
+    tags: [
+      { key: 'peanut', label: 'Peanut' },
+      { key: 'peanut-butter', label: 'Peanut butter' },
+      { key: 'defatted', label: 'Defatted' },
+    ],
+    specifications: {
+      texture: { key: 'powder', label: 'Powder' },
+      colour: null,
+      source: { key: 'peanut', label: 'Peanut' },
+      intendedUse: { key: 'sauces', label: 'Sauces' },
+      storageGuidance: null,
+    },
     image_set_id: 'powdered-peanut-butter',
     slug: 'powdered-peanut-butter',
-    consumption_warning: null,
     packaging: createPackaging('#d68132', '#d5ad68', 'PB', 'PAN-04', '180g'),
   },
   {
@@ -72,10 +116,18 @@ export const pantryProducts = [
     category: 'Pantry Staples',
     stock_count: 47,
     sales_count: 290,
-    newest_rank: 5,
+    active: true,
+    created_at: '2025-01-05T00:00:00.000Z',
+    tags: [{ key: 'tomato', label: 'Tomato' }],
+    specifications: {
+      texture: { key: 'powder', label: 'Powder' },
+      colour: null,
+      source: { key: 'tomato', label: 'Tomato' },
+      intendedUse: { key: 'soups-and-sauces', label: 'Soups and sauces' },
+      storageGuidance: null,
+    },
     image_set_id: 'tomato-powder',
     slug: 'tomato-powder',
-    consumption_warning: null,
     packaging: createPackaging('#c9483d', '#d85643', 'T', 'PAN-05', '200g'),
   },
   {
@@ -87,10 +139,22 @@ export const pantryProducts = [
     category: 'Pantry Staples',
     stock_count: 31,
     sales_count: 275,
-    newest_rank: 6,
+    active: true,
+    created_at: '2025-01-06T00:00:00.000Z',
+    tags: [
+      { key: 'mushroom', label: 'Mushroom' },
+      { key: 'porcini', label: 'Porcini' },
+      { key: 'dried', label: 'Dried' },
+    ],
+    specifications: {
+      texture: { key: 'powder', label: 'Powder' },
+      colour: null,
+      source: { key: 'porcini', label: 'Porcini' },
+      intendedUse: null,
+      storageGuidance: null,
+    },
     image_set_id: 'mushroom-powder',
     slug: 'mushroom-powder',
-    consumption_warning: null,
     packaging: createPackaging('#8a6847', '#9a7e57', 'M', 'PAN-06', '100g'),
   },
   {
@@ -102,12 +166,23 @@ export const pantryProducts = [
     category: 'Pantry Staples',
     stock_count: 63,
     sales_count: 390,
-    newest_rank: 7,
+    active: true,
+    created_at: '2025-01-07T00:00:00.000Z',
+    tags: [
+      { key: 'garlic', label: 'Garlic' },
+      { key: 'roasted', label: 'Roasted' },
+    ],
+    specifications: {
+      texture: { key: 'powder', label: 'Powder' },
+      colour: null,
+      source: { key: 'garlic', label: 'Garlic' },
+      intendedUse: null,
+      storageGuidance: null,
+    },
     image_set_id: 'roasted-garlic-powder',
     slug: 'roasted-garlic-powder',
-    consumption_warning: null,
     packaging: createPackaging('#b67e2c', '#d8bf85', 'G', 'PAN-07', '120g'),
   },
 
   // Performance â€” still recognisable, increasingly committed.,
-] as const satisfies readonly CatalogProduct[];
+] as const satisfies readonly CatalogProductDraft[]);

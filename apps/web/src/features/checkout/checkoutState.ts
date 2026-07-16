@@ -3,6 +3,13 @@ export type CardField = 'cardNumber' | 'cardExpiry' | 'cardCvc';
 export type Field = ContactField | CardField;
 export type FieldErrors = Partial<Record<Field, string>>;
 
+export type MixCheckoutConflict =
+  | {
+      code: 'MIX_REQUOTE_REQUIRED';
+      mixes: Array<{ mixId: string; oldUnitPriceCents: number; newUnitPriceCents: number }>;
+    }
+  | { code: 'MIX_STOCK_UNAVAILABLE'; mixIds: string[]; productIds: string[] };
+
 export type CheckoutState = {
   contact: Record<ContactField, string>;
   card: Record<CardField, string>;
@@ -18,6 +25,7 @@ export type CheckoutState = {
   paymentError: string | null;
   idempotencyKey: string;
   cartRecoveryMessage: string | null;
+  mixConflict: MixCheckoutConflict | null;
 };
 
 export type CheckoutEvent =
@@ -38,6 +46,7 @@ export type CheckoutEvent =
   | { type: 'promo-removed'; idempotencyKey: string }
   | { type: 'quote-changed'; idempotencyKey: string }
   | { type: 'cart-recovered'; message: string }
+  | { type: 'mix-conflict'; conflict: MixCheckoutConflict }
   | { type: 'submission-started' }
   | { type: 'submission-failed'; error: string }
   | { type: 'submission-finished' };
@@ -65,6 +74,7 @@ export function initialCheckoutState(): CheckoutState {
     paymentError: null,
     idempotencyKey: createIdempotencyKey(),
     cartRecoveryMessage: null,
+    mixConflict: null,
   };
 }
 
@@ -137,10 +147,13 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         promoTotalCents: null,
         promoError: null,
         promoValidating: false,
+        mixConflict: null,
         idempotencyKey: event.idempotencyKey,
       };
     case 'cart-recovered':
       return { ...state, cartRecoveryMessage: event.message };
+    case 'mix-conflict':
+      return { ...state, mixConflict: event.conflict, paymentError: null };
     case 'submission-started':
       return { ...state, submitting: true, paymentError: null };
     case 'submission-failed':
@@ -151,7 +164,18 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
 }
 
 type QuoteItem = { productId: string; quantity: number; lineTotalCents: number };
-type QuoteCart = { id: string; subtotalCents: number; items: QuoteItem[] };
+type QuoteMixItem = {
+  mixId: string;
+  priceVersion: string;
+  quantity: number;
+  lineTotalCents: number;
+};
+type QuoteCart = {
+  id: string;
+  subtotalCents: number;
+  items: QuoteItem[];
+  mixItems: QuoteMixItem[];
+};
 
 /** Stable against rendering and cart-item ordering. */
 export function createCartQuoteKey(cart: QuoteCart | null): string | null {
@@ -159,7 +183,13 @@ export function createCartQuoteKey(cart: QuoteCart | null): string | null {
   const lines = [...cart.items]
     .sort((left, right) => left.productId.localeCompare(right.productId))
     .map(({ productId, quantity, lineTotalCents }) => `${productId}:${quantity}:${lineTotalCents}`);
-  return `${cart.id}:${cart.subtotalCents}:${lines.join('|')}`;
+  const mixLines = [...cart.mixItems]
+    .sort((left, right) => left.mixId.localeCompare(right.mixId))
+    .map(
+      ({ mixId, priceVersion, quantity, lineTotalCents }) =>
+        `${mixId}:${priceVersion}:${quantity}:${lineTotalCents}`,
+    );
+  return `${cart.id}:${cart.subtotalCents}:${lines.join('|')}:${mixLines.join('|')}`;
 }
 
 export function selectAppliedPromo(state: CheckoutState, quoteKey: string | null): string | null {

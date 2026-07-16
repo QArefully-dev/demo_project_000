@@ -22,6 +22,8 @@ import { createOrderRepository } from '../../src/features/checkout/orderReposito
 import { createMailboxRepository } from '../../src/features/mailbox/mailboxRepository.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { simulatedPaymentGateway } from '../../src/features/payments/paymentGateway.js';
+import { createPowderMixRepository } from '../../src/features/powderizer/powderMixRepository.js';
+import { createProductRepository } from '../../src/features/catalog/productRepository.js';
 
 function checkout(
   params: CheckoutParams,
@@ -41,6 +43,8 @@ function checkout(
     mailbox: createMailboxRepository(dependencies.db),
     gateway: dependencies.gateway ?? simulatedPaymentGateway,
     clock: { now: dependencies.now ?? (() => new Date()) },
+    mixes: createPowderMixRepository(dependencies.db),
+    products: createProductRepository(dependencies.db),
   }).process(params);
 }
 

@@ -16,6 +16,9 @@ import { WishlistPage } from './features/wishlist/WishlistPage';
 import { MailboxPage } from './features/mailbox/MailboxPage';
 import { NotFoundPage } from './features/notFound/NotFoundPage';
 import { BagDesignsPage } from './features/designs/BagDesignsPage';
+import { PowderizerPage } from './features/powderizer/PowderizerPage';
+import { HelpIndexPage } from './features/help/HelpIndexPage';
+import { HelpArticlePage } from './features/help/HelpArticlePage';
 
 export default function App() {
   return (
@@ -49,6 +52,10 @@ export default function App() {
         />
         <Route path="/mailbox" element={<MailboxPage />} />
         <Route path="/bag-designs" element={<BagDesignsPage />} />
+        <Route path="/powderizer" element={<PowderizerPage />} />
+        <Route path="/help" element={<HelpIndexPage />} />
+        <Route path="/help/:slug" element={<HelpArticlePage group="help" />} />
+        <Route path="/policies/:slug" element={<HelpArticlePage group="policy" />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

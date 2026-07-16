@@ -26,13 +26,19 @@ const cart: Cart = {
         imageSetId: 'powdered-water',
         category: 'Impossible',
         stock: 4,
+        mixable: false,
         slug: 'powdered-water',
         salesCount: 0,
+        createdAt: '2026-07-14T00:00:00.000Z',
+        available: true,
+        tags: [],
+        specificationGroups: [],
       },
       quantity: 1,
       lineTotalCents: 1000,
     },
   ],
+  mixItems: [],
   subtotalCents: 1000,
   totalItems: 1,
 };
@@ -51,6 +57,9 @@ const cartContext: ReturnType<typeof useCart> = {
   addItem: vi.fn().mockResolvedValue(true),
   updateQuantity: vi.fn().mockResolvedValue(true),
   removeItem: vi.fn().mockResolvedValue(true),
+  updateMixQuantity: vi.fn().mockResolvedValue(true),
+  removeMix: vi.fn().mockResolvedValue(true),
+  requoteMix: vi.fn().mockResolvedValue(true),
   refreshCart: vi.fn().mockResolvedValue(true),
   retryCart: vi.fn().mockResolvedValue(true),
   clearCart,
@@ -216,6 +225,7 @@ describe('CheckoutPage', () => {
     vi.mocked(pay).mockResolvedValue({
       id: '12',
       items: [],
+      mixItems: [],
       subtotalCents: 1000,
       discountCents: 0,
       totalCents: 1000,
@@ -230,5 +240,80 @@ describe('CheckoutPage', () => {
     await screen.findByText('Order confirmation route');
     expect(clearCart).toHaveBeenCalledOnce();
     expect(screen.getByTestId('location')).toHaveTextContent('/order-confirmation/12');
+  });
+
+  it('requires explicit acceptance and a second submit after a mix requote', async () => {
+    const mixedCart: Cart = {
+      ...cart,
+      items: [],
+      mixItems: [
+        {
+          mixId: 'ab1f5ed-3dbf-4c3c-908e-c71d7e7bf912',
+          customLabel: 'Morning mix',
+          components: [
+            { productId: '1', productName: 'Oat', percentage: 50, allocatedGrams: 250 },
+            { productId: '2', productName: 'Pea', percentage: 50, allocatedGrams: 250 },
+          ],
+          bagSizeGrams: 500,
+          fineness: 'standard',
+          bagColourScheme: 'ultraviolet-cyan',
+          usageLabel: 'Consumable powder',
+          priceVersion: 'powderizer-v1',
+          unitPriceCents: 1200,
+          quantity: 1,
+          lineTotalCents: 1200,
+        },
+      ],
+      subtotalCents: 1200,
+      totalItems: 1,
+    };
+    const { useCartContext } = await import('@/hooks/CartContext');
+    const requoteMix = vi.fn().mockResolvedValue(true);
+    vi.mocked(useCartContext).mockReturnValue({
+      ...cartContext,
+      cart: mixedCart,
+      cartId: mixedCart.id,
+      requoteMix,
+    });
+    vi.mocked(pay)
+      .mockRejectedValueOnce(
+        new ApiError('Mix price changed', 409, {
+          error: 'Mix price changed',
+          code: 'MIX_REQUOTE_REQUIRED',
+          mixes: [
+            {
+              mixId: mixedCart.mixItems[0]!.mixId,
+              oldUnitPriceCents: 1200,
+              newUnitPriceCents: 1400,
+            },
+          ],
+        } as never),
+      )
+      .mockResolvedValueOnce({
+        id: '12',
+        items: [],
+        mixItems: [],
+        subtotalCents: 1400,
+        discountCents: 0,
+        totalCents: 1400,
+        promoApplied: null,
+        createdAt: '2026-07-14T00:00:00.000Z',
+      });
+    const user = userEvent.setup();
+    renderCheckout();
+    await continueToPayment(user);
+    await completeCard(user);
+
+    await user.click(screen.getByRole('button', { name: 'Simulate payment' }));
+    await screen.findByText(
+      'Mix prices have changed. Review and accept updated prices before paying.',
+    );
+    expect(screen.getByText('$12.00 → $14.00')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Accept updated price' }));
+    await waitFor(() => expect(requoteMix).toHaveBeenCalledWith(mixedCart.mixItems[0]!.mixId));
+    expect(pay).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: 'Simulate payment' }));
+    await waitFor(() => expect(pay).toHaveBeenCalledTimes(2));
   });
 });

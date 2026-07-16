@@ -8,6 +8,11 @@ import {
   Uuid,
   PositiveIntegerString,
 } from './common.js';
+import {
+  DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
+  PowderMixOrderItemSnapshotV1,
+  PowderMixOrderItemSnapshotV2,
+} from './powderizer.js';
 
 export const OrderLineItem = Type.Object({
   productId: Type.String({ minLength: 1 }),
@@ -17,9 +22,26 @@ export const OrderLineItem = Type.Object({
   lineTotalCents: MoneyCents,
 });
 export type OrderLineItem = Static<typeof OrderLineItem>;
+
+const NormalizedOrderPowderMixItemSnapshotV1 = Type.Object(
+  {
+    ...Type.Omit(PowderMixOrderItemSnapshotV1, ['snapshotVersion']).properties,
+    bagColourScheme: Type.Literal(DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME),
+    usageLabel: Type.Literal('Check ingredient labels'),
+    snapshotVersion: Type.Literal(1),
+  },
+  { additionalProperties: false },
+);
+export const NormalizedOrderPowderMixItem = Type.Union([
+  NormalizedOrderPowderMixItemSnapshotV1,
+  PowderMixOrderItemSnapshotV2,
+]);
+export type NormalizedOrderPowderMixItem = Static<typeof NormalizedOrderPowderMixItem>;
+
 export const Order = Type.Object({
   id: PositiveIntegerString,
   items: Type.Array(OrderLineItem),
+  mixItems: Type.Array(NormalizedOrderPowderMixItem),
   subtotalCents: MoneyCents,
   discountCents: MoneyCents,
   totalCents: MoneyCents,

@@ -3,6 +3,7 @@ interface NavItem {
   label: string;
   icon: string;
   enabled: boolean;
+  className?: string;
 }
 
 export const searchItem: NavItem = {
@@ -26,8 +27,17 @@ export const wishlistItem: NavItem = {
   enabled: true,
 };
 
+export const powderizerItem: NavItem = {
+  key: 'powderizer',
+  label: 'Powderizer',
+  icon: 'FlaskConical',
+  enabled: true,
+  className: 'powderizer-nav-link',
+};
+
 export const navItems: Record<string, NavItem> = {
   search: searchItem,
   account: accountItem,
   wishlist: wishlistItem,
+  powderizer: powderizerItem,
 };

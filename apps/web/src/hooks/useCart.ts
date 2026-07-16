@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import type { Cart } from '@shop/contracts/cart';
 import * as api from '../api/cart';
+import * as powderizerApi from '../api/powderizer';
 import { ApiError, isMissingCartError } from '../api/client';
 import { clearCartId, getCartId } from '../lib/cartStorage';
 import { createCartClient } from './cartClient';
 
-export type CartAction = 'add' | 'update' | 'remove';
+export type CartAction = 'add' | 'update' | 'remove' | 'mix-update' | 'mix-remove' | 'mix-requote';
 
 type CartStatus = 'initializing' | 'ready' | 'refreshing' | 'error';
 
@@ -21,8 +22,8 @@ type CartEvent =
   | { type: 'start'; status: 'initializing' | 'refreshing' }
   | { type: 'cart-loaded'; cart: Cart }
   | { type: 'failed'; error: string }
-  | { type: 'action-started'; productId: string; action: CartAction }
-  | { type: 'action-finished'; productId: string }
+  | { type: 'action-started'; pendingKey: string; action: CartAction }
+  | { type: 'action-finished'; pendingKey: string }
   | { type: 'cleared' };
 
 function cartReducer(state: CartState, event: CartEvent): CartState {
@@ -37,11 +38,11 @@ function cartReducer(state: CartState, event: CartEvent): CartState {
       return {
         ...state,
         error: null,
-        pendingActions: { ...state.pendingActions, [event.productId]: event.action },
+        pendingActions: { ...state.pendingActions, [event.pendingKey]: event.action },
       };
     case 'action-finished': {
       const pendingActions = { ...state.pendingActions };
-      delete pendingActions[event.productId];
+      delete pendingActions[event.pendingKey];
       return { ...state, pendingActions };
     }
     case 'cleared':
@@ -142,12 +143,12 @@ export function useCart() {
   const runCartAction = useCallback(
     async (
       action: CartAction,
-      productId: string,
+      pendingKey: string,
       operation: (activeCartId: string) => Promise<Cart>,
       retryAfterRecovery: boolean,
     ): Promise<boolean> => {
       const mutationSequence = ++mutationSequenceRef.current;
-      if (mountedRef.current) dispatch({ type: 'action-started', productId, action });
+      if (mountedRef.current) dispatch({ type: 'action-started', pendingKey, action });
 
       try {
         let activeCartId = cartIdRef.current;
@@ -183,7 +184,7 @@ export function useCart() {
         }
         return false;
       } finally {
-        if (mountedRef.current) dispatch({ type: 'action-finished', productId });
+        if (mountedRef.current) dispatch({ type: 'action-finished', pendingKey });
       }
     },
     [applyCart, applyMutationCart, loadCart, recoverCart],
@@ -207,6 +208,36 @@ export function useCart() {
   const removeItem = useCallback(
     (productId: string) =>
       runCartAction('remove', productId, (cartId) => api.removeFromCart(cartId, productId), false),
+    [runCartAction],
+  );
+  const updateMixQuantity = useCallback(
+    (mixId: string, quantity: number) =>
+      runCartAction(
+        'mix-update',
+        `mix:${mixId}`,
+        (cartId) => powderizerApi.updatePowderMixQuantity(cartId, mixId, quantity),
+        false,
+      ),
+    [runCartAction],
+  );
+  const removeMix = useCallback(
+    (mixId: string) =>
+      runCartAction(
+        'mix-remove',
+        `mix:${mixId}`,
+        (cartId) => powderizerApi.removePowderMix(cartId, mixId),
+        false,
+      ),
+    [runCartAction],
+  );
+  const requoteMix = useCallback(
+    (mixId: string) =>
+      runCartAction(
+        'mix-requote',
+        `mix:${mixId}`,
+        (cartId) => powderizerApi.requotePowderMix(cartId, mixId),
+        false,
+      ),
     [runCartAction],
   );
 
@@ -239,6 +270,9 @@ export function useCart() {
     addItem,
     updateQuantity,
     removeItem,
+    updateMixQuantity,
+    removeMix,
+    requoteMix,
     refreshCart,
     retryCart,
     clearCart,
