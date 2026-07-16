@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useProducts } from '@/hooks/useProducts';
 import { useCategories } from '@/hooks/useCategories';
+import { useProductFilterOptions } from '@/hooks/useProductFilterOptions';
 import { useCartContext } from '@/hooks/CartContext';
 import { ProductGrid } from '@/components/ProductGrid';
 import { ProductCard } from '@/components/ProductCard';
@@ -13,12 +14,40 @@ import { PAGE_SIZES, SORT_OPTIONS } from './catalogOptions';
 import { useCatalogParams } from './useCatalogParams';
 
 export function CatalogPage() {
-  const { q, category, onSale, sort, page, pageSize, setParam, clearFilters } = useCatalogParams();
+  const {
+    q,
+    category,
+    onSale,
+    minPriceCents,
+    maxPriceCents,
+    addedFrom,
+    addedTo,
+    tag = [],
+    spec = [],
+    availability,
+    sort,
+    page,
+    pageSize,
+    setParam,
+    clearFilters,
+  } = useCatalogParams();
   const { categories } = useCategories();
+  const {
+    options: filterOptions,
+    isLoading: filterOptionsLoading,
+    error: filterOptionsError,
+  } = useProductFilterOptions();
   const { products, isLoading, error, total, refetch } = useProducts({
     q,
     category,
     onSale,
+    minPriceCents,
+    maxPriceCents,
+    addedFrom,
+    addedTo,
+    tag,
+    spec,
+    availability,
     sort,
     page,
     pageSize,
@@ -52,7 +81,18 @@ export function CatalogPage() {
   }
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const hasFilters = Boolean(q || category || onSale);
+  const hasFilters = Boolean(
+    q ||
+      category ||
+      onSale ||
+      minPriceCents !== undefined ||
+      maxPriceCents !== undefined ||
+      addedFrom ||
+      addedTo ||
+      tag.length > 0 ||
+      spec.length > 0 ||
+      availability,
+  );
   const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const end = Math.min(page * pageSize, total);
   const resultSummary =
@@ -97,10 +137,40 @@ export function CatalogPage() {
           category={category}
           onSale={onSale}
           query={q}
+          minPriceCents={minPriceCents}
+          maxPriceCents={maxPriceCents}
+          addedFrom={addedFrom}
+          addedTo={addedTo}
+          availability={availability}
+          tags={tag}
+          specs={spec}
+          filterOptions={filterOptions ?? undefined}
+          filterOptionsLoading={filterOptionsLoading}
+          filterOptionsError={filterOptionsError ?? undefined}
           hasFilters={hasFilters}
           onCategoryChange={(value) => setParam('category', value ?? null)}
           onSaleChange={(value) => setParam('onSale', value ? 'true' : null)}
           onQueryClear={() => setParam('q', null)}
+          onMinPriceCentsChange={(value) =>
+            setParam('minPriceCents', value === undefined ? null : String(value))
+          }
+          onMaxPriceCentsChange={(value) =>
+            setParam('maxPriceCents', value === undefined ? null : String(value))
+          }
+          onAddedFromChange={(value) => setParam('addedFrom', value ?? null)}
+          onAddedToChange={(value) => setParam('addedTo', value ?? null)}
+          onAvailabilityChange={(value) => setParam('availability', value ?? null)}
+          onTagChange={(value, selected) =>
+            setParam('tag', selected ? [...tag, value] : tag.filter((item) => item !== value))
+          }
+          onSpecChange={(key, value) =>
+            setParam(
+              'spec',
+              value
+                ? [...spec.filter((item) => !item.startsWith(`${key}:`)), `${key}:${value}`]
+                : spec.filter((item) => !item.startsWith(`${key}:`)),
+            )
+          }
           onClearFilters={clearFilters}
         />
         <div className="min-w-0">
