@@ -7,7 +7,7 @@ interface CatalogToolbarProps {
   onQueryChange: (value: string) => void;
   resultSummary: string;
   sort?: ProductQuery['sort'];
-  sortOptions: readonly { value: ProductQuery['sort']; label: string }[];
+  sortOptions: readonly { value: NonNullable<ProductQuery['sort']>; label: string }[];
   onSortChange: (value: ProductQuery['sort'] | undefined) => void;
 }
 

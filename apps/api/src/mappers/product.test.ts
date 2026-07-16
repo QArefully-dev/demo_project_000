@@ -15,6 +15,8 @@ const canonicalRow = {
   slug: 'protein-powder',
   compare_at_price_cents: null,
   sales_count: 8,
+  active: 1,
+  created_at: '2025-01-01T00:00:00.000Z',
 };
 
 void test('toProductContract resolves catalog packaging by stable artwork ID', () => {
@@ -24,6 +26,10 @@ void test('toProductContract resolves catalog packaging by stable artwork ID', (
   );
 
   assert.deepEqual(product.packaging, catalogProduct?.packaging);
+  assert.equal(product.createdAt, canonicalRow.created_at);
+  assert.equal(product.available, true);
+  assert.deepEqual(product.tags, catalogProduct?.tags);
+  assert.ok(product.specificationGroups.length > 0);
   assert.equal('images' in product, false);
 });
 
@@ -32,4 +38,6 @@ void test('toProductContract omits packaging for unknown artwork', () => {
 
   assert.equal(product.packaging, undefined);
   assert.equal(product.imageSetId, 'retired-artwork');
+  assert.deepEqual(product.tags, []);
+  assert.deepEqual(product.specificationGroups, []);
 });

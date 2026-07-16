@@ -223,4 +223,10 @@ void test('mix price and stock conflicts block gateway before reservation', asyn
   db.prepare('UPDATE products SET stock_count = 0 WHERE id = 1').run();
   assert.equal((await checkout.process(payment(stockCart))).error, 'MIX_STOCK_UNAVAILABLE');
   assert.equal(calls, 0);
+
+  db.prepare('UPDATE products SET stock_count = 10 WHERE id = 1').run();
+  const inactiveCart = makeCart();
+  db.prepare('UPDATE products SET active = 0 WHERE id = 1').run();
+  assert.equal((await checkout.process(payment(inactiveCart))).error, 'MIX_REQUOTE_REQUIRED');
+  assert.equal(calls, 0);
 });

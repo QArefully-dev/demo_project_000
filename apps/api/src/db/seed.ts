@@ -1,5 +1,5 @@
 import { createHash, scryptSync } from 'node:crypto';
-import { CATALOG_PRODUCTS, validateCatalog } from '@shop/catalog';
+import { CATALOG_PRODUCTS, catalogProductSpecifications, validateCatalog } from '@shop/catalog';
 import type Database from 'better-sqlite3';
 
 const USERS = [
@@ -131,9 +131,9 @@ export function seedDatabase(db: Database.Database): void {
   const seed = db.transaction(() => {
     const upsertProduct = db.prepare(`
       INSERT INTO products
-        (id, name, description, price_cents, category, stock_count, image_set_id, slug, compare_at_price_cents, sales_count, mixable, mix_unit_grams)
+        (id, name, description, price_cents, category, stock_count, image_set_id, slug, compare_at_price_cents, sales_count, mixable, mix_unit_grams, active, created_at)
       VALUES
-        (@id, @name, @description, @price_cents, @category, @stock_count, @image_set_id, @slug, @compare_at_price_cents, @sales_count, @mixable, @mix_unit_grams)
+        (@id, @name, @description, @price_cents, @category, @stock_count, @image_set_id, @slug, @compare_at_price_cents, @sales_count, @mixable, @mix_unit_grams, @active, @created_at)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         description = excluded.description,
@@ -145,14 +145,53 @@ export function seedDatabase(db: Database.Database): void {
         compare_at_price_cents = excluded.compare_at_price_cents,
         sales_count = excluded.sales_count,
         mixable = excluded.mixable,
-        mix_unit_grams = excluded.mix_unit_grams
+        mix_unit_grams = excluded.mix_unit_grams,
+        active = excluded.active,
+        created_at = excluded.created_at
     `);
+    const upsertTag = db.prepare(`
+      INSERT INTO catalog_tags (key, label)
+      VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET label = excluded.label
+    `);
+    const deleteCanonicalTags = db.prepare(
+      'DELETE FROM product_tags WHERE product_id BETWEEN 1 AND 50',
+    );
+    const deleteCanonicalSpecifications = db.prepare(
+      'DELETE FROM product_specifications WHERE product_id BETWEEN 1 AND 50',
+    );
+    const insertProductTag = db.prepare(
+      'INSERT INTO product_tags (product_id, tag_key) VALUES (?, ?)',
+    );
+    const insertProductSpecification = db.prepare(`
+      INSERT INTO product_specifications
+        (product_id, specification_key, value_key, display_value, numeric_value)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+
+    // Replace only canonical metadata. Local products and their metadata remain untouched.
+    deleteCanonicalTags.run();
+    deleteCanonicalSpecifications.run();
     for (const product of CATALOG_PRODUCTS) {
       upsertProduct.run({
         ...product,
         mixable: product.mixable ? 1 : 0,
         mix_unit_grams: product.mixUnitGrams,
+        active: product.active ? 1 : 0,
       });
+      for (const tag of product.tags) {
+        upsertTag.run(tag.key, tag.label);
+        insertProductTag.run(product.id, tag.key);
+      }
+      for (const specification of catalogProductSpecifications(product)) {
+        insertProductSpecification.run(
+          product.id,
+          specification.key,
+          specification.valueKey,
+          specification.displayValue,
+          specification.numericValue,
+        );
+      }
     }
 
     // Existing promo redemption counts must not be reset by a normal seed.

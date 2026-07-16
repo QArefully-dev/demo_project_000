@@ -46,10 +46,20 @@ export function prepareMixes(cartId: string, dependencies: CheckoutDependencies)
       productId: component.product_id,
       percentage: component.percentage,
     }));
-    const products = components
-      .map((component) => dependencies.products.findById(component.productId))
-      .filter((product): product is NonNullable<typeof product> => product !== undefined)
-      .map(toMixProduct);
+    const componentRows = components.map((component) =>
+      dependencies.products.findById(component.productId),
+    );
+    if (componentRows.some((product) => product === undefined || product.active !== 1)) {
+      requotes.push({
+        mixId: mix.id,
+        oldUnitPriceCents: mix.quoted_unit_price_cents,
+        newUnitPriceCents: mix.quoted_unit_price_cents,
+      });
+      continue;
+    }
+    const products = (componentRows as Array<NonNullable<(typeof componentRows)[number]>>).map(
+      toMixProduct,
+    );
     try {
       const quoted = quotePowderMix(
         {

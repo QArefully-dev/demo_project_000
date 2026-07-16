@@ -8,6 +8,7 @@ import { passwordResetTokenDigestMigration } from './006_password_reset_token_di
 import { checkoutIntentsMigration } from './007_checkout_intents.js';
 import { powderizerMigration } from './008_powderizer.js';
 import { powderizerExpansionMigration } from './009_powderizer_expansion.js';
+import { catalogMetadataMigration } from './010_catalog_metadata.js';
 
 export const migrations: readonly Migration[] = [
   initialMigration,
@@ -19,4 +20,5 @@ export const migrations: readonly Migration[] = [
   checkoutIntentsMigration,
   powderizerMigration,
   powderizerExpansionMigration,
+  catalogMetadataMigration,
 ];
