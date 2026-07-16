@@ -19,7 +19,9 @@ export const CATALOG_PRODUCTS = [
 
 export const CATALOG_ARTWORK_IDS = CATALOG_PRODUCTS.map((product) => product.image_set_id);
 export const catalogProductById = new Map(CATALOG_PRODUCTS.map((product) => [product.id, product]));
-export const catalogProductBySlug = new Map(CATALOG_PRODUCTS.map((product) => [product.slug, product]));
+export const catalogProductBySlug = new Map(
+  CATALOG_PRODUCTS.map((product) => [product.slug, product]),
+);
 export const catalogProductByImageSetId = new Map(
   CATALOG_PRODUCTS.map((product) => [product.image_set_id, product]),
 );

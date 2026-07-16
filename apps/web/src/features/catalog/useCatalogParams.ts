@@ -20,7 +20,10 @@ export function useCatalogParams() {
     ) =>
       setSearchParams((previous) => {
         const next = new URLSearchParams(previous);
-        for (const [key, value] of Object.entries(values) as [CatalogParamKey, CatalogParamValue][]) {
+        for (const [key, value] of Object.entries(values) as [
+          CatalogParamKey,
+          CatalogParamValue,
+        ][]) {
           next.delete(key);
           if (value !== null) {
             const entries = Array.isArray(value) ? value : [value];
@@ -28,13 +31,18 @@ export function useCatalogParams() {
           }
         }
         if (Object.keys(values).some((key) => key !== 'page')) next.delete('page');
-        return serializeCatalogQuery(normalize?.(parseCatalogQuery(next)) ?? parseCatalogQuery(next));
+        return serializeCatalogQuery(
+          normalize?.(parseCatalogQuery(next)) ?? parseCatalogQuery(next),
+        );
       }),
     [setSearchParams],
   );
   const setParam = useCallback(
-    (key: CatalogParamKey, value: CatalogParamValue, normalize?: (query: ProductQuery) => ProductQuery) =>
-      setParams({ [key]: value }, normalize),
+    (
+      key: CatalogParamKey,
+      value: CatalogParamValue,
+      normalize?: (query: ProductQuery) => ProductQuery,
+    ) => setParams({ [key]: value }, normalize),
     [setParams],
   );
   const clearFilters = useCallback(

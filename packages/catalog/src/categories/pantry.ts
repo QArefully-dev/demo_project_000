@@ -1,8 +1,4 @@
-import {
-  createCatalogProducts,
-  createPackaging,
-  type CatalogProductDraft,
-} from '../model.js';
+import { createCatalogProducts, createPackaging, type CatalogProductDraft } from '../model.js';
 
 export const pantryProducts = createCatalogProducts([
   {

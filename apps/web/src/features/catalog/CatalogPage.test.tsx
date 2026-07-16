@@ -145,17 +145,52 @@ describe('CatalogPage URL state', () => {
   });
 
   it.each([
-    ['category', (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole('radio', { name: 'Pantry Staples' }))],
-    ['sale', (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole('checkbox', { name: 'On sale now' }))],
-    ['price', (user: ReturnType<typeof userEvent.setup>) => user.type(screen.getByLabelText('Minimum (cents)'), '300')],
-    ['date', async () => {
-      fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-01-01' } });
-    }],
-    ['availability', (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole('radio', { name: 'In stock' }))],
-    ['tag', (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole('checkbox', { name: 'Drink mix' }))],
-    ['specification', (user: ReturnType<typeof userEvent.setup>) => user.selectOptions(screen.getByLabelText('Texture'), 'fine')],
-    ['sort', (user: ReturnType<typeof userEvent.setup>) => user.selectOptions(screen.getByLabelText('Sort'), 'oldest')],
-    ['page size', (user: ReturnType<typeof userEvent.setup>) => user.selectOptions(screen.getByLabelText('Per page'), '24')],
+    [
+      'category',
+      (user: ReturnType<typeof userEvent.setup>) =>
+        user.click(screen.getByRole('radio', { name: 'Pantry Staples' })),
+    ],
+    [
+      'sale',
+      (user: ReturnType<typeof userEvent.setup>) =>
+        user.click(screen.getByRole('checkbox', { name: 'On sale now' })),
+    ],
+    [
+      'price',
+      (user: ReturnType<typeof userEvent.setup>) =>
+        user.type(screen.getByLabelText('Minimum (cents)'), '300'),
+    ],
+    [
+      'date',
+      async () => {
+        fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-01-01' } });
+      },
+    ],
+    [
+      'availability',
+      (user: ReturnType<typeof userEvent.setup>) =>
+        user.click(screen.getByRole('radio', { name: 'In stock' })),
+    ],
+    [
+      'tag',
+      (user: ReturnType<typeof userEvent.setup>) =>
+        user.click(screen.getByRole('checkbox', { name: 'Drink mix' })),
+    ],
+    [
+      'specification',
+      (user: ReturnType<typeof userEvent.setup>) =>
+        user.selectOptions(screen.getByLabelText('Texture'), 'fine'),
+    ],
+    [
+      'sort',
+      (user: ReturnType<typeof userEvent.setup>) =>
+        user.selectOptions(screen.getByLabelText('Sort'), 'oldest'),
+    ],
+    [
+      'page size',
+      (user: ReturnType<typeof userEvent.setup>) =>
+        user.selectOptions(screen.getByLabelText('Per page'), '24'),
+    ],
   ])('removes page when %s changes locally', async (_name, mutate) => {
     const user = userEvent.setup();
     renderCatalog('/catalog?page=2');
@@ -192,7 +227,9 @@ describe('CatalogPage URL state', () => {
 
     fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-07-01' } });
     expect(screen.getByLabelText('From')).toHaveValue('2026-07-01');
-    expect(screen.getByTestId('location')).toHaveTextContent('addedFrom=2026-01-01&addedTo=2026-06-30');
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      'addedFrom=2026-01-01&addedTo=2026-06-30',
+    );
 
     fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-07-31' } });
     expect(screen.getByTestId('location')).toHaveTextContent(
@@ -208,7 +245,9 @@ describe('CatalogPage URL state', () => {
       expect.objectContaining({ tag: ['pantry'], spec: ['texture:fine'] }),
     );
     expect(screen.queryByRole('button', { name: /tag: unknown/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /specification: missing:value/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /specification: missing:value/i }),
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('radio', { name: 'Pantry Staples' }));
     expect(screen.getByTestId('location')).toHaveTextContent(

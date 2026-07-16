@@ -89,7 +89,11 @@ describe('catalog to product journey', () => {
   it('removes filter values absent from the loaded registry after navigation and browser back', async () => {
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/catalog?q=water&tag=pantry&tag=drink-mix&spec=texture%3Afine&sort=price_desc&page=2&pageSize=24']}>
+      <MemoryRouter
+        initialEntries={[
+          '/catalog?q=water&tag=pantry&tag=drink-mix&spec=texture%3Afine&sort=price_desc&page=2&pageSize=24',
+        ]}
+      >
         <NavigationControls />
         <Routes>
           <Route path="/catalog" element={<CatalogPage />} />

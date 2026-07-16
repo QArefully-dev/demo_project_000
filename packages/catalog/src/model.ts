@@ -9,7 +9,9 @@ export const CATALOG_CATEGORIES = [
 ] as const;
 export type CatalogCategory = (typeof CATALOG_CATEGORIES)[number];
 
-export const MIXABLE_CATALOG_CATEGORIES = [...CATALOG_CATEGORIES] as const satisfies readonly CatalogCategory[];
+export const MIXABLE_CATALOG_CATEGORIES = [
+  ...CATALOG_CATEGORIES,
+] as const satisfies readonly CatalogCategory[];
 export type MixableCatalogCategory = (typeof MIXABLE_CATALOG_CATEGORIES)[number];
 
 export const NOT_FOR_CONSUMPTION = 'Not for consumption' as const;
@@ -28,7 +30,13 @@ export const CATALOG_SPECIFICATION_DEFINITIONS = [
   { key: 'texture', label: 'Texture', group: 'appearance', order: 1, filterable: true },
   { key: 'colour', label: 'Colour', group: 'appearance', order: 2, filterable: true },
   { key: 'source', label: 'Source', group: 'origin-and-use', order: 1, filterable: true },
-  { key: 'intended-use', label: 'Intended use', group: 'origin-and-use', order: 2, filterable: true },
+  {
+    key: 'intended-use',
+    label: 'Intended use',
+    group: 'origin-and-use',
+    order: 2,
+    filterable: true,
+  },
   { key: 'pack-weight', label: 'Pack weight', group: 'pack-and-care', order: 1, filterable: false },
   {
     key: 'storage-guidance',
@@ -208,12 +216,13 @@ const authoringSpecificationKeys = [
 export const catalogProductSpecifications = (
   product: Pick<CatalogProduct, 'packaging' | 'specifications'>,
 ): readonly ResolvedCatalogSpecification[] => {
-  const values: Array<readonly [CatalogSpecificationKey, CatalogSpecificationValue | null, number | null]> =
-    authoringSpecificationKeys.map(([key, property]) => [
-      key,
-      product.specifications[property],
-      null,
-    ]);
+  const values: Array<
+    readonly [CatalogSpecificationKey, CatalogSpecificationValue | null, number | null]
+  > = authoringSpecificationKeys.map(([key, property]) => [
+    key,
+    product.specifications[property],
+    null,
+  ]);
   values.push([
     'pack-weight',
     { key: product.packaging.quantity.replaceAll(' ', '-'), label: product.packaging.quantity },

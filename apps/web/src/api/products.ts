@@ -41,6 +41,8 @@ export function getRelatedProducts(id: string): Promise<RelatedResponse> {
   return apiFetch(RelatedResponse, `/api/products/${id}/related`);
 }
 
-export function getProductFilterOptions(signal?: AbortSignal): Promise<ProductFilterOptionsResponse> {
+export function getProductFilterOptions(
+  signal?: AbortSignal,
+): Promise<ProductFilterOptionsResponse> {
   return apiFetch(ProductFilterOptionsResponse, '/api/products/filter-options', { signal });
 }

@@ -51,7 +51,9 @@ export function CatalogPage() {
       ),
     ),
   );
-  const visibleTags = hasLoadedFilterOptions ? tag.filter((value) => allowedTagKeys.has(value)) : [];
+  const visibleTags = hasLoadedFilterOptions
+    ? tag.filter((value) => allowedTagKeys.has(value))
+    : [];
   const visibleSpecs = hasLoadedFilterOptions
     ? spec.filter((value) => allowedSpecificationTokens.has(value))
     : [];
@@ -111,15 +113,15 @@ export function CatalogPage() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const hasFilters = Boolean(
     q ||
-      category ||
-      onSale ||
-      minPriceCents !== undefined ||
-      maxPriceCents !== undefined ||
-      addedFrom ||
-      addedTo ||
-      visibleTags.length > 0 ||
-      visibleSpecs.length > 0 ||
-      availability,
+    category ||
+    onSale ||
+    minPriceCents !== undefined ||
+    maxPriceCents !== undefined ||
+    addedFrom ||
+    addedTo ||
+    visibleTags.length > 0 ||
+    visibleSpecs.length > 0 ||
+    availability,
   );
   const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const end = Math.min(page * pageSize, total);

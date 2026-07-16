@@ -32,10 +32,16 @@ function isNormalizedKey(value: string): boolean {
   return value.length <= 64 && NORMALIZED_KEY.test(value);
 }
 
-function parseBoundedInteger(value: string | null, minimum: number, maximum: number): number | undefined {
+function parseBoundedInteger(
+  value: string | null,
+  minimum: number,
+  maximum: number,
+): number | undefined {
   if (!value || !/^\d+$/.test(value)) return undefined;
   const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed >= minimum && parsed <= maximum ? parsed : undefined;
+  return Number.isSafeInteger(parsed) && parsed >= minimum && parsed <= maximum
+    ? parsed
+    : undefined;
 }
 
 function parseDate(value: string | null): string | undefined {
@@ -60,11 +66,7 @@ function normalizedSpecifications(values: readonly string[]): string[] {
   const specifications = sortedUnique(values, (token) => {
     const [key, valueKey, ...extra] = token.split(':');
     return (
-      extra.length === 0 &&
-      !!key &&
-      !!valueKey &&
-      isNormalizedKey(key) &&
-      isNormalizedKey(valueKey)
+      extra.length === 0 && !!key && !!valueKey && isNormalizedKey(key) && isNormalizedKey(valueKey)
     );
   });
   const seenKeys = new Set<string>();
@@ -85,7 +87,10 @@ export function parseCatalogQuery(searchParams: URLSearchParams): ProductQuery {
   const addedFrom = parseDate(searchParams.get('addedFrom'));
   const addedTo = parseDate(searchParams.get('addedTo'));
   const sortCandidate = searchParams.get('sort');
-  const sort = sortCandidate && SORTS.has(sortCandidate as ProductSort) ? (sortCandidate as ProductSort) : undefined;
+  const sort =
+    sortCandidate && SORTS.has(sortCandidate as ProductSort)
+      ? (sortCandidate as ProductSort)
+      : undefined;
   const availabilityCandidate = searchParams.get('availability');
   const availability =
     availabilityCandidate === 'available' || availabilityCandidate === 'out_of_stock'
@@ -93,9 +98,10 @@ export function parseCatalogQuery(searchParams: URLSearchParams): ProductQuery {
       : undefined;
   const page = parseBoundedInteger(searchParams.get('page'), 1, 10_000) ?? 1;
   const pageSizeCandidate = parseBoundedInteger(searchParams.get('pageSize'), 1, 48);
-  const pageSize = pageSizeCandidate && SUPPORTED_PAGE_SIZES.has(pageSizeCandidate)
-    ? pageSizeCandidate
-    : undefined;
+  const pageSize =
+    pageSizeCandidate && SUPPORTED_PAGE_SIZES.has(pageSizeCandidate)
+      ? pageSizeCandidate
+      : undefined;
   const tags = sortedUnique(searchParams.getAll('tag'), isNormalizedKey);
   const specifications = normalizedSpecifications(searchParams.getAll('spec'));
 
@@ -103,10 +109,12 @@ export function parseCatalogQuery(searchParams: URLSearchParams): ProductQuery {
     ...(q && q.length <= 200 ? { q } : {}),
     ...(category && category.length <= 100 ? { category } : {}),
     ...(searchParams.get('onSale') === 'true' ? { onSale: true } : {}),
-    ...(minPriceCents !== undefined && (maxPriceCents === undefined || minPriceCents <= maxPriceCents)
+    ...(minPriceCents !== undefined &&
+    (maxPriceCents === undefined || minPriceCents <= maxPriceCents)
       ? { minPriceCents }
       : {}),
-    ...(maxPriceCents !== undefined && (minPriceCents === undefined || minPriceCents <= maxPriceCents)
+    ...(maxPriceCents !== undefined &&
+    (minPriceCents === undefined || minPriceCents <= maxPriceCents)
       ? { maxPriceCents }
       : {}),
     ...(addedFrom && (!addedTo || addedFrom <= addedTo) ? { addedFrom } : {}),
@@ -126,8 +134,10 @@ export function serializeCatalogQuery(query: ProductQuery = {}): URLSearchParams
   if (query.q) searchParams.set('q', query.q);
   if (query.category) searchParams.set('category', query.category);
   if (query.onSale) searchParams.set('onSale', 'true');
-  if (query.minPriceCents !== undefined) searchParams.set('minPriceCents', String(query.minPriceCents));
-  if (query.maxPriceCents !== undefined) searchParams.set('maxPriceCents', String(query.maxPriceCents));
+  if (query.minPriceCents !== undefined)
+    searchParams.set('minPriceCents', String(query.minPriceCents));
+  if (query.maxPriceCents !== undefined)
+    searchParams.set('maxPriceCents', String(query.maxPriceCents));
   if (query.addedFrom) searchParams.set('addedFrom', query.addedFrom);
   if (query.addedTo) searchParams.set('addedTo', query.addedTo);
   for (const tag of sortedUnique(query.tag ?? [], isNormalizedKey)) searchParams.append('tag', tag);

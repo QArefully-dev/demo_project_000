@@ -77,17 +77,33 @@ const validateRegistries = () => {
 
 export function validateCatalog(products: readonly CatalogProduct[] = CATALOG_PRODUCTS): void {
   validateRegistries();
-  if (products.length !== 50) throw new Error(`Catalog expected 50 products, got ${products.length}`);
+  if (products.length !== 50)
+    throw new Error(`Catalog expected 50 products, got ${products.length}`);
   if (new Set(products.map((product) => product.category)).size !== CATALOG_CATEGORIES.length)
     throw new Error('Catalog category coverage is incomplete');
   for (const category of CATALOG_CATEGORIES)
     if (products.filter((product) => product.category === category).length < 5)
       throw new Error(`Catalog category ${category} has fewer than 5 products`);
-  assertUnique('IDs', products.map((product) => product.id));
-  assertUnique('names', products.map((product) => product.name));
-  assertUnique('slugs', products.map((product) => product.slug));
-  assertUnique('artwork IDs', products.map((product) => product.image_set_id));
-  assertUnique('creation timestamps', products.map((product) => product.created_at));
+  assertUnique(
+    'IDs',
+    products.map((product) => product.id),
+  );
+  assertUnique(
+    'names',
+    products.map((product) => product.name),
+  );
+  assertUnique(
+    'slugs',
+    products.map((product) => product.slug),
+  );
+  assertUnique(
+    'artwork IDs',
+    products.map((product) => product.image_set_id),
+  );
+  assertUnique(
+    'creation timestamps',
+    products.map((product) => product.created_at),
+  );
   if (products.filter((product) => product.compare_at_price_cents !== null).length !== 14)
     throw new Error('Catalog expected 14 sale products');
   if (products.filter((product) => product.mixable).length !== 50)
@@ -106,7 +122,8 @@ export function validateCatalog(products: readonly CatalogProduct[] = CATALOG_PR
       throw new Error(`Invalid stock for ${product.slug}`);
     if (!Number.isInteger(product.sales_count) || product.sales_count < 0)
       throw new Error(`Invalid sales count for ${product.slug}`);
-    if (typeof product.active !== 'boolean') throw new Error(`Invalid active state for ${product.slug}`);
+    if (typeof product.active !== 'boolean')
+      throw new Error(`Invalid active state for ${product.slug}`);
     if (!isUtcIsoInstant(product.created_at))
       throw new Error(`Invalid creation timestamp for ${product.slug}`);
     if (product.created_at !== CATALOG_CREATED_AT_BY_ID[product.id])
@@ -169,7 +186,9 @@ export function validateCatalog(products: readonly CatalogProduct[] = CATALOG_PR
     }
 
     const resolvedSpecifications = catalogProductSpecifications(product);
-    const packWeight = resolvedSpecifications.find((specification) => specification.key === 'pack-weight');
+    const packWeight = resolvedSpecifications.find(
+      (specification) => specification.key === 'pack-weight',
+    );
     const warningClass = resolvedSpecifications.find(
       (specification) => specification.key === 'warning-class',
     );

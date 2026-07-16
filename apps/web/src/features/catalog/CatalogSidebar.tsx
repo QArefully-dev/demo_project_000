@@ -340,7 +340,10 @@ export function CatalogSidebar({
             />
           )}
           {addedTo && (
-            <FilterChip label={`Added to: ${addedTo}`} onClick={() => onDateRangeChange(addedFrom, undefined)} />
+            <FilterChip
+              label={`Added to: ${addedTo}`}
+              onClick={() => onDateRangeChange(addedFrom, undefined)}
+            />
           )}
           {availability && (
             <FilterChip
