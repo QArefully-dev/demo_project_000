@@ -32,11 +32,11 @@ export function buildCatalogPredicate(query: NormalizedCatalogQuery): CatalogPre
     params.push(query.maxPriceCents);
   }
   if (query.addedFrom) {
-    conditions.push('p.created_at >= ?');
+    conditions.push('julianday(p.created_at) >= julianday(?)');
     params.push(`${query.addedFrom}T00:00:00.000Z`);
   }
   if (query.addedTo) {
-    conditions.push('p.created_at <= ?');
+    conditions.push('julianday(p.created_at) <= julianday(?)');
     params.push(`${query.addedTo}T23:59:59.999Z`);
   }
   for (const tag of query.tags) {

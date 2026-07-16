@@ -134,6 +134,12 @@ void test('advanced catalog predicates are inclusive, composable, and stable', (
       .list({ addedFrom: '2025-01-10', addedTo: '2025-01-10', pageSize: 48 })
       .items.some((row) => row.id === 1),
   );
+  db.prepare("UPDATE products SET created_at = '2025-01-10 12:00:00' WHERE id = 1").run();
+  assert.ok(
+    products
+      .list({ addedFrom: '2025-01-10', addedTo: '2025-01-10', pageSize: 48 })
+      .items.some((row) => row.id === 1),
+  );
 
   db.prepare('UPDATE products SET stock_count = 0 WHERE id = 2').run();
   db.prepare('UPDATE products SET active = 0, stock_count = 0 WHERE id = 3').run();
