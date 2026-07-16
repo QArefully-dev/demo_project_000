@@ -1,10 +1,19 @@
 # Round 1 Lane B: Help And Policy Content Plan
 
-Status: implementation-ready plan; code implementation not authorized by this planning task.
+Status: implemented and reviewed on 2026-07-17; awaiting user merge.
 
 Authority: `plans/powder_shop_catalog_expansion_plan.md` Round 1 Lane B.
 
 Goal: API-independent help center covering FAQ, shipping, returns, powder safety, storage, pack sizes, privacy, terms. Typed static registry -> shared accessible renderers -> routable pages -> global footer discovery -> focused tests.
+
+## Implementation Record
+
+- Branch/worktree: `codex/round-1-lane-b-help-policy` / `C:\Users\iwano\Desktop\repos\demo_project_000-worktrees\round-1-lane-b-help-policy`
+- Base: `poweder_shop_expansion` at `324ca008fc87fca68604965abd0ed4460a4787df`
+- Delivered: typed static registry, eight articles, Help index, shared article/FAQ renderers, routes, global footer, focused tests.
+- Verification: focused help tests 17/17, web unit tests 113/113, web integration tests 5/5, lint passed, `git diff --check` passed.
+- Deferred: live browser visual/keyboard QA unavailable because no browser runtime. Root formatting, web typecheck/build, and root verify remain blocked by unrelated baseline formatting and catalog/product-fixture type errors.
+- Merge not performed; user will merge.
 
 ## Orchestration Contract
 
