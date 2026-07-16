@@ -86,3 +86,48 @@ void test('product API normalizes legacy SQLite creation timestamps for the tran
   assert.equal(product.createdAt, '2024-12-31T23:59:59.000Z');
   assert.equal(Value.Check(Product, product), true);
 });
+
+void test('catalog query validation reports deterministic 400 responses and exposes active filter options', async (t) => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'shop-product-query-'));
+  const db = openDatabase({ path: join(tempDir, 'shop.db') });
+  seedDatabase(db);
+  db.prepare('UPDATE products SET active = 0 WHERE id = 1').run();
+  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
+  t.after(async () => {
+    await app.close();
+    closeDatabase(db);
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  const options = await app.inject({ method: 'GET', url: '/api/products/filter-options' });
+  assert.equal(options.statusCode, 200);
+  assert.equal(
+    Value.Check(Product, (await app.inject({ method: 'GET', url: '/api/products/2' })).json()),
+    true,
+  );
+  const optionBody = options.json() as {
+    tags: { key: string }[];
+    specificationGroups: { specifications: { key: string; values: { key: string }[] }[] }[];
+  };
+  assert.ok(optionBody.tags.length > 0);
+  assert.ok(optionBody.specificationGroups.length > 0);
+  const specification = optionBody.specificationGroups[0]?.specifications[0];
+  assert.ok(specification?.values[0]);
+  const repeatedFilters = await app.inject({
+    method: 'GET',
+    url: `/api/products?tag=${optionBody.tags[0]!.key}&tag=${optionBody.tags[0]!.key}&spec=${specification!.key}:${specification!.values[0]!.key}`,
+  });
+  assert.equal(repeatedFilters.statusCode, 200);
+
+  for (const url of [
+    '/api/products?minPriceCents=2&maxPriceCents=1',
+    '/api/products?addedFrom=2025-02-30',
+    '/api/products?addedFrom=2025-02-02&addedTo=2025-02-01',
+    '/api/products?spec=texture:fine&spec=texture:coarse',
+    '/api/products?spec=pack-weight:900g',
+  ]) {
+    const response = await app.inject({ method: 'GET', url });
+    assert.equal(response.statusCode, 400, url);
+    assert.equal(typeof (response.json() as { error?: unknown }).error, 'string');
+  }
+});

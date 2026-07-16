@@ -114,15 +114,38 @@ export type FilterOptionsResponse = ProductFilterOptionsResponse;
 
 export const ProductSort = Type.Union([
   Type.Literal('newest'),
+  Type.Literal('oldest'),
+  Type.Literal('name_asc'),
   Type.Literal('price_asc'),
   Type.Literal('price_desc'),
   Type.Literal('bestselling'),
 ]);
+export type ProductSort = Static<typeof ProductSort>;
+
+const CatalogDate = Type.String({
+  minLength: 10,
+  maxLength: 10,
+  pattern: '^\\d{4}-\\d{2}-\\d{2}$',
+});
+const SpecificationFilterToken = Type.String({
+  minLength: 3,
+  maxLength: 129,
+  pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$',
+});
 
 export const ProductQuery = Type.Object({
   q: Type.Optional(Type.String({ maxLength: 200 })),
   category: Type.Optional(Type.String({ maxLength: 100 })),
   onSale: Type.Optional(Type.Boolean()),
+  minPriceCents: Type.Optional(Type.Integer({ minimum: 0, maximum: 1_000_000_000 })),
+  maxPriceCents: Type.Optional(Type.Integer({ minimum: 0, maximum: 1_000_000_000 })),
+  addedFrom: Type.Optional(CatalogDate),
+  addedTo: Type.Optional(CatalogDate),
+  tag: Type.Optional(Type.Array(NormalizedCatalogKey, { maxItems: 8 })),
+  spec: Type.Optional(Type.Array(SpecificationFilterToken, { maxItems: 8 })),
+  availability: Type.Optional(
+    Type.Union([Type.Literal('available'), Type.Literal('out_of_stock')]),
+  ),
   sort: Type.Optional(ProductSort),
   page: Type.Optional(Type.Integer({ minimum: 1, maximum: 10000 })),
   pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 48 })),

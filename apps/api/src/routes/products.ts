@@ -9,16 +9,30 @@ import {
   BestsellersResponse,
   RelatedResponse,
   ProductListPaginatedResponse,
+  ProductFilterOptionsResponse,
   ProductQuery,
 } from '@shop/contracts/products';
 import { ErrorResponse } from '@shop/contracts/common';
 import type { AppContext } from '../app.js';
+import { CatalogQueryError } from '../features/catalog/catalogQuery.js';
 
 export default function productsRoutes(app: FastifyInstance, { services }: AppContext): void {
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
   const { products } = services;
 
   // Static routes registered before /:id
+
+  typed.get(
+    '/api/products/filter-options',
+    {
+      schema: {
+        response: {
+          200: ProductFilterOptionsResponse,
+        },
+      },
+    },
+    () => products.listFilterOptions(),
+  );
 
   // GET /api/products/categories
   typed.get(
@@ -61,14 +75,22 @@ export default function productsRoutes(app: FastifyInstance, { services }: AppCo
         },
       },
     },
-    (request) => {
-      const result = products.list(request.query);
-      return {
-        items: result.items.map(toProductContract),
-        total: result.total,
-        page: result.page,
-        pageSize: result.pageSize,
-      };
+    (request, reply) => {
+      try {
+        const result = products.list(request.query);
+        return {
+          items: result.items.map(toProductContract),
+          total: result.total,
+          page: result.page,
+          pageSize: result.pageSize,
+        };
+      } catch (error) {
+        if (error instanceof CatalogQueryError) {
+          sendBadRequest(reply, error.message);
+          return;
+        }
+        throw error;
+      }
     },
   );
 

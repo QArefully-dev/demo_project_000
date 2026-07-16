@@ -23,6 +23,7 @@ import {
 import {
   Product,
   ProductFilterOptionsResponse,
+  ProductQuery,
   ProductSpecificationGroup,
   ProductTag,
 } from '../src/products.js';
@@ -195,6 +196,32 @@ void test('filter options expose strict tag and grouped filterable specification
         },
       ],
     }),
+    false,
+  );
+});
+
+void test('catalog query transport accepts bounded repeated discovery filters', () => {
+  assert.equal(
+    Value.Check(ProductQuery, {
+      minPriceCents: 0,
+      maxPriceCents: 9999,
+      addedFrom: '2025-01-01',
+      addedTo: '2025-12-31',
+      tag: ['high-protein', 'vegetarian'],
+      spec: ['texture:fine', 'source:plant'],
+      availability: 'available',
+      sort: 'oldest',
+    }),
+    true,
+  );
+  assert.equal(Value.Check(ProductQuery, { addedFrom: '2025-1-1' }), false);
+  assert.equal(Value.Check(ProductQuery, { tag: ['Bad tag'] }), false);
+  assert.equal(Value.Check(ProductQuery, { spec: ['texture=fine'] }), false);
+  assert.equal(Value.Check(ProductQuery, { sort: 'popular' }), false);
+  assert.equal(Value.Check(ProductQuery, { minPriceCents: -1 }), false);
+  assert.equal(Value.Check(ProductQuery, { tag: Array.from({ length: 9 }, () => 'plant') }), false);
+  assert.equal(
+    Value.Check(ProductQuery, { spec: Array.from({ length: 9 }, () => 'texture:fine') }),
     false,
   );
 });
