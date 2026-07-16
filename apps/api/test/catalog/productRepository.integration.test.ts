@@ -37,4 +37,17 @@ void test('product repository owns catalog SQL', (t) => {
       .items.every((product) => product.compare_at_price_cents !== null),
   );
   assert.ok(products.listRelated(45).every((product) => product.category === 'Impossible'));
+  db.prepare('UPDATE products SET active = 0 WHERE id IN (1, 2)').run();
+  assert.equal(products.findById(1)?.active, 0);
+  assert.equal(products.findActiveById(1), undefined);
+  assert.equal(products.list({ sort: 'newest', pageSize: 48 }).total, 48);
+  assert.equal(
+    products.listEligibleMixProducts().some((product) => product.id === 1),
+    false,
+  );
+  assert.deepEqual(products.listActiveMixProducts([1, 2]), []);
+  assert.deepEqual(
+    products.listMixProducts([1, 2]).map((product) => product.id),
+    [1, 2],
+  );
 });

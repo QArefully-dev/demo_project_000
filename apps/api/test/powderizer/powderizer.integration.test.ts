@@ -265,3 +265,27 @@ void test('Powderizer rejects unavailable inputs and cart mutation conflicts', (
   }
   assert.equal(powderizer.remove(unrestrictedCart, crypto.randomUUID()), 'MIX_NOT_FOUND');
 });
+
+void test('Powderizer excludes inactive components from new selection and requotes', (t) => {
+  const { db, carts, powderizer } = createFixture(t);
+  const cartId = createCart(carts).cartId;
+  const mixId = powderizer.create(cartId, validMix);
+  assert.equal(typeof mixId, 'string');
+  if (typeof mixId !== 'string') throw new Error('Expected mix ID');
+
+  db.prepare('UPDATE products SET active = 0 WHERE id = 1').run();
+  assert.equal(
+    powderizer.config().eligibleProducts.some((product) => product.id === '1'),
+    false,
+  );
+  assert.throws(
+    () => powderizer.quote(validMix),
+    (error: unknown) =>
+      error instanceof PowderMixDomainError && error.code === 'MIX_COMPONENT_INELIGIBLE',
+  );
+  assert.throws(
+    () => powderizer.requote(cartId, mixId),
+    (error: unknown) =>
+      error instanceof PowderMixDomainError && error.code === 'MIX_COMPONENT_INELIGIBLE',
+  );
+});

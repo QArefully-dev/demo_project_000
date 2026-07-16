@@ -38,7 +38,10 @@ export function createCartRepository(db: Database.Database): CartRepository {
         .all(cartId) as CartLineRow[];
     },
     productExists(productId) {
-      return db.prepare('SELECT 1 FROM products WHERE id = ?').get(productId) !== undefined;
+      return (
+        db.prepare('SELECT 1 FROM products WHERE id = ? AND active = 1').get(productId) !==
+        undefined
+      );
     },
     addLine(cartId, productId) {
       db.prepare(

@@ -3,6 +3,7 @@ import type { ProductList, ProductRepository, ProductRow } from './productReposi
 
 export interface ProductService {
   list(query: ProductQuery): ProductList;
+  /** Customer-facing product detail lookup. */
   findById(id: number): ProductRow | undefined;
   listCategories(): string[];
   listBestsellers(limit?: number): ProductRow[];
@@ -12,7 +13,7 @@ export interface ProductService {
 export function createProductService(repository: ProductRepository): ProductService {
   return {
     list: (query) => repository.list(query),
-    findById: (id) => repository.findById(id),
+    findById: (id) => repository.findActiveById(id),
     listCategories: () => repository.listCategories(),
     listBestsellers: (limit) => repository.listBestsellers(limit),
     listRelated: (productId, limit) => repository.listRelated(productId, limit),

@@ -47,6 +47,22 @@ void test('cart service coordinates cart repository and promo eligibility', (t) 
   assert.deepEqual(getCart(carts, cartId)?.mixItems, []);
 });
 
+void test('cart blocks new inactive selections but retains existing lines', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-inactive-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+  const carts = createCartRepository(db);
+  const { cartId } = createCart(carts);
+  assert.notEqual(addItem(carts, cartId, '1'), 'PRODUCT_NOT_FOUND');
+  db.prepare('UPDATE products SET active = 0 WHERE id = 1').run();
+  assert.equal(addItem(carts, cartId, '1'), 'PRODUCT_NOT_FOUND');
+  assert.equal(getCart(carts, cartId)?.items[0]?.productId, '1');
+});
+
 void test('cart reads persisted mixes as first-class lines and promos count bag quantity', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-mix-cart-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });

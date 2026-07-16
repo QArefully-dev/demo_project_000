@@ -95,9 +95,16 @@ export function createPowderizerService(dependencies: {
   mixes: PowderMixRepository;
   utcDateProvider: () => Date;
 }): PowderizerService {
-  const loadRequestedProducts = (productIds: readonly number[]): PowderMixProduct[] => {
+  const loadRequestedProducts = (
+    productIds: readonly number[],
+    selection: 'active' | 'internal' = 'active',
+  ): PowderMixProduct[] => {
     const uniqueIds = [...new Set(productIds)];
-    const products = dependencies.products.listMixProducts(uniqueIds).map(toMixProduct);
+    const rows =
+      selection === 'active'
+        ? dependencies.products.listActiveMixProducts(uniqueIds)
+        : dependencies.products.listMixProducts(uniqueIds);
+    const products = rows.map(toMixProduct);
     if (products.length !== uniqueIds.length) {
       throw new PowderMixDomainError(
         'MIX_COMPONENT_INELIGIBLE',
@@ -126,7 +133,7 @@ export function createPowderizerService(dependencies: {
           ),
         ]
       : [];
-    const products = loadRequestedProducts(ids);
+    const products = loadRequestedProducts(ids, 'active');
     return quotePowderMix(input, products);
   };
 
