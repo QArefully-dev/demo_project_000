@@ -57,7 +57,6 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
 - `packages/catalog/`: canonical product/category/packaging content plus validation
 - `data/`: ignored local SQLite runtime files; default `data/shop.db`
 - `plans/`: active product/course plans; `plans/old/` historical context only
-- `scripts/`: repository policy tooling; authored-size report and exception policy
 - `.claude/skills/`: repo-local agent skills; load only when task matches
 - root configs: workspaces/scripts in `package.json`; shared TypeScript, ESLint, Prettier configuration
 
@@ -108,7 +107,6 @@ Keep `--configLoader runner` on Vite/Vitest commands. Root scripts already suppl
 - Destructive refactor -> characterization test first. Async UI -> stale-response, cancellation, error, retry coverage where relevant.
 - Keep coverage focused; preserve QA exercise gaps. No Playwright frontend/API E2E tests unless task overrides.
 - UI/business change -> verify customer journey. Keep failures deterministic and domain errors exact.
-- One module -> one owner/reason to change. Review above 300 logical lines; split mixed responsibility before 400, never by line count alone. Generated source, migrations, fixtures, framework adapters, cohesive declarative renderers exempt with rationale.
 - Type ownership: persistence rows -> repositories; transport types -> contracts; UI state -> owning feature/provider. Derive request types from schemas; avoid bypass casts.
 - Async UI work aborts or ignores stale completion. Keep payment/auth secrets out of logs, persistent fingerprints, browser storage.
 - TSDoc public/non-obvious contracts. Comments explain rationale, invariants, risk; never obvious code.
