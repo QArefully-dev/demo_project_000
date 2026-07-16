@@ -230,6 +230,46 @@ describe('CatalogPage URL state', () => {
     expect(screen.getByRole('searchbox', { name: 'Search powders' })).toHaveValue('water');
   });
 
+  it.each([
+    [
+      'while filter options are loading',
+      {
+        options: null,
+        isLoading: true,
+        error: null,
+        refetch: vi.fn().mockResolvedValue(undefined),
+      },
+    ],
+    [
+      'after filter options fail',
+      {
+        options: null,
+        isLoading: false,
+        error: 'offline',
+        refetch: vi.fn().mockResolvedValue(undefined),
+      },
+    ],
+  ])('never forwards raw URL metadata filters %s', (_state, filterOptionsState) => {
+    vi.mocked(useProductFilterOptions).mockReturnValue(filterOptionsState);
+    renderCatalog('/catalog?q=water&tag=unknown&spec=missing%3Avalue');
+
+    expect(vi.mocked(useProducts)).toHaveBeenLastCalledWith({
+      q: 'water',
+      category: undefined,
+      onSale: undefined,
+      minPriceCents: undefined,
+      maxPriceCents: undefined,
+      addedFrom: undefined,
+      addedTo: undefined,
+      tag: [],
+      spec: [],
+      availability: undefined,
+      sort: undefined,
+      page: 1,
+      pageSize: 12,
+    });
+  });
+
   it('preserves selected filters through product-route history back and forward', async () => {
     const user = userEvent.setup();
     renderCatalog('/catalog?q=water&sort=price_desc&page=2&pageSize=24');

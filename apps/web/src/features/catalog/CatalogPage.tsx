@@ -39,6 +39,10 @@ export function CatalogPage() {
     isLoading: filterOptionsLoading,
     error: filterOptionsError,
   } = useProductFilterOptions();
+  // URL filter values are only safe to send after the server's filter registry
+  // has loaded successfully. Until then (or after an error), keep catalogue
+  // results usable with the non-metadata query fields alone.
+  const hasLoadedFilterOptions = filterOptions !== null && filterOptionsError === null;
   const allowedTagKeys = new Set(filterOptions?.tags.map((option) => option.key));
   const allowedSpecificationTokens = new Set(
     filterOptions?.specificationGroups.flatMap((group) =>
@@ -47,12 +51,12 @@ export function CatalogPage() {
       ),
     ),
   );
-  const visibleTags = filterOptions ? tag.filter((value) => allowedTagKeys.has(value)) : tag;
-  const visibleSpecs = filterOptions
+  const visibleTags = hasLoadedFilterOptions ? tag.filter((value) => allowedTagKeys.has(value)) : [];
+  const visibleSpecs = hasLoadedFilterOptions
     ? spec.filter((value) => allowedSpecificationTokens.has(value))
-    : spec;
+    : [];
   const normalizeSupportedFilters = (query: ProductQuery): ProductQuery =>
-    !filterOptions
+    !hasLoadedFilterOptions
       ? query
       : {
           ...query,
