@@ -1,7 +1,6 @@
 import {
   createCatalogProducts,
   createPackaging,
-  createdAtFromNewestRank,
   type CatalogProductDraft,
   NOT_FOR_CONSUMPTION,
 } from '../model.js';
@@ -18,7 +17,7 @@ export const impossibleProducts = createCatalogProducts([
     stock_count: 16,
     sales_count: 470,
     active: true,
-    created_at: createdAtFromNewestRank(39),
+    created_at: '2025-02-08T00:00:00.000Z',
     tags: [{ key: 'conceptual', label: 'Conceptual' }, { key: 'time', label: 'Time' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' }, colour: null, source: null,
@@ -39,7 +38,7 @@ export const impossibleProducts = createCatalogProducts([
     stock_count: 14,
     sales_count: 440,
     active: true,
-    created_at: createdAtFromNewestRank(40),
+    created_at: '2025-02-09T00:00:00.000Z',
     tags: [{ key: 'conceptual', label: 'Conceptual' }, { key: 'gravity', label: 'Gravity' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' }, colour: null, source: null,
@@ -60,7 +59,7 @@ export const impossibleProducts = createCatalogProducts([
     stock_count: 15,
     sales_count: 280,
     active: true,
-    created_at: createdAtFromNewestRank(41),
+    created_at: '2025-02-10T00:00:00.000Z',
     tags: [{ key: 'conceptual', label: 'Conceptual' }, { key: 'silence', label: 'Silence' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' }, colour: null, source: null,
@@ -81,7 +80,7 @@ export const impossibleProducts = createCatalogProducts([
     stock_count: 12,
     sales_count: 295,
     active: true,
-    created_at: createdAtFromNewestRank(42),
+    created_at: '2025-02-11T00:00:00.000Z',
     tags: [{ key: 'conceptual', label: 'Conceptual' }, { key: 'moonlight', label: 'Moonlight' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' }, colour: null, source: null,
@@ -101,7 +100,7 @@ export const impossibleProducts = createCatalogProducts([
     stock_count: 13,
     sales_count: 385,
     active: true,
-    created_at: createdAtFromNewestRank(43),
+    created_at: '2025-02-12T00:00:00.000Z',
     tags: [{ key: 'conceptual', label: 'Conceptual' }, { key: 'weekend', label: 'Weekend' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' }, colour: null, source: null,
@@ -122,7 +121,7 @@ export const impossibleProducts = createCatalogProducts([
     stock_count: 11,
     sales_count: 230,
     active: true,
-    created_at: createdAtFromNewestRank(44),
+    created_at: '2025-02-13T00:00:00.000Z',
     tags: [{ key: 'conceptual', label: 'Conceptual' }, { key: 'horizon', label: 'Horizon' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' }, colour: null, source: null,
@@ -142,7 +141,7 @@ export const impossibleProducts = createCatalogProducts([
     stock_count: 64,
     sales_count: 1200,
     active: true,
-    created_at: createdAtFromNewestRank(45),
+    created_at: '2025-02-14T00:00:00.000Z',
     tags: [{ key: 'conceptual', label: 'Conceptual' }, { key: 'water', label: 'Water' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' }, colour: null, source: null,
@@ -162,7 +161,7 @@ export const impossibleProducts = createCatalogProducts([
     stock_count: 1,
     sales_count: 49,
     active: true,
-    created_at: createdAtFromNewestRank(49),
+    created_at: '2025-02-18T00:00:00.000Z',
     tags: [{ key: 'conceptual', label: 'Conceptual' }, { key: 'lunar', label: 'Lunar' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' }, colour: null, source: null,

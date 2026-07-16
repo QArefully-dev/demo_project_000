@@ -1,7 +1,6 @@
 import {
   createCatalogProducts,
   createPackaging,
-  createdAtFromNewestRank,
   type CatalogProductDraft,
   NOT_FOR_CONSUMPTION,
 } from '../model.js';
@@ -18,7 +17,7 @@ export const questionableProducts = createCatalogProducts([
     stock_count: 17,
     sales_count: 260,
     active: true,
-    created_at: createdAtFromNewestRank(33),
+    created_at: '2025-02-02T00:00:00.000Z',
     tags: [{ key: 'conceptual', label: 'Conceptual' }, { key: 'house', label: 'House' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' }, colour: null, source: null,
@@ -38,7 +37,7 @@ export const questionableProducts = createCatalogProducts([
     stock_count: 21,
     sales_count: 330,
     active: true,
-    created_at: createdAtFromNewestRank(34),
+    created_at: '2025-02-03T00:00:00.000Z',
     tags: [{ key: 'conceptual', label: 'Conceptual' }, { key: 'internet', label: 'Internet' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' }, colour: null, source: null,
@@ -58,7 +57,7 @@ export const questionableProducts = createCatalogProducts([
     stock_count: 26,
     sales_count: 245,
     active: true,
-    created_at: createdAtFromNewestRank(35),
+    created_at: '2025-02-04T00:00:00.000Z',
     tags: [{ key: 'conceptual', label: 'Conceptual' }, { key: 'tuesday', label: 'Tuesday' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' }, colour: null, source: null,
@@ -78,7 +77,7 @@ export const questionableProducts = createCatalogProducts([
     stock_count: 18,
     sales_count: 155,
     active: true,
-    created_at: createdAtFromNewestRank(36),
+    created_at: '2025-02-05T00:00:00.000Z',
     tags: [{ key: 'conceptual', label: 'Conceptual' }, { key: 'meeting', label: 'Meeting' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' }, colour: null, source: null,
@@ -98,7 +97,7 @@ export const questionableProducts = createCatalogProducts([
     stock_count: 23,
     sales_count: 180,
     active: true,
-    created_at: createdAtFromNewestRank(37),
+    created_at: '2025-02-06T00:00:00.000Z',
     tags: [{ key: 'conceptual', label: 'Conceptual' }, { key: 'spare-key', label: 'Spare key' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' }, colour: null, source: null,
@@ -118,7 +117,7 @@ export const questionableProducts = createCatalogProducts([
     stock_count: 20,
     sales_count: 140,
     active: true,
-    created_at: createdAtFromNewestRank(38),
+    created_at: '2025-02-07T00:00:00.000Z',
     tags: [{ key: 'conceptual', label: 'Conceptual' }, { key: 'queue', label: 'Queue' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' }, colour: null, source: null,
@@ -139,7 +138,7 @@ export const questionableProducts = createCatalogProducts([
     stock_count: 8,
     sales_count: 46,
     active: true,
-    created_at: createdAtFromNewestRank(46),
+    created_at: '2025-02-15T00:00:00.000Z',
     tags: [{ key: 'conceptual', label: 'Conceptual' }, { key: 'boat', label: 'Boat' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' }, colour: null, source: null,
@@ -160,7 +159,7 @@ export const questionableProducts = createCatalogProducts([
     stock_count: 4,
     sales_count: 47,
     active: true,
-    created_at: createdAtFromNewestRank(47),
+    created_at: '2025-02-16T00:00:00.000Z',
     tags: [{ key: 'conceptual', label: 'Conceptual' }, { key: 'plane', label: 'Plane' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' }, colour: null, source: null,
@@ -181,7 +180,7 @@ export const questionableProducts = createCatalogProducts([
     stock_count: 6,
     sales_count: 48,
     active: true,
-    created_at: createdAtFromNewestRank(48),
+    created_at: '2025-02-17T00:00:00.000Z',
     tags: [{ key: 'conceptual', label: 'Conceptual' }, { key: 'laptop', label: 'Laptop' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' }, colour: null, source: null,
@@ -201,7 +200,7 @@ export const questionableProducts = createCatalogProducts([
     stock_count: 3,
     sales_count: 50,
     active: true,
-    created_at: createdAtFromNewestRank(50),
+    created_at: '2025-02-19T00:00:00.000Z',
     tags: [{ key: 'conceptual', label: 'Conceptual' }, { key: 'diamond', label: 'Diamond' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' }, colour: null, source: null,

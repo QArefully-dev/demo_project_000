@@ -1,7 +1,6 @@
 import {
   createCatalogProducts,
   createPackaging,
-  createdAtFromNewestRank,
   type CatalogProductDraft,
 } from '../model.js';
 
@@ -16,7 +15,7 @@ export const performanceProducts = createCatalogProducts([
     stock_count: 50,
     sales_count: 540,
     active: true,
-    created_at: createdAtFromNewestRank(8),
+    created_at: '2025-01-08T00:00:00.000Z',
     tags: [
       { key: 'electrolyte', label: 'Electrolyte' },
       { key: 'citrus', label: 'Citrus' },
@@ -43,7 +42,7 @@ export const performanceProducts = createCatalogProducts([
     stock_count: 29,
     sales_count: 340,
     active: true,
-    created_at: createdAtFromNewestRank(9),
+    created_at: '2025-01-09T00:00:00.000Z',
     tags: [
       { key: 'cocoa', label: 'Cocoa' },
       { key: 'recovery', label: 'Recovery' },
@@ -69,7 +68,7 @@ export const performanceProducts = createCatalogProducts([
     stock_count: 35,
     sales_count: 215,
     active: true,
-    created_at: createdAtFromNewestRank(10),
+    created_at: '2025-01-10T00:00:00.000Z',
     tags: [{ key: 'beetroot', label: 'Beetroot' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' },
@@ -92,7 +91,7 @@ export const performanceProducts = createCatalogProducts([
     stock_count: 34,
     sales_count: 305,
     active: true,
-    created_at: createdAtFromNewestRank(11),
+    created_at: '2025-01-11T00:00:00.000Z',
     tags: [
       { key: 'pea', label: 'Pea' },
       { key: 'protein', label: 'Protein' },
@@ -119,7 +118,7 @@ export const performanceProducts = createCatalogProducts([
     stock_count: 40,
     sales_count: 330,
     active: true,
-    created_at: createdAtFromNewestRank(12),
+    created_at: '2025-01-12T00:00:00.000Z',
     tags: [
       { key: 'banana', label: 'Banana' },
       { key: 'freeze-dried', label: 'Freeze-dried' },
@@ -145,7 +144,7 @@ export const performanceProducts = createCatalogProducts([
     stock_count: 45,
     sales_count: 365,
     active: true,
-    created_at: createdAtFromNewestRank(13),
+    created_at: '2025-01-13T00:00:00.000Z',
     tags: [
       { key: 'oat', label: 'Oat' },
       { key: 'milk', label: 'Milk' },

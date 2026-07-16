@@ -1,7 +1,6 @@
 import {
   createCatalogProducts,
   createPackaging,
-  createdAtFromNewestRank,
   type CatalogProductDraft,
 } from '../model.js';
 
@@ -17,7 +16,7 @@ export const pantryProducts = createCatalogProducts([
     stock_count: 42,
     sales_count: 680,
     active: true,
-    created_at: createdAtFromNewestRank(1),
+    created_at: '2025-01-01T00:00:00.000Z',
     tags: [
       { key: 'protein', label: 'Protein' },
       { key: 'vanilla', label: 'Vanilla' },
@@ -44,7 +43,7 @@ export const pantryProducts = createCatalogProducts([
     stock_count: 56,
     sales_count: 410,
     active: true,
-    created_at: createdAtFromNewestRank(2),
+    created_at: '2025-01-02T00:00:00.000Z',
     tags: [
       { key: 'oat', label: 'Oat' },
       { key: 'flour', label: 'Flour' },
@@ -71,7 +70,7 @@ export const pantryProducts = createCatalogProducts([
     stock_count: 38,
     sales_count: 495,
     active: true,
-    created_at: createdAtFromNewestRank(3),
+    created_at: '2025-01-03T00:00:00.000Z',
     tags: [{ key: 'cocoa', label: 'Cocoa' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' },
@@ -95,7 +94,7 @@ export const pantryProducts = createCatalogProducts([
     stock_count: 44,
     sales_count: 360,
     active: true,
-    created_at: createdAtFromNewestRank(4),
+    created_at: '2025-01-04T00:00:00.000Z',
     tags: [
       { key: 'peanut', label: 'Peanut' },
       { key: 'peanut-butter', label: 'Peanut butter' },
@@ -122,7 +121,7 @@ export const pantryProducts = createCatalogProducts([
     stock_count: 47,
     sales_count: 290,
     active: true,
-    created_at: createdAtFromNewestRank(5),
+    created_at: '2025-01-05T00:00:00.000Z',
     tags: [{ key: 'tomato', label: 'Tomato' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' },
@@ -145,7 +144,7 @@ export const pantryProducts = createCatalogProducts([
     stock_count: 31,
     sales_count: 275,
     active: true,
-    created_at: createdAtFromNewestRank(6),
+    created_at: '2025-01-06T00:00:00.000Z',
     tags: [
       { key: 'mushroom', label: 'Mushroom' },
       { key: 'porcini', label: 'Porcini' },
@@ -172,7 +171,7 @@ export const pantryProducts = createCatalogProducts([
     stock_count: 63,
     sales_count: 390,
     active: true,
-    created_at: createdAtFromNewestRank(7),
+    created_at: '2025-01-07T00:00:00.000Z',
     tags: [
       { key: 'garlic', label: 'Garlic' },
       { key: 'roasted', label: 'Roasted' },

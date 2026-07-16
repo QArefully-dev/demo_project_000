@@ -1,5 +1,4 @@
 import {
-  createdAtFromNewestRank,
   createCatalogProducts,
   createPackaging,
   type CatalogProductDraft,
@@ -17,7 +16,7 @@ export const householdProducts = createCatalogProducts([
     stock_count: 54,
     sales_count: 445,
     active: true,
-    created_at: createdAtFromNewestRank(20),
+    created_at: '2025-01-20T00:00:00.000Z',
     tags: [
       { key: 'laundry', label: 'Laundry' },
       { key: 'cedar', label: 'Cedar' },
@@ -43,7 +42,7 @@ export const householdProducts = createCatalogProducts([
     stock_count: 43,
     sales_count: 320,
     active: true,
-    created_at: createdAtFromNewestRank(21),
+    created_at: '2025-01-21T00:00:00.000Z',
     tags: [
       { key: 'dishwasher', label: 'Dishwasher' },
       { key: 'citrus', label: 'Citrus' },
@@ -69,7 +68,7 @@ export const householdProducts = createCatalogProducts([
     stock_count: 30,
     sales_count: 160,
     active: true,
-    created_at: createdAtFromNewestRank(22),
+    created_at: '2025-01-22T00:00:00.000Z',
     tags: [
       { key: 'carpet', label: 'Carpet' },
       { key: 'dry-care', label: 'Dry care' },
@@ -95,7 +94,7 @@ export const householdProducts = createCatalogProducts([
     stock_count: 39,
     sales_count: 145,
     active: true,
-    created_at: createdAtFromNewestRank(23),
+    created_at: '2025-01-23T00:00:00.000Z',
     tags: [{ key: 'window-cleaning', label: 'Window cleaning' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' },
@@ -118,7 +117,7 @@ export const householdProducts = createCatalogProducts([
     stock_count: 41,
     sales_count: 185,
     active: true,
-    created_at: createdAtFromNewestRank(24),
+    created_at: '2025-01-24T00:00:00.000Z',
     tags: [
       { key: 'drawer-care', label: 'Drawer care' },
       { key: 'lavender', label: 'Lavender' },
@@ -144,7 +143,7 @@ export const householdProducts = createCatalogProducts([
     stock_count: 27,
     sales_count: 120,
     active: true,
-    created_at: createdAtFromNewestRank(25),
+    created_at: '2025-01-25T00:00:00.000Z',
     tags: [{ key: 'dusting', label: 'Dusting' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' },
@@ -167,7 +166,7 @@ export const householdProducts = createCatalogProducts([
     stock_count: 36,
     sales_count: 210,
     active: true,
-    created_at: createdAtFromNewestRank(26),
+    created_at: '2025-01-26T00:00:00.000Z',
     tags: [{ key: 'floor-cleaning', label: 'Floor cleaning' }],
     specifications: {
       texture: { key: 'powder', label: 'Powder' },

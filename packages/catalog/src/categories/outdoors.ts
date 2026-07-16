@@ -1,7 +1,6 @@
 import {
   createCatalogProducts,
   createPackaging,
-  createdAtFromNewestRank,
   type CatalogProductDraft,
   NOT_FOR_CONSUMPTION,
 } from '../model.js';
@@ -17,7 +16,7 @@ export const outdoorsProducts = createCatalogProducts([
     stock_count: 24,
     sales_count: 390,
     active: true,
-    created_at: createdAtFromNewestRank(27),
+    created_at: '2025-01-27T00:00:00.000Z',
     tags: [
       { key: 'outdoor', label: 'Outdoor' },
       { key: 'campfire', label: 'Campfire' },
@@ -44,7 +43,7 @@ export const outdoorsProducts = createCatalogProducts([
     stock_count: 25,
     sales_count: 340,
     active: true,
-    created_at: createdAtFromNewestRank(28),
+    created_at: '2025-01-28T00:00:00.000Z',
     tags: [
       { key: 'outdoor', label: 'Outdoor' },
       { key: 'beach', label: 'Beach' },
@@ -71,7 +70,7 @@ export const outdoorsProducts = createCatalogProducts([
     stock_count: 28,
     sales_count: 190,
     active: true,
-    created_at: createdAtFromNewestRank(29),
+    created_at: '2025-01-29T00:00:00.000Z',
     tags: [
       { key: 'outdoor', label: 'Outdoor' },
       { key: 'trail', label: 'Trail' },
@@ -98,7 +97,7 @@ export const outdoorsProducts = createCatalogProducts([
     stock_count: 22,
     sales_count: 175,
     active: true,
-    created_at: createdAtFromNewestRank(30),
+    created_at: '2025-01-30T00:00:00.000Z',
     tags: [
       { key: 'outdoor', label: 'Outdoor' },
       { key: 'fog', label: 'Fog' },
@@ -125,7 +124,7 @@ export const outdoorsProducts = createCatalogProducts([
     stock_count: 34,
     sales_count: 205,
     active: true,
-    created_at: createdAtFromNewestRank(31),
+    created_at: '2025-01-31T00:00:00.000Z',
     tags: [
       { key: 'outdoor', label: 'Outdoor' },
       { key: 'pine', label: 'Pine' },
@@ -152,7 +151,7 @@ export const outdoorsProducts = createCatalogProducts([
     stock_count: 19,
     sales_count: 135,
     active: true,
-    created_at: createdAtFromNewestRank(32),
+    created_at: '2025-02-01T00:00:00.000Z',
     tags: [
       { key: 'outdoor', label: 'Outdoor' },
       { key: 'summit', label: 'Summit' },

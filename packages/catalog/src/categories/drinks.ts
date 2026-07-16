@@ -1,5 +1,4 @@
 import {
-  createdAtFromNewestRank,
   createCatalogProducts,
   createPackaging,
   type CatalogProductDraft,
@@ -16,7 +15,7 @@ export const drinksProducts = createCatalogProducts([
     stock_count: 33,
     sales_count: 520,
     active: true,
-    created_at: createdAtFromNewestRank(14),
+    created_at: '2025-01-14T00:00:00.000Z',
     tags: [
       { key: 'matcha', label: 'Matcha' },
       { key: 'tea', label: 'Tea' },
@@ -43,7 +42,7 @@ export const drinksProducts = createCatalogProducts([
     stock_count: 48,
     sales_count: 610,
     active: true,
-    created_at: createdAtFromNewestRank(15),
+    created_at: '2025-01-15T00:00:00.000Z',
     tags: [
       { key: 'coffee', label: 'Coffee' },
       { key: 'instant', label: 'Instant' },
@@ -69,7 +68,7 @@ export const drinksProducts = createCatalogProducts([
     stock_count: 52,
     sales_count: 270,
     active: true,
-    created_at: createdAtFromNewestRank(16),
+    created_at: '2025-01-16T00:00:00.000Z',
     tags: [
       { key: 'milk-drink', label: 'Milk drink' },
       { key: 'strawberry', label: 'Strawberry' },
@@ -95,7 +94,7 @@ export const drinksProducts = createCatalogProducts([
     stock_count: 58,
     sales_count: 305,
     active: true,
-    created_at: createdAtFromNewestRank(17),
+    created_at: '2025-01-17T00:00:00.000Z',
     tags: [
       { key: 'lemonade', label: 'Lemonade' },
       { key: 'drink-mix', label: 'Drink mix' },
@@ -121,7 +120,7 @@ export const drinksProducts = createCatalogProducts([
     stock_count: 37,
     sales_count: 350,
     active: true,
-    created_at: createdAtFromNewestRank(18),
+    created_at: '2025-01-18T00:00:00.000Z',
     tags: [
       { key: 'chai', label: 'Chai' },
       { key: 'spiced', label: 'Spiced' },
@@ -147,7 +146,7 @@ export const drinksProducts = createCatalogProducts([
     stock_count: 46,
     sales_count: 225,
     active: true,
-    created_at: createdAtFromNewestRank(19),
+    created_at: '2025-01-19T00:00:00.000Z',
     tags: [
       { key: 'cherry', label: 'Cherry' },
       { key: 'soda', label: 'Soda' },
