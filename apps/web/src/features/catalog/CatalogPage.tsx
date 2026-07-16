@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import type { ProductQuery } from '@shop/contracts/products';
 import { useProducts } from '@/hooks/useProducts';
 import { useCategories } from '@/hooks/useCategories';
 import { useProductFilterOptions } from '@/hooks/useProductFilterOptions';
@@ -29,6 +30,7 @@ export function CatalogPage() {
     page,
     pageSize,
     setParam,
+    setParams,
     clearFilters,
   } = useCatalogParams();
   const { categories } = useCategories();
@@ -37,6 +39,28 @@ export function CatalogPage() {
     isLoading: filterOptionsLoading,
     error: filterOptionsError,
   } = useProductFilterOptions();
+  const allowedTagKeys = new Set(filterOptions?.tags.map((option) => option.key));
+  const allowedSpecificationTokens = new Set(
+    filterOptions?.specificationGroups.flatMap((group) =>
+      group.specifications.flatMap((specification) =>
+        specification.values.map((value) => `${specification.key}:${value.key}`),
+      ),
+    ),
+  );
+  const visibleTags = filterOptions ? tag.filter((value) => allowedTagKeys.has(value)) : tag;
+  const visibleSpecs = filterOptions
+    ? spec.filter((value) => allowedSpecificationTokens.has(value))
+    : spec;
+  const normalizeSupportedFilters = (query: ProductQuery): ProductQuery =>
+    !filterOptions
+      ? query
+      : {
+          ...query,
+          tag: (query.tag ?? []).filter((value) => allowedTagKeys.has(value)),
+          spec: (query.spec ?? []).filter((value) => allowedSpecificationTokens.has(value)),
+        };
+  const setCatalogParam = (key: keyof ProductQuery, value: string | readonly string[] | null) =>
+    setParam(key, value, normalizeSupportedFilters);
   const { products, isLoading, error, total, refetch } = useProducts({
     q,
     category,
@@ -45,8 +69,8 @@ export function CatalogPage() {
     maxPriceCents,
     addedFrom,
     addedTo,
-    tag,
-    spec,
+    tag: visibleTags,
+    spec: visibleSpecs,
     availability,
     sort,
     page,
@@ -73,7 +97,7 @@ export function CatalogPage() {
   const updateSearch = (value: string) => {
     setLocalQ(value);
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setParam('q', value || null), 300);
+    timer.current = setTimeout(() => setCatalogParam('q', value || null), 300);
   };
 
   if (error && products.length === 0) {
@@ -89,8 +113,8 @@ export function CatalogPage() {
       maxPriceCents !== undefined ||
       addedFrom ||
       addedTo ||
-      tag.length > 0 ||
-      spec.length > 0 ||
+      visibleTags.length > 0 ||
+      visibleSpecs.length > 0 ||
       availability,
   );
   const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -118,7 +142,7 @@ export function CatalogPage() {
         resultSummary={resultSummary}
         sort={sort}
         sortOptions={SORT_OPTIONS}
-        onSortChange={(value) => setParam('sort', value ?? null)}
+        onSortChange={(value) => setCatalogParam('sort', value ?? null)}
       />
       {cartError && (
         <div
@@ -142,33 +166,40 @@ export function CatalogPage() {
           addedFrom={addedFrom}
           addedTo={addedTo}
           availability={availability}
-          tags={tag}
-          specs={spec}
+          tags={visibleTags}
+          specs={visibleSpecs}
           filterOptions={filterOptions ?? undefined}
           filterOptionsLoading={filterOptionsLoading}
           filterOptionsError={filterOptionsError ?? undefined}
           hasFilters={hasFilters}
-          onCategoryChange={(value) => setParam('category', value ?? null)}
-          onSaleChange={(value) => setParam('onSale', value ? 'true' : null)}
-          onQueryClear={() => setParam('q', null)}
-          onMinPriceCentsChange={(value) =>
-            setParam('minPriceCents', value === undefined ? null : String(value))
+          onCategoryChange={(value) => setCatalogParam('category', value ?? null)}
+          onSaleChange={(value) => setCatalogParam('onSale', value ? 'true' : null)}
+          onQueryClear={() => setCatalogParam('q', null)}
+          onPriceRangeChange={(min, max) =>
+            setParams(
+              {
+                minPriceCents: min === undefined ? null : String(min),
+                maxPriceCents: max === undefined ? null : String(max),
+              },
+              normalizeSupportedFilters,
+            )
           }
-          onMaxPriceCentsChange={(value) =>
-            setParam('maxPriceCents', value === undefined ? null : String(value))
+          onDateRangeChange={(from, to) =>
+            setParams({ addedFrom: from ?? null, addedTo: to ?? null }, normalizeSupportedFilters)
           }
-          onAddedFromChange={(value) => setParam('addedFrom', value ?? null)}
-          onAddedToChange={(value) => setParam('addedTo', value ?? null)}
-          onAvailabilityChange={(value) => setParam('availability', value ?? null)}
+          onAvailabilityChange={(value) => setCatalogParam('availability', value ?? null)}
           onTagChange={(value, selected) =>
-            setParam('tag', selected ? [...tag, value] : tag.filter((item) => item !== value))
+            setCatalogParam(
+              'tag',
+              selected ? [...visibleTags, value] : visibleTags.filter((item) => item !== value),
+            )
           }
           onSpecChange={(key, value) =>
-            setParam(
+            setCatalogParam(
               'spec',
               value
-                ? [...spec.filter((item) => !item.startsWith(`${key}:`)), `${key}:${value}`]
-                : spec.filter((item) => !item.startsWith(`${key}:`)),
+                ? [...visibleSpecs.filter((item) => !item.startsWith(`${key}:`)), `${key}:${value}`]
+                : visibleSpecs.filter((item) => !item.startsWith(`${key}:`)),
             )
           }
           onClearFilters={clearFilters}
@@ -206,7 +237,7 @@ export function CatalogPage() {
                 variant="outline"
                 size="sm"
                 disabled={page <= 1}
-                onClick={() => setParam('page', String(page - 1))}
+                onClick={() => setCatalogParam('page', String(page - 1))}
               >
                 Previous
               </Button>
@@ -217,7 +248,7 @@ export function CatalogPage() {
                 variant="outline"
                 size="sm"
                 disabled={page >= totalPages}
-                onClick={() => setParam('page', String(page + 1))}
+                onClick={() => setCatalogParam('page', String(page + 1))}
               >
                 Next
               </Button>
@@ -228,7 +259,7 @@ export function CatalogPage() {
                 id="page-size"
                 className="rounded-md border bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 value={pageSize}
-                onChange={(event) => setParam('pageSize', event.target.value)}
+                onChange={(event) => setCatalogParam('pageSize', event.target.value)}
               >
                 {PAGE_SIZES.map((size) => (
                   <option key={size}>{size}</option>

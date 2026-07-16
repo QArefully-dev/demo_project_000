@@ -175,6 +175,47 @@ describe('CatalogPage URL state', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('/catalog?tag=drink-mix');
   });
 
+  it('keeps crossing price and date drafts local until their paired bound is valid', () => {
+    renderCatalog(
+      '/catalog?minPriceCents=100&maxPriceCents=500&addedFrom=2026-01-01&addedTo=2026-06-30&page=2',
+    );
+
+    fireEvent.change(screen.getByLabelText('Minimum (cents)'), { target: { value: '600' } });
+    expect(screen.getByLabelText('Minimum (cents)')).toHaveValue(600);
+    expect(screen.getByTestId('location')).toHaveTextContent('minPriceCents=100&maxPriceCents=500');
+    expect(screen.getByTestId('location')).toHaveTextContent('page=2');
+
+    fireEvent.change(screen.getByLabelText('Maximum (cents)'), { target: { value: '800' } });
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/catalog?minPriceCents=600&maxPriceCents=800&addedFrom=2026-01-01&addedTo=2026-06-30',
+    );
+
+    fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-07-01' } });
+    expect(screen.getByLabelText('From')).toHaveValue('2026-07-01');
+    expect(screen.getByTestId('location')).toHaveTextContent('addedFrom=2026-01-01&addedTo=2026-06-30');
+
+    fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-07-31' } });
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/catalog?minPriceCents=600&maxPriceCents=800&addedFrom=2026-07-01&addedTo=2026-07-31',
+    );
+  });
+
+  it('uses only loaded filter-option values and cleans unsupported values on the next mutation', async () => {
+    const user = userEvent.setup();
+    renderCatalog('/catalog?tag=pantry&tag=unknown&spec=texture%3Afine&spec=missing%3Avalue');
+
+    expect(vi.mocked(useProducts)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ tag: ['pantry'], spec: ['texture:fine'] }),
+    );
+    expect(screen.queryByRole('button', { name: /tag: unknown/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /specification: missing:value/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: 'Pantry Staples' }));
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/catalog?category=Pantry+Staples&tag=pantry&spec=texture%3Afine',
+    );
+  });
+
   it('keeps catalog results usable when filter options fail', () => {
     vi.mocked(useProductFilterOptions).mockReturnValue({
       options: null,

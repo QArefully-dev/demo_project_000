@@ -7,24 +7,35 @@ import {
   parseCatalogQuery,
   serializeCatalogQuery,
 } from '@/catalogQuery';
+import type { ProductQuery } from '@shop/contracts/products';
 
 export function useCatalogParams() {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = parseCatalogQuery(searchParams);
 
-  const setParam = useCallback(
-    (key: CatalogParamKey, value: CatalogParamValue) =>
+  const setParams = useCallback(
+    (
+      values: Partial<Record<CatalogParamKey, CatalogParamValue>>,
+      normalize?: (query: ProductQuery) => ProductQuery,
+    ) =>
       setSearchParams((previous) => {
         const next = new URLSearchParams(previous);
-        next.delete(key);
-        if (value !== null) {
-          const values = Array.isArray(value) ? value : [value];
-          for (const item of values) next.append(key, item);
+        for (const [key, value] of Object.entries(values) as [CatalogParamKey, CatalogParamValue][]) {
+          next.delete(key);
+          if (value !== null) {
+            const entries = Array.isArray(value) ? value : [value];
+            for (const item of entries) next.append(key, item);
+          }
         }
-        if (key !== 'page') next.delete('page');
-        return serializeCatalogQuery(parseCatalogQuery(next));
+        if (Object.keys(values).some((key) => key !== 'page')) next.delete('page');
+        return serializeCatalogQuery(normalize?.(parseCatalogQuery(next)) ?? parseCatalogQuery(next));
       }),
     [setSearchParams],
+  );
+  const setParam = useCallback(
+    (key: CatalogParamKey, value: CatalogParamValue, normalize?: (query: ProductQuery) => ProductQuery) =>
+      setParams({ [key]: value }, normalize),
+    [setParams],
   );
   const clearFilters = useCallback(
     () =>
@@ -36,5 +47,12 @@ export function useCatalogParams() {
     [setSearchParams],
   );
 
-  return { ...query, page: query.page ?? 1, pageSize: query.pageSize ?? 12, setParam, clearFilters };
+  return {
+    ...query,
+    page: query.page ?? 1,
+    pageSize: query.pageSize ?? 12,
+    setParam,
+    setParams,
+    clearFilters,
+  };
 }

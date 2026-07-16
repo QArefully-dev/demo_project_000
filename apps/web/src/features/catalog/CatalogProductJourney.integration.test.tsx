@@ -86,7 +86,7 @@ describe('catalog to product journey', () => {
     });
   });
 
-  it('keeps canonical tag/spec filters after product navigation and browser back', async () => {
+  it('removes filter values absent from the loaded registry after navigation and browser back', async () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter initialEntries={['/catalog?q=water&tag=pantry&tag=drink-mix&spec=texture%3Afine&sort=price_desc&page=2&pageSize=24']}>
@@ -100,7 +100,7 @@ describe('catalog to product journey', () => {
 
     await user.click(screen.getByRole('radio', { name: 'Pantry Staples' }));
     expect(screen.getByTestId('location')).toHaveTextContent(
-      '/catalog?q=water&category=Pantry+Staples&tag=drink-mix&tag=pantry&spec=texture%3Afine&sort=price_desc&pageSize=24',
+      '/catalog?q=water&category=Pantry+Staples&sort=price_desc&pageSize=24',
     );
 
     await user.click(
@@ -111,7 +111,7 @@ describe('catalog to product journey', () => {
     await user.click(screen.getByRole('button', { name: 'Back' }));
     await waitFor(() =>
       expect(screen.getByTestId('location')).toHaveTextContent(
-        '/catalog?q=water&category=Pantry+Staples&tag=drink-mix&tag=pantry&spec=texture%3Afine&sort=price_desc&pageSize=24',
+        '/catalog?q=water&category=Pantry+Staples&sort=price_desc&pageSize=24',
       ),
     );
     expect(screen.getByRole('heading', { name: 'Pantry Staples' })).toBeVisible();

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import type { ProductFilterOptionsResponse, ProductQuery } from '@shop/contracts/products';
 
@@ -22,10 +23,8 @@ interface CatalogSidebarProps {
   onCategoryChange: (category: string | undefined) => void;
   onSaleChange: (onSale: boolean) => void;
   onQueryClear: () => void;
-  onMinPriceCentsChange: (value: number | undefined) => void;
-  onMaxPriceCentsChange: (value: number | undefined) => void;
-  onAddedFromChange: (value: string | undefined) => void;
-  onAddedToChange: (value: string | undefined) => void;
+  onPriceRangeChange: (min: number | undefined, max: number | undefined) => void;
+  onDateRangeChange: (from: string | undefined, to: string | undefined) => void;
   onAvailabilityChange: (value: Availability | undefined) => void;
   onTagChange: (tag: string, selected: boolean) => void;
   onSpecChange: (specificationKey: string, valueKey: string | undefined) => void;
@@ -51,15 +50,39 @@ export function CatalogSidebar({
   onCategoryChange,
   onSaleChange,
   onQueryClear,
-  onMinPriceCentsChange,
-  onMaxPriceCentsChange,
-  onAddedFromChange,
-  onAddedToChange,
+  onPriceRangeChange,
+  onDateRangeChange,
   onAvailabilityChange,
   onTagChange,
   onSpecChange,
   onClearFilters,
 }: CatalogSidebarProps) {
+  const [minPriceDraft, setMinPriceDraft] = useState(minPriceCents?.toString() ?? '');
+  const [maxPriceDraft, setMaxPriceDraft] = useState(maxPriceCents?.toString() ?? '');
+  const [addedFromDraft, setAddedFromDraft] = useState(addedFrom ?? '');
+  const [addedToDraft, setAddedToDraft] = useState(addedTo ?? '');
+
+  useEffect(() => setMinPriceDraft(minPriceCents?.toString() ?? ''), [minPriceCents]);
+  useEffect(() => setMaxPriceDraft(maxPriceCents?.toString() ?? ''), [maxPriceCents]);
+  useEffect(() => setAddedFromDraft(addedFrom ?? ''), [addedFrom]);
+  useEffect(() => setAddedToDraft(addedTo ?? ''), [addedTo]);
+
+  const commitPriceRange = (minDraft: string, maxDraft: string) => {
+    const min = readNonNegativeInteger(minDraft);
+    const max = readNonNegativeInteger(maxDraft);
+    if (
+      (minDraft === '' || min !== undefined) &&
+      (maxDraft === '' || max !== undefined) &&
+      (min === undefined || max === undefined || min <= max)
+    ) {
+      onPriceRangeChange(min, max);
+    }
+  };
+  const commitDateRange = (fromDraft: string, toDraft: string) => {
+    const from = fromDraft || undefined;
+    const to = toDraft || undefined;
+    if (!from || !to || from <= to) onDateRangeChange(from, to);
+  };
   const tagByKey = new Map(filterOptions?.tags.map((tag) => [tag.key, tag]));
   const selectedSpecs = new Map(
     specs.map((token) => {
@@ -140,10 +163,12 @@ export function CatalogSidebar({
               min="0"
               step="1"
               inputMode="numeric"
-              value={minPriceCents ?? ''}
-              onChange={(event) =>
-                onMinPriceCentsChange(readNonNegativeInteger(event.target.value))
-              }
+              value={minPriceDraft}
+              onChange={(event) => {
+                const value = event.target.value;
+                setMinPriceDraft(value);
+                commitPriceRange(value, maxPriceDraft);
+              }}
               className="h-10 rounded-lg border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </label>
@@ -158,10 +183,12 @@ export function CatalogSidebar({
               min="0"
               step="1"
               inputMode="numeric"
-              value={maxPriceCents ?? ''}
-              onChange={(event) =>
-                onMaxPriceCentsChange(readNonNegativeInteger(event.target.value))
-              }
+              value={maxPriceDraft}
+              onChange={(event) => {
+                const value = event.target.value;
+                setMaxPriceDraft(value);
+                commitPriceRange(minPriceDraft, value);
+              }}
               className="h-10 rounded-lg border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </label>
@@ -178,8 +205,12 @@ export function CatalogSidebar({
             <input
               id="catalog-added-from"
               type="date"
-              value={addedFrom ?? ''}
-              onChange={(event) => onAddedFromChange(event.target.value || undefined)}
+              value={addedFromDraft}
+              onChange={(event) => {
+                const value = event.target.value;
+                setAddedFromDraft(value);
+                commitDateRange(value, addedToDraft);
+              }}
               className="h-10 rounded-lg border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </label>
@@ -191,8 +222,12 @@ export function CatalogSidebar({
             <input
               id="catalog-added-to"
               type="date"
-              value={addedTo ?? ''}
-              onChange={(event) => onAddedToChange(event.target.value || undefined)}
+              value={addedToDraft}
+              onChange={(event) => {
+                const value = event.target.value;
+                setAddedToDraft(value);
+                commitDateRange(addedFromDraft, value);
+              }}
               className="h-10 rounded-lg border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </label>
@@ -289,23 +324,23 @@ export function CatalogSidebar({
           {minPriceCents !== undefined && (
             <FilterChip
               label={`Minimum price: ${minPriceCents} cents`}
-              onClick={() => onMinPriceCentsChange(undefined)}
+              onClick={() => onPriceRangeChange(undefined, maxPriceCents)}
             />
           )}
           {maxPriceCents !== undefined && (
             <FilterChip
               label={`Maximum price: ${maxPriceCents} cents`}
-              onClick={() => onMaxPriceCentsChange(undefined)}
+              onClick={() => onPriceRangeChange(minPriceCents, undefined)}
             />
           )}
           {addedFrom && (
             <FilterChip
               label={`Added from: ${addedFrom}`}
-              onClick={() => onAddedFromChange(undefined)}
+              onClick={() => onDateRangeChange(undefined, addedTo)}
             />
           )}
           {addedTo && (
-            <FilterChip label={`Added to: ${addedTo}`} onClick={() => onAddedToChange(undefined)} />
+            <FilterChip label={`Added to: ${addedTo}`} onClick={() => onDateRangeChange(addedFrom, undefined)} />
           )}
           {availability && (
             <FilterChip
