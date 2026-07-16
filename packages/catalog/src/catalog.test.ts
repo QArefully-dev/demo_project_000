@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   CATALOG_ARTWORK_IDS,
+  CATALOG_CREATED_AT_BY_ID,
   CATALOG_PRODUCTS,
   catalogProductSpecifications,
-  createdAtFromNewestRank,
   parsePackWeightGrams,
   parseMixUnitGrams,
   validateCatalog,
@@ -93,7 +93,7 @@ void test('validator rejects authoring attempts to override packaging-derived fa
   );
 });
 
-void test('validator rejects timestamps that change preserved catalog chronology', () => {
+void test('validator rejects timestamps that change canonical chronology', () => {
   const product = firstCatalogProduct();
   assert.throws(
     () =>
@@ -101,7 +101,7 @@ void test('validator rejects timestamps that change preserved catalog chronology
         { ...product, created_at: '2025-03-01T00:00:00.000Z' },
         ...CATALOG_PRODUCTS.slice(1),
       ]),
-    /chronology differs from preserved newest rank/,
+    /chronology differs from canonical timestamp/,
   );
 });
 
@@ -170,10 +170,10 @@ void test('expanded catalog preserves stable existing identities and premium pro
   assert.ok(CATALOG_PRODUCTS.every((product) => Number.isSafeInteger(product.price_cents)));
 });
 
-void test('converted timestamps preserve every legacy newest rank exactly', () => {
+void test('canonical timestamps preserve exact chronology', () => {
   assert.deepEqual(
     CATALOG_PRODUCTS.map((product) => product.created_at),
-    CATALOG_PRODUCTS.map((product) => createdAtFromNewestRank(product.id)),
+    CATALOG_PRODUCTS.map((product) => CATALOG_CREATED_AT_BY_ID[product.id]),
   );
   assert.deepEqual(
     [...CATALOG_PRODUCTS]

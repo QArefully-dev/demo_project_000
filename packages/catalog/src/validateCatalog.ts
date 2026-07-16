@@ -1,12 +1,12 @@
 import {
   CATALOG_CATEGORIES,
+  CATALOG_CREATED_AT_BY_ID,
   CATALOG_SPECIFICATION_DEFINITIONS,
   CATALOG_SPECIFICATION_GROUPS,
   NOT_FOR_CONSUMPTION,
   catalogProductSpecifications,
   catalogSpecificationByKey,
   catalogSpecificationGroupByKey,
-  createdAtFromNewestRank,
   isNormalizedCatalogKey,
   isUtcIsoInstant,
   parseMixUnitGrams,
@@ -109,8 +109,8 @@ export function validateCatalog(products: readonly CatalogProduct[] = CATALOG_PR
     if (typeof product.active !== 'boolean') throw new Error(`Invalid active state for ${product.slug}`);
     if (!isUtcIsoInstant(product.created_at))
       throw new Error(`Invalid creation timestamp for ${product.slug}`);
-    if (product.created_at !== createdAtFromNewestRank(product.id))
-      throw new Error(`Catalog chronology differs from preserved newest rank for ${product.slug}`);
+    if (product.created_at !== CATALOG_CREATED_AT_BY_ID[product.id])
+      throw new Error(`Catalog chronology differs from canonical timestamp for ${product.slug}`);
     if (
       product.compare_at_price_cents !== null &&
       (!Number.isInteger(product.compare_at_price_cents) ||

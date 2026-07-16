@@ -137,15 +137,58 @@ export const parseMixUnitGrams = (quantity: string): number | null =>
 /** Returns a filterable physical pack weight; conceptual quantities have no gram value. */
 export const parsePackWeightGrams = (quantity: string): number | null => quantityToGrams(quantity);
 
-export const CATALOG_CHRONOLOGY_START = '2025-01-01T00:00:00.000Z' as const;
-const chronologyStartMs = Date.parse(CATALOG_CHRONOLOGY_START);
-const millisecondsPerDay = 24 * 60 * 60 * 1000;
-
-/** One deterministic UTC day per legacy rank. Higher ranks are newer. Content-conversion only. */
-export const createdAtFromNewestRank = (rank: number): string => {
-  if (!Number.isSafeInteger(rank) || rank < 1)
-    throw new RangeError(`Invalid legacy newest rank: ${rank}`);
-  return new Date(chronologyStartMs + (rank - 1) * millisecondsPerDay).toISOString();
+/** Immutable canonical dates. Category records author these same UTC literals. */
+export const CATALOG_CREATED_AT_BY_ID: Readonly<Record<number, string>> = {
+  1: '2025-01-01T00:00:00.000Z',
+  2: '2025-01-02T00:00:00.000Z',
+  3: '2025-01-03T00:00:00.000Z',
+  4: '2025-01-04T00:00:00.000Z',
+  5: '2025-01-05T00:00:00.000Z',
+  6: '2025-01-06T00:00:00.000Z',
+  7: '2025-01-07T00:00:00.000Z',
+  8: '2025-01-08T00:00:00.000Z',
+  9: '2025-01-09T00:00:00.000Z',
+  10: '2025-01-10T00:00:00.000Z',
+  11: '2025-01-11T00:00:00.000Z',
+  12: '2025-01-12T00:00:00.000Z',
+  13: '2025-01-13T00:00:00.000Z',
+  14: '2025-01-14T00:00:00.000Z',
+  15: '2025-01-15T00:00:00.000Z',
+  16: '2025-01-16T00:00:00.000Z',
+  17: '2025-01-17T00:00:00.000Z',
+  18: '2025-01-18T00:00:00.000Z',
+  19: '2025-01-19T00:00:00.000Z',
+  20: '2025-01-20T00:00:00.000Z',
+  21: '2025-01-21T00:00:00.000Z',
+  22: '2025-01-22T00:00:00.000Z',
+  23: '2025-01-23T00:00:00.000Z',
+  24: '2025-01-24T00:00:00.000Z',
+  25: '2025-01-25T00:00:00.000Z',
+  26: '2025-01-26T00:00:00.000Z',
+  27: '2025-01-27T00:00:00.000Z',
+  28: '2025-01-28T00:00:00.000Z',
+  29: '2025-01-29T00:00:00.000Z',
+  30: '2025-01-30T00:00:00.000Z',
+  31: '2025-01-31T00:00:00.000Z',
+  32: '2025-02-01T00:00:00.000Z',
+  33: '2025-02-02T00:00:00.000Z',
+  34: '2025-02-03T00:00:00.000Z',
+  35: '2025-02-04T00:00:00.000Z',
+  36: '2025-02-05T00:00:00.000Z',
+  37: '2025-02-06T00:00:00.000Z',
+  38: '2025-02-07T00:00:00.000Z',
+  39: '2025-02-08T00:00:00.000Z',
+  40: '2025-02-09T00:00:00.000Z',
+  41: '2025-02-10T00:00:00.000Z',
+  42: '2025-02-11T00:00:00.000Z',
+  43: '2025-02-12T00:00:00.000Z',
+  44: '2025-02-13T00:00:00.000Z',
+  45: '2025-02-14T00:00:00.000Z',
+  46: '2025-02-15T00:00:00.000Z',
+  47: '2025-02-16T00:00:00.000Z',
+  48: '2025-02-17T00:00:00.000Z',
+  49: '2025-02-18T00:00:00.000Z',
+  50: '2025-02-19T00:00:00.000Z',
 };
 
 export const isUtcIsoInstant = (value: string): boolean => {
