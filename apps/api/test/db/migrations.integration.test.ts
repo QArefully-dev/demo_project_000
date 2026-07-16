@@ -14,6 +14,10 @@ import {
 } from '../../src/db/index.js';
 import { migrations } from '../../src/db/migrations/index.js';
 import { createPowderMixRepository } from '../../src/features/powderizer/powderMixRepository.js';
+import { toProductContract } from '../../src/mappers/product.js';
+import type { ProductRow } from '../../src/features/catalog/productRepository.js';
+import { Product } from '@shop/contracts/products';
+import { Value } from '@sinclair/typebox/value';
 
 const expectedVersions = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010'];
 
@@ -68,8 +72,8 @@ function createLegacyFixture(db: Database.Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       response_json TEXT
     );
-    INSERT INTO products (id, name, description, price_cents, category, stock_count)
-    VALUES (99, 'Legacy powder', 'Preserve me', 1234, 'Legacy', 3);
+    INSERT INTO products (id, name, description, price_cents, category, stock_count, created_at)
+    VALUES (99, 'Legacy powder', 'Preserve me', 1234, 'Legacy', 3, '2024-12-31 23:59:59');
     INSERT INTO promo_codes (code, discount_percent) VALUES ('LEGACY10', 10);
     INSERT INTO orders (customer_name, customer_email, shipping_address, subtotal_cents, total_cents)
     VALUES ('Legacy customer', 'legacy@example.test', '99 Legacy Lane', 1234, 1234);
@@ -159,7 +163,7 @@ void test('migrations upgrade the legacy schema without losing known data', (t) 
   assert.deepEqual(
     db
       .prepare(
-        'SELECT name, image_set_id, slug, mixable, mix_unit_grams, active FROM products WHERE id = 99',
+        'SELECT name, image_set_id, slug, mixable, mix_unit_grams, active, created_at FROM products WHERE id = 99',
       )
       .get(),
     {
@@ -169,8 +173,13 @@ void test('migrations upgrade the legacy schema without losing known data', (t) 
       mixable: 0,
       mix_unit_grams: null,
       active: 1,
+      created_at: '2024-12-31 23:59:59',
     },
   );
+  const legacyRow = db.prepare('SELECT * FROM products WHERE id = 99').get() as ProductRow;
+  const legacyProduct = toProductContract(legacyRow);
+  assert.equal(legacyProduct.createdAt, '2024-12-31T23:59:59.000Z');
+  assert.equal(Value.Check(Product, legacyProduct), true);
   assert.deepEqual(
     db
       .prepare('SELECT code, kind, redemption_count FROM promo_codes WHERE code = ?')

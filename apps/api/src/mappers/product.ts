@@ -10,6 +10,14 @@ const packagingByArtworkId = new Map<string, (typeof CATALOG_PRODUCTS)[number]['
   CATALOG_PRODUCTS.map((product) => [product.image_set_id, product.packaging]),
 );
 
+/** SQLite's `datetime('now')` values omit milliseconds and timezone; it is UTC by definition. */
+function toUtcIsoInstant(value: string): string {
+  const sqliteDateTime = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})$/.exec(value);
+  if (sqliteDateTime) return `${sqliteDateTime[1]}T${sqliteDateTime[2]}.000Z`;
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? new Date(time).toISOString() : value;
+}
+
 /** Maps a persisted product row to the transport contract and resolves canonical packaging. */
 export function toProductContract(row: ProductRow): Product {
   const imageSetId = row.image_set_id ?? 'unknown';
@@ -61,7 +69,7 @@ export function toProductContract(row: ProductRow): Product {
     salesCount: row.sales_count ?? 0,
     mixable: row.mixable === 1,
     mixUnitGrams: row.mix_unit_grams ?? undefined,
-    createdAt: row.created_at,
+    createdAt: toUtcIsoInstant(row.created_at),
     available: row.active === 1 && row.stock_count > 0,
     tags,
     specificationGroups,

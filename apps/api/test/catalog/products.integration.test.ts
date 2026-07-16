@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { Product } from '@shop/contracts/products';
+import { Value } from '@sinclair/typebox/value';
 import { buildApp } from '../../src/app.js';
 import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
 
@@ -64,4 +66,23 @@ void test('customer catalog endpoints exclude inactive products', async (t) => {
     body.items.some((product) => product.id === '1'),
     false,
   );
+});
+
+void test('product API normalizes legacy SQLite creation timestamps for the transport contract', async (t) => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'shop-product-legacy-time-'));
+  const db = openDatabase({ path: join(tempDir, 'shop.db') });
+  seedDatabase(db);
+  db.prepare("UPDATE products SET created_at = '2024-12-31 23:59:59' WHERE id = 1").run();
+  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
+  t.after(async () => {
+    await app.close();
+    closeDatabase(db);
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  const response = await app.inject({ method: 'GET', url: '/api/products/1' });
+  assert.equal(response.statusCode, 200);
+  const product = response.json();
+  assert.equal(product.createdAt, '2024-12-31T23:59:59.000Z');
+  assert.equal(Value.Check(Product, product), true);
 });
