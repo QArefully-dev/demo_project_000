@@ -9,12 +9,12 @@ Goal: API-independent help center covering FAQ, shipping, returns, powder safety
 ## Orchestration Contract
 
 - Planning turn: do not create worktree; do not implement code.
-- Implementation start: capture branch currently checked out plus base commit before edits.
-- Create dedicated Lane B branch and git worktree from captured current branch. Suggested branch: `codex/round-1-lane-b-help-policy`. Suggested worktree name: `round-1-lane-b-help-policy`.
+- Implementation start: capture `poweder_shop_expansion` base commit before edits.
+- Create dedicated Lane B branch and git worktree from `poweder_shop_expansion`. Suggested branch: `codex/round-1-lane-b-help-policy`. Suggested worktree name: `round-1-lane-b-help-policy`.
 - Perform every Lane B edit, command, and verification inside dedicated worktree. Never implement Lane B in primary worktree or Lane A worktree.
 - Preserve user changes. Do not copy, discard, reset, or overwrite uncommitted primary-worktree changes.
-- User owns merging. Implementation agent and orchestrator must not merge Lane B into current branch, Lane A, or any integration branch.
-- Final orchestrator summary must report: Lane B branch, worktree name, absolute worktree path, base branch, base commit, verification results, deferred work. Explicitly state `Merge not performed; user will merge.`
+- User owns merging. Implementation agent and orchestrator must not merge Lane B into `poweder_shop_expansion`, Lane A, or any integration branch.
+- Final orchestrator summary must report: Lane B branch, worktree name, absolute worktree path, base branch (`poweder_shop_expansion`), base commit, verification results, deferred work. Explicitly state `Merge not performed; user will merge.`
 
 ## Scope
 
@@ -162,9 +162,9 @@ Expected untouched files:
 
 Parallelism: required sequence; blocks every code task.
 
-1. Record current branch and commit at implementation start.
+1. Record `poweder_shop_expansion` commit at implementation start.
 2. Confirm primary-worktree status; treat all existing changes as user-owned.
-3. Create dedicated Lane B branch/worktree from recorded branch.
+3. Create dedicated Lane B branch/worktree from recorded `poweder_shop_expansion` commit.
 4. Confirm worktree branch, absolute path, clean status before edits.
 5. Run baseline `npm run typecheck -w @shop/web` and relevant web tests. Record pre-existing failures; do not fix unrelated failures.
 
@@ -309,7 +309,7 @@ Handoff sequence:
 
 ## Exit Criteria
 
-- Dedicated Lane B worktree created from branch current when implementation began.
+- Dedicated Lane B worktree created from `poweder_shop_expansion`.
 - Nine canonical routes render through shared shell: Help index plus eight articles.
 - Registry is typed, readonly, renderer-neutral, uniquely keyed, sole route-label/order source.
 - FAQ uses native `details` and `summary` with keyboard-visible focus.

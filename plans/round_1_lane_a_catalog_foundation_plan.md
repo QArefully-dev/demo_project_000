@@ -8,7 +8,7 @@ Authority: `plans/powder_shop_catalog_expansion_plan.md` Round 1 Lane A. Code, m
 
 ## Orchestration Contract
 
-- Before implementation starts: create dedicated git worktree from branch current at that moment.
+- Before implementation starts: create dedicated git worktree from `poweder_shop_expansion`.
 - Lane A worktree: separate from Lane B and orchestrator worktrees. Suggested identity: `round-1-lane-a-catalog-foundation`; actual branch/path may follow local convention.
 - Do not create worktree during planning.
 - Perform every Lane A code change and verification command inside Lane A worktree.
@@ -50,7 +50,7 @@ Authority: `plans/powder_shop_catalog_expansion_plan.md` Round 1 Lane A. Code, m
   - Latest migration version: `009`.
   - Product mix columns already shared with Powderizer.
 - `apps/api/src/db/migrations/index.ts`
-  - Ordered migration registry. Next Lane A migration must use `010` unless branch-current code already reserves it; inspect again when implementation starts.
+  - Ordered migration registry. Next Lane A migration must use `010` unless `poweder_shop_expansion` already reserves it; inspect again when implementation starts.
 - `apps/api/src/db/seed.ts::seedDatabase()`
   - Upserts product fields but omits `created_at`; seed time controls canonical product dates.
   - Reserves IDs 1-50; preserves rows outside range and foreign-key references.
@@ -161,7 +161,7 @@ Authority: `plans/powder_shop_catalog_expansion_plan.md` Round 1 Lane A. Code, m
 
 ### Persistence
 
-- Migration `010_catalog_metadata` unless branch-current migration registry requires next free version.
+- Migration `010_catalog_metadata` unless `poweder_shop_expansion` migration registry requires next free version.
 - `products` additions:
   - `active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1))`.
   - Keep existing `created_at`; migration preserves legacy values.
@@ -233,12 +233,12 @@ Authority: `plans/powder_shop_catalog_expansion_plan.md` Round 1 Lane A. Code, m
 
 ## Implementation Phases
 
-### Phase 0: Worktree and branch-current re-audit
+### Phase 0: Worktree and base-branch re-audit
 
 Required sequence:
 
-1. Record current branch and HEAD.
-2. Create dedicated Lane A branch/worktree from recorded HEAD.
+1. Record `poweder_shop_expansion` HEAD.
+2. Create dedicated Lane A branch/worktree from recorded `poweder_shop_expansion` HEAD.
 3. Enter Lane A worktree; confirm clean scoped baseline.
 4. Re-read migration registry, roadmap Round 1, `CLAUDE.md`, target files, user changes.
 5. Reserve next migration version locally. If Lane B changed independent web files only, keep Lane A migration at next free value.
@@ -364,7 +364,7 @@ Required sequence:
 1. Run metadata-focused full workspace typecheck/test/build.
 2. Inspect diff for duplicated pack weight, warning, display labels, or SQL vocabularies.
 3. Confirm no `newest_rank` runtime dependency remains.
-4. Confirm migration version/order against branch-current registry.
+4. Confirm migration version/order against `poweder_shop_expansion` registry.
 5. Record checkpoint commit in Lane A worktree if orchestrator workflow uses commits.
 
 Parallel-safe work: none. Checkpoint prevents filtering work from masking metadata failures.
@@ -527,7 +527,7 @@ Parallel-safe work: focused API and web verification may run concurrently if com
 
 ## Exit Criteria
 
-- Dedicated Lane A worktree used from branch current at implementation start.
+- Dedicated Lane A worktree created from `poweder_shop_expansion`.
 - Metadata implemented and verified before filtering starts.
 - 50 canonical products carry deterministic active/date/tag/spec metadata with truthful missing values.
 - Pack weight and warning each have one canonical source.
