@@ -65,11 +65,7 @@ void test('validator rejects authoring attempts to override packaging-derived fa
     packWeight: { key: '1g', label: '1g' },
   };
   assert.throws(
-    () =>
-      validateCatalog([
-        { ...product, specifications },
-        ...CATALOG_PRODUCTS.slice(1),
-      ]),
+    () => validateCatalog([{ ...product, specifications }, ...CATALOG_PRODUCTS.slice(1)]),
     /Invalid authoring specification shape|Unexpected derived specification/,
   );
   const resolved = catalogProductSpecifications(product);
