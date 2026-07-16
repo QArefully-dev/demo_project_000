@@ -119,14 +119,75 @@ Avoid:
 - UI state: URL for shareable catalog state; browser storage only for optional local continuity
 - Verification: focused unit tests plus SQLite integration tests for rules, migrations, transactions, rollback
 
-## Future Planning Order
+## Implementation Planning Order
 
-1. Specifications and tags -> filters and sorting
-2. Comparison -> deterministic similarity
-3. Curated bundles
-4. Customer reviews
-5. Append-only audit trail
-6. Rich product-detail composition across completed slices
-7. Help and policy content
+Each lane requires scoped coding plan. Each plan must audit current Powderizer work, schema, contracts, routes, tests before phase design. Code remains implementation truth.
 
-Ordering remains provisional. Later plan must audit current Powderizer work, schema, contracts, routes, tests before phase design.
+### Round 1: Catalog Foundation
+
+Lane A, serial:
+
+`structured specifications and tags -> advanced filtering and sorting`
+
+- Do not implement both topics in parallel. Shared ownership: product schema, contracts, repository queries, routes, catalog URL state, tests.
+- Metadata phase prerequisites: explicit product active state, persisted creation date exposure, active-plus-stock availability rule.
+- Metadata phase compatibility: reconcile pack weight, storage, warning facts with existing canonical packaging data. One authority per fact.
+- Filtering phase: extend existing URL state, pagination reset, stable sort, shared result/count predicate behavior. Avoid catalog rewrite.
+
+Lane B, parallel with Lane A:
+
+`help and policy content`
+
+- Scope: typed content registry, shared article layout, routes, FAQ, footer links, accessibility tests.
+- Keep API-independent.
+- Defer product-context links requiring `ProductPage` edits until Round 4.
+
+### Round 2: Read Features and Audit Foundation
+
+Lane A, close serial delivery:
+
+`product comparison -> deterministic similar products`
+
+- Plan together after Round 1 metadata completion.
+- Do not implement as unrelated parallel slices. Shared ownership: product contracts, routes, cards, product detail, specification and tag reads.
+- Comparison first establishes active-product and ordered multi-product read behavior.
+- Similarity next reuses active state, tags, specifications, price, availability.
+
+Lane B, parallel with Lane A:
+
+`append-only audit foundation -> existing auth, cart, order, payment audit integration`
+
+- Read-oriented catalog work and mutation-oriented audit work may proceed in parallel with explicit shared composition-file ownership.
+- Complete audit foundation before bundle and review mutations.
+- Preserve shared transaction rule for required mutation plus audit insert.
+
+### Round 3: Mutation Features
+
+Parallel lanes after Round 2 audit foundation:
+
+- Lane A: curated bundles
+- Lane B: customer reviews
+
+Parallel conditions:
+
+- Reserve separate ordered migration versions.
+- Keep domain modules, contracts, repositories, routes, tests, UI sections separate.
+- Bundles own cart transaction integration.
+- Reviews own auth, ownership, paid-order evidence, moderation integration.
+- Defer final `ProductPage` composition to Round 4.
+
+### Round 4: Product-Detail Composition
+
+`specifications -> bundles -> reviews -> similar products`
+
+- Integrate completed slices into richer product-detail page.
+- Preserve core product and purchase flow when secondary sections fail.
+- Give each remote section independent loading, empty, failure state.
+- Add deferred comparison actions, bundle component links, help and policy context links.
+
+### Parallelism Guardrails
+
+- Same schema, contract, route, or page owner -> serial delivery or explicit file ownership.
+- Independent static web content -> safe parallel lane.
+- Read-only catalog slice and mutation/audit slice -> safe parallel lanes after composition boundaries assigned.
+- Product-detail integration -> one final owner after feature slices complete.

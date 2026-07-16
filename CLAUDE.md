@@ -39,6 +39,53 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
 - Use ordered versioned migrations; preserve data; surface unknown migration errors.
 - Transaction owner covers full business invariant.
 
+## Repository Map (update after new implementations if needed - keep the map general, not detailed)
+
+- `apps/web/`: React/Vite customer app
+  - `src/api/`: typed HTTP clients; validate successful responses against shared schemas
+  - `src/features/`: page and workflow ownership by domain
+  - `src/components/`: shared UI and shell; `src/components/ui/` contains framework primitives
+  - `src/hooks/`: cross-feature auth, cart, catalog, favourites state
+  - tests: colocated `*.test.ts(x)`; browser journeys use `*.integration.test.tsx`
+- `apps/api/`: Fastify API and SQLite runtime
+  - `src/app.ts`: composition root; services, plugins, routes
+  - `src/routes/`: HTTP schemas, auth gates, transport mapping
+  - `src/features/`: domain services, repositories, workflow rules
+  - `src/db/`: database lifecycle, unit of work, migrations, seed/reset
+  - `test/`: SQLite and `app.inject()` integration tests grouped by domain
+- `packages/contracts/`: TypeBox transport schemas/types and public subpath exports
+- `packages/catalog/`: canonical product/category/packaging content plus validation
+- `data/`: ignored local SQLite runtime files; default `data/shop.db`
+- `plans/`: active product/course plans; `plans/old/` historical context only
+- `scripts/`: repository policy tooling; authored-size report and exception policy
+- `.claude/skills/`: repo-local agent skills; load only when task matches
+- root configs: workspaces/scripts in `package.json`; shared TypeScript, ESLint, Prettier configuration
+
+Dependency direction: `packages/contracts` + `packages/catalog` -> `apps/api` -> HTTP -> `apps/web`.
+
+## Commands
+
+Prerequisite: Node 22.x. Run from repository root unless command says otherwise.
+
+- install locked dependencies + build shared packages: `npm ci`
+- seed then start API and web: `npm run dev`
+  - web: `http://127.0.0.1:5173`
+  - API: `http://127.0.0.1:3001`
+- idempotent canonical seed, preserve non-seed rows: `npm run seed`
+- clear all local data then re-seed: `npm run reset`
+- full pre-handoff verification: `npm run verify`
+- fast broad checks: `npm run smoke`
+- individual checks: `npm run format`, `npm run typecheck`, `npm run lint`, `npm test`
+- split suites: `npm run test:unit`, `npm run test:integration`
+- all workspace builds: `npm run build --workspaces --if-present`
+- one workspace: `npm test -w @shop/api`, `npm test -w @shop/web`, `npm test -w @shop/contracts`, `npm test -w @shop/catalog`
+- focused API test: `npm exec -w @shop/api -- tsx --test <path-to-test.ts>`
+- focused web Vitest file: `npm exec -w @shop/web -- vitest run --configLoader runner <path-to-test.tsx>`
+- focused web Node test: `npm exec -w @shop/web -- tsx --test <path-to-test.ts>`
+- auto-format supported non-Markdown files: `npm run format:fix`
+
+Keep `--configLoader runner` on Vite/Vitest commands. Root scripts already supply required flags. `SHOP_DB_PATH` overrides SQLite path; `SHOP_API_HOST`, `SHOP_API_PORT`, `SHOP_RESET_BASE_URL`, `SHOP_SEED` configure API runtime.
+
 ## Change Rules
 
 - Preserve unrelated work; make smallest coherent scoped change; retain public behavior unless requested.
@@ -53,6 +100,8 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
 ## Quality
 
 - Use repository scripts; run format, typecheck, lint, build, seed/reset, tests proportional to change.
+- Browser QA: serve app on loopback -> use Codex internal browser + bundled Playwright.
+- Never use, control, capture, or activate user's Chrome. Internal browser unavailable -> report blocker; no Chrome fallback.
 - Prettier formats code and config only; Markdown (`*.md`) stays excluded through `.prettierignore`.
 - Keep Vite/Vitest `--configLoader runner`; bundled config loader traverses sandbox-blocked Windows ancestors.
 - Tests: pure rule -> unit; repository/transaction -> SQLite integration; route/schema/auth -> Fastify `app.inject()`.
