@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { CATALOG_PRODUCTS } from '@shop/catalog';
+import { CATALOG_PRODUCTS, catalogProductSpecifications } from '@shop/catalog';
 import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
 
 void test('seed preserves local state; reset restores canonical data', (t) => {
@@ -19,6 +19,22 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM products').get() as { count: number }).count,
     50,
+  );
+  assert.deepEqual(db.prepare('SELECT active, created_at FROM products WHERE id = ?').get(1), {
+    active: CATALOG_PRODUCTS.find((product) => product.id === 1)?.active ? 1 : 0,
+    created_at: CATALOG_PRODUCTS.find((product) => product.id === 1)?.created_at,
+  });
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM product_tags').get() as { count: number }).count,
+    CATALOG_PRODUCTS.reduce((count, product) => count + product.tags.length, 0),
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM product_specifications').get() as { count: number })
+      .count,
+    CATALOG_PRODUCTS.reduce(
+      (count, product) => count + catalogProductSpecifications(product).length,
+      0,
+    ),
   );
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM users').get() as { count: number }).count,
@@ -36,6 +52,15 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   db.prepare(
     "INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id, slug, sales_count) VALUES (99, 'Local', 'Local row', 100, 'Local', 1, 'local', 'local', 0)",
   ).run();
+  db.prepare("INSERT INTO catalog_tags (key, label) VALUES ('local-tag', 'Local tag')").run();
+  db.prepare('INSERT INTO product_tags (product_id, tag_key) VALUES (99, ?)').run('local-tag');
+  db.prepare(
+    `INSERT INTO product_specifications
+      (product_id, specification_key, value_key, display_value, numeric_value)
+     VALUES (99, 'texture', 'local-texture', 'Local texture', NULL)`,
+  ).run();
+  db.prepare('DELETE FROM product_tags WHERE product_id = 1').run();
+  db.prepare('DELETE FROM product_specifications WHERE product_id = 1').run();
   seedDatabase(db);
   assert.equal(
     (
@@ -48,6 +73,40 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   assert.equal(
     (db.prepare('SELECT name FROM products WHERE id = 99').get() as { name: string }).name,
     'Local',
+  );
+  assert.deepEqual(db.prepare('SELECT tag_key FROM product_tags WHERE product_id = 99').all(), [
+    { tag_key: 'local-tag' },
+  ]);
+  assert.deepEqual(
+    db
+      .prepare(
+        'SELECT specification_key, value_key, display_value, numeric_value FROM product_specifications WHERE product_id = 99',
+      )
+      .all(),
+    [
+      {
+        specification_key: 'texture',
+        value_key: 'local-texture',
+        display_value: 'Local texture',
+        numeric_value: null,
+      },
+    ],
+  );
+  assert.equal(
+    (
+      db.prepare('SELECT COUNT(*) AS count FROM product_tags WHERE product_id = 1').get() as {
+        count: number;
+      }
+    ).count,
+    CATALOG_PRODUCTS.find((product) => product.id === 1)?.tags.length,
+  );
+  assert.equal(
+    (
+      db
+        .prepare('SELECT COUNT(*) AS count FROM product_specifications WHERE product_id = 1')
+        .get() as { count: number }
+    ).count,
+    catalogProductSpecifications(CATALOG_PRODUCTS.find((product) => product.id === 1)!).length,
   );
   db.prepare(
     "UPDATE products SET name = 'Old Campfire', mixable = 0, mix_unit_grams = NULL WHERE id = 27",

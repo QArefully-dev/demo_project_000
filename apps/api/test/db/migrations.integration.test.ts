@@ -15,7 +15,7 @@ import {
 import { migrations } from '../../src/db/migrations/index.js';
 import { createPowderMixRepository } from '../../src/features/powderizer/powderMixRepository.js';
 
-const expectedVersions = ['001', '002', '003', '004', '005', '006', '007', '008', '009'];
+const expectedVersions = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010'];
 
 function migrationVersions(db: Database.Database): string[] {
   return db
@@ -97,6 +97,28 @@ void test('migrations create a fresh schema, record every version, and remain id
       (column) => column.name === 'response_json',
     ),
   );
+  assert.ok(
+    (db.prepare('PRAGMA table_info(products)').all() as { name: string }[]).some(
+      (column) => column.name === 'active',
+    ),
+  );
+  for (const table of ['catalog_tags', 'product_tags', 'product_specifications']) {
+    assert.deepEqual(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table),
+      { name: table },
+    );
+  }
+  for (const index of [
+    'products_active_created_at_id_idx',
+    'products_active_price_cents_id_idx',
+    'product_tags_tag_key_product_id_idx',
+    'product_specifications_key_value_product_id_idx',
+  ]) {
+    assert.deepEqual(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?").get(index),
+      { name: index },
+    );
+  }
   assert.deepEqual(
     db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'powder_mixes'")
@@ -137,7 +159,7 @@ void test('migrations upgrade the legacy schema without losing known data', (t) 
   assert.deepEqual(
     db
       .prepare(
-        'SELECT name, image_set_id, slug, mixable, mix_unit_grams FROM products WHERE id = 99',
+        'SELECT name, image_set_id, slug, mixable, mix_unit_grams, active FROM products WHERE id = 99',
       )
       .get(),
     {
@@ -146,6 +168,7 @@ void test('migrations upgrade the legacy schema without losing known data', (t) 
       slug: '',
       mixable: 0,
       mix_unit_grams: null,
+      active: 1,
     },
   );
   assert.deepEqual(
@@ -332,6 +355,15 @@ void test('seed and reset operate on a migrated database', (t) => {
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM products').get() as { count: number }).count,
     50,
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM product_tags').get() as { count: number }).count > 0,
+    true,
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM product_specifications').get() as { count: number })
+      .count > 0,
+    true,
   );
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM carts').get() as { count: number }).count,
