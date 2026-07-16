@@ -11,6 +11,13 @@ import {
   type PowderizerHistoryStorage,
 } from './powderizerHistory';
 
+const metadata = {
+  createdAt: '2026-07-14T00:00:00.000Z',
+  available: true,
+  tags: [],
+  specificationGroups: [],
+};
+
 const products: Product[] = [
   {
     id: '1',
@@ -22,6 +29,7 @@ const products: Product[] = [
     stock: 8,
     slug: 'protein',
     salesCount: 1,
+    ...metadata,
     mixable: true,
     mixUnitGrams: 500,
   },
@@ -35,6 +43,7 @@ const products: Product[] = [
     stock: 8,
     slug: 'cocoa',
     salesCount: 1,
+    ...metadata,
     mixable: true,
     mixUnitGrams: 250,
   },

@@ -17,6 +17,12 @@ vi.mock('@/api/powderizer', () => ({
 vi.mock('@/hooks/CartContext', () => ({ useCartContext: vi.fn() }));
 
 const cartId = '01234567-89ab-4def-8123-456789abcdee';
+const productMetadata = {
+  createdAt: '2026-07-14T00:00:00.000Z',
+  available: true,
+  tags: [],
+  specificationGroups: [],
+};
 const config: PowderizerConfigResponse = {
   eligibleProducts: [
     {
@@ -29,6 +35,7 @@ const config: PowderizerConfigResponse = {
       stock: 8,
       slug: 'protein',
       salesCount: 1,
+      ...productMetadata,
       mixable: true,
       mixUnitGrams: 500,
     },
@@ -42,6 +49,7 @@ const config: PowderizerConfigResponse = {
       stock: 8,
       slug: 'cocoa',
       salesCount: 1,
+      ...productMetadata,
       mixable: true,
       mixUnitGrams: 250,
     },

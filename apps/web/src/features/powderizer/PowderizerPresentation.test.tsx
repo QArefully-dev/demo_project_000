@@ -20,6 +20,10 @@ function product(id: string, slug: string, powderColor?: string): Product {
     stock: 1,
     slug,
     salesCount: 0,
+    createdAt: '2026-07-14T00:00:00.000Z',
+    available: true,
+    tags: [],
+    specificationGroups: [],
     mixable: true,
     ...(powderColor
       ? {
