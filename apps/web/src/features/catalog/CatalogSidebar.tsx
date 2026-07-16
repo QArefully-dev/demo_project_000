@@ -67,6 +67,13 @@ export function CatalogSidebar({
       return [key, value] as const;
     }),
   );
+  const knownSpecificationTokens = new Set(
+    (filterOptions?.specificationGroups ?? []).flatMap((group) =>
+      group.specifications.flatMap((specification) =>
+        specification.values.map((value) => `${specification.key}:${value.key}`),
+      ),
+    ),
+  );
 
   return (
     <aside
@@ -316,7 +323,13 @@ export function CatalogSidebar({
                     onClick={() => onTagChange(tag.key, false)}
                   />,
                 ]
-              : [];
+              : [
+                  <FilterChip
+                    key={tagKey}
+                    label={`Tag: ${tagKey}`}
+                    onClick={() => onTagChange(tagKey, false)}
+                  />,
+                ];
           })}
           {filterOptions?.specificationGroups.flatMap((group) =>
             group.specifications.flatMap((specification) => {
@@ -333,6 +346,18 @@ export function CatalogSidebar({
                 : [];
             }),
           )}
+          {specs
+            .filter((token) => !knownSpecificationTokens.has(token))
+            .map((token) => {
+              const key = token.slice(0, token.indexOf(':'));
+              return (
+                <FilterChip
+                  key={token}
+                  label={`Specification: ${token}`}
+                  onClick={() => onSpecChange(key, undefined)}
+                />
+              );
+            })}
         </div>
       )}
     </aside>

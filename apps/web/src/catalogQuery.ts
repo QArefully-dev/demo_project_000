@@ -13,7 +13,7 @@ const SORTS = new Set<ProductSort>([
   'price_desc',
   'bestselling',
 ]);
-const FILTERABLE_SPECIFICATION_KEYS = new Set(['texture', 'colour', 'source', 'intended-use']);
+const SUPPORTED_PAGE_SIZES = new Set([12, 24, 48]);
 
 export const CATALOG_DISCOVERY_PARAM_KEYS: readonly CatalogParamKey[] = [
   'q',
@@ -63,7 +63,7 @@ function normalizedSpecifications(values: readonly string[]): string[] {
       extra.length === 0 &&
       !!key &&
       !!valueKey &&
-      FILTERABLE_SPECIFICATION_KEYS.has(key) &&
+      isNormalizedKey(key) &&
       isNormalizedKey(valueKey)
     );
   });
@@ -92,7 +92,10 @@ export function parseCatalogQuery(searchParams: URLSearchParams): ProductQuery {
       ? availabilityCandidate
       : undefined;
   const page = parseBoundedInteger(searchParams.get('page'), 1, 10_000) ?? 1;
-  const pageSize = parseBoundedInteger(searchParams.get('pageSize'), 1, 48);
+  const pageSizeCandidate = parseBoundedInteger(searchParams.get('pageSize'), 1, 48);
+  const pageSize = pageSizeCandidate && SUPPORTED_PAGE_SIZES.has(pageSizeCandidate)
+    ? pageSizeCandidate
+    : undefined;
   const tags = sortedUnique(searchParams.getAll('tag'), isNormalizedKey);
   const specifications = normalizedSpecifications(searchParams.getAll('spec'));
 
