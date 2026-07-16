@@ -1,6 +1,6 @@
 # Powder Shop Catalog Expansion Plan
 
-Status: high-level idea backlog.
+Status: Round 1 completed 2026-07-17. Rounds 2-4 remain backlog.
 
 Purpose: retain approved Powder shop expansion ideas for later implementation planning.
 
@@ -124,6 +124,8 @@ Avoid:
 Each lane requires scoped coding plan. Each plan must audit current Powderizer work, schema, contracts, routes, tests before phase design. Code remains implementation truth.
 
 ### Round 1: Catalog Foundation
+
+Completion: Lane A catalog foundation and Lane B help/policy content completed. See `plans/round_1_lane_a_catalog_foundation_plan.md` and `plans/round_1_lane_b_help_policy_plan.md`.
 
 Lane A, serial:
 
