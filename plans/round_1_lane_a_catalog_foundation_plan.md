@@ -1,6 +1,8 @@
 # Round 1 Lane A: Catalog Foundation Implementation Plan
 
-Status: ready for implementation.
+Status: completed.
+
+Verification: Phase 6 passed on 2026-07-17: formatting, focused catalog/API/web tests, smoke, full verify, and repeated temporary-database seed checks.
 
 Scope: `structured specifications and tags -> advanced filtering and sorting`.
 
