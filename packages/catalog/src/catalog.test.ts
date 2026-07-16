@@ -67,7 +67,7 @@ void test('validator rejects authoring attempts to override packaging-derived fa
   assert.throws(
     () =>
       validateCatalog([
-        { ...product, specifications } as typeof product,
+        { ...product, specifications },
         ...CATALOG_PRODUCTS.slice(1),
       ]),
     /Invalid authoring specification shape|Unexpected derived specification/,

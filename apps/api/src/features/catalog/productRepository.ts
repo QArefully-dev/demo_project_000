@@ -97,7 +97,8 @@ export function createProductRepository(db: Database.Database): ProductRepositor
           (candidate) => candidate.key === value.specification_key,
         );
         if (!definition?.filterable) continue;
-        const specificationValues = valuesBySpecification.get(definition.key) ?? new Map();
+        const specificationValues =
+          valuesBySpecification.get(definition.key) ?? new Map<string, string>();
         specificationValues.set(value.value_key, value.display_value);
         valuesBySpecification.set(definition.key, specificationValues);
       }

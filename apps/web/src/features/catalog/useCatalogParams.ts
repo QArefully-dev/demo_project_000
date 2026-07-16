@@ -26,7 +26,7 @@ export function useCatalogParams() {
         ][]) {
           next.delete(key);
           if (value !== null) {
-            const entries = Array.isArray(value) ? value : [value];
+            const entries: readonly string[] = typeof value === 'string' ? [value] : value;
             for (const item of entries) next.append(key, item);
           }
         }

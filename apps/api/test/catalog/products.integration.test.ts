@@ -3,7 +3,12 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { Product } from '@shop/contracts/products';
+import {
+  Product,
+  type ProductDetailResponse,
+  type ProductFilterOptionsResponse,
+  type ProductListPaginatedResponse,
+} from '@shop/contracts/products';
 import { Value } from '@sinclair/typebox/value';
 import { buildApp } from '../../src/app.js';
 import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
@@ -60,7 +65,7 @@ void test('customer catalog endpoints exclude inactive products', async (t) => {
   );
   const list = await app.inject({ method: 'GET', url: '/api/products?pageSize=48' });
   assert.equal(list.statusCode, 200);
-  const body = list.json() as { total: number; items: { id: string }[] };
+  const body = list.json<ProductListPaginatedResponse>();
   assert.equal(body.total, 49);
   assert.equal(
     body.items.some((product) => product.id === '1'),
@@ -82,7 +87,7 @@ void test('product API normalizes legacy SQLite creation timestamps for the tran
 
   const response = await app.inject({ method: 'GET', url: '/api/products/1' });
   assert.equal(response.statusCode, 200);
-  const product = response.json();
+  const product = response.json<ProductDetailResponse>();
   assert.equal(product.createdAt, '2024-12-31T23:59:59.000Z');
   assert.equal(Value.Check(Product, product), true);
 });
@@ -105,17 +110,14 @@ void test('catalog query validation reports deterministic 400 responses and expo
     Value.Check(Product, (await app.inject({ method: 'GET', url: '/api/products/2' })).json()),
     true,
   );
-  const optionBody = options.json() as {
-    tags: { key: string }[];
-    specificationGroups: { specifications: { key: string; values: { key: string }[] }[] }[];
-  };
+  const optionBody = options.json<ProductFilterOptionsResponse>();
   assert.ok(optionBody.tags.length > 0);
   assert.ok(optionBody.specificationGroups.length > 0);
   const specification = optionBody.specificationGroups[0]?.specifications[0];
   assert.ok(specification?.values[0]);
   const repeatedFilters = await app.inject({
     method: 'GET',
-    url: `/api/products?tag=${optionBody.tags[0]!.key}&tag=${optionBody.tags[0]!.key}&spec=${specification!.key}:${specification!.values[0]!.key}`,
+    url: `/api/products?tag=${optionBody.tags[0].key}&tag=${optionBody.tags[0].key}&spec=${specification.key}:${specification.values[0].key}`,
   });
   assert.equal(repeatedFilters.statusCode, 200);
 
@@ -128,6 +130,6 @@ void test('catalog query validation reports deterministic 400 responses and expo
   ]) {
     const response = await app.inject({ method: 'GET', url });
     assert.equal(response.statusCode, 400, url);
-    assert.equal(typeof (response.json() as { error?: unknown }).error, 'string');
+    assert.equal(typeof response.json<{ error?: unknown }>().error, 'string');
   }
 });

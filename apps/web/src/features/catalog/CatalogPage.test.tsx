@@ -162,7 +162,7 @@ describe('CatalogPage URL state', () => {
     ],
     [
       'date',
-      async () => {
+      () => {
         fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-01-01' } });
       },
     ],
