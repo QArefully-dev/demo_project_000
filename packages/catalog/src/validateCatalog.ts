@@ -6,8 +6,10 @@ import {
   catalogProductSpecifications,
   catalogSpecificationByKey,
   catalogSpecificationGroupByKey,
+  createdAtFromNewestRank,
   isNormalizedCatalogKey,
   isUtcIsoInstant,
+  parseMixUnitGrams,
   parsePackWeightGrams,
   type CatalogCategory,
   type CatalogProduct,
@@ -96,7 +98,7 @@ export function validateCatalog(products: readonly CatalogProduct[] = CATALOG_PR
   for (const product of products) {
     if (!CATALOG_CATEGORIES.includes(product.category))
       throw new Error(`Catalog has unsupported category ${product.category}`);
-    if (!Number.isInteger(product.id) || product.id < 1)
+    if (!Number.isInteger(product.id) || product.id < 1 || product.id > 50)
       throw new Error(`Invalid ID for ${product.slug}`);
     if (!Number.isInteger(product.price_cents) || product.price_cents < 1)
       throw new Error(`Invalid price for ${product.slug}`);
@@ -107,6 +109,8 @@ export function validateCatalog(products: readonly CatalogProduct[] = CATALOG_PR
     if (typeof product.active !== 'boolean') throw new Error(`Invalid active state for ${product.slug}`);
     if (!isUtcIsoInstant(product.created_at))
       throw new Error(`Invalid creation timestamp for ${product.slug}`);
+    if (product.created_at !== createdAtFromNewestRank(product.id))
+      throw new Error(`Catalog chronology differs from preserved newest rank for ${product.slug}`);
     if (
       product.compare_at_price_cents !== null &&
       (!Number.isInteger(product.compare_at_price_cents) ||
@@ -115,16 +119,25 @@ export function validateCatalog(products: readonly CatalogProduct[] = CATALOG_PR
       throw new Error(`Invalid sale price for ${product.slug}`);
     if (!product.packaging.quantity || !product.packaging.mark || !product.packaging.batchCode)
       throw new Error(`Invalid packaging for ${product.slug}`);
+    const parsedMixUnitGrams = parseMixUnitGrams(product.packaging.quantity);
+    if (parsedMixUnitGrams === null)
+      throw new Error(`Invalid packaging quantity for ${product.slug}`);
     if (product.mixable) {
       if (
         typeof product.mixUnitGrams !== 'number' ||
         !Number.isInteger(product.mixUnitGrams) ||
-        product.mixUnitGrams <= 0
+        product.mixUnitGrams <= 0 ||
+        product.mixUnitGrams !== parsedMixUnitGrams
       )
-        throw new Error(`Invalid mix source grams for ${product.slug}`);
+        throw new Error(`Mix source grams must derive from packaging for ${product.slug}`);
     } else if (product.mixUnitGrams !== null) {
       throw new Error(`Non-mixable product must not have mix source grams for ${product.slug}`);
     }
+    if (
+      product.packaging.consumptionLabel !== null &&
+      product.packaging.consumptionLabel !== NOT_FOR_CONSUMPTION
+    )
+      throw new Error(`Unsupported consumption warning for ${product.slug}`);
     if (
       nonConsumableCategories.has(product.category) &&
       product.packaging.consumptionLabel !== NOT_FOR_CONSUMPTION
@@ -162,12 +175,16 @@ export function validateCatalog(products: readonly CatalogProduct[] = CATALOG_PR
     );
     if (
       !packWeight ||
+      !isNormalizedCatalogKey(packWeight.valueKey) ||
+      packWeight.valueKey !== product.packaging.quantity.replaceAll(' ', '-') ||
       packWeight.displayValue !== product.packaging.quantity ||
       packWeight.numericValue !== parsePackWeightGrams(product.packaging.quantity)
     )
       throw new Error(`Pack-weight metadata must derive from packaging for ${product.slug}`);
     if (
       !warningClass ||
+      warningClass.valueKey !==
+        (product.packaging.consumptionLabel ? 'not-for-consumption' : 'none') ||
       warningClass.displayValue !== (product.packaging.consumptionLabel ?? 'None')
     )
       throw new Error(`Warning metadata must derive from packaging for ${product.slug}`);

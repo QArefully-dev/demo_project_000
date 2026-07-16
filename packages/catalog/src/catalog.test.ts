@@ -93,6 +93,41 @@ void test('validator rejects authoring attempts to override packaging-derived fa
   );
 });
 
+void test('validator rejects timestamps that change preserved catalog chronology', () => {
+  const product = firstCatalogProduct();
+  assert.throws(
+    () =>
+      validateCatalog([
+        { ...product, created_at: '2025-03-01T00:00:00.000Z' },
+        ...CATALOG_PRODUCTS.slice(1),
+      ]),
+    /chronology differs from preserved newest rank/,
+  );
+});
+
+void test('validator rejects packaging values that bypass quantity and warning authorities', () => {
+  const product = firstCatalogProduct();
+  assert.throws(
+    () =>
+      validateCatalog([
+        { ...product, packaging: { ...product.packaging, quantity: '100 G' } },
+        ...CATALOG_PRODUCTS.slice(1),
+      ]),
+    /Invalid packaging quantity/,
+  );
+  assert.throws(
+    () =>
+      validateCatalog([
+        {
+          ...product,
+          packaging: { ...product.packaging, consumptionLabel: 'Wrong' as never },
+        },
+        ...CATALOG_PRODUCTS.slice(1),
+      ]),
+    /Unsupported consumption warning/,
+  );
+});
+
 void test('Powderizer eligibility covers every canonical source bag', () => {
   const mixable = CATALOG_PRODUCTS.filter((product) => product.mixable);
   assert.equal(mixable.length, 50);
