@@ -84,7 +84,7 @@ describe('useCart', () => {
 
     const secondProvider = renderHook(() => useCartContext(), { wrapper: providerWrapper });
     await waitFor(() => expect(cartApi.getCart).toHaveBeenCalledTimes(2));
-    expect(secondProvider.result.current.cartId).toBe('fresh-cart');
+    await waitFor(() => expect(secondProvider.result.current.cartId).toBe('fresh-cart'));
 
     await act(async () => {
       first.resolve(cart('stale-cart'));

@@ -4,10 +4,13 @@ import { sendNotFound, sendBadRequest } from '../utils/errors.js';
 import { toProductContract } from '../mappers/product.js';
 import {
   ProductDetailResponse,
+  ProductComparisonQuery,
+  ProductComparisonResponse,
   ProductIdParam,
   CategoriesResponse,
   BestsellersResponse,
   RelatedResponse,
+  SimilarProductsResponse,
   ProductListPaginatedResponse,
   ProductFilterOptionsResponse,
   ProductQuery,
@@ -15,6 +18,7 @@ import {
 import { ErrorResponse } from '@shop/contracts/common';
 import type { AppContext } from '../app.js';
 import { CatalogQueryError } from '../features/catalog/catalogQuery.js';
+import { ComparisonSelectionError } from '../features/catalog/productComparison.js';
 
 export default function productsRoutes(app: FastifyInstance, { services }: AppContext): void {
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
@@ -94,6 +98,31 @@ export default function productsRoutes(app: FastifyInstance, { services }: AppCo
     },
   );
 
+  // GET /api/products/compare — ordered anonymous comparison, before /:id
+  typed.get(
+    '/api/products/compare',
+    {
+      schema: {
+        querystring: ProductComparisonQuery,
+        response: {
+          200: ProductComparisonResponse,
+          400: ErrorResponse,
+        },
+      },
+    },
+    (request, reply) => {
+      try {
+        return products.compare(request.query.ids);
+      } catch (error) {
+        if (error instanceof ComparisonSelectionError) {
+          sendBadRequest(reply, error.message);
+          return;
+        }
+        throw error;
+      }
+    },
+  );
+
   // GET /api/products/:id — product detail
   typed.get(
     '/api/products/:id',
@@ -128,6 +157,34 @@ export default function productsRoutes(app: FastifyInstance, { services }: AppCo
 
   // GET /api/products/:id/related — related products
   typed.get(
+    '/api/products/:id/similar',
+    {
+      schema: {
+        params: ProductIdParam,
+        response: {
+          200: SimilarProductsResponse,
+          400: ErrorResponse,
+          404: ErrorResponse,
+        },
+      },
+    },
+    async (request, reply) => {
+      const productId = Number(request.params.id);
+      if (!Number.isFinite(productId) || productId <= 0 || !Number.isInteger(productId)) {
+        sendBadRequest(reply, 'Invalid product ID');
+        return;
+      }
+
+      const similar = products.listSimilar(productId);
+      if (!similar) {
+        sendNotFound(reply, 'Product');
+        return;
+      }
+      return similar.map(toProductContract);
+    },
+  );
+
+  typed.get(
     '/api/products/:id/related',
     {
       schema: {
@@ -148,14 +205,12 @@ export default function productsRoutes(app: FastifyInstance, { services }: AppCo
         return;
       }
 
-      // Verify the product exists
-      const product = products.findById(productId);
-      if (!product) {
+      const similar = products.listRelated(productId);
+      if (!similar) {
         sendNotFound(reply, 'Product');
         return;
       }
-
-      return products.listRelated(productId).map(toProductContract);
+      return similar.map(toProductContract);
     },
   );
 }

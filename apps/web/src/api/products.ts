@@ -4,6 +4,7 @@ import {
   ProductDetailResponse,
   CategoriesResponse,
   BestsellersResponse,
+  ProductComparisonResponse,
   RelatedResponse,
   SimilarProductsResponse,
   ProductFilterOptionsResponse,
@@ -48,6 +49,17 @@ export function getSimilarProducts(
   signal?: AbortSignal,
 ): Promise<SimilarProductsResponse> {
   return apiFetch(SimilarProductsResponse, `/api/products/${id}/similar`, { signal });
+}
+
+/** Fetches an ordered comparison without changing the caller's selection order. */
+export function getProductComparison(
+  ids: readonly string[],
+  signal?: AbortSignal,
+): Promise<ProductComparisonResponse> {
+  const params = new URLSearchParams({ ids: ids.join(',') });
+  return apiFetch(ProductComparisonResponse, `/api/products/compare?${params.toString()}`, {
+    signal,
+  });
 }
 
 export function getProductFilterOptions(
