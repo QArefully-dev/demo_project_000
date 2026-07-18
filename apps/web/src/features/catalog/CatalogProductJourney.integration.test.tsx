@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import type { Product } from '@shop/contracts/products';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getProduct, getRelatedProducts } from '@/api/products';
+import { getProduct, getSimilarProducts } from '@/api/products';
 import { useCategories } from '@/hooks/useCategories';
 import { useProductFilterOptions } from '@/hooks/useProductFilterOptions';
 import { useProducts } from '@/hooks/useProducts';
@@ -12,7 +12,7 @@ import { ProductPage } from '../product/ProductPage';
 
 vi.mock('@/api/products', () => ({
   getProduct: vi.fn(),
-  getRelatedProducts: vi.fn(),
+  getSimilarProducts: vi.fn(),
 }));
 vi.mock('@/hooks/useProducts', () => ({ useProducts: vi.fn() }));
 vi.mock('@/hooks/useCategories', () => ({ useCategories: vi.fn() }));
@@ -77,7 +77,7 @@ describe('catalog to product journey', () => {
       refetch: vi.fn().mockResolvedValue(undefined),
     });
     vi.mocked(getProduct).mockResolvedValue(catalogProduct);
-    vi.mocked(getRelatedProducts).mockResolvedValue([]);
+    vi.mocked(getSimilarProducts).mockResolvedValue([]);
     vi.mocked(useProductFilterOptions).mockReturnValue({
       options: { tags: [], specificationGroups: [] },
       isLoading: false,

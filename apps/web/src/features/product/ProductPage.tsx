@@ -2,20 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { Product } from '@shop/contracts/products';
 import { ApiError } from '@/api/client';
-import { getProduct, getRelatedProducts } from '@/api/products';
+import { getProduct } from '@/api/products';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
-import { ProductCard } from '@/components/ProductCard';
-import { ProductGrid } from '@/components/ProductGrid';
 import { useCartContext } from '@/hooks/CartContext';
 import { ProductDetails } from './ProductDetails';
 import { ProductGallery } from './ProductGallery';
 import { ProductPurchasePanel } from './ProductPurchasePanel';
+import { SimilarProductsSection } from './SimilarProductsSection';
 
 export function ProductPage() {
   const { id } = useParams<{ id: string }>();
   const [product, setProduct] = useState<Product | null>(null);
-  const [related, setRelated] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -35,7 +33,6 @@ export function ProductPage() {
     setIsLoading(true);
     setError(null);
     setProduct(null);
-    setRelated([]);
     setActionError(null);
 
     if (!id) {
@@ -44,20 +41,15 @@ export function ProductPage() {
       return;
     }
 
-    Promise.all([
-      getProduct(id).catch((loadError: unknown) => {
+    getProduct(id)
+      .catch((loadError: unknown) => {
         if (loadError instanceof ApiError && loadError.status === 404) return null;
         throw loadError;
-      }),
-      getRelatedProducts(id).catch(() => []),
-    ])
-      .then(([productResult, relatedResult]) => {
+      })
+      .then((productResult) => {
         if (cancelled) return;
         if (!productResult) setError('Product not found');
-        else {
-          setProduct(productResult);
-          setRelated(Array.isArray(relatedResult) ? relatedResult.slice(0, 5) : []);
-        }
+        else setProduct(productResult);
       })
       .catch((loadError: unknown) => {
         if (!cancelled)
@@ -132,35 +124,12 @@ export function ProductPage() {
         <ProductDetails description={product.description} />
       </div>
 
-      {related.length > 0 && (
-        <section className="mt-16" aria-labelledby="related-products-heading">
-          <div className="mb-6 flex items-end justify-between gap-4">
-            <div>
-              <p className="section-eyebrow">Same powder type</p>
-              <h2 id="related-products-heading" className="section-heading mt-2">
-                Powders well with
-              </h2>
-            </div>
-            <Link
-              to={`/catalog?category=${encodeURIComponent(product.category)}`}
-              className="section-link"
-            >
-              View powder type
-            </Link>
-          </div>
-          <ProductGrid>
-            {related.map((relatedProduct) => (
-              <ProductCard
-                key={relatedProduct.id}
-                product={relatedProduct}
-                isCartAvailable={isCartAvailable}
-                isAdding={isActionPending(relatedProduct.id, 'add')}
-                onAddToCart={(productId) => addItem(productId)}
-              />
-            ))}
-          </ProductGrid>
-        </section>
-      )}
+      <SimilarProductsSection
+        productId={product.id}
+        isCartAvailable={isCartAvailable}
+        isAdding={(productId) => isActionPending(productId, 'add')}
+        onAddToCart={addItem}
+      />
     </div>
   );
 }
