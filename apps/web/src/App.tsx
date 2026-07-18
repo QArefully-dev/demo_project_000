@@ -19,6 +19,7 @@ import { BagDesignsPage } from './features/designs/BagDesignsPage';
 import { PowderizerPage } from './features/powderizer/PowderizerPage';
 import { HelpIndexPage } from './features/help/HelpIndexPage';
 import { HelpArticlePage } from './features/help/HelpArticlePage';
+import { ComparisonPage } from './features/comparison/ComparisonPage';
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
       <Route element={<Layout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/catalog" element={<CatalogPage />} />
+        <Route path="/compare" element={<ComparisonPage />} />
         <Route path="/products/:id" element={<ProductPage />} />
         <Route path="/cart" element={<CartPage />} />
         <Route path="/checkout" element={<CheckoutPage />} />

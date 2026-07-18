@@ -1,10 +1,6 @@
-import {
-  CATALOG_PRODUCTS,
-  CATALOG_SPECIFICATION_GROUPS,
-  catalogProductSpecifications,
-} from '@shop/catalog';
+import { CATALOG_PRODUCTS } from '@shop/catalog';
 import type { Product } from '@shop/contracts/products';
-import type { ProductRow } from '../features/catalog/productRepository.js';
+import type { CustomerProductRow, ProductRow } from '../features/catalog/productRepository.js';
 
 const packagingByArtworkId = new Map<string, (typeof CATALOG_PRODUCTS)[number]['packaging']>(
   CATALOG_PRODUCTS.map((product) => [product.image_set_id, product.packaging]),
@@ -18,42 +14,12 @@ function toUtcIsoInstant(value: string): string {
   return Number.isFinite(time) ? new Date(time).toISOString() : value;
 }
 
-/** Maps a persisted product row to the transport contract and resolves canonical packaging. */
-export function toProductContract(row: ProductRow): Product {
+/** Maps a persisted product row to transport, using hydrated SQLite metadata when available. */
+export function toProductContract(row: ProductRow | CustomerProductRow): Product {
   const imageSetId = row.image_set_id ?? 'unknown';
-  const catalogProduct = CATALOG_PRODUCTS.find((product) => product.image_set_id === imageSetId);
   const packaging = packagingByArtworkId.get(imageSetId);
-  const tags = catalogProduct?.tags.map(({ key, label }) => ({ key, label })) ?? [];
-  const specificationGroups = catalogProduct
-    ? [...catalogProductSpecifications(catalogProduct)]
-        .sort(
-          (left, right) =>
-            CATALOG_SPECIFICATION_GROUPS.findIndex((group) => group.key === left.group) -
-              CATALOG_SPECIFICATION_GROUPS.findIndex((group) => group.key === right.group) ||
-            left.order - right.order,
-        )
-        .reduce<Product['specificationGroups']>((groups, specification) => {
-          let group = groups.find((candidate) => candidate.key === specification.group);
-          if (!group) {
-            group = {
-              key: specification.group,
-              label: specification.groupLabel,
-              order: CATALOG_SPECIFICATION_GROUPS.find(
-                (candidate) => candidate.key === specification.group,
-              )!.order,
-              specifications: [],
-            };
-            groups.push(group);
-          }
-          group.specifications.push({
-            key: specification.key,
-            label: specification.label,
-            valueKey: specification.valueKey,
-            value: specification.displayValue,
-          });
-          return groups;
-        }, [])
-    : [];
+  const tags = 'tags' in row ? row.tags : [];
+  const specificationGroups = 'specificationGroups' in row ? row.specificationGroups : [];
 
   return {
     id: String(row.id),

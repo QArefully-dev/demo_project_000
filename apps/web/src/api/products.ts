@@ -4,7 +4,9 @@ import {
   ProductDetailResponse,
   CategoriesResponse,
   BestsellersResponse,
+  ProductComparisonResponse,
   RelatedResponse,
+  SimilarProductsResponse,
   ProductFilterOptionsResponse,
 } from '@shop/contracts/products';
 import type { ProductQuery } from '@shop/contracts/products';
@@ -39,6 +41,25 @@ export function getBestsellers(): Promise<BestsellersResponse> {
 
 export function getRelatedProducts(id: string): Promise<RelatedResponse> {
   return apiFetch(RelatedResponse, `/api/products/${id}/related`);
+}
+
+/** Fetch deterministic, metadata-based alternatives for a product. */
+export function getSimilarProducts(
+  id: string,
+  signal?: AbortSignal,
+): Promise<SimilarProductsResponse> {
+  return apiFetch(SimilarProductsResponse, `/api/products/${id}/similar`, { signal });
+}
+
+/** Fetches an ordered comparison without changing the caller's selection order. */
+export function getProductComparison(
+  ids: readonly string[],
+  signal?: AbortSignal,
+): Promise<ProductComparisonResponse> {
+  const params = new URLSearchParams({ ids: ids.join(',') });
+  return apiFetch(ProductComparisonResponse, `/api/products/compare?${params.toString()}`, {
+    signal,
+  });
 }
 
 export function getProductFilterOptions(

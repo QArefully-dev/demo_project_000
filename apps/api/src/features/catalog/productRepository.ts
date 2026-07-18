@@ -1,6 +1,11 @@
 import type Database from 'better-sqlite3';
 import { CATALOG_SPECIFICATION_DEFINITIONS, CATALOG_SPECIFICATION_GROUPS } from '@shop/catalog';
-import type { ProductFilterOptionsResponse, ProductQuery } from '@shop/contracts/products';
+import type {
+  ProductFilterOptionsResponse,
+  ProductQuery,
+  ProductSpecificationGroup,
+  ProductTag,
+} from '@shop/contracts/products';
 import { buildCatalogPredicate, catalogOrderBy } from './catalogSql.js';
 import { normalizeCatalogQuery } from './catalogQuery.js';
 
@@ -21,8 +26,14 @@ export interface ProductRow {
   created_at: string;
 }
 
+/** Customer read model with metadata hydrated from persisted catalog tables. */
+export interface CustomerProductRow extends ProductRow {
+  tags: ProductTag[];
+  specificationGroups: ProductSpecificationGroup[];
+}
+
 export interface ProductList {
-  items: ProductRow[];
+  items: CustomerProductRow[];
   total: number;
   page: number;
   pageSize: number;
@@ -34,10 +45,13 @@ export interface ProductRepository {
   /** Internal lookup for checkout, order history, and persisted mix components. */
   findById(id: number): ProductRow | undefined;
   /** Customer discovery lookup. Inactive products must remain invisible. */
-  findActiveById(id: number): ProductRow | undefined;
+  findActiveById(id: number): CustomerProductRow | undefined;
   listCategories(): string[];
-  listBestsellers(limit?: number): ProductRow[];
-  listRelated(productId: number, limit?: number): ProductRow[];
+  listBestsellers(limit?: number): CustomerProductRow[];
+  /** Explicit comparison lookup; includes active and inactive products only. */
+  listByIds(ids: readonly number[]): CustomerProductRow[];
+  /** Active customer reads for deterministic similarity scoring. */
+  listActiveCandidatesExcluding(sourceId: number): CustomerProductRow[];
   listEligibleMixProducts(): ProductRow[];
   /** Active-only component selection for new Powderizer quotes and mixes. */
   listActiveMixProducts(productIds: readonly number[]): ProductRow[];
@@ -46,6 +60,79 @@ export interface ProductRepository {
 }
 
 export function createProductRepository(db: Database.Database): ProductRepository {
+  const hydrateCustomerRows = (rows: readonly ProductRow[]): CustomerProductRow[] => {
+    if (rows.length === 0) return [];
+    const productIds = [...new Set(rows.map((row) => row.id))];
+    const placeholders = productIds.map(() => '?').join(', ');
+    const tagRows = db
+      .prepare(
+        `SELECT pt.product_id, ct.key, ct.label
+         FROM product_tags pt
+         INNER JOIN catalog_tags ct ON ct.key = pt.tag_key
+         WHERE pt.product_id IN (${placeholders})
+         ORDER BY ct.label COLLATE NOCASE ASC, ct.key ASC`,
+      )
+      .all(...productIds) as Array<{ product_id: number; key: string; label: string }>;
+    const specificationRows = db
+      .prepare(
+        `SELECT product_id, specification_key, value_key, display_value
+         FROM product_specifications
+         WHERE product_id IN (${placeholders})`,
+      )
+      .all(...productIds) as Array<{
+      product_id: number;
+      specification_key: string;
+      value_key: string;
+      display_value: string;
+    }>;
+    const tagsByProduct = new Map<number, ProductTag[]>();
+    for (const tag of tagRows) {
+      const tags = tagsByProduct.get(tag.product_id) ?? [];
+      tags.push({ key: tag.key, label: tag.label });
+      tagsByProduct.set(tag.product_id, tags);
+    }
+    const specificationsByProduct = new Map<
+      number,
+      Map<string, ProductSpecificationGroup['specifications']>
+    >();
+    for (const specification of specificationRows) {
+      const definition = CATALOG_SPECIFICATION_DEFINITIONS.find(
+        (candidate) => candidate.key === specification.specification_key,
+      );
+      if (!definition) continue;
+      const productSpecifications =
+        specificationsByProduct.get(specification.product_id) ??
+        new Map<string, ProductSpecificationGroup['specifications']>();
+      const groupSpecifications = productSpecifications.get(definition.group) ?? [];
+      groupSpecifications.push({
+        key: definition.key,
+        label: definition.label,
+        valueKey: specification.value_key,
+        value: specification.display_value,
+      });
+      productSpecifications.set(definition.group, groupSpecifications);
+      specificationsByProduct.set(specification.product_id, productSpecifications);
+    }
+    return rows.map((row) => {
+      const groupedSpecifications = specificationsByProduct.get(row.id);
+      const specificationGroups = CATALOG_SPECIFICATION_GROUPS.flatMap((group) => {
+        const specifications = groupedSpecifications?.get(group.key);
+        if (!specifications?.length) return [];
+        specifications.sort((left, right) => {
+          const leftOrder = CATALOG_SPECIFICATION_DEFINITIONS.find(
+            (definition) => definition.key === left.key,
+          )!.order;
+          const rightOrder = CATALOG_SPECIFICATION_DEFINITIONS.find(
+            (definition) => definition.key === right.key,
+          )!.order;
+          return leftOrder - rightOrder || left.key.localeCompare(right.key);
+        });
+        return [{ key: group.key, label: group.label, order: group.order, specifications }];
+      });
+      return { ...row, tags: tagsByProduct.get(row.id) ?? [], specificationGroups };
+    });
+  };
+
   return {
     list(query) {
       const normalized = normalizeCatalogQuery(query);
@@ -66,7 +153,12 @@ export function createProductRepository(db: Database.Database): ProductRepositor
           normalized.pageSize,
           (normalized.page - 1) * normalized.pageSize,
         ) as ProductRow[];
-      return { items, total, page: normalized.page, pageSize: normalized.pageSize };
+      return {
+        items: hydrateCustomerRows(items),
+        total,
+        page: normalized.page,
+        pageSize: normalized.pageSize,
+      };
     },
     listFilterOptions() {
       const tags = db
@@ -131,8 +223,9 @@ export function createProductRepository(db: Database.Database): ProductRepositor
       return db.prepare('SELECT * FROM products WHERE id = ?').get(id) as ProductRow | undefined;
     },
     findActiveById(id) {
-      return db.prepare('SELECT * FROM products WHERE id = ? AND active = 1').get(id) as
+      const row = db.prepare('SELECT * FROM products WHERE id = ? AND active = 1').get(id) as
         ProductRow | undefined;
+      return row ? hydrateCustomerRows([row])[0] : undefined;
     },
     listCategories() {
       return (
@@ -144,20 +237,26 @@ export function createProductRepository(db: Database.Database): ProductRepositor
       ).map((row) => row.category);
     },
     listBestsellers(limit = 8) {
-      return db
+      const rows = db
         .prepare(
           'SELECT * FROM products WHERE active = 1 AND sales_count >= 250 ORDER BY sales_count DESC, id ASC LIMIT ?',
         )
         .all(limit) as ProductRow[];
+      return hydrateCustomerRows(rows);
     },
-    listRelated(productId, limit = 4) {
-      return db
-        .prepare(
-          `SELECT * FROM products WHERE active = 1
-           AND category = (SELECT category FROM products WHERE id = ? AND active = 1)
-           AND id != ? ORDER BY id ASC LIMIT ?`,
-        )
-        .all(productId, productId, limit) as ProductRow[];
+    listByIds(ids) {
+      if (ids.length === 0) return [];
+      const placeholders = ids.map(() => '?').join(', ');
+      const rows = db
+        .prepare(`SELECT * FROM products WHERE id IN (${placeholders})`)
+        .all(...ids) as ProductRow[];
+      return hydrateCustomerRows(rows);
+    },
+    listActiveCandidatesExcluding(sourceId) {
+      const rows = db
+        .prepare('SELECT * FROM products WHERE active = 1 AND id != ? ORDER BY id ASC')
+        .all(sourceId) as ProductRow[];
+      return hydrateCustomerRows(rows);
     },
     listEligibleMixProducts() {
       return db
