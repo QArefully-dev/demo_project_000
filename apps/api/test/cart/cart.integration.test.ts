@@ -12,6 +12,7 @@ import { createCartRepository } from '../../src/features/cart/cartRepository.js'
 import {
   addItem,
   createCart,
+  createCartService,
   getCart,
   removeItem,
   updateItem,
@@ -22,6 +23,8 @@ import { createPowderizerService } from '../../src/features/powderizer/powderize
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createPromoRepository } from '../../src/features/promos/promoRepository.js';
 import { validatePromo } from '../../src/features/promos/promoService.js';
+import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
+import { createAuditWriter, type AuditWriter } from '../../src/features/audit/auditService.js';
 
 void test('cart service coordinates cart repository and promo eligibility', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-cart-'));
@@ -273,4 +276,122 @@ void test('every mix mutation rejects a reserved cart', async (t) => {
       'Cart is reserved for checkout',
     );
   }
+});
+
+void test('audited cart mutations emit one allowlisted event per committed change', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-audit-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const carts = createCartRepository(db);
+  const writer = createAuditWriter({
+    repository: createAuditRepository(db),
+    clock: { now: () => new Date('2026-07-18T12:00:00.000Z') },
+  });
+  const service = createCartService(carts, undefined, {
+    unitOfWork: createUnitOfWork(db),
+    audit: writer,
+  });
+  const anonymous = { actor: { type: 'anonymous' as const, userId: null }, requestId: 'cart-a' };
+  const user = { actor: { type: 'user' as const, userId: 12 }, requestId: 'cart-b' };
+
+  const { cartId } = service.create(anonymous);
+  assert.notEqual(service.add(cartId, '1', user), 'CART_NOT_FOUND');
+  assert.notEqual(service.update(cartId, '1', 3, user), 'CART_NOT_FOUND');
+  assert.notEqual(service.update(cartId, '1', 0, user), 'CART_NOT_FOUND');
+  assert.equal(service.update(cartId, '1', 2, user), 'PRODUCT_NOT_IN_CART');
+
+  const events = db
+    .prepare(
+      `SELECT actor_type, actor_user_id, action, entity_id, request_id, metadata_json
+       FROM audit_events ORDER BY id`,
+    )
+    .all() as Array<{
+    actor_type: string;
+    actor_user_id: number | null;
+    action: string;
+    entity_id: string;
+    request_id: string;
+    metadata_json: string;
+  }>;
+  assert.deepEqual(
+    events.map(({ action, actor_type, actor_user_id, entity_id, request_id, metadata_json }) => ({
+      action,
+      actor_type,
+      actor_user_id,
+      entity_id,
+      request_id,
+      metadata_json,
+    })),
+    [
+      {
+        action: 'cart.created',
+        actor_type: 'anonymous',
+        actor_user_id: null,
+        entity_id: cartId,
+        request_id: 'cart-a',
+        metadata_json: '{}',
+      },
+      {
+        action: 'cart.product_added',
+        actor_type: 'user',
+        actor_user_id: 12,
+        entity_id: cartId,
+        request_id: 'cart-b',
+        metadata_json: '{"productId":1,"quantity":1}',
+      },
+      {
+        action: 'cart.product_quantity_changed',
+        actor_type: 'user',
+        actor_user_id: 12,
+        entity_id: cartId,
+        request_id: 'cart-b',
+        metadata_json: '{"productId":1,"quantity":3}',
+      },
+      {
+        action: 'cart.product_removed',
+        actor_type: 'user',
+        actor_user_id: 12,
+        entity_id: cartId,
+        request_id: 'cart-b',
+        metadata_json: '{"productId":1}',
+      },
+    ],
+  );
+});
+
+void test('cart audit failure rolls back mutation and cart touch transaction', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-audit-rollback-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const carts = createCartRepository(db);
+  const failingAudit: AuditWriter = {
+    append: () => {
+      throw new Error('audit unavailable');
+    },
+  };
+  const service = createCartService(carts, undefined, {
+    unitOfWork: createUnitOfWork(db),
+    audit: failingAudit,
+  });
+  const context = { actor: { type: 'anonymous' as const, userId: null }, requestId: 'cart-fail' };
+
+  assert.throws(() => service.create(context), /audit unavailable/);
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM carts').get() as { count: number }).count,
+    0,
+  );
+
+  const { cartId } = createCart(carts);
+  assert.throws(() => service.add(cartId, '1', context), /audit unavailable/);
+  assert.deepEqual(getCart(carts, cartId)?.items, []);
 });

@@ -19,7 +19,19 @@ import type { ProductRow } from '../../src/features/catalog/productRepository.js
 import { Product } from '@shop/contracts/products';
 import { Value } from '@sinclair/typebox/value';
 
-const expectedVersions = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010'];
+const expectedVersions = [
+  '001',
+  '002',
+  '003',
+  '004',
+  '005',
+  '006',
+  '007',
+  '008',
+  '009',
+  '010',
+  '011',
+];
 
 function migrationVersions(db: Database.Database): string[] {
   return db
@@ -101,6 +113,30 @@ void test('migrations create a fresh schema, record every version, and remain id
       (column) => column.name === 'response_json',
     ),
   );
+  assert.deepEqual(
+    db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'audit_events'")
+      .get(),
+    { name: 'audit_events' },
+  );
+  for (const index of [
+    'audit_events_occurred_at_id_idx',
+    'audit_events_action_occurred_at_id_idx',
+    'audit_events_entity_occurred_at_id_idx',
+    'audit_events_actor_user_occurred_at_id_idx',
+    'audit_events_request_occurred_at_id_idx',
+  ]) {
+    assert.deepEqual(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?").get(index),
+      { name: index },
+    );
+  }
+  for (const trigger of ['audit_events_no_update', 'audit_events_no_delete']) {
+    assert.deepEqual(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = ?").get(trigger),
+      { name: trigger },
+    );
+  }
   assert.ok(
     (db.prepare('PRAGMA table_info(products)').all() as { name: string }[]).some(
       (column) => column.name === 'active',

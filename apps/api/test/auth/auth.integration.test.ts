@@ -27,6 +27,22 @@ function firstMailboxMessageBody(response: { body: string }): string {
   return messageBody;
 }
 
+function auditActions(db: ReturnType<typeof openDatabase>): string[] {
+  return db
+    .prepare('SELECT action FROM audit_events ORDER BY id')
+    .all()
+    .map((row) => (row as { action: string }).action);
+}
+
+function sessionCookie(response: {
+  headers: Record<string, string | string[] | undefined>;
+}): string {
+  const cookie = response.headers['set-cookie'];
+  const value = Array.isArray(cookie) ? cookie[0] : cookie;
+  if (!value) throw new Error('Expected a session cookie');
+  return value.split(';', 1)[0];
+}
+
 void test('auth services isolate sessions, reset tokens, and mailbox', async (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-auth-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
@@ -221,4 +237,302 @@ void test('auth services isolate sessions, reset tokens, and mailbox', async (t)
       0,
     );
   });
+});
+
+void test('auth audit events are atomic, privacy-bounded, and mutation-only', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-auth-audit-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  let token = 'audit-reset-token-one';
+  const app = await buildApp({
+    db,
+    resetBaseUrl: 'https://web.example.test/store',
+    clock: { now: () => new Date('2026-07-13T12:00:00.000Z') },
+    resetTokenSource: () => token,
+  });
+  t.after(async () => {
+    await app.close();
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const signup = await app.inject({
+    method: 'POST',
+    url: '/signup',
+    payload: { email: 'audit@example.test', password: 'password-one', displayName: 'Audit User' },
+  });
+  assert.equal(signup.statusCode, 201);
+  assert.deepEqual(auditActions(db), ['auth.user_signed_up', 'auth.session_created']);
+  assert.deepEqual(db.prepare('SELECT metadata_json FROM audit_events ORDER BY id').all(), [
+    { metadata_json: '{}' },
+    { metadata_json: '{"source":"signup"}' },
+  ]);
+
+  const beforeInvalid = auditActions(db).length;
+  assert.equal(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/signup',
+        payload: { email: 'invalid', password: 'short', displayName: '' },
+      })
+    ).statusCode,
+    400,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/login',
+        payload: { email: 'audit@example.test', password: 'wrong-password' },
+      })
+    ).statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/forgot-password',
+        payload: { email: 'unknown@example.test' },
+      })
+    ).statusCode,
+    200,
+  );
+  assert.equal(auditActions(db).length, beforeInvalid);
+
+  await app.inject({
+    method: 'POST',
+    url: '/forgot-password',
+    payload: { email: 'audit@example.test' },
+  });
+  assert.equal(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/reset-password',
+        payload: { token: 'not-a-token', newPassword: 'password-two' },
+      })
+    ).statusCode,
+    400,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/reset-password',
+        payload: { token, newPassword: 'password-two' },
+      })
+    ).statusCode,
+    200,
+  );
+
+  const login = await app.inject({
+    method: 'POST',
+    url: '/login',
+    payload: { email: 'audit@example.test', password: 'password-two' },
+  });
+  assert.equal(login.statusCode, 200);
+  const cookie = sessionCookie(login);
+  assert.equal(
+    (
+      await app.inject({
+        method: 'PATCH',
+        url: '/password',
+        headers: { cookie },
+        payload: { currentPassword: 'password-two', newPassword: 'password-three' },
+      })
+    ).statusCode,
+    200,
+  );
+  assert.equal(
+    (await app.inject({ method: 'POST', url: '/logout', headers: { cookie } })).statusCode,
+    200,
+  );
+  assert.equal((await app.inject({ method: 'POST', url: '/logout' })).statusCode, 200);
+  assert.deepEqual(auditActions(db), [
+    'auth.user_signed_up',
+    'auth.session_created',
+    'auth.password_reset_requested',
+    'auth.password_reset_completed',
+    'auth.session_created',
+    'auth.password_changed',
+    'auth.session_destroyed',
+  ]);
+  const serializedAuditRows = JSON.stringify(db.prepare('SELECT * FROM audit_events').all());
+  for (const secret of [
+    'password-one',
+    'password-two',
+    'password-three',
+    'audit-reset-token-one',
+    'audit@example.test',
+  ]) {
+    assert.equal(serializedAuditRows.includes(secret), false);
+  }
+
+  db.exec(
+    `CREATE TRIGGER abort_audit_signup BEFORE INSERT ON audit_events
+     WHEN NEW.action = 'auth.user_signed_up'
+     BEGIN SELECT RAISE(ABORT, 'audit insert failed'); END`,
+  );
+  const failedSignup = await app.inject({
+    method: 'POST',
+    url: '/signup',
+    payload: { email: 'rollback@example.test', password: 'password-one', displayName: 'Rollback' },
+  });
+  assert.equal(failedSignup.statusCode, 500);
+  assert.equal(
+    (
+      db
+        .prepare('SELECT COUNT(*) AS count FROM users WHERE email = ?')
+        .get('rollback@example.test') as {
+        count: number;
+      }
+    ).count,
+    0,
+  );
+  db.exec('DROP TRIGGER abort_audit_signup');
+
+  db.exec(
+    `CREATE TRIGGER abort_audit_reset_request BEFORE INSERT ON audit_events
+     WHEN NEW.action = 'auth.password_reset_requested'
+     BEGIN SELECT RAISE(ABORT, 'audit insert failed'); END`,
+  );
+  const tokensBefore = (
+    db.prepare('SELECT COUNT(*) AS count FROM password_reset_tokens').get() as {
+      count: number;
+    }
+  ).count;
+  const mailboxBefore = (
+    db.prepare('SELECT COUNT(*) AS count FROM dev_mailbox').get() as {
+      count: number;
+    }
+  ).count;
+  token = 'audit-reset-token-two';
+  assert.equal(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/forgot-password',
+        payload: { email: 'audit@example.test' },
+      })
+    ).statusCode,
+    500,
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM password_reset_tokens').get() as { count: number })
+      .count,
+    tokensBefore,
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM dev_mailbox').get() as { count: number }).count,
+    mailboxBefore,
+  );
+  db.exec('DROP TRIGGER abort_audit_reset_request');
+
+  const currentLogin = await app.inject({
+    method: 'POST',
+    url: '/login',
+    payload: { email: 'audit@example.test', password: 'password-three' },
+  });
+  assert.equal(currentLogin.statusCode, 200);
+  db.exec(
+    `CREATE TRIGGER abort_audit_password_change BEFORE INSERT ON audit_events
+     WHEN NEW.action = 'auth.password_changed'
+     BEGIN SELECT RAISE(ABORT, 'audit insert failed'); END`,
+  );
+  const failedPasswordChange = await app.inject({
+    method: 'PATCH',
+    url: '/password',
+    headers: { cookie: sessionCookie(currentLogin) },
+    payload: { currentPassword: 'password-three', newPassword: 'password-four' },
+  });
+  assert.equal(failedPasswordChange.statusCode, 500);
+  db.exec('DROP TRIGGER abort_audit_password_change');
+  assert.equal(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/login',
+        payload: { email: 'audit@example.test', password: 'password-three' },
+      })
+    ).statusCode,
+    200,
+  );
+
+  token = 'audit-reset-token-three';
+  assert.equal(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/forgot-password',
+        payload: { email: 'audit@example.test' },
+      })
+    ).statusCode,
+    200,
+  );
+  db.exec(
+    `CREATE TRIGGER abort_audit_reset_completion BEFORE INSERT ON audit_events
+     WHEN NEW.action = 'auth.password_reset_completed'
+     BEGIN SELECT RAISE(ABORT, 'audit insert failed'); END`,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/reset-password',
+        payload: { token, newPassword: 'password-four' },
+      })
+    ).statusCode,
+    500,
+  );
+  assert.equal(
+    (
+      db.prepare('SELECT used_at FROM password_reset_tokens ORDER BY id DESC LIMIT 1').get() as {
+        used_at: string | null;
+      }
+    ).used_at,
+    null,
+  );
+  db.exec('DROP TRIGGER abort_audit_reset_completion');
+  assert.equal(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/login',
+        payload: { email: 'audit@example.test', password: 'password-three' },
+      })
+    ).statusCode,
+    200,
+  );
+
+  db.exec(
+    `CREATE TRIGGER abort_audit_session_create BEFORE INSERT ON audit_events
+     WHEN NEW.action = 'auth.session_created'
+     BEGIN SELECT RAISE(ABORT, 'audit insert failed'); END`,
+  );
+  const signupWithSessionFailure = await app.inject({
+    method: 'POST',
+    url: '/signup',
+    payload: {
+      email: 'session-rollback@example.test',
+      password: 'password-one',
+      displayName: 'Session Rollback',
+    },
+  });
+  assert.equal(signupWithSessionFailure.statusCode, 500);
+  const sessionFailureUser = db
+    .prepare('SELECT id FROM users WHERE email = ?')
+    .get('session-rollback@example.test') as { id: number };
+  assert.ok(sessionFailureUser);
+  assert.equal(
+    (
+      db
+        .prepare('SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?')
+        .get(sessionFailureUser.id) as {
+        count: number;
+      }
+    ).count,
+    0,
+  );
+  db.exec('DROP TRIGGER abort_audit_session_create');
 });

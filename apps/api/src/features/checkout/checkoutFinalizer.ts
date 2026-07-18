@@ -2,6 +2,7 @@ import type { Order } from '@shop/contracts/orders';
 import { DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME } from '@shop/contracts/powderizer';
 import type { PowderMixOrderItem } from '@shop/contracts/powderizer';
 import { parsePersistedCheckoutQuote } from '../payments/paymentRepository.js';
+import type { AuditContext } from '../audit/auditEvent.js';
 import type { CheckoutDependencies, CheckoutResult } from './checkoutTypes.js';
 
 function normalizeOrderMixItem(mix: PowderMixOrderItem): Order['mixItems'][number] {
@@ -36,6 +37,7 @@ function orderFromQuote(
 export function finalizeAuthorizedCheckout(
   dependencies: CheckoutDependencies,
   idempotencyKey: string,
+  auditContext: AuditContext,
 ): CheckoutResult {
   return dependencies.unitOfWork.run(() => {
     const payment = dependencies.payments.load(idempotencyKey);
@@ -85,6 +87,27 @@ export function finalizeAuthorizedCheckout(
     ) {
       throw new Error('Checkout authorization state changed during finalization');
     }
+    dependencies.audit.append({
+      action: 'order.created',
+      context: auditContext,
+      orderId,
+      totalCents: quote.totalCents,
+      itemCount: quote.lines.reduce((total, item) => total + item.quantity, 0),
+      mixItemCount:
+        quote.version === 1 ? 0 : quote.mixLines.reduce((total, item) => total + item.quantity, 0),
+    });
+    dependencies.audit.append({
+      action: 'payment.succeeded',
+      context: auditContext,
+      paymentId: payment.id,
+      orderId,
+      amountCents: quote.totalCents,
+    });
+    dependencies.audit.append({
+      action: 'checkout.cart_consumed',
+      context: auditContext,
+      cartId: quote.cartId,
+    });
     return result;
   });
 }

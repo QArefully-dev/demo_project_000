@@ -5,37 +5,118 @@ import { toProductContract } from '../../mappers/product.js';
 import type { CartRepository } from './cartRepository.js';
 import type { PowderMixRepository } from '../powderizer/powderMixRepository.js';
 import { derivePowderMixUsageLabel } from '../powderizer/powderMixRules.js';
+import type { UnitOfWork } from '../../db/unitOfWork.js';
+import type { AuditContext } from '../audit/auditEvent.js';
+import type { AuditWriter } from '../audit/auditService.js';
+
+export interface CartAuditDependencies {
+  unitOfWork: UnitOfWork;
+  audit: AuditWriter;
+}
 
 export interface CartService {
-  create(): { cartId: string };
+  create(context?: AuditContext): { cartId: string };
   get(cartId: string): Cart | undefined;
   add(
     cartId: string,
     productId: string,
+    context?: AuditContext,
   ): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_FOUND' | 'CART_RESERVED';
   update(
     cartId: string,
     productId: string,
     quantity: number,
+    context?: AuditContext,
   ): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_IN_CART' | 'CART_RESERVED';
   remove(
     cartId: string,
     productId: string,
+    context?: AuditContext,
   ): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_IN_CART' | 'CART_RESERVED';
 }
 
 export function createCartService(
   repository: CartRepository,
   mixes?: PowderMixRepository,
+  auditDependencies?: CartAuditDependencies,
 ): CartService {
   return {
-    create: () => createCart(repository),
+    create: (context) =>
+      runCartMutation(auditDependencies, () => {
+        requireAuditContext(auditDependencies, context);
+        const result = createCart(repository);
+        if (context && auditDependencies) {
+          auditDependencies.audit.append({
+            action: 'cart.created',
+            cartId: result.cartId,
+            context,
+          });
+        }
+        return result;
+      }),
     get: (cartId) => getCart(repository, cartId, mixes),
-    add: (cartId, productId) => addItem(repository, cartId, productId, mixes),
-    update: (cartId, productId, quantity) =>
-      updateItem(repository, cartId, productId, quantity, mixes),
-    remove: (cartId, productId) => removeItem(repository, cartId, productId, mixes),
+    add: (cartId, productId, context) =>
+      runCartMutation(auditDependencies, () => {
+        requireAuditContext(auditDependencies, context);
+        const result = addItem(repository, cartId, productId, mixes);
+        if (context && auditDependencies && typeof result !== 'string') {
+          auditDependencies.audit.append({
+            action: 'cart.product_added',
+            cartId,
+            productId: Number(productId),
+            quantity:
+              result.items.find((item) => item.productId === String(Number(productId)))?.quantity ??
+              1,
+            context,
+          });
+        }
+        return result;
+      }),
+    update: (cartId, productId, quantity, context) =>
+      runCartMutation(auditDependencies, () => {
+        requireAuditContext(auditDependencies, context);
+        const result = updateItem(repository, cartId, productId, quantity, mixes);
+        if (context && auditDependencies && typeof result !== 'string') {
+          auditDependencies.audit.append(
+            quantity === 0
+              ? { action: 'cart.product_removed', cartId, productId: Number(productId), context }
+              : {
+                  action: 'cart.product_quantity_changed',
+                  cartId,
+                  productId: Number(productId),
+                  quantity,
+                  context,
+                },
+          );
+        }
+        return result;
+      }),
+    remove: (cartId, productId, context) =>
+      runCartMutation(auditDependencies, () => {
+        requireAuditContext(auditDependencies, context);
+        const result = removeItem(repository, cartId, productId, mixes);
+        if (context && auditDependencies && typeof result !== 'string') {
+          auditDependencies.audit.append({
+            action: 'cart.product_removed',
+            cartId,
+            productId: Number(productId),
+            context,
+          });
+        }
+        return result;
+      }),
   };
+}
+
+function runCartMutation<T>(dependencies: CartAuditDependencies | undefined, work: () => T): T {
+  return dependencies ? dependencies.unitOfWork.run(work) : work();
+}
+
+function requireAuditContext(
+  dependencies: CartAuditDependencies | undefined,
+  context: AuditContext | undefined,
+): void {
+  if (dependencies && !context) throw new Error('Cart audit context is required');
 }
 
 export function createCart(repository: CartRepository): { cartId: string } {

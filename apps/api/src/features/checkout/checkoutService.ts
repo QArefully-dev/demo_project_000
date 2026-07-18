@@ -7,6 +7,7 @@ import { validatePromo } from '../promos/promoService.js';
 import { createCheckoutQuote } from './checkoutQuote.js';
 import { finalizeAuthorizedCheckout } from './checkoutFinalizer.js';
 import { prepareMixes } from './checkoutMixPreparation.js';
+import type { PreGatewayFailureCode } from '../audit/auditEvent.js';
 import type {
   CheckoutDependencies,
   CheckoutParams,
@@ -22,6 +23,21 @@ export type {
 } from './checkoutTypes.js';
 
 type Preparation = CheckoutResult | { quoteTotalCents: number; card: ValidCard } | { resume: true };
+
+function preGatewayFailureCode(result: CheckoutResult): PreGatewayFailureCode {
+  if (!result.success) {
+    switch (result.error) {
+      case 'CART_NOT_FOUND':
+      case 'CART_EMPTY':
+      case 'PROMO_INVALID':
+      case 'MIX_REQUOTE_REQUIRED':
+      case 'MIX_STOCK_UNAVAILABLE':
+      case 'CHECKOUT_FAILED':
+        return result.error;
+    }
+  }
+  return 'CHECKOUT_FAILED';
+}
 
 function withPreparedMixes(cart: Cart, mixItems: PowderMixCartItem[]): Cart {
   const subtotalCents = [...cart.items, ...mixItems].reduce(
@@ -82,12 +98,14 @@ function prepare(
       return failPreparation(
         params.idempotencyKey,
         { success: false, error: 'CART_NOT_FOUND' },
+        params.auditContext,
         dependencies,
       );
     if (cart.totalItems === 0)
       return failPreparation(
         params.idempotencyKey,
         { success: false, error: 'CART_EMPTY' },
+        params.auditContext,
         dependencies,
       );
     const promo = params.promoCode
@@ -110,11 +128,17 @@ function prepare(
           promoError: promo.error,
           promoErrorCode: promo.errorCode,
         },
+        params.auditContext,
         dependencies,
       );
     const mixPreparation = prepareMixes(params.cartId, dependencies);
     if ('error' in mixPreparation)
-      return failPreparation(params.idempotencyKey, mixPreparation, dependencies);
+      return failPreparation(
+        params.idempotencyKey,
+        mixPreparation,
+        params.auditContext,
+        dependencies,
+      );
     const preparedCart = withPreparedMixes(cart, mixPreparation.mixItems);
     const createdAt = dependencies.clock.now().toISOString();
     const quote = createCheckoutQuote({
@@ -127,6 +151,7 @@ function prepare(
       return failPreparation(
         params.idempotencyKey,
         { success: false, error: 'CHECKOUT_FAILED' },
+        params.auditContext,
         dependencies,
       );
     }
@@ -143,6 +168,7 @@ function prepare(
       return failPreparation(
         params.idempotencyKey,
         { success: false, error: 'PROMO_INVALID' },
+        params.auditContext,
         dependencies,
       );
     }
@@ -164,9 +190,10 @@ function prepare(
 function failPreparation(
   idempotencyKey: string,
   result: CheckoutResult,
+  context: CheckoutParams['auditContext'],
   dependencies: CheckoutDependencies,
 ): CheckoutResult {
-  dependencies.payments.transition({
+  const transitioned = dependencies.payments.transition({
     idempotencyKey,
     expectedStatus: 'prepared',
     nextStatus: 'failed_pre_gateway',
@@ -174,12 +201,23 @@ function failPreparation(
     responseJson: JSON.stringify(result),
     updatedAt: dependencies.clock.now().toISOString(),
   });
+  if (transitioned) {
+    const payment = dependencies.payments.load(idempotencyKey);
+    if (!payment) throw new Error('Checkout intent disappeared after pre-gateway failure');
+    dependencies.audit.append({
+      action: 'payment.pre_gateway_failed',
+      context,
+      paymentId: payment.id,
+      errorCode: preGatewayFailureCode(result),
+    });
+  }
   return result;
 }
 
 function providerFailure(
   idempotencyKey: string,
   status: 'declined' | 'timeout',
+  context: CheckoutParams['auditContext'],
   dependencies: CheckoutDependencies,
 ): CheckoutResult {
   return dependencies.unitOfWork.run(() => {
@@ -187,7 +225,7 @@ function providerFailure(
       success: false,
       error: status === 'declined' ? 'DECLINED' : 'TIMEOUT',
     };
-    dependencies.payments.transition({
+    const transitioned = dependencies.payments.transition({
       idempotencyKey,
       expectedStatus: 'prepared',
       nextStatus: status === 'declined' ? 'declined' : 'timed_out',
@@ -198,6 +236,15 @@ function providerFailure(
     dependencies.carts.releaseReservation(idempotencyKey);
     dependencies.promos.releaseReservation(idempotencyKey);
     dependencies.mixes.releaseStockReservation(idempotencyKey);
+    if (transitioned) {
+      const payment = dependencies.payments.load(idempotencyKey);
+      if (!payment) throw new Error('Checkout intent disappeared after provider failure');
+      dependencies.audit.append({
+        action: status === 'declined' ? 'payment.declined' : 'payment.timed_out',
+        context,
+        paymentId: payment.id,
+      });
+    }
     return result;
   });
 }
@@ -209,7 +256,8 @@ export function createCheckoutService(dependencies: CheckoutDependencies): Check
       if (!card) return { success: false, error: 'CARD_INVALID' };
       const prepared = prepare(params, card, dependencies);
       if ('success' in prepared) return prepared;
-      if ('resume' in prepared) return resumeFinalization(dependencies, params.idempotencyKey);
+      if ('resume' in prepared)
+        return resumeFinalization(dependencies, params.idempotencyKey, params.auditContext);
       const gatewayResult = await dependencies.gateway.process({
         idempotencyKey: params.idempotencyKey,
         amountCents: prepared.quoteTotalCents,
@@ -217,7 +265,12 @@ export function createCheckoutService(dependencies: CheckoutDependencies): Check
         cardNumber: prepared.card.digits,
       });
       if (gatewayResult.status !== 'success')
-        return providerFailure(params.idempotencyKey, gatewayResult.status, dependencies);
+        return providerFailure(
+          params.idempotencyKey,
+          gatewayResult.status,
+          params.auditContext,
+          dependencies,
+        );
       dependencies.unitOfWork.run(() =>
         dependencies.payments.transition({
           idempotencyKey: params.idempotencyKey,
@@ -227,7 +280,7 @@ export function createCheckoutService(dependencies: CheckoutDependencies): Check
           updatedAt: dependencies.clock.now().toISOString(),
         }),
       );
-      return resumeFinalization(dependencies, params.idempotencyKey);
+      return resumeFinalization(dependencies, params.idempotencyKey, params.auditContext);
     },
   };
 }
@@ -235,9 +288,10 @@ export function createCheckoutService(dependencies: CheckoutDependencies): Check
 function resumeFinalization(
   dependencies: CheckoutDependencies,
   idempotencyKey: string,
+  auditContext: CheckoutParams['auditContext'],
 ): CheckoutResult {
   try {
-    return finalizeAuthorizedCheckout(dependencies, idempotencyKey);
+    return finalizeAuthorizedCheckout(dependencies, idempotencyKey, auditContext);
   } catch {
     // Authorization was committed separately; preserve it for same-key retry.
     return { success: false, error: 'IDEMPOTENT_IN_PROGRESS' };

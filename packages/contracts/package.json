@@ -49,6 +49,10 @@
     "./powderizer": {
       "types": "./dist/powderizer.d.ts",
       "import": "./dist/powderizer.js"
+    },
+    "./audit": {
+      "types": "./dist/audit.d.ts",
+      "import": "./dist/audit.js"
     }
   },
   "dependencies": {
