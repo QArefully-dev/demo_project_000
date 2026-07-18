@@ -9,6 +9,8 @@ import type { PromoRepository } from '../promos/promoRepository.js';
 import type { OrderRepository } from './orderRepository.js';
 import type { PowderMixRepository } from '../powderizer/powderMixRepository.js';
 import type { ProductRepository } from '../catalog/productRepository.js';
+import type { AuditContext } from '../audit/auditEvent.js';
+import type { AuditWriter } from '../audit/auditService.js';
 
 export type CheckoutErrorCode =
   | 'CART_NOT_FOUND'
@@ -42,6 +44,7 @@ export interface CheckoutParams {
   cardCvc: string;
   idempotencyKey: string;
   userId: number | null;
+  auditContext: AuditContext;
 }
 
 export interface CheckoutDependencies {
@@ -55,6 +58,7 @@ export interface CheckoutDependencies {
   clock: Clock;
   mixes: PowderMixRepository;
   products: ProductRepository;
+  audit: AuditWriter;
 }
 
 export interface CheckoutService {

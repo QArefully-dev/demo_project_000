@@ -1,16 +1,17 @@
 import type Database from 'better-sqlite3';
 
 /**
- * Clears all data from every table in foreign-key-safe order. This is the
- * deliberate clean-slate path: carts, orders, payments, and mailbox snapshots
- * are removed before the canonical powder catalogue is re-seeded.
+ * Clears mutable data in foreign-key-safe order. This is the deliberate
+ * clean-slate path: carts, orders, payments, and mailbox snapshots are removed
+ * before the canonical powder catalogue is re-seeded. Append-only audit rows
+ * remain as historical facts even when referenced mutable rows are removed.
  * Does NOT drop tables — schema is preserved.
  *
  * Reset order: mix stock reservations -> checkout reservations -> payments ->
  *   promo redemptions -> favourites -> reset tokens -> sessions -> mailbox ->
  *   mix components -> powder mixes -> order mix snapshots -> order line items ->
  *   orders -> cart line items -> carts -> promo codes -> product metadata ->
- *   products -> catalog tags -> users.
+ *   products -> catalog tags -> users. `audit_events` is deliberately omitted.
  *
  * @param db The SQLite database instance.
  */

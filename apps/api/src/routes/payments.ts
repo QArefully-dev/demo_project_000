@@ -41,6 +41,10 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
         cardCvc: request.body.cardCvc,
         idempotencyKey: request.body.idempotencyKey,
         userId,
+        auditContext: {
+          actor: userId === null ? { type: 'anonymous', userId: null } : { type: 'user', userId },
+          requestId: request.id,
+        },
       });
 
       if (result.success) {

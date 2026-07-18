@@ -47,12 +47,19 @@ import { createPromoService, type PromoService } from './features/promos/promoSe
 import { createPaymentRepository } from './features/payments/paymentRepository.js';
 import { simulatedPaymentGateway } from './features/payments/paymentGateway.js';
 import { createUnitOfWork } from './db/unitOfWork.js';
+import { createAuditRepository } from './features/audit/auditRepository.js';
+import {
+  createAuditReadService,
+  createAuditWriter,
+  type AuditReadService,
+} from './features/audit/auditService.js';
 import { createPowderMixRepository } from './features/powderizer/powderMixRepository.js';
 import {
   createPowderizerService,
   type PowderizerService,
 } from './features/powderizer/powderizerService.js';
 import { PowderMixDomainError } from './features/powderizer/powderizerTypes.js';
+import auditRoutes from './routes/audit.js';
 
 export interface AppDependencies {
   db: Database.Database;
@@ -71,6 +78,7 @@ export interface AppServices {
   promos: PromoService;
   orders: OrderService;
   checkout: CheckoutService;
+  audit: AuditReadService;
   favourites: FavouritesService;
   powderizer: PowderizerService;
 }
@@ -85,23 +93,38 @@ function createAppServices(dependencies: AppDependencies): AppServices {
   const orders = createOrderRepository(dependencies.db);
   const products = createProductRepository(dependencies.db);
   const mixes = createPowderMixRepository(dependencies.db);
+  const unitOfWork = createUnitOfWork(dependencies.db);
+  const auditRepository = createAuditRepository(dependencies.db);
+  const audit = createAuditWriter({ repository: auditRepository, clock });
   return {
-    auth: createAuthService({ users: createUserRepository(dependencies.db), clock }),
-    sessions: createSessionService({ sessions: createSessionRepository(dependencies.db), clock }),
+    auth: createAuthService({
+      users: createUserRepository(dependencies.db),
+      clock,
+      unitOfWork,
+      audit,
+    }),
+    sessions: createSessionService({
+      sessions: createSessionRepository(dependencies.db),
+      clock,
+      unitOfWork,
+      audit,
+    }),
     passwordReset: createPasswordResetService({
       repository: createPasswordResetRepository(dependencies.db),
       mailbox,
       clock,
       baseUrl: dependencies.resetBaseUrl,
       tokenSource: dependencies.resetTokenSource,
+      unitOfWork,
+      audit,
     }),
     mailbox,
     products: createProductService(products),
-    carts: createCartService(carts, mixes),
+    carts: createCartService(carts, mixes, { unitOfWork, audit }),
     promos: createPromoService({ promos, carts, mixes, clock }),
     orders: createOrderService(orders),
     checkout: createCheckoutService({
-      unitOfWork: createUnitOfWork(dependencies.db),
+      unitOfWork,
       carts,
       promos,
       payments: createPaymentRepository(dependencies.db),
@@ -111,15 +134,17 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       clock,
       mixes,
       products,
+      audit,
     }),
     favourites: createFavouritesService(createFavouritesRepository(dependencies.db)),
     powderizer: createPowderizerService({
-      unitOfWork: createUnitOfWork(dependencies.db),
+      unitOfWork,
       carts,
       products,
       mixes,
       utcDateProvider: () => clock.now(),
     }),
+    audit: createAuditReadService(auditRepository),
   };
 }
 
@@ -168,6 +193,7 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(paymentRoutes, context);
   await app.register(mailboxRoutes, context);
   await app.register(powderizerRoutes, context);
+  await app.register(auditRoutes, context);
 
   return app;
 }

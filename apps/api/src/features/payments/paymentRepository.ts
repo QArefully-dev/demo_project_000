@@ -20,6 +20,7 @@ export type IntentPaymentStatus =
   | 'failed_pre_gateway';
 
 export interface PaymentRecord {
+  id: number;
   idempotencyKey: string;
   fingerprint: string;
   status: IntentPaymentStatus;
@@ -34,6 +35,7 @@ export interface PaymentRecord {
 }
 
 interface PaymentRow {
+  id: number;
   idempotency_key: string;
   request_fingerprint: string;
   status: IntentPaymentStatus;
@@ -103,6 +105,7 @@ export function createSafeFingerprint(
 
 function toRecord(row: PaymentRow): PaymentRecord {
   return {
+    id: row.id,
     idempotencyKey: row.idempotency_key,
     fingerprint: row.request_fingerprint,
     status: row.status,
@@ -117,7 +120,7 @@ function toRecord(row: PaymentRow): PaymentRecord {
   };
 }
 
-const paymentColumns = `idempotency_key, request_fingerprint, status, order_id, cart_id,
+const paymentColumns = `id, idempotency_key, request_fingerprint, status, order_id, cart_id,
   quote_json, gateway_reference, failure_reason, response_json, created_at, updated_at`;
 
 export interface PaymentRepository {

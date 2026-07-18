@@ -18,6 +18,8 @@ import { simulatedPaymentGateway } from '../../src/features/payments/paymentGate
 import { createPowderMixRepository } from '../../src/features/powderizer/powderMixRepository.js';
 import { createPowderizerService } from '../../src/features/powderizer/powderizerService.js';
 import { createPromoRepository } from '../../src/features/promos/promoRepository.js';
+import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
+import { createAuditWriter } from '../../src/features/audit/auditService.js';
 
 void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', async (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-mix-checkout-'));
@@ -61,6 +63,10 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
     mailbox: createMailboxRepository(db),
     gateway: simulatedPaymentGateway,
     clock: { now: () => new Date('2026-07-14T10:00:00.000Z') },
+    audit: createAuditWriter({
+      repository: createAuditRepository(db),
+      clock: { now: () => new Date('2026-07-14T10:00:00.000Z') },
+    }),
   });
   const params: CheckoutParams = {
     cartId,
@@ -72,6 +78,7 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
     cardCvc: '123',
     idempotencyKey: crypto.randomUUID(),
     userId: null,
+    auditContext: { actor: { type: 'anonymous', userId: null }, requestId: crypto.randomUUID() },
   };
   const beforeStock = products.findById(1)?.stock_count;
   const result = await checkout.process(params);
@@ -190,6 +197,10 @@ void test('mix price and stock conflicts block gateway before reservation', asyn
       },
     },
     clock: { now: () => new Date('2026-07-14T10:00:00.000Z') },
+    audit: createAuditWriter({
+      repository: createAuditRepository(db),
+      clock: { now: () => new Date('2026-07-14T10:00:00.000Z') },
+    }),
   });
   const payment = (cartId: string): CheckoutParams => ({
     cartId,
@@ -201,6 +212,7 @@ void test('mix price and stock conflicts block gateway before reservation', asyn
     cardCvc: '123',
     idempotencyKey: crypto.randomUUID(),
     userId: null,
+    auditContext: { actor: { type: 'anonymous', userId: null }, requestId: crypto.randomUUID() },
   });
   const priceCart = makeCart();
   const secondMixId = powderizer.create(priceCart, {

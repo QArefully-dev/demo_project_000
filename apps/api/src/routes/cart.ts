@@ -11,6 +11,19 @@ import {
 } from '@shop/contracts/cart';
 import { ErrorResponse } from '@shop/contracts/common';
 import type { AppContext } from '../app.js';
+import type { AuditContext } from '../features/audit/auditEvent.js';
+
+function auditContext(request: {
+  id: string;
+  authenticatedUser: { id: number } | null;
+}): AuditContext {
+  return {
+    actor: request.authenticatedUser
+      ? { type: 'user', userId: request.authenticatedUser.id }
+      : { type: 'anonymous', userId: null },
+    requestId: request.id,
+  };
+}
 
 export default function cartRoutes(app: FastifyInstance, { services }: AppContext): void {
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
@@ -26,8 +39,8 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
         },
       },
     },
-    async (_, reply) => {
-      const { cartId } = carts.create();
+    async (request, reply) => {
+      const { cartId } = carts.create(auditContext(request));
       reply.code(201);
       return { cartId };
     },
@@ -63,7 +76,7 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
       },
     },
     async (request, reply) => {
-      const cart = carts.add(request.params.cartId, request.body.productId);
+      const cart = carts.add(request.params.cartId, request.body.productId, auditContext(request));
       if (cart === 'CART_NOT_FOUND') {
         sendNotFound(reply, 'Cart');
         return;
@@ -93,6 +106,7 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
         request.params.cartId,
         request.body.productId,
         request.body.quantity,
+        auditContext(request),
       );
       if (result === 'CART_NOT_FOUND') {
         sendNotFound(reply, 'Cart');
@@ -118,7 +132,11 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
       },
     },
     async (request, reply) => {
-      const result = carts.remove(request.params.cartId, request.params.productId);
+      const result = carts.remove(
+        request.params.cartId,
+        request.params.productId,
+        auditContext(request),
+      );
       if (result === 'CART_NOT_FOUND') {
         sendNotFound(reply, 'Cart');
         return;

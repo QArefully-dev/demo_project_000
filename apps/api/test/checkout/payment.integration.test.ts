@@ -24,6 +24,8 @@ import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { simulatedPaymentGateway } from '../../src/features/payments/paymentGateway.js';
 import { createPowderMixRepository } from '../../src/features/powderizer/powderMixRepository.js';
 import { createProductRepository } from '../../src/features/catalog/productRepository.js';
+import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
+import { createAuditWriter } from '../../src/features/audit/auditService.js';
 
 function checkout(
   params: CheckoutParams,
@@ -45,6 +47,10 @@ function checkout(
     clock: { now: dependencies.now ?? (() => new Date()) },
     mixes: createPowderMixRepository(dependencies.db),
     products: createProductRepository(dependencies.db),
+    audit: createAuditWriter({
+      repository: createAuditRepository(dependencies.db),
+      clock: { now: dependencies.now ?? (() => new Date()) },
+    }),
   }).process(params);
 }
 
@@ -96,6 +102,10 @@ void test('atomic checkout orchestration', async (t) => {
     cardCvc: '123',
     idempotencyKey,
     userId: null,
+    auditContext: {
+      actor: { type: 'anonymous', userId: null },
+      requestId: `request-${idempotencyKey}`,
+    },
   });
   const freshCart = () => {
     resetDatabase(db);
@@ -181,6 +191,14 @@ void test('atomic checkout orchestration', async (t) => {
       const replay = await checkout(params, { db, gateway });
       assert.deepEqual(replay, first);
       assert.equal(getCart(carts, cartId)?.totalItems, 1);
+      const events = db
+        .prepare('SELECT action, entity_id FROM audit_events WHERE request_id = ?')
+        .all(params.auditContext.requestId) as Array<{ action: string; entity_id: string }>;
+      assert.deepEqual(
+        events.map((event) => event.action),
+        [result.status === 'declined' ? 'payment.declined' : 'payment.timed_out'],
+      );
+      assert.match(events[0]?.entity_id ?? '', /^\d+$/);
     }
   });
 
@@ -196,6 +214,37 @@ void test('atomic checkout orchestration', async (t) => {
 
     assert.deepEqual(result, { success: false, error: 'CART_NOT_FOUND' });
     assert.equal(gateway.calls(), 0);
+    const event = db
+      .prepare('SELECT action, entity_id, metadata_json FROM audit_events WHERE request_id = ?')
+      .get('request-missing-cart') as {
+      action: string;
+      entity_id: string;
+      metadata_json: string;
+    };
+    assert.equal(event.action, 'payment.pre_gateway_failed');
+    assert.match(event.entity_id, /^\d+$/);
+    assert.equal(event.metadata_json, '{"errorCode":"CART_NOT_FOUND"}');
+  });
+
+  await t.test('rolls back pre-gateway failure when its audit write fails', async () => {
+    resetDatabase(db);
+    seedDatabase(db);
+    db.exec(
+      `CREATE TRIGGER abort_pre_gateway_audit BEFORE INSERT ON audit_events
+       WHEN NEW.action = 'payment.pre_gateway_failed'
+       BEGIN SELECT RAISE(ABORT, 'audit failure'); END`,
+    );
+    try {
+      await assert.rejects(() =>
+        checkout(payment('missing-audit-cart', 'pre-gateway-audit-rollback'), { db }),
+      );
+      assert.equal(
+        (db.prepare('SELECT COUNT(*) AS count FROM payments').get() as { count: number }).count,
+        0,
+      );
+    } finally {
+      db.exec('DROP TRIGGER IF EXISTS abort_pre_gateway_audit');
+    }
   });
 
   await t.test('does not call gateway when cart is empty', async () => {
@@ -328,6 +377,40 @@ void test('atomic checkout orchestration', async (t) => {
     assert.equal(
       (db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }).count,
       1,
+    );
+  });
+
+  await t.test('rolls back audited finalization and appends its events once on retry', async () => {
+    const cartId = freshCart();
+    const params = payment(cartId, 'audit-finalize-rollback');
+    db.exec(
+      `CREATE TRIGGER abort_order_audit BEFORE INSERT ON audit_events
+       WHEN NEW.action = 'order.created'
+       BEGIN SELECT RAISE(ABORT, 'audit failure'); END`,
+    );
+    const failed = await checkout(params, { db });
+    assert.deepEqual(failed, { success: false, error: 'IDEMPOTENT_IN_PROGRESS' });
+    assert.equal(
+      (db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }).count,
+      0,
+    );
+    assert.equal(getCart(carts, cartId)?.totalItems, 1);
+    assert.equal(
+      (
+        db
+          .prepare('SELECT status FROM payments WHERE idempotency_key = ?')
+          .get(params.idempotencyKey) as { status: string }
+      ).status,
+      'authorized_pending_finalize',
+    );
+    db.exec('DROP TRIGGER IF EXISTS abort_order_audit');
+    assert.equal((await checkout(params, { db })).success, true);
+    const events = db
+      .prepare('SELECT action FROM audit_events WHERE request_id = ? ORDER BY id')
+      .all(params.auditContext.requestId) as Array<{ action: string }>;
+    assert.deepEqual(
+      events.map((event) => event.action),
+      ['order.created', 'payment.succeeded', 'checkout.cart_consumed'],
     );
   });
 

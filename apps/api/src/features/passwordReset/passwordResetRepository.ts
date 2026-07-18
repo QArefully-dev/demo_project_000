@@ -26,7 +26,6 @@ export interface PasswordResetRepository {
   revokeActiveForUser(userId: number): void;
   removeExpired(now: string): void;
   consume(tokenId: number, now: string): boolean;
-  transaction<T>(work: () => T): T;
   updatePassword(userId: number, passwordHash: string): void;
   invalidateSessions(userId: number): void;
 }
@@ -74,9 +73,6 @@ export function createPasswordResetRepository(db: Database.Database): PasswordRe
           )
           .run(now, tokenId, now).changes === 1
       );
-    },
-    transaction(work) {
-      return db.transaction(work)();
     },
     updatePassword(userId, passwordHash) {
       db.prepare('UPDATE users SET password_hash = ?, password_salt = ? WHERE id = ?').run(

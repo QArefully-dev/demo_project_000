@@ -115,6 +115,8 @@ void test('payment intent persistence, cart reservations, and promo reservations
   );
   assert.equal(payments.load('unsafe-intent')?.quoteJson, null);
   const stored = payments.load('intent-1');
+  assert.equal(typeof stored?.id, 'number');
+  assert.equal(Number.isSafeInteger(stored?.id), true);
   assert.equal(stored?.status, 'prepared');
   assert.equal(stored?.cartId, firstCart);
   assert.equal(stored?.quoteJson?.includes('4242424242424242'), false);

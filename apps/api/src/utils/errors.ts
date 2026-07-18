@@ -20,6 +20,11 @@ export function sendUnauthorized(reply: FastifyReply, message = 'Unauthorized'):
   sendError(reply, 401, message);
 }
 
+/** Shorthand for 403 forbidden errors. */
+export function sendForbidden(reply: FastifyReply, message = 'Forbidden'): void {
+  sendError(reply, 403, message);
+}
+
 /** Shorthand for 402 payment-required errors. */
 export function sendPaymentError(
   reply: FastifyReply,

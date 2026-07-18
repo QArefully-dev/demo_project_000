@@ -52,6 +52,12 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   db.prepare(
     "INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id, slug, sales_count) VALUES (99, 'Local', 'Local row', 100, 'Local', 1, 'local', 'local', 0)",
   ).run();
+
+  db.prepare(
+    `INSERT INTO audit_events
+      (actor_type, actor_user_id, action, entity_type, entity_id, request_id, occurred_at)
+     VALUES ('anonymous', NULL, 'cart.created', 'cart', 'seed-reset-cart', 'seed-reset-request', '2026-01-01T00:00:00.000Z')`,
+  ).run();
   db.prepare("INSERT INTO catalog_tags (key, label) VALUES ('local-tag', 'Local tag')").run();
   db.prepare('INSERT INTO product_tags (product_id, tag_key) VALUES (99, ?)').run('local-tag');
   db.prepare(
@@ -175,4 +181,8 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
       0,
     );
   }
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM audit_events').get() as { count: number }).count,
+    1,
+  );
 });
