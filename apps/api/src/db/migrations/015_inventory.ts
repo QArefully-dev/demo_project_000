@@ -140,7 +140,8 @@ export const inventoryMigration: Migration = {
           `SELECT reservation.payment_idempotency_key, reservation.product_id, reservation.bag_equivalents,
                   payment.status, payment.updated_at, payment.created_at
            FROM powder_mix_stock_reservations reservation
-           JOIN payments payment ON payment.idempotency_key = reservation.payment_idempotency_key`,
+           JOIN payments payment ON payment.idempotency_key = reservation.payment_idempotency_key
+           WHERE payment.status IN ('prepared', 'authorized_pending_finalize')`,
         )
         .all() as Array<{
         payment_idempotency_key: string;
@@ -173,6 +174,38 @@ export const inventoryMigration: Migration = {
           sourceTime,
         );
         if (expiresAt) updateExpiry.run(expiresAt, reservation.payment_idempotency_key);
+      }
+      const copiedCount = (
+        db
+          .prepare(
+            `SELECT COUNT(*) AS count FROM inventory_reservations
+             WHERE demand_kind = 'powder_mix'`,
+          )
+          .get() as { count: number }
+      ).count;
+      if (copiedCount !== legacyReservations.length) {
+        throw new Error('Legacy inventory reservation copy count mismatch');
+      }
+      const missingCopyCount = (
+        db
+          .prepare(
+            `SELECT COUNT(*) AS count
+             FROM powder_mix_stock_reservations reservation
+             JOIN payments payment ON payment.idempotency_key = reservation.payment_idempotency_key
+             WHERE payment.status IN ('prepared', 'authorized_pending_finalize')
+               AND NOT EXISTS (
+                 SELECT 1 FROM inventory_reservations inventory
+                 WHERE inventory.payment_idempotency_key = reservation.payment_idempotency_key
+                   AND inventory.product_id = reservation.product_id
+                   AND inventory.demand_kind = 'powder_mix'
+                   AND inventory.reserved_quantity = reservation.bag_equivalents
+                   AND inventory.backordered_quantity = 0
+               )`,
+          )
+          .get() as { count: number }
+      ).count;
+      if (missingCopyCount !== 0) {
+        throw new Error('Legacy inventory reservation copy identity mismatch');
       }
       db.exec('DROP TABLE powder_mix_stock_reservations');
     }

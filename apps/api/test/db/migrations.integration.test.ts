@@ -448,6 +448,18 @@ void test('inventory migration copies legacy mix reservations into unified lease
       (payment_idempotency_key, product_id, bag_equivalents)
      VALUES ('legacy-prepared', 99, 2)`,
   ).run();
+  db.prepare(
+    `INSERT INTO payments
+      (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand,
+       created_at, updated_at)
+     VALUES ('legacy-terminal', 'safe-terminal', 'succeeded', 100, '4242', 'Visa',
+       '2026-07-19T12:00:00.000Z', '2026-07-19T12:05:00.000Z')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO powder_mix_stock_reservations
+      (payment_idempotency_key, product_id, bag_equivalents)
+     VALUES ('legacy-terminal', 99, 1)`,
+  ).run();
 
   migrateDatabase(db);
 
@@ -473,6 +485,15 @@ void test('inventory migration copies legacy mix reservations into unified lease
       backordered_quantity: 0,
       expires_at: '2026-07-19T12:20:00.000Z',
     },
+  );
+  assert.equal(
+    db
+      .prepare(
+        `SELECT 1 FROM inventory_reservations
+         WHERE payment_idempotency_key = 'legacy-terminal'`,
+      )
+      .get(),
+    undefined,
   );
   assert.deepEqual(
     db.prepare('SELECT reservation_expires_at FROM payments WHERE idempotency_key = ?').get('legacy-prepared'),
