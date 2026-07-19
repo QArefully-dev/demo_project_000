@@ -17,10 +17,15 @@ export const AUDIT_ACTIONS = [
   'payment.timed_out',
   'payment.succeeded',
   'order.created',
+  'review.created',
+  'review.updated',
+  'review.deleted',
+  'review.hidden',
+  'review.restored',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
-export type AuditEntityType = 'user' | 'cart' | 'payment' | 'order';
+export type AuditEntityType = 'user' | 'cart' | 'payment' | 'order' | 'review';
 export type AuditActor =
   | { type: 'anonymous'; userId: null }
   | { type: 'user'; userId: number }
@@ -47,7 +52,11 @@ export type PreGatewayFailureCode = (typeof PRE_GATEWAY_FAILURE_CODES)[number];
 type WithContext = { context: AuditContext };
 type UserEventAction = Exclude<
   AuditAction,
-  `cart.${string}` | `checkout.${string}` | `payment.${string}` | 'order.created'
+  | `cart.${string}`
+  | `checkout.${string}`
+  | `payment.${string}`
+  | 'order.created'
+  | `review.${string}`
 >;
 
 export type AuditEventInput =
@@ -84,6 +93,17 @@ export type AuditEventInput =
       totalCents: number;
       itemCount: number;
       mixItemCount: number;
+    })
+  | (WithContext & {
+      action: 'review.created' | 'review.updated';
+      reviewId: number;
+      productId: number;
+      rating: number;
+    })
+  | (WithContext & {
+      action: 'review.deleted' | 'review.hidden' | 'review.restored';
+      reviewId: number;
+      productId: number;
     });
 
 export interface BuiltAuditEvent {
@@ -197,6 +217,19 @@ function orderEntity(input: Record<string, unknown>): { entityType: 'order'; ent
   };
 }
 
+function reviewEntity(input: Record<string, unknown>): { entityType: 'review'; entityId: string } {
+  return {
+    entityType: 'review',
+    entityId: String(requirePositiveSafeInteger(input.reviewId, 'reviewId')),
+  };
+}
+
+function requireReviewRating(value: unknown): number {
+  const rating = requirePositiveSafeInteger(value, 'rating');
+  if (rating > 5) throw new AuditEventValidationError('rating must be an integer between 1 and 5');
+  return rating;
+}
+
 /** Builds one immutable, privacy-allowlisted audit row from scalar domain facts. */
 export function buildAuditEvent(input: AuditEventInput): BuiltAuditEvent {
   if (!isRecord(input) || !auditActionSet.has(input.action)) {
@@ -265,6 +298,20 @@ export function buildAuditEvent(input: AuditEventInput): BuiltAuditEvent {
         itemCount: requireNonNegativeSafeInteger(input.itemCount, 'itemCount'),
         mixItemCount: requireNonNegativeSafeInteger(input.mixItemCount, 'mixItemCount'),
       };
+      break;
+    case 'review.created':
+    case 'review.updated':
+      entity = reviewEntity(input);
+      metadata = {
+        productId: requirePositiveSafeInteger(input.productId, 'productId'),
+        rating: requireReviewRating(input.rating),
+      };
+      break;
+    case 'review.deleted':
+    case 'review.hidden':
+    case 'review.restored':
+      entity = reviewEntity(input);
+      metadata = { productId: requirePositiveSafeInteger(input.productId, 'productId') };
       break;
   }
 

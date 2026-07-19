@@ -53,6 +53,10 @@
     "./audit": {
       "types": "./dist/audit.d.ts",
       "import": "./dist/audit.js"
+    },
+    "./reviews": {
+      "types": "./dist/reviews.d.ts",
+      "import": "./dist/reviews.js"
     }
   },
   "dependencies": {

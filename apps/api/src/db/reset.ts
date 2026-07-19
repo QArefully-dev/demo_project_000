@@ -8,7 +8,7 @@ import type Database from 'better-sqlite3';
  * Does NOT drop tables — schema is preserved.
  *
  * Reset order: mix stock reservations -> checkout reservations -> payments ->
- *   promo redemptions -> favourites -> reset tokens -> sessions -> mailbox ->
+ *   promo redemptions -> reviews -> favourites -> reset tokens -> sessions -> mailbox ->
  *   mix components -> powder mixes -> order mix snapshots -> order line items ->
  *   orders -> cart line items -> carts -> promo codes -> product metadata ->
  *   products -> catalog tags -> users. `audit_events` is deliberately omitted.
@@ -23,6 +23,7 @@ export function resetDatabase(db: Database.Database): void {
       DELETE FROM promo_reservations;
       DELETE FROM payments;
       DELETE FROM promo_redemptions;
+      DELETE FROM reviews;
       DELETE FROM favourites;
       DELETE FROM password_reset_tokens;
       DELETE FROM sessions;

@@ -31,6 +31,7 @@ const expectedVersions = [
   '009',
   '010',
   '011',
+  '013',
 ];
 
 function migrationVersions(db: Database.Database): string[] {
@@ -119,12 +120,27 @@ void test('migrations create a fresh schema, record every version, and remain id
       .get(),
     { name: 'audit_events' },
   );
+  assert.deepEqual(
+    db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'reviews'").get(),
+    { name: 'reviews' },
+  );
   for (const index of [
     'audit_events_occurred_at_id_idx',
     'audit_events_action_occurred_at_id_idx',
     'audit_events_entity_occurred_at_id_idx',
     'audit_events_actor_user_occurred_at_id_idx',
     'audit_events_request_occurred_at_id_idx',
+  ]) {
+    assert.deepEqual(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?").get(index),
+      { name: index },
+    );
+  }
+  for (const index of [
+    'reviews_product_status_created_at_id_idx',
+    'orders_user_id_id_idx',
+    'order_line_items_product_id_order_id_idx',
+    'payments_order_id_status_idx',
   ]) {
     assert.deepEqual(
       db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?").get(index),
@@ -181,6 +197,64 @@ void test('migrations create a fresh schema, record every version, and remain id
 
   migrateDatabase(db);
   assert.deepEqual(migrationVersions(db), expectedVersions);
+});
+
+void test('customer review constraints reject invalid scalar and duplicate data', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-reviews-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  db.prepare(
+    `INSERT INTO products
+      (name, description, price_cents, category, stock_count, image_set_id)
+     VALUES ('Review product', 'Review migration fixture', 1000, 'Test', 1, 'review-product')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO users (email, display_name, password_hash, password_salt, role)
+     VALUES ('reviewer@example.test', 'Reviewer', 'hash', 'salt', 'customer')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO users (email, display_name, password_hash, password_salt, role)
+     VALUES ('reviewer-two@example.test', 'Reviewer two', 'hash', 'salt', 'customer')`,
+  ).run();
+
+  const insertReview = db.prepare(
+    'INSERT INTO reviews (product_id, user_id, rating, body, status) VALUES (1, ?, ?, ?, ?)',
+  );
+  insertReview.run(1, 5, '12345678901234567890', 'published');
+
+  assert.throws(
+    () => insertReview.run(1, 5, '12345678901234567890', 'published'),
+    /UNIQUE constraint failed/,
+  );
+  assert.throws(
+    () => insertReview.run(2, 0, '12345678901234567890', 'published'),
+    /CHECK constraint failed/,
+  );
+  assert.throws(
+    () => insertReview.run(2, 1.5, '12345678901234567890', 'published'),
+    /CHECK constraint failed/,
+  );
+  assert.throws(
+    () => insertReview.run(2, 1, '1234567890123456789', 'published'),
+    /CHECK constraint failed/,
+  );
+  assert.throws(
+    () => insertReview.run(2, 1, 'x'.repeat(4001), 'published'),
+    /CHECK constraint failed/,
+  );
+  assert.throws(
+    () => insertReview.run(2, 1, ' 12345678901234567890', 'published'),
+    /CHECK constraint failed/,
+  );
+  insertReview.run(2, 1, 'x'.repeat(4000), 'hidden');
+  assert.throws(
+    () => insertReview.run(2, 1, '12345678901234567890', 'removed'),
+    /CHECK constraint failed/,
+  );
 });
 
 void test('migrations upgrade the legacy schema without losing known data', (t) => {
