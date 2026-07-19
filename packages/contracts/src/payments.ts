@@ -42,6 +42,20 @@ export type PaymentErrorResponse = Static<typeof PaymentErrorResponse>;
 
 export const PaymentConflictResponse = Type.Union([
   PowderMixConflictResponse,
+  Type.Object(
+    {
+      error: Type.Literal('RESERVATION_EXPIRED'),
+      reservationExpiresAt: Type.String(),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      error: Type.Literal('INSUFFICIENT_STOCK'),
+      productIds: Type.Array(PositiveIntegerString, { minItems: 1 }),
+    },
+    { additionalProperties: false },
+  ),
   Type.Object({ error: Type.String({ minLength: 1, maxLength: 500 }) }),
 ]);
 export type PaymentConflictResponse = Static<typeof PaymentConflictResponse>;
@@ -110,16 +124,39 @@ export const PersistedCheckoutQuoteV3 = Type.Object(
 );
 export type PersistedCheckoutQuoteV3 = Static<typeof PersistedCheckoutQuoteV3>;
 
+const PersistedInventoryAllocation = Type.Object(
+  {
+    productId: PositiveIntegerString,
+    reservedQuantity: Type.Integer({ minimum: 0 }),
+    backorderedQuantity: Type.Integer({ minimum: 0 }),
+  },
+  { additionalProperties: false },
+);
+
+/** Current checkout quote. Inventory split is fixed before gateway authorization. */
+export const PersistedCheckoutQuoteV4 = Type.Object(
+  {
+    version: Type.Literal(4),
+    ...PersistedCheckoutQuoteFields,
+    mixLines: Type.Array(PowderMixOrderItemSnapshotV2),
+    inventoryAllocations: Type.Array(PersistedInventoryAllocation),
+  },
+  { additionalProperties: false },
+);
+export type PersistedCheckoutQuoteV4 = Static<typeof PersistedCheckoutQuoteV4>;
+
 export const PersistedCheckoutQuote = Type.Union([
   PersistedCheckoutQuoteV1,
   PersistedCheckoutQuoteV2,
   PersistedCheckoutQuoteV3,
+  PersistedCheckoutQuoteV4,
 ]);
 export type PersistedCheckoutQuote = Static<typeof PersistedCheckoutQuote>;
-export const CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION = 3;
+export const CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION = 4;
 
 /** Strict storage-boundary parser. Readers accept v1, v2, and v3; writers use v3. */
 export function parsePersistedCheckoutQuote(value: unknown): PersistedCheckoutQuote {
+  if (Value.Check(PersistedCheckoutQuoteV4, value)) return value;
   if (Value.Check(PersistedCheckoutQuoteV3, value)) return value;
   if (Value.Check(PersistedCheckoutQuoteV2, value)) return value;
   if (Value.Check(PersistedCheckoutQuoteV1, value)) return value;

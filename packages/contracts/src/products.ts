@@ -55,6 +55,13 @@ export const ProductSpecificationGroup = Type.Object(
 );
 export type ProductSpecificationGroup = Static<typeof ProductSpecificationGroup>;
 
+export const ProductAvailability = Type.Union([
+  Type.Literal('in_stock'),
+  Type.Literal('backorder'),
+  Type.Literal('out_of_stock'),
+]);
+export type ProductAvailability = Static<typeof ProductAvailability>;
+
 export const Product = Type.Object(
   {
     id: PositiveIntegerString,
@@ -65,6 +72,9 @@ export const Product = Type.Object(
     packaging: Type.Optional(ProductPackaging),
     category: Type.String(),
     stock: Type.Integer({ minimum: 0 }),
+    availability: ProductAvailability,
+    backorderable: Type.Boolean(),
+    backorderLeadDays: Type.Union([Type.Integer({ minimum: 1, maximum: 365 }), Type.Null()]),
     slug: Type.String(),
     compareAtPriceCents: Type.Optional(MoneyCents),
     salesCount: Type.Integer({ minimum: 0 }),
@@ -144,7 +154,11 @@ export const ProductQuery = Type.Object({
   tag: Type.Optional(Type.Array(NormalizedCatalogKey, { maxItems: 8 })),
   spec: Type.Optional(Type.Array(SpecificationFilterToken, { maxItems: 8 })),
   availability: Type.Optional(
-    Type.Union([Type.Literal('available'), Type.Literal('out_of_stock')]),
+    Type.Union([
+      Type.Literal('available'),
+      Type.Literal('backorder'),
+      Type.Literal('out_of_stock'),
+    ]),
   ),
   sort: Type.Optional(ProductSort),
   page: Type.Optional(Type.Integer({ minimum: 1, maximum: 10000 })),

@@ -106,6 +106,8 @@ export type CatalogProduct = Readonly<{
   compare_at_price_cents: number | null;
   category: CatalogCategory;
   stock_count: number;
+  backorderable: boolean;
+  backorderLeadDays: number | null;
   sales_count: number;
   active: boolean;
   created_at: string;
@@ -117,7 +119,11 @@ export type CatalogProduct = Readonly<{
   mixUnitGrams: number | null;
   packaging: ProductPackaging;
 }>;
-export type CatalogProductDraft = Omit<CatalogProduct, 'mixable' | 'mixUnitGrams'>;
+export type CatalogProductDraft = Omit<
+  CatalogProduct,
+  'mixable' | 'mixUnitGrams' | 'backorderable' | 'backorderLeadDays'
+> &
+  Partial<Pick<CatalogProduct, 'backorderable' | 'backorderLeadDays'>>;
 
 export type ResolvedCatalogSpecification = Readonly<{
   key: CatalogSpecificationKey;
@@ -261,11 +267,13 @@ export const catalogProductSpecifications = (
 /** Adds canonical Powderizer eligibility metadata from each source bag's labelled weight. */
 export const createCatalogProducts = <T extends CatalogProductDraft>(
   products: readonly T[],
-): readonly (T & Pick<CatalogProduct, 'mixable' | 'mixUnitGrams'>)[] =>
+): readonly (T & Pick<CatalogProduct, 'mixable' | 'mixUnitGrams' | 'backorderable' | 'backorderLeadDays'>)[] =>
   products.map((product) => ({
     ...product,
     mixable: true,
     mixUnitGrams: parseMixUnitGrams(product.packaging.quantity),
+    backorderable: product.backorderable ?? false,
+    backorderLeadDays: product.backorderable ? product.backorderLeadDays ?? null : null,
   }));
 
 export const createPackaging = (
