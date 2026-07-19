@@ -157,7 +157,8 @@ export function OrderDetailPage() {
               Cancel order #{order.id}?
             </h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              This stops simulated fulfilment. Unshipped allocated stock is released; no refund is issued.
+              This stops simulated fulfilment. Unshipped allocated stock is released; no refund is
+              issued.
             </p>
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="outline" disabled={cancelling} onClick={() => setConfirming(false)}>

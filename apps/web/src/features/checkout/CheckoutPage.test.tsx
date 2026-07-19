@@ -190,7 +190,11 @@ describe('CheckoutPage', () => {
     await user.click(screen.getByRole('button', { name: 'Simulate payment' }));
     await screen.findByRole('alert');
     const firstKey = vi.mocked(pay).mock.calls[0]![0].idempotencyKey;
-    expect(screen.getByText('Your cart has not been changed. Refresh it, then review quantities before retrying.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Your cart has not been changed. Refresh it, then review quantities before retrying.',
+      ),
+    ).toBeInTheDocument();
     expect(clearCart).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: 'Simulate payment' }));
@@ -211,7 +215,9 @@ describe('CheckoutPage', () => {
     await completeCard(user);
 
     await user.click(screen.getByRole('button', { name: 'Simulate payment' }));
-    expect(await screen.findByText('Your checkout reservation expired before payment could complete.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Your checkout reservation expired before payment could complete.'),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Refresh cart' }));
     expect(cartContext.retryCart).toHaveBeenCalledOnce();
   });

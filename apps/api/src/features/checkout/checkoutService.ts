@@ -170,7 +170,9 @@ function prepare(
         dependencies,
       );
     }
-    const reservationExpiresAt = new Date(Date.parse(createdAt) + RESERVATION_LEASE_MS).toISOString();
+    const reservationExpiresAt = new Date(
+      Date.parse(createdAt) + RESERVATION_LEASE_MS,
+    ).toISOString();
     let inventoryAllocations;
     try {
       inventoryAllocations = dependencies.inventory.reserveCheckout({
@@ -316,25 +318,38 @@ export function createCheckoutService(dependencies: CheckoutDependencies): Check
         if (payment.reservationExpiresAt !== null && payment.reservationExpiresAt <= now) {
           return {
             authorized: false,
-            expired: terminalizePreparedExpiry(params.idempotencyKey, payment.reservationExpiresAt, now, dependencies),
+            expired: terminalizePreparedExpiry(
+              params.idempotencyKey,
+              payment.reservationExpiresAt,
+              now,
+              dependencies,
+            ),
           } as const;
         }
         try {
           dependencies.inventory.authorizeReservation(params.idempotencyKey, now);
         } catch (error) {
-          if (!(error instanceof InventoryError) || error.code !== 'RESERVATION_EXPIRED') throw error;
+          if (!(error instanceof InventoryError) || error.code !== 'RESERVATION_EXPIRED')
+            throw error;
           return {
             authorized: false,
-            expired: terminalizePreparedExpiry(params.idempotencyKey, payment.reservationExpiresAt ?? now, now, dependencies),
+            expired: terminalizePreparedExpiry(
+              params.idempotencyKey,
+              payment.reservationExpiresAt ?? now,
+              now,
+              dependencies,
+            ),
           } as const;
         }
-        if (!dependencies.payments.transition({
-          idempotencyKey: params.idempotencyKey,
-          expectedStatus: 'prepared',
-          nextStatus: 'authorized_pending_finalize',
-          gatewayReference: gatewayResult.reference,
-          updatedAt: now,
-        })) {
+        if (
+          !dependencies.payments.transition({
+            idempotencyKey: params.idempotencyKey,
+            expectedStatus: 'prepared',
+            nextStatus: 'authorized_pending_finalize',
+            gatewayReference: gatewayResult.reference,
+            updatedAt: now,
+          })
+        ) {
           throw new Error('Checkout intent state changed during authorization');
         }
         return { authorized: true } as const;
@@ -379,14 +394,16 @@ function terminalizePreparedExpiry(
     error: 'RESERVATION_EXPIRED',
     reservationExpiresAt,
   };
-  if (!dependencies.payments.transition({
-    idempotencyKey,
-    expectedStatus: 'prepared',
-    nextStatus: 'failed_pre_gateway',
-    failureReason: result.error,
-    responseJson: JSON.stringify(result),
-    updatedAt: now,
-  })) {
+  if (
+    !dependencies.payments.transition({
+      idempotencyKey,
+      expectedStatus: 'prepared',
+      nextStatus: 'failed_pre_gateway',
+      failureReason: result.error,
+      responseJson: JSON.stringify(result),
+      updatedAt: now,
+    })
+  ) {
     throw new Error('Checkout intent state changed during reservation expiry');
   }
   dependencies.carts.releaseReservation(idempotencyKey);

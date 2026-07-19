@@ -369,41 +369,60 @@ void test('atomic checkout orchestration', async (t) => {
     });
     assert.notEqual(addItem(carts, cartId, '2'), 'CART_RESERVED');
     assert.equal(
-      (db.prepare('SELECT COUNT(*) AS count FROM inventory_reservations WHERE payment_idempotency_key = ?')
-        .get(params.idempotencyKey) as { count: number }).count,
+      (
+        db
+          .prepare(
+            'SELECT COUNT(*) AS count FROM inventory_reservations WHERE payment_idempotency_key = ?',
+          )
+          .get(params.idempotencyKey) as { count: number }
+      ).count,
       0,
     );
     deferred.resolve({ status: 'success' });
     assert.deepEqual(await first, expired);
   });
 
-  await t.test('terminalizes an expired reservation when gateway success arrives late', async () => {
-    const cartId = freshCart();
-    const deferred = deferredGateway();
-    const params = payment(cartId, 'late-gateway-expiry');
-    let current = new Date('2026-07-14T10:00:00.000Z');
-    const first = checkout(params, { db, gateway: deferred.gateway, now: () => current });
-    current = new Date('2026-07-14T10:15:00.000Z');
-    deferred.resolve({ status: 'success' });
-    const expired = {
-      success: false as const,
-      error: 'RESERVATION_EXPIRED' as const,
-      reservationExpiresAt: '2026-07-14T10:15:00.000Z',
-    };
-    assert.deepEqual(await first, expired);
-    assert.equal(
-      (db.prepare('SELECT status, response_json FROM payments WHERE idempotency_key = ?')
-        .get(params.idempotencyKey) as { status: string; response_json: string }).status,
-      'failed_pre_gateway',
-    );
-    assert.equal(
-      (db.prepare('SELECT COUNT(*) AS count FROM inventory_reservations WHERE payment_idempotency_key = ?')
-        .get(params.idempotencyKey) as { count: number }).count,
-      0,
-    );
-    assert.notEqual(addItem(carts, cartId, '2'), 'CART_RESERVED');
-    assert.deepEqual(await checkout(params, { db, gateway: deferred.gateway, now: () => current }), expired);
-  });
+  await t.test(
+    'terminalizes an expired reservation when gateway success arrives late',
+    async () => {
+      const cartId = freshCart();
+      const deferred = deferredGateway();
+      const params = payment(cartId, 'late-gateway-expiry');
+      let current = new Date('2026-07-14T10:00:00.000Z');
+      const first = checkout(params, { db, gateway: deferred.gateway, now: () => current });
+      current = new Date('2026-07-14T10:15:00.000Z');
+      deferred.resolve({ status: 'success' });
+      const expired = {
+        success: false as const,
+        error: 'RESERVATION_EXPIRED' as const,
+        reservationExpiresAt: '2026-07-14T10:15:00.000Z',
+      };
+      assert.deepEqual(await first, expired);
+      assert.equal(
+        (
+          db
+            .prepare('SELECT status, response_json FROM payments WHERE idempotency_key = ?')
+            .get(params.idempotencyKey) as { status: string; response_json: string }
+        ).status,
+        'failed_pre_gateway',
+      );
+      assert.equal(
+        (
+          db
+            .prepare(
+              'SELECT COUNT(*) AS count FROM inventory_reservations WHERE payment_idempotency_key = ?',
+            )
+            .get(params.idempotencyKey) as { count: number }
+        ).count,
+        0,
+      );
+      assert.notEqual(addItem(carts, cartId, '2'), 'CART_RESERVED');
+      assert.deepEqual(
+        await checkout(params, { db, gateway: deferred.gateway, now: () => current }),
+        expired,
+      );
+    },
+  );
 
   await t.test('rolls back order and redemption writes together', async () => {
     const cartId = freshCart();

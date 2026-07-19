@@ -34,11 +34,14 @@ export function finalizeAuthorizedCheckout(
       dependencies.inventory.commitReservation({
         paymentIdempotencyKey: idempotencyKey,
         orderId,
-        ordinaryLines: quote.version === 4 ? order.items.map((line) => ({
-          orderLineItemId: Number(line.lineId),
-          productId: Number(line.productId),
-          quantity: line.quantity,
-        })) : [],
+        ordinaryLines:
+          quote.version === 4
+            ? order.items.map((line) => ({
+                orderLineItemId: Number(line.lineId),
+                productId: Number(line.productId),
+                quantity: line.quantity,
+              }))
+            : [],
         occurredAt: createdAt,
       });
     }

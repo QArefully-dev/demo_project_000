@@ -41,10 +41,7 @@ export interface InventoryReceiptResult {
 }
 
 export type InventoryErrorCode =
-  | 'INSUFFICIENT_STOCK'
-  | 'RESERVATION_EXPIRED'
-  | 'IDEMPOTENCY_KEY_REUSED'
-  | 'INVENTORY_CORRUPTION';
+  'INSUFFICIENT_STOCK' | 'RESERVATION_EXPIRED' | 'IDEMPOTENCY_KEY_REUSED' | 'INVENTORY_CORRUPTION';
 
 export class InventoryError extends Error {
   constructor(

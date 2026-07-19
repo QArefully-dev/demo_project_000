@@ -207,7 +207,13 @@ export function createPaymentRepository(db: Database.Database): PaymentRepositor
             `UPDATE payments SET cart_id = ?, quote_json = ?, reservation_expires_at = ?, updated_at = ?
              WHERE idempotency_key = ? AND status = 'prepared'`,
           )
-          .run(params.cartId, quoteJson, params.reservationExpiresAt, params.updatedAt, params.idempotencyKey).changes > 0
+          .run(
+            params.cartId,
+            quoteJson,
+            params.reservationExpiresAt,
+            params.updatedAt,
+            params.idempotencyKey,
+          ).changes > 0
       );
     },
     load,

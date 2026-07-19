@@ -1,8 +1,5 @@
 import type Database from 'better-sqlite3';
-import type {
-  InventoryDemandKind,
-  InventoryProduct,
-} from './inventoryTypes.js';
+import type { InventoryDemandKind, InventoryProduct } from './inventoryTypes.js';
 
 interface ReservationRow {
   payment_idempotency_key: string;
@@ -55,7 +52,8 @@ export interface InventoryRepository {
   }): void;
   insertMovement(input: {
     productId: number;
-    movementType: 'checkout_consumed' | 'receipt_received' | 'backorder_allocated' | 'cancellation_restored';
+    movementType:
+      'checkout_consumed' | 'receipt_received' | 'backorder_allocated' | 'cancellation_restored';
     quantityDelta: number;
     paymentIdempotencyKey?: string;
     orderId?: number;
@@ -63,7 +61,9 @@ export interface InventoryRepository {
     receiptId?: number;
     occurredAt: string;
   }): void;
-  findReceipt(key: string): { id: number; requestFingerprint: string; responseJson: string } | undefined;
+  findReceipt(
+    key: string,
+  ): { id: number; requestFingerprint: string; responseJson: string } | undefined;
   insertReceipt(input: {
     idempotencyKey: string;
     requestFingerprint: string;
@@ -76,7 +76,11 @@ export interface InventoryRepository {
   listOpenBackorders(productId: number, excludedOrderId?: number): readonly AllocationRow[];
   fulfillBackorder(input: { orderLineItemId: number; quantity: number; updatedAt: string }): void;
   listOrderAllocations(orderId: number): readonly AllocationRow[];
-  cancelAllocation(input: { orderLineItemId: number; cancelledQuantity: number; updatedAt: string }): void;
+  cancelAllocation(input: {
+    orderLineItemId: number;
+    cancelledQuantity: number;
+    updatedAt: string;
+  }): void;
 }
 
 /** SQLite persistence only. Every caller owns its enclosing transaction. */
@@ -86,8 +90,9 @@ export function createInventoryRepository(db: Database.Database): InventoryRepos
       const ids = [...new Set(productIds)].sort((left, right) => left - right);
       if (ids.length === 0) return [];
       const placeholders = ids.map(() => '?').join(', ');
-      return db.prepare(
-        `SELECT p.id AS product_id, p.stock_count,
+      return db
+        .prepare(
+          `SELECT p.id AS product_id, p.stock_count,
           MAX(0, p.stock_count - COALESCE(SUM(CASE WHEN r.expires_at IS NULL OR r.expires_at > ? THEN r.reserved_quantity ELSE 0 END), 0)) AS available_to_sell,
           p.backorderable, p.backorder_lead_days
          FROM products p
@@ -95,19 +100,24 @@ export function createInventoryRepository(db: Database.Database): InventoryRepos
          WHERE p.id IN (${placeholders})
          GROUP BY p.id
          ORDER BY p.id ASC`,
-      ).all(now, ...ids).map((row) => {
-        const value = row as {
-          product_id: number; stock_count: number; available_to_sell: number;
-          backorderable: number; backorder_lead_days: number | null;
-        };
-        return {
-          productId: value.product_id,
-          stockCount: value.stock_count,
-          availableToSell: value.available_to_sell,
-          backorderable: value.backorderable === 1,
-          backorderLeadDays: value.backorder_lead_days,
-        };
-      });
+        )
+        .all(now, ...ids)
+        .map((row) => {
+          const value = row as {
+            product_id: number;
+            stock_count: number;
+            available_to_sell: number;
+            backorderable: number;
+            backorder_lead_days: number | null;
+          };
+          return {
+            productId: value.product_id,
+            stockCount: value.stock_count,
+            availableToSell: value.available_to_sell,
+            backorderable: value.backorderable === 1,
+            backorderLeadDays: value.backorder_lead_days,
+          };
+        });
     },
     insertReservations({ paymentIdempotencyKey, reservations, expiresAt, createdAt }) {
       const insert = db.prepare(
@@ -117,119 +127,218 @@ export function createInventoryRepository(db: Database.Database): InventoryRepos
       );
       for (const reservation of reservations) {
         if (reservation.reservedQuantity === 0 && reservation.backorderedQuantity === 0) continue;
-        insert.run(paymentIdempotencyKey, reservation.productId, reservation.demandKind,
-          reservation.reservedQuantity, reservation.backorderedQuantity, expiresAt, createdAt);
+        insert.run(
+          paymentIdempotencyKey,
+          reservation.productId,
+          reservation.demandKind,
+          reservation.reservedQuantity,
+          reservation.backorderedQuantity,
+          expiresAt,
+          createdAt,
+        );
       }
     },
     listReservations(paymentIdempotencyKey) {
-      return db.prepare(
-        `SELECT payment_idempotency_key, product_id, demand_kind, reserved_quantity, backordered_quantity, expires_at
+      return db
+        .prepare(
+          `SELECT payment_idempotency_key, product_id, demand_kind, reserved_quantity, backordered_quantity, expires_at
          FROM inventory_reservations WHERE payment_idempotency_key = ?
          ORDER BY product_id ASC, demand_kind ASC`,
-      ).all(paymentIdempotencyKey) as ReservationRow[];
+        )
+        .all(paymentIdempotencyKey) as ReservationRow[];
     },
     releaseReservation(paymentIdempotencyKey) {
-      db.prepare('DELETE FROM inventory_reservations WHERE payment_idempotency_key = ?').run(paymentIdempotencyKey);
+      db.prepare('DELETE FROM inventory_reservations WHERE payment_idempotency_key = ?').run(
+        paymentIdempotencyKey,
+      );
     },
     authorizeReservation(paymentIdempotencyKey, now) {
-      return db.prepare(
-        `UPDATE inventory_reservations SET expires_at = NULL
+      return (
+        db
+          .prepare(
+            `UPDATE inventory_reservations SET expires_at = NULL
          WHERE payment_idempotency_key = ? AND expires_at IS NOT NULL AND expires_at > ?`,
-      ).run(paymentIdempotencyKey, now).changes > 0;
+          )
+          .run(paymentIdempotencyKey, now).changes > 0
+      );
     },
     listExpiredPaymentKeys(now) {
-      return (db.prepare(
-        `SELECT DISTINCT payment_idempotency_key FROM inventory_reservations
+      return (
+        db
+          .prepare(
+            `SELECT DISTINCT payment_idempotency_key FROM inventory_reservations
          WHERE expires_at IS NOT NULL AND expires_at <= ? ORDER BY payment_idempotency_key ASC`,
-      ).all(now) as Array<{ payment_idempotency_key: string }>).map((row) => row.payment_idempotency_key);
+          )
+          .all(now) as Array<{ payment_idempotency_key: string }>
+      ).map((row) => row.payment_idempotency_key);
     },
     releaseExpired(now) {
       const keys = this.listExpiredPaymentKeys(now);
       if (keys.length > 0) {
         const placeholders = keys.map(() => '?').join(', ');
-        db.prepare(`DELETE FROM inventory_reservations WHERE payment_idempotency_key IN (${placeholders})`).run(...keys);
+        db.prepare(
+          `DELETE FROM inventory_reservations WHERE payment_idempotency_key IN (${placeholders})`,
+        ).run(...keys);
       }
       return keys;
     },
     decrementStock(productId, quantity) {
-      return db.prepare(
-        'UPDATE products SET stock_count = stock_count - ? WHERE id = ? AND stock_count >= ?',
-      ).run(quantity, productId, quantity).changes === 1;
+      return (
+        db
+          .prepare(
+            'UPDATE products SET stock_count = stock_count - ? WHERE id = ? AND stock_count >= ?',
+          )
+          .run(quantity, productId, quantity).changes === 1
+      );
     },
     incrementStock(productId, quantity) {
-      return db.prepare('UPDATE products SET stock_count = stock_count + ? WHERE id = ?').run(quantity, productId).changes === 1;
+      return (
+        db
+          .prepare('UPDATE products SET stock_count = stock_count + ? WHERE id = ?')
+          .run(quantity, productId).changes === 1
+      );
     },
     stockCount(productId) {
-      const row = db.prepare('SELECT stock_count FROM products WHERE id = ?').get(productId) as { stock_count: number } | undefined;
+      const row = db.prepare('SELECT stock_count FROM products WHERE id = ?').get(productId) as
+        { stock_count: number } | undefined;
       return row?.stock_count;
     },
-    insertAllocation({ orderLineItemId, productId, allocatedQuantity, backorderedQuantity, stockDebitedQuantity, createdAt }) {
+    insertAllocation({
+      orderLineItemId,
+      productId,
+      allocatedQuantity,
+      backorderedQuantity,
+      stockDebitedQuantity,
+      createdAt,
+    }) {
       db.prepare(
         `INSERT INTO order_inventory_allocations
           (order_line_item_id, product_id, allocated_quantity, backordered_quantity, cancelled_quantity,
            stock_debited_quantity, created_at, updated_at)
          VALUES (?, ?, ?, ?, 0, ?, ?, ?)`,
-      ).run(orderLineItemId, productId, allocatedQuantity, backorderedQuantity, stockDebitedQuantity, createdAt, createdAt);
+      ).run(
+        orderLineItemId,
+        productId,
+        allocatedQuantity,
+        backorderedQuantity,
+        stockDebitedQuantity,
+        createdAt,
+        createdAt,
+      );
     },
-    insertMovement({ productId, movementType, quantityDelta, paymentIdempotencyKey, orderId, orderLineItemId, receiptId, occurredAt }) {
+    insertMovement({
+      productId,
+      movementType,
+      quantityDelta,
+      paymentIdempotencyKey,
+      orderId,
+      orderLineItemId,
+      receiptId,
+      occurredAt,
+    }) {
       db.prepare(
         `INSERT INTO inventory_stock_movements
           (product_id, movement_type, quantity_delta, payment_idempotency_key, order_id, order_line_item_id, receipt_id, occurred_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(productId, movementType, quantityDelta, paymentIdempotencyKey ?? null, orderId ?? null,
-        orderLineItemId ?? null, receiptId ?? null, occurredAt);
+      ).run(
+        productId,
+        movementType,
+        quantityDelta,
+        paymentIdempotencyKey ?? null,
+        orderId ?? null,
+        orderLineItemId ?? null,
+        receiptId ?? null,
+        occurredAt,
+      );
     },
     findReceipt(key) {
-      const row = db.prepare(
-        'SELECT id, request_fingerprint, response_json FROM inventory_receipts WHERE idempotency_key = ?',
-      ).get(key) as { id: number; request_fingerprint: string; response_json: string } | undefined;
-      return row && { id: row.id, requestFingerprint: row.request_fingerprint, responseJson: row.response_json };
+      const row = db
+        .prepare(
+          'SELECT id, request_fingerprint, response_json FROM inventory_receipts WHERE idempotency_key = ?',
+        )
+        .get(key) as { id: number; request_fingerprint: string; response_json: string } | undefined;
+      return (
+        row && {
+          id: row.id,
+          requestFingerprint: row.request_fingerprint,
+          responseJson: row.response_json,
+        }
+      );
     },
-    insertReceipt({ idempotencyKey, requestFingerprint, productId, receivedQuantity, receivedByUserId, createdAt }) {
-      return Number(db.prepare(
-        `INSERT INTO inventory_receipts
+    insertReceipt({
+      idempotencyKey,
+      requestFingerprint,
+      productId,
+      receivedQuantity,
+      receivedByUserId,
+      createdAt,
+    }) {
+      return Number(
+        db
+          .prepare(
+            `INSERT INTO inventory_receipts
           (idempotency_key, request_fingerprint, product_id, received_quantity, response_json, received_by_user_id, created_at)
          VALUES (?, ?, ?, ?, '{}', ?, ?)`,
-      ).run(idempotencyKey, requestFingerprint, productId, receivedQuantity, receivedByUserId, createdAt).lastInsertRowid);
+          )
+          .run(
+            idempotencyKey,
+            requestFingerprint,
+            productId,
+            receivedQuantity,
+            receivedByUserId,
+            createdAt,
+          ).lastInsertRowid,
+      );
     },
     setReceiptResponse(receiptId, responseJson) {
-      db.prepare('UPDATE inventory_receipts SET response_json = ? WHERE id = ?').run(responseJson, receiptId);
+      db.prepare('UPDATE inventory_receipts SET response_json = ? WHERE id = ?').run(
+        responseJson,
+        receiptId,
+      );
     },
     listOpenBackorders(productId, excludedOrderId) {
-      const rows = db.prepare(
-        `SELECT a.order_line_item_id, line.order_id, a.product_id, a.allocated_quantity, a.backordered_quantity,
+      const rows = db
+        .prepare(
+          `SELECT a.order_line_item_id, line.order_id, a.product_id, a.allocated_quantity, a.backordered_quantity,
                 a.cancelled_quantity, a.stock_debited_quantity, a.created_at
          FROM order_inventory_allocations a
          JOIN order_line_items line ON line.id = a.order_line_item_id
          WHERE a.product_id = ? AND a.backordered_quantity > 0
            AND (? IS NULL OR line.order_id <> ?)
          ORDER BY a.created_at ASC, a.order_line_item_id ASC`,
-      ).all(productId, excludedOrderId ?? null, excludedOrderId ?? null) as AllocationRow[];
+        )
+        .all(productId, excludedOrderId ?? null, excludedOrderId ?? null) as AllocationRow[];
       return rows;
     },
     fulfillBackorder({ orderLineItemId, quantity, updatedAt }) {
-      const changed = db.prepare(
-        `UPDATE order_inventory_allocations
+      const changed = db
+        .prepare(
+          `UPDATE order_inventory_allocations
          SET allocated_quantity = allocated_quantity + ?, backordered_quantity = backordered_quantity - ?,
              stock_debited_quantity = stock_debited_quantity + ?, updated_at = ?
          WHERE order_line_item_id = ? AND backordered_quantity >= ?`,
-      ).run(quantity, quantity, quantity, updatedAt, orderLineItemId, quantity).changes;
+        )
+        .run(quantity, quantity, quantity, updatedAt, orderLineItemId, quantity).changes;
       if (changed !== 1) throw new Error('Inventory backorder allocation changed concurrently.');
     },
     listOrderAllocations(orderId) {
-      return db.prepare(
-        `SELECT a.order_line_item_id, line.order_id, a.product_id, a.allocated_quantity, a.backordered_quantity,
+      return db
+        .prepare(
+          `SELECT a.order_line_item_id, line.order_id, a.product_id, a.allocated_quantity, a.backordered_quantity,
                 a.cancelled_quantity, a.stock_debited_quantity, a.created_at
          FROM order_inventory_allocations a JOIN order_line_items line ON line.id = a.order_line_item_id
          WHERE line.order_id = ? ORDER BY a.product_id ASC, a.order_line_item_id ASC`,
-      ).all(orderId) as AllocationRow[];
+        )
+        .all(orderId) as AllocationRow[];
     },
     cancelAllocation({ orderLineItemId, cancelledQuantity, updatedAt }) {
-      const changed = db.prepare(
-        `UPDATE order_inventory_allocations
+      const changed = db
+        .prepare(
+          `UPDATE order_inventory_allocations
          SET allocated_quantity = 0, backordered_quantity = 0, cancelled_quantity = cancelled_quantity + ?, updated_at = ?
          WHERE order_line_item_id = ?`,
-      ).run(cancelledQuantity, updatedAt, orderLineItemId).changes;
+        )
+        .run(cancelledQuantity, updatedAt, orderLineItemId).changes;
       if (changed !== 1) throw new Error('Inventory allocation disappeared during cancellation.');
     },
   };

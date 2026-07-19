@@ -431,7 +431,10 @@ void test('inventory migration copies legacy mix reservations into unified lease
     rmSync(directory, { recursive: true, force: true });
   });
 
-  migrateDatabase(db, migrations.filter((migration) => migration.version !== '015'));
+  migrateDatabase(
+    db,
+    migrations.filter((migration) => migration.version !== '015'),
+  );
   db.prepare(
     `INSERT INTO products (id, name, description, price_cents, category, stock_count)
      VALUES (99, 'Legacy mix product', 'Preserve reservation', 100, 'Legacy', 3)`,
@@ -465,7 +468,9 @@ void test('inventory migration copies legacy mix reservations into unified lease
 
   assert.equal(
     db
-      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'powder_mix_stock_reservations'")
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'powder_mix_stock_reservations'",
+      )
       .get(),
     undefined,
   );
@@ -496,7 +501,9 @@ void test('inventory migration copies legacy mix reservations into unified lease
     undefined,
   );
   assert.deepEqual(
-    db.prepare('SELECT reservation_expires_at FROM payments WHERE idempotency_key = ?').get('legacy-prepared'),
+    db
+      .prepare('SELECT reservation_expires_at FROM payments WHERE idempotency_key = ?')
+      .get('legacy-prepared'),
     { reservation_expires_at: '2026-07-19T12:20:00.000Z' },
   );
 });

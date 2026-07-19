@@ -71,10 +71,14 @@ export function OrderDetailView({
                     <span className="block text-xs font-medium text-amber-700">Awaiting stock</span>
                   )}
                   {item.inventoryStatus === 'allocated' && (
-                    <span className="block text-xs text-muted-foreground">Allocated for fulfilment</span>
+                    <span className="block text-xs text-muted-foreground">
+                      Allocated for fulfilment
+                    </span>
                   )}
                   {item.inventoryStatus === 'cancelled' && (
-                    <span className="block text-xs text-muted-foreground">Allocation cancelled</span>
+                    <span className="block text-xs text-muted-foreground">
+                      Allocation cancelled
+                    </span>
                   )}
                 </span>
                 <span>{formatMoney(item.lineTotalCents)}</span>
@@ -206,7 +210,8 @@ export function OrderDetailView({
         <div className="rounded-lg border border-destructive/40 p-4">
           <h2 className="font-medium">Cancel this order</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            This stops simulated fulfilment. Unshipped allocated stock is released; no refund is issued.
+            This stops simulated fulfilment. Unshipped allocated stock is released; no refund is
+            issued.
           </p>
           <Button
             ref={cancelTriggerRef}

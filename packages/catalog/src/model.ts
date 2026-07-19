@@ -267,13 +267,14 @@ export const catalogProductSpecifications = (
 /** Adds canonical Powderizer eligibility metadata from each source bag's labelled weight. */
 export const createCatalogProducts = <T extends CatalogProductDraft>(
   products: readonly T[],
-): readonly (T & Pick<CatalogProduct, 'mixable' | 'mixUnitGrams' | 'backorderable' | 'backorderLeadDays'>)[] =>
+): readonly (T &
+  Pick<CatalogProduct, 'mixable' | 'mixUnitGrams' | 'backorderable' | 'backorderLeadDays'>)[] =>
   products.map((product) => ({
     ...product,
     mixable: true,
     mixUnitGrams: parseMixUnitGrams(product.packaging.quantity),
     backorderable: product.backorderable ?? false,
-    backorderLeadDays: product.backorderable ? product.backorderLeadDays ?? null : null,
+    backorderLeadDays: product.backorderable ? (product.backorderLeadDays ?? null) : null,
   }));
 
 export const createPackaging = (

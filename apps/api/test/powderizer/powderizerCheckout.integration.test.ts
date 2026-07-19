@@ -27,7 +27,10 @@ function deferredGateway() {
   let resolve!: (result: { status: 'success'; reference?: string }) => void;
   return {
     gateway: {
-      process: () => new Promise<{ status: 'success'; reference?: string }>((done) => { resolve = done; }),
+      process: () =>
+        new Promise<{ status: 'success'; reference?: string }>((done) => {
+          resolve = done;
+        }),
     },
     resolve: (result: { status: 'success'; reference?: string }) => resolve(result),
   };
@@ -119,7 +122,7 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
   assert.equal(storedSnapshot.includes('"snapshotVersion":2'), true);
   assert.equal(
     (
-        db.prepare('SELECT COUNT(*) AS count FROM inventory_reservations').get() as {
+      db.prepare('SELECT COUNT(*) AS count FROM inventory_reservations').get() as {
         count: number;
       }
     ).count,
@@ -232,9 +235,12 @@ void test('finalizes migrated authorized v2 and v3 mix quotes through unified in
     };
     const beforeStock = products.findById(1)?.stock_count;
     const pending = checkout.process(params);
-    const payment = db.prepare('SELECT quote_json FROM payments WHERE idempotency_key = ?')
+    const payment = db
+      .prepare('SELECT quote_json FROM payments WHERE idempotency_key = ?')
       .get(params.idempotencyKey) as { quote_json: string };
-    const quote = JSON.parse(payment.quote_json) as Record<string, unknown> & { mixLines: Array<Record<string, unknown>> };
+    const quote = JSON.parse(payment.quote_json) as Record<string, unknown> & {
+      mixLines: Array<Record<string, unknown>>;
+    };
     quote.version = version;
     delete quote.inventoryAllocations;
     if (version === 2) {
@@ -243,20 +249,32 @@ void test('finalizes migrated authorized v2 and v3 mix quotes through unified in
         snapshotVersion: 1,
       }));
     }
-    db.prepare('UPDATE payments SET quote_json = ? WHERE idempotency_key = ?')
-      .run(JSON.stringify(quote), params.idempotencyKey);
+    db.prepare('UPDATE payments SET quote_json = ? WHERE idempotency_key = ?').run(
+      JSON.stringify(quote),
+      params.idempotencyKey,
+    );
     deferred.resolve({ status: 'success', reference: `migrated-${version}` });
     const result = await pending;
     assert.equal(result.success, true);
     assert.equal(products.findById(1)?.stock_count, (beforeStock ?? 0) - 1);
     assert.equal(
-      (db.prepare('SELECT COUNT(*) AS count FROM inventory_reservations WHERE payment_idempotency_key = ?')
-        .get(params.idempotencyKey) as { count: number }).count,
+      (
+        db
+          .prepare(
+            'SELECT COUNT(*) AS count FROM inventory_reservations WHERE payment_idempotency_key = ?',
+          )
+          .get(params.idempotencyKey) as { count: number }
+      ).count,
       0,
     );
     assert.equal(
-      (db.prepare("SELECT COUNT(*) AS count FROM inventory_stock_movements WHERE payment_idempotency_key = ? AND movement_type = 'checkout_consumed'")
-        .get(params.idempotencyKey) as { count: number }).count,
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM inventory_stock_movements WHERE payment_idempotency_key = ? AND movement_type = 'checkout_consumed'",
+          )
+          .get(params.idempotencyKey) as { count: number }
+      ).count,
       2,
     );
     const replay = await checkout.process(params);
