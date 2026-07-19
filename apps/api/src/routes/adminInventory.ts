@@ -76,15 +76,16 @@ export default function adminInventoryRoutes(
           return result;
         });
         reply.code(receipt.replayed ? 200 : 201);
-        const { replayed: _replayed, ...response } = receipt;
         return {
-          ...response,
-          receiptId: String(response.receiptId),
-          productId: String(response.productId),
-          allocations: response.allocations.map((allocation) => ({
-            ...allocation,
+          receiptId: String(receipt.receiptId),
+          productId: String(receipt.productId),
+          receivedQuantity: receipt.receivedQuantity,
+          allocatedQuantity: receipt.allocatedQuantity,
+          remainingStock: receipt.remainingStock,
+          allocations: receipt.allocations.map((allocation) => ({
             orderId: String(allocation.orderId),
             orderLineItemId: String(allocation.orderLineItemId),
+            quantity: allocation.quantity,
           })),
         };
       } catch (error) {
