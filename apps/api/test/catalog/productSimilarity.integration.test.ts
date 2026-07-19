@@ -131,6 +131,29 @@ void test('similarity eligibility and complete ordering stay deterministic', () 
   assert.equal(scoreProductSimilarity(source, source), undefined);
 });
 
+void test('similarity availability score uses reservation-aware stock projection', () => {
+  const source = product(1, { category: 'Source', price_cents: 100 });
+  const reserved = product(2, {
+    category: 'Source',
+    price_cents: 100,
+    stock_count: 1,
+    available_to_sell: 0,
+  });
+  const available = product(3, {
+    category: 'Source',
+    price_cents: 100,
+    stock_count: 0,
+    available_to_sell: 1,
+  });
+
+  assert.equal(scoreProductSimilarity(source, reserved)?.availability, 0);
+  assert.equal(scoreProductSimilarity(source, available)?.availability, 5);
+  assert.deepEqual(
+    rankSimilarProducts(source, [reserved, available]).map((candidate) => candidate.id),
+    [3, 2],
+  );
+});
+
 void test('similarity limits after stable ranking and repository candidates omit inactive/source rows', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-product-similarity-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
