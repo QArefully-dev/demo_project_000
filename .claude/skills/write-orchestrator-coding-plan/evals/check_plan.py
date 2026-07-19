@@ -24,7 +24,7 @@ def contains_all(text: str, terms: tuple[str, ...]) -> bool:
 
 def has_packet_fields(text: str) -> bool:
     packets = re.findall(r"^### (?:P|S)\d+:.+?(?=^### |\Z)", text, flags=re.MULTILINE | re.DOTALL)
-    required = ("owns:", "reads:", "acceptance:", "verification:", "handoff:")
+    required = ("owns:", "reads:", "acceptance:", "verification:", "handoff:", "review:")
     return bool(packets) and all(contains_all(packet, required) for packet in packets)
 
 
@@ -40,13 +40,58 @@ def has_repository_evidence(text: str) -> bool:
 
 
 def has_review_assignment(text: str) -> bool:
-    review = re.search(
+    section = re.search(
         r"^## Review Assignments\s*(.+?)(?=^## |\Z)",
         text,
         flags=re.MULTILINE | re.DOTALL,
     )
-    return bool(review) and contains_all(
-        review.group(1), ("target:", "write policy: inspect-only", "return: reviewer_report_v1")
+    if not section:
+        return False
+    reviews = re.findall(
+        r"^### R\d+[A-Za-z]*:.+?(?=^### |\Z)",
+        section.group(1),
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    required = (
+        "target:",
+        "timing:",
+        "blocks:",
+        "consolidation reason:",
+        "write policy: inspect-only",
+        "return: reviewer_report_v1",
+    )
+    return bool(reviews) and all(contains_all(review, required) for review in reviews)
+
+
+def has_review_coverage(text: str) -> bool:
+    packet_sections = re.findall(
+        r"^### ((?:P|S)\d+):(.+?)(?=^### |\Z)", text, flags=re.MULTILINE | re.DOTALL
+    )
+    if not packet_sections:
+        return False
+    assigned_reviews = set(re.findall(r"^### (R\d+[A-Za-z]*):", text, flags=re.MULTILINE))
+    referenced_reviews: list[str] = []
+    for _, section in packet_sections:
+        review = re.search(r"^- review:\s*`?(R\d+[A-Za-z]*)", section, flags=re.MULTILINE)
+        if not review:
+            return False
+        referenced_reviews.append(review.group(1))
+    return set(referenced_reviews).issubset(assigned_reviews)
+
+
+def has_review_graph(text: str) -> bool:
+    graph = re.search(
+        r"^## Execution Graph\s*(.+?)(?=^## |\Z)", text, flags=re.MULTILINE | re.DOTALL
+    )
+    if not graph:
+        return False
+    packet_ids = re.findall(r"^### ((?:P|S)\d+):", text, flags=re.MULTILINE)
+    if not packet_ids:
+        return False
+    review = r"(?:R\d+[A-Za-z]*|\{\s*R\d+[A-Za-z]*(?:\s*\|\|\s*R\d+[A-Za-z]*)+\s*\})"
+    return all(
+        re.search(rf"\b{re.escape(packet_id)}\b\s*->\s*{review}\s*->\s*(?:GR|G)\d+", graph.group(1))
+        for packet_id in packet_ids
     )
 
 
@@ -97,8 +142,16 @@ CHECKS: dict[str, tuple[str, Callable[[str], bool]]] = {
         lambda text: contains_all(text, ("## Ownership and Collision Rules", "only")),
     ),
     "review_contract": (
-        "Includes an inspect-only reviewer assignment with an exact target and canonical return contract.",
+        "Includes timed, blocking inspect-only reviewer assignment with exact target and canonical return contract.",
         has_review_assignment,
+    ),
+    "review_coverage": (
+        "Every implementation packet names a reviewer assignment.",
+        has_review_coverage,
+    ),
+    "review_graph": (
+        "Execution graph places packet review and review gate before downstream work.",
+        has_review_graph,
     ),
     "communication_contract": (
         "References worker, reviewer, directive, and run-state communication contracts.",

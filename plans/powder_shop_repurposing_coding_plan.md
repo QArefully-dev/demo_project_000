@@ -2,17 +2,18 @@
 
 Status: proposed
 Source: `plans/powder_shop_repurposing_decisions.md` -> `Powder Shop Repurposing Decisions`
-Repository baseline: `remove_crazy_stuff` at `47abcbe65667972a8264f18047293eb78000a636`, inspected 2026-07-19
+Repository baseline: `remove_crazy_stuff` at `b84f7ac700e88c6e04bed0fbe94419f8314fe48c`, inspected 2026-07-19
 
 ## Runtime Worktree
 
 - source: `C:\Users\iwano\Desktop\repos\demo_project_000` -> named runtime branch + recorded `HEAD`
-- baseline blocker: source decision file and this coding plan must exist in selected branch `HEAD`; current source decision file is untracked
-- unrelated untracked data: `.claude/skills/grilling/` -> ignore unless user adds it to runtime scope
+- baseline blocker: updated coding plan must exist in selected branch `HEAD`; source decision file already exists at recorded baseline
+- dirty-input gate: relevant uncommitted or untracked source changes absent from `HEAD` -> stop and ask user to commit them or choose baseline
+- unrelated source-checkout changes: ignore unless user adds them to runtime scope
 - create: dedicated `codex/powder-shop-repurposing-<run-id>` branch + worktree before implementation write
 - execution root: all worker, reviewer, test, fix, convergence activity runs in worktree
-- integration: no automatic merge, rebase, cherry-pick, copy-back, worktree deletion, or branch deletion
-- completion reply: absolute worktree path + implementation branch + source branch + base revision; user owns merge
+- integration: no merge, rebase, cherry-pick, copy-back, worktree deletion, or branch deletion; user handles integration
+- completion reply: absolute worktree path + implementation branch + source branch + base revision
 
 ## Objective
 
@@ -202,14 +203,15 @@ Completion boundary: customer can browse credible products, select actual pack S
 
 ## Execution Graph
 
-`G0 -> P1 -> {P2 || P3} -> G1 -> P4 -> P5 -> P6 -> P7 -> G2 -> {P8 || P9 || P10} -> G3 -> S1 -> {R1 || R2} -> G4 -> F1 -> G5`
+`G0 -> P1 -> R1 -> GR1 -> {P2 -> R2 -> GR2 || P3 -> R3 -> GR3} -> G1 -> P4 -> R4 -> GR4 -> P5 -> R5 -> GR5 -> P6 -> R6 -> GR6 -> P7 -> R7 -> GR7 -> G2 -> {P8 -> R8 -> GR8 || P9 -> R9 -> GR9 || P10 -> R10 -> GR10} -> G3 -> S1 -> {R11A || R11B} -> GR11 -> G4 -> G5`
 
 - `G0`: branch/worktree/input and product-rule gate
-- `G1`: contracts + canonical catalog + migration fan-in
-- `G2`: backend API/commerce/custom/delivery gate
-- `G3`: parallel web lane fan-in
-- `G4`: review/finding gate
-- `F1`: conditional fixes + targeted verification; no-op when no findings
+- `GR1..GR10`: packet review gate; reviewer pass or all findings closed through worker fix + targeted evidence before dependent launch
+- `G1`: reviewed contracts + catalog + migration fan-in
+- `G2`: reviewed backend API/commerce/custom/delivery gate
+- `G3`: reviewed parallel web lane fan-in
+- `GR11`: convergence review gate; both S1 reviewers pass or findings close
+- `G4`: no open findings/blockers; evidence ledger current for final change set
 - `G5`: reset, journey, broad verification, completion
 
 ## Work Packets
@@ -234,16 +236,17 @@ Completion boundary: customer can browse credible products, select actual pack S
 - test duty: `T1` -> `npm test -w @shop/contracts && npm run typecheck -w @shop/contracts`
 - verification: exports resolve for current and new subpaths; storage parser tests cover v1-v5 and invalid cross-version data
 - handoff: accepted TypeBox names/shapes consumed by P2-P10
+- review: `R1` -> `GR1`
 
 ### P2: Author credible canonical catalog and bundles
 
-- mode: parallel with `P3` after `P1`
-- depends on: `P1`
+- mode: parallel with `P3` after `GR1`
+- depends on: `P1`, `R1`, `GR1`
 - owns: `packages/catalog/src/**`, `packages/catalog/package.json`
 - reads: `plans/powder_shop_repurposing_decisions.md` -> approved categories/families/safety/specifications; P1 contracts -> category/variant/group values; current category files -> reusable credible facts and stable IDs
 - acceptance: 100 credible real powders/dry mixes across six categories; every product and variant passes validation; no conceptual quantity, impossible claim, novelty item, comedic copy, unsafe excluded product, or old bundle
 - non-goals: persisted seed, API, UI, exact allergen/dietary filters, remote imagery
-- upstream inputs: `P1` -> accepted schema change set; `G0` -> catalog authoring and freight constants
+- upstream inputs: `GR1` -> reviewed contract change set; `G0` -> catalog authoring and freight constants
 - changes:
   - replace seven-category registry with six categories
   - retain/convert IDs `1..50`; add new IDs `1001..1050`; record any category target redistribution reason
@@ -258,16 +261,17 @@ Completion boundary: customer can browse credible products, select actual pack S
 - test duty: `T2` -> `npm test -w @shop/catalog && npm run typecheck -w @shop/catalog`
 - verification: repository `rg` over catalog finds no `Impossible|Questionable|conceptual quantity|Powdered Water|powdered-(wifi|gravity|moonlight)` except explicit negative test fixtures
 - handoff: canonical products, variants, bundle definitions, approved ID/SKU sets, redistribution record
+- review: `R2` -> `GR2`
 
 ### P3: Add migration-safe variant and delivery storage
 
-- mode: parallel with `P2` after `P1`
-- depends on: `P1`
+- mode: parallel with `P2` after `GR1`
+- depends on: `P1`, `R1`, `GR1`
 - owns: proposed `apps/api/src/db/migrations/018_grounded_catalog_variants.ts`, `apps/api/src/db/migrations/index.ts`, `apps/api/test/db/migrations.integration.test.ts`
 - reads: migrations `001`, `008`, `010`, `012`, `015`, `017` -> source columns/FKs/triggers; `apps/api/src/db/migrate.ts` -> ordering/error contract; P1 contracts -> snapshot fields
 - acceptance: migration upgrades populated v17 DB without data loss, maps every live commerce reference to variant, passes FK check, remains idempotent through migration runner, rejects corrupt source state
 - non-goals: canonical content upsert, repository/service changes, table-name cosmetic renames
-- upstream inputs: `P1` -> accepted storage-facing fields; `G0` -> variant authority decision
+- upstream inputs: `GR1` -> reviewed storage-facing fields; `G0` -> variant authority decision
 - changes:
   - create product variants and product-level classification/detail/default/source references
   - backfill exactly one default variant per existing product
@@ -280,16 +284,17 @@ Completion boundary: customer can browse credible products, select actual pack S
 - test duty: `T3` -> `npm exec -w @shop/api -- tsx --test test/db/migrations.integration.test.ts`
 - verification: `PRAGMA foreign_key_check` empty; before/after entity and ledger counts match; rollback fixture unchanged after forced failure
 - handoff: schema v18 and backfill semantics for P4-P7
+- review: `R3` -> `GR3`
 
 ### P4: Seed and expose base products with variants
 
-- mode: sequential after `G1`
-- depends on: `P2`, `P3`, `G1`
+- mode: sequential after reviewed fan-in `G1`
+- depends on: `P2`, `R2`, `GR2`, `P3`, `R3`, `GR3`, `G1`
 - owns: `apps/api/src/db/seed.ts`, `powderCatalog.ts`, seed scenario files, `apps/api/src/features/catalog/**`, `apps/api/src/mappers/product.ts`, `apps/api/src/routes/products.ts`, `apps/api/test/db/seed.integration.test.ts`, `apps/api/test/catalog/**`, `apps/api/src/db/powderCatalog.test.ts`, `apps/api/src/mappers/product.test.ts`
 - reads: P2 catalog exports -> canonical facts/IDs/SKUs; P3 schema -> storage columns; `apps/api/src/features/reviews/**` and `favourites/**` -> base-product ownership
 - acceptance: seed idempotently installs 100 canonical base products and variants, preserves local products/metadata, returns one base product with ordered variants, keeps reviews/favourites/comparison product-scoped
 - non-goals: cart mutation, inventory reservation, Custom Powder, freight quote, web rendering
-- upstream inputs: `P2` -> catalog change set and explicit canonical sets; `P3` -> schema change set
+- upstream inputs: `GR2` -> reviewed catalog change set and explicit canonical sets; `GR3` -> reviewed schema change set
 - changes:
   - replace numeric-range metadata operations with explicit canonical IDs
   - upsert products, variants, typed details, default/blend-source links, tags/specifications, bundle SKU links
@@ -302,16 +307,17 @@ Completion boundary: customer can browse credible products, select actual pack S
 - test duty: `T4` -> `npm exec -w @shop/api -- tsx --test test/db/seed.integration.test.ts test/catalog/*.integration.test.ts src/db/powderCatalog.test.ts src/mappers/product.test.ts`
 - verification: two consecutive seeds produce same canonical facts; local ID 51 fixture survives; API schema validation accepts all catalog responses
 - handoff: product/variant repository interfaces and seeded variant IDs for P5-P10
+- review: `R4` -> `GR4`
 
 ### P5: Move cart, bundles, and inventory to variant authority
 
-- mode: sequential after `P4`
-- depends on: `P4`
+- mode: sequential after `GR4`
+- depends on: `P4`, `R4`, `GR4`
 - owns: `apps/api/src/features/cart/**`, `inventory/**`, `bundles/**`, `apps/api/src/routes/cart.ts`, `bundles.ts`, `adminInventory.ts`, related `apps/api/test/cart/**`, `inventory/**`, `http/bundles.integration.test.ts`
 - reads: P4 product repository -> variant lookup/aggregate; P3 schema -> variant FKs; `apps/api/src/features/returns/returnService.ts` -> restoration caller contract
 - acceptance: ordinary cart, bundle atomic add, stock reservation, authorization, consumption, backorder, receipt, cancellation, and return restoration operate on exact variant
 - non-goals: Custom Powder component rules, freight charge, web UI
-- upstream inputs: `P4` -> accepted variant repository and seed change set
+- upstream inputs: `GR4` -> reviewed variant repository and seed change set
 - changes:
   - change cart commands and audit facts to variant IDs while retaining product context
   - map line product + selected variant and use variant price/availability
@@ -324,16 +330,17 @@ Completion boundary: customer can browse credible products, select actual pack S
 - test duty: `T5` -> `npm exec -w @shop/api -- tsx --test test/cart/*.integration.test.ts test/inventory/*.integration.test.ts src/features/inventory/inventoryRules.test.ts`
 - verification: concurrent final-stock test targets one variant; sibling SKU unchanged; bundle failure leaves cart untouched
 - handoff: variant cart/inventory interfaces and evidence for P6/P7
+- review: `R5` -> `GR5`
 
 ### P6: Enforce professional Custom Powder backend
 
-- mode: sequential after `P5`
-- depends on: `P5`
+- mode: sequential after `GR5`
+- depends on: `P5`, `R5`, `GR5`
 - owns: `apps/api/src/features/powderizer/**`, `apps/api/src/routes/powderizer.ts`, proposed `apps/api/src/routes/customPowder.ts`, `apps/api/test/powderizer/**`
 - reads: P4 product/variant repository -> mixing facts/source variant; P5 inventory types -> variant demand; `apps/api/src/app.ts` -> composition read only; P1 Custom Powder contracts
 - acceptance: quote/create/update/requote/config reject cross-group or missing-group components, derive combined facts, price/reserve designated source variants, expose featured blend, retain strict legacy read compatibility
 - non-goals: checkout folder edits, customer UI, storage table cosmetic rename, formulation advice
-- upstream inputs: `P4` -> product facts and source variant; `P5` -> variant inventory interface
+- upstream inputs: `GR4` -> reviewed product facts/source variant; `GR5` -> reviewed variant inventory interface
 - changes:
   - extend domain product with group, source variant, ingredients, allergens, use, safety
   - add group equality validation before allocation/pricing
@@ -347,16 +354,17 @@ Completion boundary: customer can browse credible products, select actual pack S
 - test duty: `T6` -> `npm exec -w @shop/api -- tsx --test src/features/powderizer/powderMixRules.test.ts test/powderizer/*.integration.test.ts`
 - verification: same-group cross-category food mix passes; food+cleaning fails at quote/create/requote; inactive source variant fails closed; legacy order snapshot renders
 - handoff: stable Custom Powder service/config/current snapshot for P7/P9
+- review: `R6` -> `GR6`
 
 ### P7: Add delivery quote and integrate checkout, orders, returns
 
-- mode: sequential after `P6`
-- depends on: `P5`, `P6`
+- mode: sequential after `GR6`
+- depends on: `P5`, `R5`, `GR5`, `P6`, `R6`, `GR6`
 - owns: proposed `apps/api/src/features/delivery/**`, `apps/api/src/features/checkout/**`, `apps/api/src/features/payments/**`, `apps/api/src/features/orders/**`, `apps/api/src/features/returns/**`, `apps/api/src/routes/payments.ts`, `orders.ts`, `returns.ts`, `adminOrders.ts`, `adminReturns.ts`, related `apps/api/test/checkout/**`, `orders/**`, `returns/**`
 - reads: P5 variant cart/inventory -> line facts/allocations; P6 custom service -> mix weight/source requirements; P1 v5/order contracts; `apps/api/src/app.ts` -> composition read only
 - acceptance: cart checkout freezes correct delivery mode/charge and exact variant snapshots; idempotent payment replay/order/return/cancellation preserve totals and variant inventory
 - non-goals: real carriers, delivery quote workflow, delivery refund, web UI
-- upstream inputs: `P5` -> cart/inventory change set; `P6` -> current mix snapshot/weight interface; `G0` -> approved delivery constants
+- upstream inputs: `GR5` -> reviewed cart/inventory change set; `GR6` -> reviewed mix snapshot/weight interface; `G0` -> approved delivery constants
 - changes:
   - implement pure delivery rule and boundary tests
   - create v5 checkout quote from merchandise, discount, delivery, variant lines, mix lines, inventory allocations
@@ -369,16 +377,17 @@ Completion boundary: customer can browse credible products, select actual pack S
 - test duty: `T7` -> `npm exec -w @shop/api -- tsx --test test/checkout/*.integration.test.ts test/orders/*.integration.test.ts test/returns/*.integration.test.ts`
 - verification: threshold-minus-one parcel, threshold freight, freight-only line, mixed cart, retry, cancellation, and returned sibling-SKU isolation cases pass
 - handoff: backend-complete API and evidence for web lanes
+- review: `R7` -> `GR7`
 
 ### P8: Build variant-aware catalog and product UI
 
-- mode: parallel with `P9`, `P10` after `G2`
-- depends on: `P7`, `G2`
+- mode: parallel with `P9`, `P10` after reviewed backend gate `G2`
+- depends on: `P7`, `R7`, `GR7`, `G2`
 - owns: `apps/web/src/api/products.ts`, `hooks/useProducts.ts`, `useCategories.ts`, `useProductFilterOptions.ts`, `features/catalog/**`, `features/product/**`, `features/comparison/**`, `components/ProductCard.tsx`, `ProductMedia.tsx`, `ProductGrid.tsx`, related tests
 - reads: P1 product contracts -> variant/fact shapes; P7 API -> accepted change set; `apps/web/src/lib/formatMoney.ts` -> current USD formatting
 - acceptance: cards show grounded base products; product detail exposes accessible variant selection and adds exact variant; typed facts render; comparison remains usable
 - non-goals: homepage/nav composition, Custom Powder, cart/checkout/order pages, global CSS
-- upstream inputs: `P7` -> backend contract/evidence; `P2` -> category names/content
+- upstream inputs: `GR7` -> reviewed backend contract/evidence; `GR2` -> reviewed category names/content
 - changes:
   - update clients and hooks for new product contract
   - render price range/aggregate availability on cards
@@ -391,16 +400,17 @@ Completion boundary: customer can browse credible products, select actual pack S
 - test duty: `T8` -> `npm exec -w @shop/web -- vitest run --configLoader runner src/features/catalog src/features/product src/features/comparison src/components/ProductCard.test.tsx src/components/ProductMedia.test.tsx`
 - verification: keyboard/radio selector, sold-out SKU, backorder SKU, freight badge, loading/empty/error states covered
 - handoff: variant selection UI ready for S1 composition
+- review: `R8` -> `GR8`
 
 ### P9: Repurpose Custom Powder web experience
 
-- mode: parallel with `P8`, `P10` after `G2`
-- depends on: `P7`, `G2`
+- mode: parallel with `P8`, `P10` after reviewed backend gate `G2`
+- depends on: `P7`, `R7`, `GR7`, `G2`
 - owns: `apps/web/src/api/powderizer.ts`, proposed `apps/web/src/api/customPowder.ts`, `apps/web/src/features/powderizer/**`, proposed `apps/web/src/features/customPowder/**`, `apps/web/src/components/powderMixBagScheme.ts`, related tests
 - reads: P1 Custom Powder contracts -> canonical/current aliases; P6 config/error behavior; `apps/web/src/hooks/CartContext.tsx` -> submit integration read only
 - acceptance: customer sees professional Custom Powder builder, incompatible choices blocked/explained, server errors rendered, combined facts/featured blend/history work, novelty behavior absent
 - non-goals: App/nav/home route wiring, cart line rendering, global CSS token cleanup
-- upstream inputs: `P6` -> Custom Powder service/config; `P7` -> checkout-compatible snapshot
+- upstream inputs: `GR6` -> reviewed Custom Powder service/config; `GR7` -> reviewed checkout-compatible snapshot
 - changes:
   - create canonical client names while retaining old client compatibility wrapper
   - rename headings/actions/history labels to Custom Powder
@@ -415,16 +425,17 @@ Completion boundary: customer can browse credible products, select actual pack S
 - test duty: `T9` -> `npm exec -w @shop/web -- vitest run --configLoader runner src/features/powderizer src/features/customPowder`
 - verification: compatible food blend, blocked food+cleaning, server-crafted mismatch, migrated history, invalid history, featured blend, reduced-motion/accessibility cases
 - handoff: canonical Custom Powder page component and redirect requirements for S1
+- review: `R9` -> `GR9`
 
 ### P10: Render variant, delivery, and Custom Powder purchase state
 
-- mode: parallel with `P8`, `P9` after `G2`
-- depends on: `P7`, `G2`
+- mode: parallel with `P8`, `P9` after reviewed backend gate `G2`
+- depends on: `P7`, `R7`, `GR7`, `G2`
 - owns: `apps/web/src/api/cart.ts`, `payments.ts`, `orders.ts`, `returns.ts`, `bundles.ts`, `hooks/CartContext.tsx`, `useCart.ts`, `useBundles.ts`, `features/cart/**`, `features/checkout/**`, `features/orders/**`, `features/returns/**`, `features/bundles/**`, `components/CartLineItem.tsx`, `CartSheet.tsx`, related tests
 - reads: P1 cart/order/delivery contracts; P7 API behavior; P9 current Custom Powder snapshot interface by accepted handoff only
 - acceptance: cart/checkout/order/bundle/return views show exact pack SKU and delivery facts; mutations use variant; Custom Powder uses professional label; total math presentation matches backend
 - non-goals: product selector, home/nav/help, global CSS, return-policy expansion
-- upstream inputs: `P7` -> backend purchase change set; `P6` -> current custom snapshot shape
+- upstream inputs: `GR7` -> reviewed backend purchase change set; `GR6` -> reviewed custom snapshot shape
 - changes:
   - change ordinary cart actions/storage-facing state to variant ID
   - render product + pack/SKU/weight/delivery class on cart/bundle/order lines
@@ -437,16 +448,17 @@ Completion boundary: customer can browse credible products, select actual pack S
 - test duty: `T10` -> `npm exec -w @shop/web -- vitest run --configLoader runner src/features/cart src/features/checkout src/features/orders src/features/returns src/features/bundles src/hooks/useCart.test.tsx src/hooks/useBundles.test.tsx`
 - verification: ordinary parcel, freight, mixed cart, backorder, failed payment retry, order snapshot, return rendering cases pass
 - handoff: purchase UI ready for S1 composition
+- review: `R10` -> `GR10`
 
 ### S1: Compose grounded storefront, compatibility routes, help, and docs
 
-- mode: sequential convergence after `G3`
-- depends on: `P8`, `P9`, `P10`, `G3`
+- mode: sequential convergence after reviewed web fan-in `G3`
+- depends on: `P8`, `R8`, `GR8`, `P9`, `R9`, `GR9`, `P10`, `R10`, `GR10`, `G3`
 - owns: `apps/api/src/app.ts`, `apps/web/src/App.tsx`, `components/CategoryNav.tsx`, `components/Header.tsx`, `components/Footer.tsx`, `components/nav/navItems.ts`, `components/home/**`, `features/home/**`, `features/help/**`, `apps/web/src/index.css`, `apps/web/src/lib/formatMoney.ts`, `README.md`, `plans/demo_project_high_level_plan.md`, cross-lane integration tests
 - reads: accepted P8-P10 handoffs -> page/client names; source decisions -> brand/copy/non-goals; `CLAUDE.md` -> course/runtime constraints
 - acceptance: one coherent grounded storefront and API composition; compatibility redirects/delegates work; docs and high-level direction no longer reintroduce impossible/trading fiction
 - non-goals: new product behavior beyond accepted lanes; deleting legacy persisted snapshot readers; localization UI
-- upstream inputs: `P8`, `P9`, `P10` -> accepted change sets/interfaces; `G3` -> web focused evidence
+- upstream inputs: `GR8`, `GR9`, `GR10` -> reviewed change sets/interfaces; `G3` -> reviewed web focused evidence
 - changes:
   - register canonical and compatibility API routes once
   - wire `/custom-powder`; redirect `/powderizer` preserving query
@@ -462,34 +474,201 @@ Completion boundary: customer can browse credible products, select actual pack S
 - test duty: `T11` -> `npm run test:integration -w @shop/web && npm run typecheck && npm run lint`
 - verification: `rg` sweep has only compatibility code/migration/history references documented in allowlist; API/app composition starts without import side effects
 - handoff: integrated change set, fiction sweep, compatibility allowlist, evidence for reviewers
+- review: `R11A`; additional focus review `R11B` -> `GR11`
 
 ## Review Assignments
 
-### R1: Review data, migration, commerce, safety, and compatibility
+### R1: Review P1 contracts and compatibility
 
-- target: `P1-P7 + S1 API composition` -> exact accepted base/head change set after `S1`
-- reads: `packages/catalog/src/**` -> credibility/validation; migration 018 -> copy/FKs; product/cart/inventory/custom/delivery/checkout/order/return code -> authority/transactions; P1 storage parsers -> compatibility
-- acceptance: source decisions mapped; local data preserved; variant identity consistent; no stock/price/freight bypass; compatibility parsers strict; safety grouping enforced at every write/requote/checkout boundary
-- invariants: integer money; atomic migration/inventory/order; explicit canonical sets; old snapshots readable; no cross-group mix; promotion excludes delivery
-- risk focus: user IDs `51..1000` overwrite, sibling-variant stock leakage, old cart remap, stale custom mix checkout, v5 replay recalculation, return restoration, freight threshold boundary, JSON detail corruption
-- non-goals: copy tone, CSS polish, test reruns when supplied evidence valid
+- target: `P1` -> exact worker base/head change set
+- timing: immediately after P1 report + `T1`; before P2/P3 assignment
+- blocks: `GR1`, P2, P3
+- consolidation reason: none; one packet, one exact target
+- reads: `packages/contracts/src/products.ts`, `cart.ts`, `payments.ts`, `orders.ts`, `inventory.ts`, `returns.ts`, `powderizer.ts`, proposed `delivery.ts`, proposed `customPowder.ts` -> public/storage shapes and exports
+- acceptance: current schemas express variant/delivery/Custom Powder design; legacy checkout v1-v4 and mix v1/v2 parsers remain strict; consumers receive one coherent interface
+- invariants: integer money/weights; `additionalProperties: false`; no widened legacy read; public export coverage
+- risk focus: incompatible alias, optional field hiding authority, version parser accepting mixed shapes, package export omission
+- non-goals: persistence or UI implementation; test rerun with valid `T1`
 - write policy: inspect-only
-- test policy: assess `T1-T7`, `T11`; run only assigned command or when stale/missing evidence blocks verdict
-- relevant evidence: `T1-T7`, `T11` scoped to exact reviewed change set
-- return: `reviewer_report_v1` with exact target, verdict, stable finding IDs, evidence assessment
+- test policy: assess `T1`; run only when missing/stale evidence blocks verdict
+- relevant evidence: `T1` -> P1 exact change set
+- return: `reviewer_report_v1`; `GR1` blocks P2/P3 until pass or findings close through P1 fix + targeted evidence
 
-### R2: Review customer journey, accessibility, copy, and scope removal
+### R2: Review P2 catalog credibility and validation
 
-- target: `P8-P10 + S1 web/docs` -> exact accepted base/head change set after `S1`
-- reads: product variant UI -> selection states; Custom Powder UI -> compatibility guidance; cart/checkout/order -> delivery and snapshots; home/help/README/high-level plan -> grounded copy and contradictions
-- acceptance: familiar journey remains obvious; six categories accurate; variant and delivery state understandable; no impossible/comedic customer content; redirects/history migration work; responsive/accessibility states present
-- invariants: no client authority; keyboard-accessible controls; loading/empty/error states; old route compatibility; no allergen filter or localization scope leak
-- risk focus: hidden default SKU add, mismatched cart keys, incorrect totals, disabled choice without explanation, fiction in fixtures/alt text/help, high-level future scope reintroducing removed features
-- non-goals: backend transaction implementation, design rebrand beyond restrained copy, broad visual regression
+- target: `P2` -> exact worker base/head change set
+- timing: immediately after P2 report + `T2`; parallel with R3; before `G1`
+- blocks: `GR2`, `G1`, P4
+- consolidation reason: none; one packet, one exact target
+- reads: `packages/catalog/src/model.ts`, `catalog.ts`, `validateCatalog.ts`, category modules, `bundles.ts`, catalog tests -> content/model/validation
+- acceptance: 100 real products, six categories, physical variants, typed facts, safe groups/classifications, professional bundles, no fiction
+- invariants: IDs `1..50` retained; new IDs `1001..1050`; explicit canonical sets; unique SKU/slug/art; max 1 tonne
+- risk focus: unsafe candidate, weak conversion, conceptual unit residue, missing handling fact, count/redistribution drift, invalid bundle SKU
+- non-goals: persistence mapping, visual polish, allergen/dietary filters
 - write policy: inspect-only
-- test policy: assess `T8-T11`; run only assigned command or stale/missing evidence blocker
-- relevant evidence: `T8-T11` scoped to exact reviewed change set
-- return: `reviewer_report_v1` with exact target, verdict, stable finding IDs, evidence assessment
+- test policy: assess `T2`; no rerun unless evidence blocks verdict
+- relevant evidence: `T2` -> P2 exact change set
+- return: `reviewer_report_v1`; `GR2` blocks `G1` until pass or findings close through P2 fix + targeted evidence
+
+### R3: Review P3 migration integrity
+
+- target: `P3` -> exact worker base/head change set
+- timing: immediately after P3 report + `T3`; parallel with R2; before `G1`
+- blocks: `GR3`, `G1`, P4
+- consolidation reason: none; one packet, one exact target
+- reads: proposed migration 018, migration index, migration integration tests, source migrations `001`, `008`, `010`, `012`, `015`, `017` -> copy/constraint/trigger/FK behavior
+- acceptance: populated v17 upgrade preserves identities and facts, remaps live references, recreates constraints/indexes/triggers, rolls back corrupt input
+- invariants: atomic migration; no user-ID overwrite; old orders/payments/audit/custom rows unchanged; `foreign_key_check` clean
+- risk focus: table rebuild data loss, variant mismatch, missing trigger/index, default backfill ambiguity, temporary table cleanup before verification
+- non-goals: canonical content seed, API repository behavior
+- write policy: inspect-only
+- test policy: assess `T3`; command only when missing/stale evidence prevents verdict
+- relevant evidence: `T3` -> populated and rollback fixtures at P3 change set
+- return: `reviewer_report_v1`; `GR3` blocks `G1` until pass or findings close through P3 fix + targeted evidence
+
+### R4: Review P4 seed and catalog API authority
+
+- target: `P4` -> exact worker base/head change set using reviewed P2/P3 inputs
+- timing: immediately after P4 report + `T4`; before P5 assignment
+- blocks: `GR4`, P5
+- consolidation reason: none; one packet, one exact target
+- reads: `apps/api/src/db/seed.ts`, seed scenarios, catalog repository/query, product mapper/routes, seed/catalog tests -> explicit-set seed and transport mapping
+- acceptance: seed installs reviewed catalog idempotently, preserves local rows, exposes base products with ordered variants, keeps review/favourite/comparison product scope
+- invariants: no range deletion; persisted facts map without canonical runtime lookup; base URL IDs stable; invalid details fail closed
+- risk focus: local ID/metadata overwrite, duplicate variant after reseed, stock reset, static packaging authority, aggregate availability/price bug
+- non-goals: cart/inventory mutations, web rendering
+- write policy: inspect-only
+- test policy: assess `T4` plus accepted `T2/T3`; rerun only stale/missing blocker
+- relevant evidence: `T2`, `T3`, `T4` projected to P4 target
+- return: `reviewer_report_v1`; `GR4` blocks P5 until pass or findings close through P4 fix + targeted evidence
+
+### R5: Review P5 variant commerce and inventory
+
+- target: `P5` -> exact worker base/head change set
+- timing: immediately after P5 report + `T5`; before P6 assignment
+- blocks: `GR5`, P6
+- consolidation reason: none; one packet, one exact target
+- reads: cart, inventory, bundle features/routes/tests; `apps/api/src/features/returns/returnService.ts` caller boundary -> variant key and transaction behavior
+- acceptance: cart, bundle, reservation, consume, backorder, receipt, cancellation, return restoration affect exact SKU only
+- invariants: atomic mutations; no oversell; hard-demand/FIFO/idempotency preserved; immutable movement ledger; sibling variants isolated
+- risk focus: product/variant ID confusion, bundle partial write, backorder sibling leakage, receipt/cancellation restoring wrong SKU, ambiguous legacy request
+- non-goals: Custom Powder grouping, delivery charge, customer UI
+- write policy: inspect-only
+- test policy: assess `T5`; use `T4` only as upstream interface evidence; no duplicate run
+- relevant evidence: `T4`, `T5` projected to P5 target
+- return: `reviewer_report_v1`; `GR5` blocks P6 until pass or findings close through P5 fix + targeted evidence
+
+### R6: Review P6 Custom Powder safety and compatibility
+
+- target: `P6` -> exact worker base/head change set
+- timing: immediately after P6 report + `T6`; before P7 assignment
+- blocks: `GR6`, P7
+- consolidation reason: none; one packet, one exact target
+- reads: powderizer/custom feature and routes, focused tests, reviewed product/source-variant interface -> grouping, pricing, combined facts, legacy reads
+- acceptance: every quote/mutation/requote rejects invalid groups, source variant drives price/stock, combined facts deterministic, featured blend credible, legacy snapshots readable
+- invariants: ratio 100%; 2-5 unique products; server authority; no claim inference; no checkout-compatible stale unsafe mix
+- risk focus: route alias divergence, client-only restriction, inactive source variant, cross-category same-group false rejection, legacy parser widening
+- non-goals: checkout integration and customer UI
+- write policy: inspect-only
+- test policy: assess `T6` and relevant `T4/T5`; run only evidence blocker
+- relevant evidence: `T4`, `T5`, `T6` projected to P6 target
+- return: `reviewer_report_v1`; `GR6` blocks P7 until pass or findings close through P6 fix + targeted evidence
+
+### R7: Review P7 money, delivery, checkout, and lifecycle integration
+
+- target: `P7` -> exact worker base/head change set
+- timing: immediately after P7 report + `T7`; before `G2` and web assignments
+- blocks: `GR7`, `G2`, P8, P9, P10
+- consolidation reason: none; one packet, one exact target
+- reads: delivery, checkout, payments, orders, returns features/routes/tests; checkout quote v5 contract -> total, replay, snapshots, restoration
+- acceptance: deterministic delivery freezes before authorization; order/payment/replay totals match; exact variant snapshots and restoration survive lifecycle; old quotes normalize without total change
+- invariants: `total=subtotal-discount+delivery`; promotion/refund excludes delivery; replay never recalculates; transactions/idempotency intact
+- risk focus: threshold boundary, mixed/cart weight omission, stale custom mix, delivery double-charge, legacy quote mutation, return/cancellation wrong variant
+- non-goals: web presentation, real carrier/quote behavior
+- write policy: inspect-only
+- test policy: assess `T7` plus relevant `T5/T6`; run only stale/missing blocker
+- relevant evidence: `T5`, `T6`, `T7` projected to P7 target
+- return: `reviewer_report_v1`; `GR7` blocks `G2` and P8-P10 until pass or findings close through P7 fix + targeted evidence
+
+### R8: Review P8 catalog and variant UI
+
+- target: `P8` -> exact worker base/head change set
+- timing: immediately after P8 report + `T8`; parallel with R9/R10; before `G3`
+- blocks: `GR8`, `G3`, S1
+- consolidation reason: none; one packet, one exact target
+- reads: product clients/hooks, catalog/product/comparison features, ProductCard/ProductMedia tests -> variant selection and typed facts
+- acceptance: cards show aggregates; detail requires exact valid variant; accessible selector covers stock/backorder/freight; add sends variant ID
+- invariants: no client price/availability authority; product ID stays route identity; stale async response ignored
+- risk focus: hidden default add, sold-out selection, price mismatch, broken comparison, missing keyboard label/error state
+- non-goals: home/nav composition, cart/checkout rendering, global CSS
+- write policy: inspect-only
+- test policy: assess `T8`; no rerun with valid evidence
+- relevant evidence: `T8` -> P8 exact change set
+- return: `reviewer_report_v1`; `GR8` blocks `G3` until pass or findings close through P8 fix + targeted evidence
+
+### R9: Review P9 Custom Powder UI
+
+- target: `P9` -> exact worker base/head change set
+- timing: immediately after P9 report + `T9`; parallel with R8/R10; before `G3`
+- blocks: `GR9`, `G3`, S1
+- consolidation reason: none; one packet, one exact target
+- reads: custom/powderizer clients/features/tests, history parser/migration, picker/summary -> safety guidance and novelty removal
+- acceptance: professional naming/copy, incompatible selections disabled and explained, server mismatch rendered, featured blend/history/ratio workflows function, novelty code removed
+- invariants: server remains authority; no health/performance claim; history fail-closed; old storage migration bounded
+- risk focus: compatibility bypass, inaccessible disabled options, stale fictional history, alias loop, hidden comedic fixture/copy
+- non-goals: App/nav/home wiring, cart line rendering, global CSS
+- write policy: inspect-only
+- test policy: assess `T9`; relevant `T6/T7` supplied as interface evidence only
+- relevant evidence: `T6`, `T7`, `T9` projected to P9 target
+- return: `reviewer_report_v1`; `GR9` blocks `G3` until pass or findings close through P9 fix + targeted evidence
+
+### R10: Review P10 purchase UI
+
+- target: `P10` -> exact worker base/head change set
+- timing: immediately after P10 report + `T10`; parallel with R8/R9; before `G3`
+- blocks: `GR10`, `G3`, S1
+- consolidation reason: none; one packet, one exact target
+- reads: cart/checkout/order/return/bundle clients/features/hooks/tests -> exact variant and delivery presentation
+- acceptance: mutations use variant; line snapshots render SKU/pack; delivery subtotal/charge/total match server; order/return wording accurate
+- invariants: no freight recomputation; return remains order-line scoped; promo five-item gate unchanged; Custom Powder customer label professional
+- risk focus: mismatched line key, wrong total display, sibling variant mutation, delivery omitted on replay/order, return refund wording
+- non-goals: product selector, home/nav/help, global CSS
+- write policy: inspect-only
+- test policy: assess `T10`; relevant `T7` supplied without rerun
+- relevant evidence: `T7`, `T10` projected to P10 target
+- return: `reviewer_report_v1`; `GR10` blocks `G3` until pass or findings close through P10 fix + targeted evidence
+
+### R11A: Review S1 integration and compatibility composition
+
+- target: `S1` -> exact convergence base/head change set after reviewed P8-P10 fan-in
+- timing: immediately after S1 report + `T11`; parallel with R11B; before `GR11`
+- blocks: `GR11`, `G4`, final verification
+- consolidation reason: none; one convergence target, functional integration focus
+- reads: API `app.ts`, web `App.tsx`, nav/home/help composition, accepted lane interfaces, cross-lane integration tests -> registration, routing, customer journey
+- acceptance: canonical routes registered once; compatibility routes redirect/delegate; reviewed lanes compose without contract drift; core journey works across boundaries
+- invariants: no duplicate route; old query preserved; import side effects absent; no client authority introduced during composition
+- risk focus: route collision, wrong component/client import, compatibility recursion, integration-only total/history bug
+- non-goals: copy tone audit beyond functional contradiction; broad visual redesign
+- write policy: inspect-only
+- test policy: assess `T11` plus still-valid `T8-T10`; run only evidence blocker
+- relevant evidence: `T8`, `T9`, `T10`, `T11` projected to S1 target
+- return: `reviewer_report_v1`; `GR11` waits for R11A and R11B
+
+### R11B: Review S1 copy, accessibility, docs, and scope removal
+
+- target: same exact `S1` change set as R11A
+- timing: immediately after S1 report + `T11`; parallel with R11A; before `GR11`
+- blocks: `GR11`, `G4`, final verification
+- consolidation reason: none; one convergence target, copy/accessibility/scope focus
+- reads: nav/home/help/CSS, `README.md`, `plans/demo_project_high_level_plan.md`, fiction sweep allowlist, customer-visible fixtures/alt text -> grounded direction
+- acceptance: six categories and brand messages accurate; impossible/comedic content absent; variants/delivery/Custom Powder understandable; docs do not restore Reverse Process/trading/auction direction
+- invariants: keyboard/responsive/error states retained; no allergen filter/localization scope leak; compatibility identifiers absent from primary copy
+- risk focus: fiction in tests/alt text/help, disabled controls without explanation, stale seeded counts/instructions, future-plan contradiction
+- non-goals: backend transaction review; design rebrand beyond restrained scope
+- write policy: inspect-only
+- test policy: assess `T11` and fiction sweep; no broad rerun for confidence
+- relevant evidence: `T11` -> S1 exact change set and allowlist
+- return: `reviewer_report_v1`; `GR11` passes only after both reviews pass or all findings close through S1/originating worker fixes + targeted evidence
 
 ## Ownership and Collision Rules
 
@@ -534,7 +713,10 @@ Completion boundary: customer can browse credible products, select actual pack S
 - `T15`: final settled change set -> `npm run verify` once -> owner `G5`
 - reuse: checkpoint stores command, scope, change set, runner, invalidators, output; new agent session does not invalidate result
 - invalidation: contract edits -> T1 + affected consumer tests; catalog edits -> T2/T4 + affected web; migration/seed edits -> T3/T4/T12; variant commerce edits -> T5/T7/T10; custom edits -> T6/T9/T14; delivery/checkout edits -> T7/T10/T14; composition/copy edits -> T11/T14
-- review: reviewers inspect supplied evidence; no broad rerun for confidence alone
+- packet review: `T1 -> R1 -> GR1`; `T2 -> R2 -> GR2`; `T3 -> R3 -> GR3`; `T4 -> R4 -> GR4`; `T5 -> R5 -> GR5`; `T6 -> R6 -> GR6`; `T7 -> R7 -> GR7`
+- web review: `{T8 -> R8 -> GR8 || T9 -> R9 -> GR9 || T10 -> R10 -> GR10}`; `G3` waits for all three gates
+- convergence review: `T11 -> {R11A || R11B} -> GR11`
+- review execution: inspect supplied evidence; no broad rerun for confidence; finding fix runs smallest invalidated command before gate passes
 
 ## Agent Communication Contract
 
@@ -551,27 +733,30 @@ Completion boundary: customer can browse credible products, select actual pack S
 - object records: `.claude/skills/write-orchestrator-coding-plan/references/communication-record-shapes.md`
 - worktree context: every assignment includes absolute worktree path, branch, base revision; all paths resolve beneath worktree
 - findings: stable reviewer ID -> worker-targeted fix -> targeted evidence -> closure in checkpoint; no reviewer implementation or automatic review loop
+- dependency rule: downstream packet cannot consume producer output until producer review gate passes
 
 ## Orchestrator Run Order
 
 1. End planning context after plan is saved.
-2. Require user to commit source decision file and coding plan, or explicitly choose different branch baseline. Ignore unrelated untracked `.claude/skills/grilling/`.
+2. Require user to commit updated coding plan, or explicitly choose different branch baseline. Preserve and ignore unrelated source-checkout changes.
 3. Start fresh runtime orchestrator. Load `CLAUDE.md`, source decision, coding plan, canonical communication contracts, current checkpoint only.
 4. Record source path, named branch, `HEAD`; stop on detached HEAD or relevant uncommitted inputs.
 5. Create dedicated implementation branch/worktree from source branch `HEAD`; persist identity before `G0`.
 6. Select Node 22 and validate dependency health under `T0` inside worktree.
 7. Resolve `G0`: approve freight constants; confirm same-group equality; authorize catalog worker to finalize exact credible products/variants within source targets.
-8. Launch P1. Accept contract change set and evidence.
-9. Launch P2 and P3 concurrently with disjoint ownership. Accept reports; run `G1` checks against both outputs.
-10. Launch P4 -> P5 -> P6 -> P7 sequentially. Update evidence and handoffs after each. Validate `G2` with current API contract, migration, seed, commerce, custom, delivery behavior.
-11. Launch P8, P9, P10 concurrently. Prevent edits to S1-owned composition files. Validate `G3` from focused web evidence.
-12. Launch S1 for composition, copy, help, docs, compatibility routes, integration checks.
-13. Launch R1 and R2 inspect-only against exact settled change sets with relevant evidence.
-14. Route findings through worker fix directives. Cross-owner fix -> fresh worker full assignment + fix directive. Run smallest invalidated tests; update checkpoint.
-15. Validate `G4`; no open finding/blocker; fiction sweep allowlist contains compatibility identifiers only.
-16. Run `T12`, `T13`, `T14`, `T15` once after fixes settle. Stop only task-owned dev server.
-17. Validate `G5`; leave implementation worktree and branch intact.
-18. Reply with worktree path, implementation branch, source branch, base revision, major compatibility aliases retained, verification results, open follow-up decisions. State user owns merge.
+8. Launch P1. Accept report and `T1`; launch R1 against exact P1 change set. Route findings to P1 worker, record targeted evidence, pass `GR1` before consumers launch.
+9. Launch P2 and P3 concurrently after `GR1`. Accept each report/evidence; launch R2 and R3 concurrently against separate exact targets. Close findings through originating workers. Pass `GR2` and `GR3`, then validate reviewed fan-in `G1`.
+10. Launch P4 after `G1`; accept `T4`; launch R4; close findings; pass `GR4`.
+11. Launch P5 after `GR4`; accept `T5`; launch R5; close findings; pass `GR5`.
+12. Launch P6 after `GR5`; accept `T6`; launch R6; close findings; pass `GR6`.
+13. Launch P7 after `GR6`; accept `T7`; launch R7; close findings; pass `GR7`, then validate reviewed backend gate `G2`.
+14. Launch P8, P9, P10 concurrently after `G2`. Prevent edits to S1-owned composition files. Accept `T8-T10`; launch R8-R10 concurrently against separate targets. Close lane findings through each originating worker. Pass `GR8-GR10`, then validate reviewed fan-in `G3`.
+15. Launch S1 after `G3` for composition, copy, help, docs, compatibility routes, integration checks. Accept `T11`.
+16. Launch R11A and R11B concurrently against same exact S1 convergence change set with separate functional and copy/accessibility focus. Route integration findings to S1 or originating worker based on ownership. Pass `GR11` after both verdicts pass or all findings close through targeted evidence.
+17. Validate `G4`: no open finding/blocker; fiction sweep allowlist contains compatibility identifiers only; evidence ledger covers current change set.
+18. Run `T12`, `T13`, `T14`, `T15` once after all review gates settle. Stop only task-owned dev server.
+19. Validate `G5`; leave implementation worktree and branch intact.
+20. Reply with worktree path, implementation branch, source branch, base revision, major compatibility aliases retained, verification results, open follow-up decisions. State user owns merge.
 
 ## Risks and Open Questions
 
@@ -586,6 +771,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - risk: frontend shows product availability while selected SKU unavailable -> mitigation: card aggregate only; detail/cart actions exact variant
 - risk: rename breaks saved routes/history/orders -> mitigation: redirects, API delegates, localStorage migration, strict old snapshot parser
 - risk: removing novelty changes seeded reviews/orders -> mitigation: convert stable product IDs in place and rewrite seed copy; immutable existing order names remain historical data
+- risk: producer defect propagates into dependent packets -> mitigation: R1-R10 immediate inspect-only review gates; reviewed fan-in; separate S1 convergence reviews
 - question: exact freight threshold and parcel/freight charges -> owner: user/product decision at `G0`; no implementation packet launches without values
 - question: exact 100 products, variants, prices, stock, colour tokens -> owner: P2 proposes within decisions; orchestrator accepts at `G1`
 - question: category redistribution -> owner: P2 records credibility reason; orchestrator checks total/category coverage at `G1`
@@ -606,5 +792,6 @@ Completion boundary: customer can browse credible products, select actual pack S
 - core home -> catalog -> product -> cart -> checkout -> confirmation -> order history journey remains simple
 - `en-US` USD formatting boundary explicit; no localization or multi-currency UI
 - README and high-level plan match grounded direction and deterministic fixtures
+- every implementation packet receives exact-target review; every review gate passes or closes findings through worker fix + targeted evidence before dependent launch
 - `npm run reset`, `npm run smoke`, focused browser journey, `npm run verify` pass on final change set
 - implementation worktree/branch retained; completion reply reports required identity and user-owned merge
