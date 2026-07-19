@@ -35,6 +35,9 @@ interface ProductLineRow {
   product_price_cents: number;
   quantity: number;
   line_total_cents: number;
+  allocated_quantity?: number | null;
+  backordered_quantity?: number | null;
+  cancelled_quantity?: number | null;
 }
 interface MixLineRow {
   id: number;
@@ -91,6 +94,7 @@ export interface OrderRepository extends OrderAccessRepository {
   listAllocatableLines(
     orderId: number,
   ): Array<{ lineKind: 'product' | 'powder_mix'; lineId: string; quantity: number }>;
+  hasOutstandingBackorder(orderId: number): boolean;
   insertShipment(input: {
     orderId: number;
     shipmentNumber: number;
@@ -150,6 +154,16 @@ function mapOrder(row: OrderRow, items: ProductLineRow[], mixes: MixLineRow[]): 
       unitPriceCents: item.product_price_cents,
       quantity: item.quantity,
       lineTotalCents: item.line_total_cents,
+      inventoryStatus:
+        (item.cancelled_quantity ?? 0) > 0
+          ? 'cancelled'
+          : (item.backordered_quantity ?? 0) === 0
+            ? 'allocated'
+            : (item.allocated_quantity ?? 0) === 0
+              ? 'backordered'
+              : 'partially_backordered',
+      allocatedQuantity: item.allocated_quantity ?? item.quantity,
+      backorderedQuantity: item.backordered_quantity ?? 0,
     })),
     mixItems: mixes.map((mix) => ({
       ...parseMixSnapshot(mix.snapshot_json),
@@ -194,7 +208,11 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
   const loadLines = (orderId: number) => ({
     items: db
       .prepare(
-        'SELECT id, product_id, product_name, product_price_cents, quantity, line_total_cents FROM order_line_items WHERE order_id = ? ORDER BY id ASC',
+        `SELECT line.id, line.product_id, line.product_name, line.product_price_cents, line.quantity, line.line_total_cents,
+          allocation.allocated_quantity, allocation.backordered_quantity, allocation.cancelled_quantity
+         FROM order_line_items line
+         LEFT JOIN order_inventory_allocations allocation ON allocation.order_line_item_id = line.id
+         WHERE line.order_id = ? ORDER BY line.id ASC`,
       )
       .all(orderId) as ProductLineRow[],
     mixes: db
@@ -325,7 +343,10 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
         .prepare(
           `SELECT o.id, o.lifecycle_status, o.version, o.total_cents, o.created_at,
           COALESCE((SELECT SUM(quantity) FROM order_line_items WHERE order_id = o.id), 0) +
-          COALESCE((SELECT SUM(CAST(json_extract(snapshot_json, '$.quantity') AS INTEGER)) FROM order_powder_mix_items WHERE order_id = o.id), 0) AS total_items
+          COALESCE((SELECT SUM(CAST(json_extract(snapshot_json, '$.quantity') AS INTEGER)) FROM order_powder_mix_items WHERE order_id = o.id), 0) AS total_items,
+          EXISTS(SELECT 1 FROM order_inventory_allocations allocation
+            JOIN order_line_items line ON line.id = allocation.order_line_item_id
+            WHERE line.order_id = o.id AND allocation.backordered_quantity > 0) AS has_backorder
         FROM orders o WHERE o.user_id = ? ORDER BY o.created_at DESC, o.id DESC LIMIT ? OFFSET ?`,
         )
         .all(userId, pageSize, offset) as Array<{
@@ -334,6 +355,7 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
         version: number;
         total_cents: number;
         total_items: number;
+        has_backorder: number;
         created_at: string;
       }>;
       const count = db
@@ -346,6 +368,7 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
           version: row.version,
           totalCents: row.total_cents,
           totalItems: row.total_items,
+          hasBackorder: row.has_backorder === 1,
           createdAt: row.created_at,
         })),
         total: count.count,
@@ -395,7 +418,12 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
     },
     listAllocatableLines(orderId) {
       const product = db
-        .prepare('SELECT id, quantity FROM order_line_items WHERE order_id = ? ORDER BY id')
+        .prepare(
+          `SELECT line.id, COALESCE(allocation.allocated_quantity, line.quantity) AS quantity
+           FROM order_line_items line
+           LEFT JOIN order_inventory_allocations allocation ON allocation.order_line_item_id = line.id
+           WHERE line.order_id = ? ORDER BY line.id`,
+        )
         .all(orderId) as Array<{ id: number; quantity: number }>;
       const mix = db
         .prepare(
@@ -414,6 +442,15 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
           quantity: parseMixSnapshot(line.snapshot_json).quantity,
         })),
       ];
+    },
+    hasOutstandingBackorder(orderId) {
+      return !!db
+        .prepare(
+          `SELECT 1 FROM order_inventory_allocations allocation
+           JOIN order_line_items line ON line.id = allocation.order_line_item_id
+           WHERE line.order_id = ? AND allocation.backordered_quantity > 0 LIMIT 1`,
+        )
+        .get(orderId);
     },
     insertShipment({ orderId, shipmentNumber, trackingReference, createdAt }) {
       return Number(

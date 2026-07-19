@@ -17,6 +17,7 @@ import {
 } from './orderLifecycle.js';
 import type { OrderRepository } from './orderRepository.js';
 import type { ShipmentAllocation } from './orderTypes.js';
+import type { InventoryService } from '../inventory/inventoryService.js';
 
 export interface OrderService {
   get(orderId: number): OrderDetailResponse | undefined;
@@ -67,6 +68,7 @@ type OrderServiceDependencies = {
   unitOfWork?: UnitOfWork;
   clock?: Clock;
   audit?: AuditWriter;
+  inventory?: Pick<InventoryService, 'cancelOrderInventory'>;
 };
 
 /** Accepts legacy repository-only construction for pre-P3 read routes. Mutation commands require UoW + audit. */
@@ -119,6 +121,9 @@ export function createOrderService(
         if (!state) throw new OrderDomainError('ORDER_NOT_FOUND');
         if (state.version !== input.version || state.status !== 'processing')
           throw new OrderDomainError('STALE_VERSION');
+        if (dependencies.repository.hasOutstandingBackorder(input.orderId)) {
+          throw new OrderDomainError('OUTSTANDING_BACKORDER');
+        }
         const lines = dependencies.repository.listAllocatableLines(input.orderId);
         assertCompleteAllocation(lines, input.shipments);
         const occurredAt = clock.now().toISOString();
@@ -289,6 +294,7 @@ export function createOrderService(
         if (state.version !== input.version) throw new OrderDomainError('STALE_VERSION');
         assertCanCancel(state.status, dependencies.repository.listShipments(input.orderId));
         const occurredAt = clock.now().toISOString();
+        dependencies.inventory?.cancelOrderInventory({ orderId: input.orderId, occurredAt });
         dependencies.repository.cancelPackedShipments(input.orderId, occurredAt);
         if (
           !dependencies.repository.updateOrderStatus({

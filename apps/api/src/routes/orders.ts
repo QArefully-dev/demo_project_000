@@ -25,6 +25,7 @@ function sendOrderError(reply: Parameters<typeof sendConflict>[0], error: OrderD
     case 'STALE_VERSION':
     case 'IDEMPOTENCY_CONFLICT':
     case 'TRACKING_NOT_ALLOWED':
+    case 'OUTSTANDING_BACKORDER':
       sendConflict(reply, error.message);
   }
 }
