@@ -53,12 +53,17 @@ export interface InventoryRepository {
   insertMovement(input: {
     productId: number;
     movementType:
-      'checkout_consumed' | 'receipt_received' | 'backorder_allocated' | 'cancellation_restored';
+      | 'checkout_consumed'
+      | 'receipt_received'
+      | 'backorder_allocated'
+      | 'cancellation_restored'
+      | 'return_received';
     quantityDelta: number;
     paymentIdempotencyKey?: string;
     orderId?: number;
     orderLineItemId?: number;
     receiptId?: number;
+    returnRequestId?: number;
     occurredAt: string;
   }): void;
   findReceipt(
@@ -234,12 +239,13 @@ export function createInventoryRepository(db: Database.Database): InventoryRepos
       orderId,
       orderLineItemId,
       receiptId,
+      returnRequestId,
       occurredAt,
     }) {
       db.prepare(
         `INSERT INTO inventory_stock_movements
-          (product_id, movement_type, quantity_delta, payment_idempotency_key, order_id, order_line_item_id, receipt_id, occurred_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          (product_id, movement_type, quantity_delta, payment_idempotency_key, order_id, order_line_item_id, receipt_id, return_request_id, occurred_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         productId,
         movementType,
@@ -248,6 +254,7 @@ export function createInventoryRepository(db: Database.Database): InventoryRepos
         orderId ?? null,
         orderLineItemId ?? null,
         receiptId ?? null,
+        returnRequestId ?? null,
         occurredAt,
       );
     },

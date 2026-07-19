@@ -40,6 +40,12 @@ export interface InventoryReceiptResult {
   allocations: readonly InventoryReceiptAllocation[];
 }
 
+export interface ReturnRestoreLine {
+  productId: number;
+  orderLineItemId: number;
+  quantity: number;
+}
+
 export type InventoryErrorCode =
   'INSUFFICIENT_STOCK' | 'RESERVATION_EXPIRED' | 'IDEMPOTENCY_KEY_REUSED' | 'INVENTORY_CORRUPTION';
 

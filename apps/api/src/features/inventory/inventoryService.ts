@@ -11,6 +11,7 @@ import {
   type InventoryReceiptAllocation,
   type InventoryReceiptResult,
   type InventoryReservationAllocation,
+  type ReturnRestoreLine,
 } from './inventoryTypes.js';
 
 export interface InventoryService {
@@ -42,6 +43,11 @@ export interface InventoryService {
   }): InventoryReceiptResult & { replayed: boolean };
   cancelOrderInventory(input: {
     orderId: number;
+    occurredAt: string;
+  }): readonly InventoryReceiptAllocation[];
+  restoreReturnInventory(input: {
+    returnRequestId: number;
+    lines: readonly ReturnRestoreLine[];
     occurredAt: string;
   }): readonly InventoryReceiptAllocation[];
 }
@@ -300,6 +306,37 @@ export function createInventoryService(dependencies: {
       };
       repository.setReceiptResponse(receiptId, JSON.stringify(result));
       return { ...result, replayed: false };
+    },
+    restoreReturnInventory({ returnRequestId, lines, occurredAt }) {
+      const fulfilled: InventoryReceiptAllocation[] = [];
+      for (const line of lines) {
+        requirePositiveInteger(line.productId, 'Product ID');
+        requirePositiveInteger(line.orderLineItemId, 'Order line item ID');
+        requirePositiveInteger(line.quantity, 'Restore quantity');
+        if (!repository.incrementStock(line.productId, line.quantity)) {
+          throw new InventoryError(
+            'INVENTORY_CORRUPTION',
+            `Product ${line.productId} not found for return restoration.`,
+          );
+        }
+        repository.insertMovement({
+          productId: line.productId,
+          movementType: 'return_received',
+          quantityDelta: line.quantity,
+          orderLineItemId: line.orderLineItemId,
+          returnRequestId,
+          occurredAt,
+        });
+        const backorderAllocations = fulfillBackorders(
+          line.productId,
+          line.quantity,
+          occurredAt,
+          undefined,
+          undefined,
+        );
+        fulfilled.push(...backorderAllocations);
+      }
+      return fulfilled;
     },
     cancelOrderInventory({ orderId, occurredAt }) {
       const allocations = repository.listOrderAllocations(orderId);

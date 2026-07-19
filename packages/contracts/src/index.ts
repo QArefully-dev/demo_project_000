@@ -13,3 +13,4 @@ export * from './audit.js';
 export * from './bundles.js';
 export * from './reviews.js';
 export * from './inventory.js';
+export * from './returns.js';

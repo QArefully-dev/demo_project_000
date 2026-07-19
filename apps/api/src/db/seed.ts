@@ -7,6 +7,7 @@ import {
 } from '@shop/catalog';
 import type Database from 'better-sqlite3';
 import { seedOrderScenarios } from './orderSeedScenarios.js';
+import { seedReturnScenarios } from './seedReturnScenarios.js';
 import { seedReviewScenarios } from './reviewSeedScenarios.js';
 
 const USERS = [
@@ -316,6 +317,7 @@ export function seedDatabase(db: Database.Database): void {
     }
 
     seedOrderScenarios(db);
+    seedReturnScenarios(db);
     seedReviewScenarios(db);
   });
 

@@ -37,6 +37,7 @@ const expectedVersions = [
   '014',
   '015',
   '016',
+  '017',
 ];
 
 function migrationVersions(db: Database.Database): string[] {
@@ -369,7 +370,7 @@ void test('review depth backfills and trigger-maintains published aggregates', (
 
   migrateDatabase(
     db,
-    migrations.filter((migration) => migration.version !== '016'),
+    migrations.filter((migration) => migration.version !== '016' && migration.version !== '017'),
   );
   db.exec(`
     INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id)
@@ -619,7 +620,10 @@ void test('inventory migration copies legacy mix reservations into unified lease
 
   migrateDatabase(
     db,
-    migrations.filter((migration) => migration.version !== '015' && migration.version !== '016'),
+    migrations.filter(
+      (migration) =>
+        migration.version !== '015' && migration.version !== '016' && migration.version !== '017',
+    ),
   );
   db.prepare(
     `INSERT INTO products (id, name, description, price_cents, category, stock_count)
@@ -706,7 +710,11 @@ void test('lifecycle migration preserves pre-existing order lines and mix snapsh
   migrateDatabase(
     db,
     migrations.filter(
-      (migration) => migration.version !== '014' && migration.version !== '015' && migration.version !== '016',
+      (migration) =>
+        migration.version !== '014' &&
+        migration.version !== '015' &&
+        migration.version !== '016' &&
+        migration.version !== '017',
     ),
   );
   db.prepare(
@@ -1063,6 +1071,119 @@ void test('powderizer expansion upgrades 008 mixes with default scheme and rejec
   assert.throws(
     () => mixes.find('legacy-mix-cart', 'legacy-mix'),
     /Invalid persisted powder mix bag colour scheme/,
+  );
+});
+
+void test('v017 migration creates return tables and extends inventory movements', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-returns-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  // Verify all expected return/refund tables exist
+  for (const table of [
+    'return_requests',
+    'return_request_items',
+    'return_events',
+    'refunds',
+    'refund_items',
+  ]) {
+    assert.deepEqual(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table),
+      { name: table },
+    );
+  }
+
+  // Verify return_events and refunds have immutable triggers
+  for (const trigger of [
+    'return_events_no_update',
+    'return_events_no_delete',
+    'refunds_no_update',
+    'refunds_no_delete',
+    'refund_items_no_update',
+    'refund_items_no_delete',
+  ]) {
+    assert.deepEqual(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = ?").get(trigger),
+      { name: trigger },
+    );
+  }
+
+  // Verify inventory_stock_movements has return_received enum and return_request_id column
+  const movementColumns = db.prepare('PRAGMA table_info(inventory_stock_movements)').all() as {
+    name: string;
+  }[];
+  assert.ok(movementColumns.some((col) => col.name === 'return_request_id'));
+
+  // Verify movement_type check includes return_received
+  // Insert valid return_received movement (requires return_request)
+  db.exec(`
+    INSERT INTO products (name, description, price_cents, category, stock_count, image_set_id)
+    VALUES ('Test product', 'For return test', 1000, 'Test', 10, 'test-product');
+    INSERT INTO users (email, display_name, password_hash, password_salt, role)
+    VALUES ('return-test@example.test', 'Return tester', 'hash', 'salt', 'customer');
+    INSERT INTO orders
+      (customer_name, customer_email, shipping_address, subtotal_cents, total_cents, created_at, lifecycle_status)
+    VALUES ('Return test', 'return-test@example.test', '1 Test Rd', 1000, 1000, '2026-07-01T12:00:00.000Z', 'delivered');
+  `);
+  const orderId = (
+    db.prepare("SELECT id FROM orders WHERE customer_email = 'return-test@example.test'").get() as {
+      id: number;
+    }
+  ).id;
+
+  db.exec(`
+    INSERT INTO order_line_items
+      (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents)
+    VALUES (${orderId}, 1, 'Test product', 1000, 1, 1000);
+    INSERT INTO return_requests
+      (order_id, user_id, status, reason, version, requested_at, approved_at, received_at)
+    VALUES (${orderId}, 1, 'received', 'damaged', 2, '2026-07-02T12:00:00.000Z', '2026-07-02T13:00:00.000Z', '2026-07-03T12:00:00.000Z');
+  `);
+  const returnId = (
+    db.prepare('SELECT id FROM return_requests WHERE order_id = ?').get(orderId) as { id: number }
+  ).id;
+
+  // Insert a return_received movement
+  db.prepare(
+    `
+    INSERT INTO inventory_stock_movements
+      (product_id, movement_type, quantity_delta, order_id, order_line_item_id, return_request_id, occurred_at)
+    VALUES (1, 'return_received', 1, ${orderId}, 1, ${returnId}, '2026-07-03T12:00:00.000Z')
+  `,
+  ).run();
+
+  // Verify FK check is clean
+  const fkViolations = db.pragma('foreign_key_check') as unknown[];
+  assert.equal(fkViolations.length, 0);
+
+  // Verify movement is immutable
+  assert.throws(
+    () =>
+      db
+        .prepare('UPDATE inventory_stock_movements SET quantity_delta = 2 WHERE movement_type = ?')
+        .run('return_received'),
+    /inventory_stock_movements are immutable/,
+  );
+
+  // Verify return event immutability
+  db.prepare(
+    `
+    INSERT INTO return_events
+      (return_request_id, order_id, event_type, actor_user_id, idempotency_key, request_fingerprint, occurred_at)
+    VALUES (${returnId}, ${orderId}, 'return.received', 1, '550e8400-e29b-41d4-a716-446655440000', 'abc123', '2026-07-03T12:00:00.000Z')
+  `,
+  ).run();
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          "UPDATE return_events SET event_type = 'return.approved' WHERE idempotency_key = ?",
+        )
+        .run('550e8400-e29b-41d4-a716-446655440000'),
+    /return_events are immutable/,
   );
 });
 

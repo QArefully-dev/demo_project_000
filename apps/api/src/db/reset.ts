@@ -21,8 +21,19 @@ import type Database from 'better-sqlite3';
 export function resetDatabase(db: Database.Database): void {
   const reset = db.transaction(() => {
     db.exec(`
+      DROP TRIGGER IF EXISTS refund_items_no_update;
+      DROP TRIGGER IF EXISTS refund_items_no_delete;
+      DROP TRIGGER IF EXISTS refunds_no_update;
+      DROP TRIGGER IF EXISTS refunds_no_delete;
+      DROP TRIGGER IF EXISTS return_events_no_update;
+      DROP TRIGGER IF EXISTS return_events_no_delete;
       DROP TRIGGER IF EXISTS inventory_stock_movements_no_delete;
       DROP TRIGGER IF EXISTS inventory_stock_movements_no_update;
+      DELETE FROM refund_items;
+      DELETE FROM refunds;
+      DELETE FROM return_events;
+      DELETE FROM return_request_items;
+      DELETE FROM return_requests;
       DELETE FROM inventory_stock_movements;
       DELETE FROM inventory_receipts;
       DELETE FROM order_inventory_allocations;
@@ -64,6 +75,24 @@ export function resetDatabase(db: Database.Database): void {
       CREATE TRIGGER inventory_stock_movements_no_delete
       BEFORE DELETE ON inventory_stock_movements
       BEGIN SELECT RAISE(ABORT, 'inventory_stock_movements are immutable'); END;
+      CREATE TRIGGER return_events_no_update
+      BEFORE UPDATE ON return_events
+      BEGIN SELECT RAISE(ABORT, 'return_events are immutable'); END;
+      CREATE TRIGGER return_events_no_delete
+      BEFORE DELETE ON return_events
+      BEGIN SELECT RAISE(ABORT, 'return_events are immutable'); END;
+      CREATE TRIGGER refunds_no_update
+      BEFORE UPDATE ON refunds
+      BEGIN SELECT RAISE(ABORT, 'refunds are immutable'); END;
+      CREATE TRIGGER refunds_no_delete
+      BEFORE DELETE ON refunds
+      BEGIN SELECT RAISE(ABORT, 'refunds are immutable'); END;
+      CREATE TRIGGER refund_items_no_update
+      BEFORE UPDATE ON refund_items
+      BEGIN SELECT RAISE(ABORT, 'refund_items are immutable'); END;
+      CREATE TRIGGER refund_items_no_delete
+      BEFORE DELETE ON refund_items
+      BEGIN SELECT RAISE(ABORT, 'refund_items are immutable'); END;
     `);
   });
 
