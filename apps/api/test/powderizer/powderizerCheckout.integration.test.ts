@@ -244,10 +244,12 @@ void test('finalizes migrated authorized v2 and v3 mix quotes through unified in
     quote.version = version;
     delete quote.inventoryAllocations;
     if (version === 2) {
-      quote.mixLines = quote.mixLines.map(({ bagColourScheme, usageLabel, ...line }) => ({
-        ...line,
-        snapshotVersion: 1,
-      }));
+      quote.mixLines = quote.mixLines.map((line) => {
+        const legacyLine = { ...line };
+        delete legacyLine.bagColourScheme;
+        delete legacyLine.usageLabel;
+        return { ...legacyLine, snapshotVersion: 1 };
+      });
     }
     db.prepare('UPDATE payments SET quote_json = ? WHERE idempotency_key = ?').run(
       JSON.stringify(quote),
