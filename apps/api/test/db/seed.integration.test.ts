@@ -212,6 +212,136 @@ void test('seed installs deterministic lifecycle scenarios once and reset restor
   );
 });
 
+void test('seed installs idempotent review moderation scenarios and preserves local reviews', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-review-seed-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT users.email, reviews.product_id, reviews.rating, reviews.status
+         FROM reviews INNER JOIN users ON users.id = reviews.user_id
+         ORDER BY reviews.created_at, reviews.id`,
+      )
+      .all(),
+    [
+      { email: 'alice@example.com', product_id: 1, rating: 5, status: 'published' },
+      { email: 'bob@example.com', product_id: 27, rating: 2, status: 'published' },
+      { email: 'alice@example.com', product_id: 2, rating: 3, status: 'hidden' },
+    ],
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT reviewers.email AS reviewer, voters.email AS voter
+         FROM review_helpful_votes
+         INNER JOIN reviews ON reviews.id = review_helpful_votes.review_id
+         INNER JOIN users AS reviewers ON reviewers.id = reviews.user_id
+         INNER JOIN users AS voters ON voters.id = review_helpful_votes.user_id
+         ORDER BY reviewers.email`,
+      )
+      .all(),
+    [
+      { reviewer: 'alice@example.com', voter: 'bob@example.com' },
+      { reviewer: 'bob@example.com', voter: 'alice@example.com' },
+    ],
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT reviewers.email AS reviewer, reporters.email AS reporter, review_reports.reason,
+                review_reports.detail, review_reports.status
+         FROM review_reports
+         INNER JOIN reviews ON reviews.id = review_reports.review_id
+         INNER JOIN users AS reviewers ON reviewers.id = reviews.user_id
+         INNER JOIN users AS reporters ON reporters.id = review_reports.user_id`,
+      )
+      .all(),
+    [
+      {
+        reviewer: 'bob@example.com',
+        reporter: 'alice@example.com',
+        reason: 'unsafe',
+        detail: 'Seeded moderation example for the reported queue.',
+        status: 'open',
+      },
+    ],
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT product_id, published_count, rating_sum, stars_1, stars_2, stars_3, stars_4, stars_5
+         FROM review_rating_aggregates ORDER BY product_id`,
+      )
+      .all(),
+    [
+      {
+        product_id: 1,
+        published_count: 1,
+        rating_sum: 5,
+        stars_1: 0,
+        stars_2: 0,
+        stars_3: 0,
+        stars_4: 0,
+        stars_5: 1,
+      },
+      {
+        product_id: 27,
+        published_count: 1,
+        rating_sum: 2,
+        stars_1: 0,
+        stars_2: 1,
+        stars_3: 0,
+        stars_4: 0,
+        stars_5: 0,
+      },
+    ],
+  );
+
+  db.prepare(
+    `INSERT INTO reviews (product_id, user_id, rating, body, created_at, updated_at)
+     VALUES (3, 1, 4, 'Local review content remains untouched by canonical scenario seeding.', ?, ?)`,
+  ).run('2026-07-17T00:00:00.000Z', '2026-07-17T00:00:00.000Z');
+  seedDatabase(db);
+  assert.deepEqual(
+    db.prepare('SELECT rating, body FROM reviews WHERE product_id = 3 AND user_id = 1').get(),
+    {
+      rating: 4,
+      body: 'Local review content remains untouched by canonical scenario seeding.',
+    },
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM review_helpful_votes').get() as { count: number })
+      .count,
+    2,
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM review_reports').get() as { count: number }).count,
+    1,
+  );
+
+  resetDatabase(db);
+  seedDatabase(db);
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM reviews').get() as { count: number }).count,
+    3,
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM review_helpful_votes').get() as { count: number })
+      .count,
+    2,
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM review_reports').get() as { count: number }).count,
+    1,
+  );
+});
+
 void test('seed preserves local state; reset restores canonical data', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-seed-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
@@ -461,7 +591,7 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   ).run(resetOrderId);
   db.prepare(
     `INSERT INTO reviews (product_id, user_id, rating, body)
-     VALUES (1, 1, 5, '12345678901234567890')`,
+     VALUES (99, 1, 5, '12345678901234567890')`,
   ).run();
 
   resetDatabase(db);
@@ -515,6 +645,6 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   );
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM reviews').get() as { count: number }).count,
-    0,
+    3,
   );
 });

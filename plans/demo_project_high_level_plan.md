@@ -66,7 +66,7 @@ Avoid visible platform complexity:
 - launch: `npm ci` -> `npm run dev`
 - external services: none
 - implemented commerce: auth, catalog, cart, inventory, promotions, checkout, simulated payment, orders, favourites, account, dev mailbox
-- implemented catalog depth: typed specifications and tags, advanced filters and stable sorts, comparison, similar products, curated bundles, customer reviews
+- implemented catalog depth: typed specifications and tags, advanced filters and stable sorts, comparison, similar products, curated bundles, customer reviews with helpfulness and abuse reporting
 - implemented customer journey: composed product detail, comparison entry points, help and policy center, Powderizer custom mixes and history
 - implemented integrity: ordered migrations, append-only audit ledger, sanitized admin audit reads
 - seed: 50 deterministic powder products across 7 categories, plus users, promotions, favourites, catalog metadata, curated bundles, and inventory/backorder scenarios
@@ -167,17 +167,17 @@ Status: delivery order for remaining work. `partial` = implemented subset; `futu
 5. Pricing and promotions: partial
    - completed: percentage and fixed discounts, start/end scheduling, item/subtotal gates, global and per-user limits, reservation-safe redemption
    - remaining: category offers, stacking, gift cards, loyalty points, sales presentation
-6. Review depth: partial
-   - completed: admin-only hide/restore endpoints, published-only summaries and star distributions
-   - remaining: moderation UI and queues, helpful votes, abuse controls, aggregate persistence
+6. Review depth: completed
+   - implementation record: `plans/review_depth_coding_plan.md`
+   - delivered: persisted, trigger-maintained published rating aggregates; customer helpful-vote toggles and abuse reports with withdrawal and caps; public helpful sorting and viewer engagement state; role-gated reported and hidden moderation queues; atomic hide/action and dismiss decisions; deterministic review moderation seed scenarios; customer and admin accessibility coverage
 7. Account depth: partial
    - completed: session creation, expiry, logout, password-change invalidation, profile read, password change
    - remaining: addresses, session list and selective revocation, preferences, data export, account deletion
 8. Async behavior: future
    - remaining: local job queue, notifications, retry policy, captured webhooks, failure injection
 9. Secondary admin: partial
-   - completed: admin review-moderation API; paginated, filtered, read-only audit API
-   - remaining: admin UI; product, order, refund, review, user, feature-flag management
+   - completed: review moderation API and UI; paginated, filtered, read-only audit API
+   - remaining: product, order, refund, user, and feature-flag management
 10. Reverse Process: future
    - powder -> original object reconstruction; eligible-powder selection, object specification, controlled reconstruction order, staged status updates
    - pricing: corresponding powdering-process price * 10,000; integer minor units; no discount, promotion, gift-card, or loyalty redemption

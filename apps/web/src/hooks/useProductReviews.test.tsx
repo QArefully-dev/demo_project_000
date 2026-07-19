@@ -10,6 +10,10 @@ const reviewsApi = vi.hoisted(() => ({
   createProductReview: vi.fn(),
   updateReview: vi.fn(),
   deleteReview: vi.fn(),
+  addHelpfulVote: vi.fn(),
+  removeHelpfulVote: vi.fn(),
+  createReviewReport: vi.fn(),
+  withdrawReviewReport: vi.fn(),
 }));
 
 const authState = vi.hoisted(() => ({ user: null as PublicUser | null }));
@@ -48,6 +52,10 @@ function response(id: string, total = 1, page = 1): ReviewListResponse {
         rating: 5,
         body: 'This review has enough characters.',
         verifiedPurchase: false,
+        helpfulCount: 0,
+        viewerCanEngage: false,
+        viewerHasHelpfulVote: false,
+        viewerHasOpenReport: false,
         createdAt: '2026-07-14T00:00:00.000Z',
         updatedAt: '2026-07-14T00:00:00.000Z',
       },
@@ -224,5 +232,140 @@ describe('useProductReviews', () => {
       ),
     );
     expect(result.current.page).toBe(1);
+  });
+
+  it('refetches public viewer state when the signed-in customer changes', async () => {
+    reviewsApi.getProductReviews.mockResolvedValue(response('one'));
+    reviewsApi.getMyProductReview.mockResolvedValue(null);
+    const { rerender } = renderHook(() => useProductReviews('one'));
+    await waitFor(() => expect(reviewsApi.getProductReviews).toHaveBeenCalledTimes(1));
+
+    authState.user = {
+      id: 'customer',
+      email: 'customer@example.com',
+      displayName: 'Customer',
+      role: 'customer',
+    };
+    rerender();
+
+    await waitFor(() => expect(reviewsApi.getProductReviews).toHaveBeenCalledTimes(2));
+  });
+
+  it('uses the server engagement response rather than an optimistic count', async () => {
+    authState.user = {
+      id: 'customer',
+      email: 'customer@example.com',
+      displayName: 'Customer',
+      role: 'customer',
+    };
+    reviewsApi.getProductReviews.mockResolvedValue({
+      ...response('one'),
+      items: [{ ...response('one').items[0]!, viewerCanEngage: true, helpfulCount: 3 }],
+    });
+    reviewsApi.getMyProductReview.mockResolvedValue(null);
+    reviewsApi.addHelpfulVote.mockResolvedValue({
+      reviewId: 'one',
+      helpfulCount: 8,
+      viewerHasHelpfulVote: true,
+      viewerHasOpenReport: false,
+    });
+    const { result } = renderHook(() => useProductReviews('one'));
+    await waitFor(() => expect(result.current.isListLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.toggleHelpful('one', false);
+    });
+
+    expect(result.current.list?.items[0]).toMatchObject({
+      helpfulCount: 8,
+      viewerHasHelpfulVote: true,
+    });
+  });
+
+  it('aborts and ignores a stale engagement response after the viewer changes', async () => {
+    authState.user = {
+      id: 'customer-one',
+      email: 'one@example.com',
+      displayName: 'One',
+      role: 'customer',
+    };
+    const engagement = deferred<{
+      reviewId: string;
+      helpfulCount: number;
+      viewerHasHelpfulVote: boolean;
+      viewerHasOpenReport: boolean;
+    }>();
+    reviewsApi.getProductReviews.mockResolvedValue({
+      ...response('one'),
+      items: [{ ...response('one').items[0]!, viewerCanEngage: true, helpfulCount: 3 }],
+    });
+    reviewsApi.getMyProductReview.mockResolvedValue(null);
+    reviewsApi.addHelpfulVote.mockReturnValue(engagement.promise);
+    const { result, rerender } = renderHook(() => useProductReviews('one'));
+    await waitFor(() => expect(result.current.isListLoading).toBe(false));
+
+    act(() => {
+      void result.current.toggleHelpful('one', false);
+    });
+    await waitFor(() => expect(reviewsApi.addHelpfulVote).toHaveBeenCalledTimes(1));
+
+    authState.user = {
+      id: 'customer-two',
+      email: 'two@example.com',
+      displayName: 'Two',
+      role: 'customer',
+    };
+    act(() => rerender());
+    await waitFor(() => expect(reviewsApi.getProductReviews).toHaveBeenCalledTimes(2));
+    const mutationSignal = reviewsApi.addHelpfulVote.mock.calls[0]?.[1] as AbortSignal;
+    expect(mutationSignal.aborted).toBe(true);
+
+    await act(async () => {
+      engagement.resolve({
+        reviewId: 'one',
+        helpfulCount: 8,
+        viewerHasHelpfulVote: true,
+        viewerHasOpenReport: false,
+      });
+      await engagement.promise;
+    });
+    expect(result.current.list?.items[0]?.helpfulCount).toBe(3);
+  });
+
+  it('clears an engagement status when the authenticated viewer changes', async () => {
+    authState.user = {
+      id: 'customer-one',
+      email: 'one@example.com',
+      displayName: 'One',
+      role: 'customer',
+    };
+    reviewsApi.getProductReviews.mockResolvedValue({
+      ...response('one'),
+      items: [{ ...response('one').items[0]!, viewerCanEngage: true }],
+    });
+    reviewsApi.getMyProductReview.mockResolvedValue(null);
+    reviewsApi.addHelpfulVote.mockResolvedValue({
+      reviewId: 'one',
+      helpfulCount: 1,
+      viewerHasHelpfulVote: true,
+      viewerHasOpenReport: false,
+    });
+    const { result, rerender } = renderHook(() => useProductReviews('one'));
+    await waitFor(() => expect(result.current.isListLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.toggleHelpful('one', false);
+    });
+    expect(result.current.engagementStatus).toBe('Marked this review helpful.');
+
+    authState.user = {
+      id: 'customer-two',
+      email: 'two@example.com',
+      displayName: 'Two',
+      role: 'customer',
+    };
+    act(() => rerender());
+    await waitFor(() => expect(reviewsApi.getProductReviews).toHaveBeenCalledTimes(2));
+    expect(result.current.engagementStatus).toBeNull();
   });
 });

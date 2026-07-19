@@ -1,6 +1,8 @@
 import { apiFetch } from './client';
 import {
+  CreateReviewReportBody,
   OwnedReviewResponse,
+  ReviewEngagementResponse,
   ReviewListResponse,
   ReviewMutationResponse,
 } from '@shop/contracts/reviews';
@@ -55,4 +57,46 @@ export function updateReview(
 
 export function deleteReview(reviewId: string): Promise<SuccessResponse> {
   return apiFetch(SuccessResponse, `/api/reviews/${reviewId}`, { method: 'DELETE' });
+}
+
+export function addHelpfulVote(
+  reviewId: string,
+  signal?: AbortSignal,
+): Promise<ReviewEngagementResponse> {
+  return apiFetch(ReviewEngagementResponse, `/api/reviews/${reviewId}/helpful`, {
+    method: 'PUT',
+    signal,
+  });
+}
+
+export function removeHelpfulVote(
+  reviewId: string,
+  signal?: AbortSignal,
+): Promise<ReviewEngagementResponse> {
+  return apiFetch(ReviewEngagementResponse, `/api/reviews/${reviewId}/helpful`, {
+    method: 'DELETE',
+    signal,
+  });
+}
+
+export function createReviewReport(
+  reviewId: string,
+  body: CreateReviewReportBody,
+  signal?: AbortSignal,
+): Promise<ReviewEngagementResponse> {
+  return apiFetch(ReviewEngagementResponse, `/api/reviews/${reviewId}/reports`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+    signal,
+  });
+}
+
+export function withdrawReviewReport(
+  reviewId: string,
+  signal?: AbortSignal,
+): Promise<ReviewEngagementResponse> {
+  return apiFetch(ReviewEngagementResponse, `/api/reviews/${reviewId}/reports/me`, {
+    method: 'DELETE',
+    signal,
+  });
 }

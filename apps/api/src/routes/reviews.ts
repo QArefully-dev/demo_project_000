@@ -1,7 +1,13 @@
 import {
+  AdminReviewModerationBody,
+  AdminReviewModerationResponse,
+  AdminReviewQueueQuery,
+  AdminReviewQueueResponse,
+  CreateReviewReportBody,
   CreateReviewBody,
   OwnedReviewResponse,
   ReviewIdParam,
+  ReviewEngagementResponse,
   ReviewListQuery,
   ReviewListResponse,
   ReviewMutationResponse,
@@ -15,7 +21,13 @@ import { ReviewServiceError, type ReviewService } from '../features/reviews/revi
 import type { AuditContext } from '../features/audit/auditEvent.js';
 import { requireAdmin, requireAuth, requireCustomer } from '../plugins/auth.js';
 import type { SessionService } from '../features/auth/sessionService.js';
-import { sendBadRequest, sendConflict, sendForbidden, sendNotFound } from '../utils/errors.js';
+import {
+  sendBadRequest,
+  sendConflict,
+  sendError,
+  sendForbidden,
+  sendNotFound,
+} from '../utils/errors.js';
 
 export interface ReviewRouteServices {
   sessions: SessionService;
@@ -39,6 +51,9 @@ function sendReviewError(
     case 'DUPLICATE':
     case 'INVALID_TRANSITION':
       sendConflict(reply, error.message);
+      return;
+    case 'TOO_MANY_REPORTS':
+      sendError(reply, 429, error.message);
       return;
   }
 }
@@ -65,7 +80,11 @@ export default function reviewsRoutes(
     },
     (request, reply) => {
       try {
-        return services.reviews.listProduct(Number(request.params.productId), request.query);
+        return services.reviews.listProduct(
+          Number(request.params.productId),
+          request.query,
+          request.authenticatedUser?.role === 'customer' ? request.authenticatedUser.id : null,
+        );
       } catch (error) {
         if (error instanceof ReviewServiceError) {
           sendReviewError(reply, error);
@@ -193,6 +212,179 @@ export default function reviewsRoutes(
           contextFor(request.authenticatedUser!.id, request.id),
         );
         return { success: true as const };
+      } catch (error) {
+        if (error instanceof ReviewServiceError) {
+          sendReviewError(reply, error);
+          return;
+        }
+        throw error;
+      }
+    },
+  );
+
+  for (const [method, suffix, handler] of [
+    [
+      'put',
+      'helpful',
+      (userId: number, reviewId: number, context: AuditContext) =>
+        services.reviews.addHelpful(userId, reviewId, context),
+    ],
+    [
+      'delete',
+      'helpful',
+      (userId: number, reviewId: number, context: AuditContext) =>
+        services.reviews.removeHelpful(userId, reviewId, context),
+    ],
+  ] as const) {
+    typed[method](
+      `/api/reviews/:reviewId/${suffix}`,
+      {
+        preHandler: [requireCustomer(services.sessions)],
+        schema: {
+          params: ReviewIdParam,
+          response: {
+            200: ReviewEngagementResponse,
+            401: ErrorResponse,
+            403: ErrorResponse,
+            404: ErrorResponse,
+          },
+        },
+      },
+      (request, reply) => {
+        try {
+          return handler(
+            request.authenticatedUser!.id,
+            Number(request.params.reviewId),
+            contextFor(request.authenticatedUser!.id, request.id),
+          );
+        } catch (error) {
+          if (error instanceof ReviewServiceError) {
+            sendReviewError(reply, error);
+            return;
+          }
+          throw error;
+        }
+      },
+    );
+  }
+
+  typed.post(
+    '/api/reviews/:reviewId/reports',
+    {
+      preHandler: [requireCustomer(services.sessions)],
+      schema: {
+        params: ReviewIdParam,
+        body: CreateReviewReportBody,
+        response: {
+          200: ReviewEngagementResponse,
+          400: ErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+          429: ErrorResponse,
+        },
+      },
+    },
+    (request, reply) => {
+      try {
+        return services.reviews.createReport(
+          request.authenticatedUser!.id,
+          Number(request.params.reviewId),
+          request.body,
+          contextFor(request.authenticatedUser!.id, request.id),
+        );
+      } catch (error) {
+        if (error instanceof ReviewServiceError) {
+          sendReviewError(reply, error);
+          return;
+        }
+        throw error;
+      }
+    },
+  );
+  typed.delete(
+    '/api/reviews/:reviewId/reports/me',
+    {
+      preHandler: [requireCustomer(services.sessions)],
+      schema: {
+        params: ReviewIdParam,
+        response: {
+          200: ReviewEngagementResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
+      },
+    },
+    (request, reply) => {
+      try {
+        return services.reviews.withdrawReport(
+          request.authenticatedUser!.id,
+          Number(request.params.reviewId),
+          contextFor(request.authenticatedUser!.id, request.id),
+        );
+      } catch (error) {
+        if (error instanceof ReviewServiceError) {
+          sendReviewError(reply, error);
+          return;
+        }
+        throw error;
+      }
+    },
+  );
+
+  typed.get(
+    '/api/admin/reviews/moderation',
+    {
+      preHandler: [requireAdmin(services.sessions)],
+      schema: {
+        querystring: AdminReviewQueueQuery,
+        response: {
+          200: AdminReviewQueueResponse,
+          400: ErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+        },
+      },
+    },
+    (request, reply) => {
+      try {
+        return services.reviews.listModeration(request.query);
+      } catch (error) {
+        if (error instanceof ReviewServiceError) {
+          sendReviewError(reply, error);
+          return;
+        }
+        throw error;
+      }
+    },
+  );
+  typed.post(
+    '/api/admin/reviews/:reviewId/moderation',
+    {
+      preHandler: [requireAdmin(services.sessions)],
+      schema: {
+        params: ReviewIdParam,
+        body: AdminReviewModerationBody,
+        response: {
+          200: AdminReviewModerationResponse,
+          400: ErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+        },
+      },
+    },
+    (request, reply) => {
+      try {
+        return services.reviews.moderate(
+          Number(request.params.reviewId),
+          request.body.decision,
+          request.authenticatedUser!.id,
+          contextFor(request.authenticatedUser!.id, request.id),
+        );
       } catch (error) {
         if (error instanceof ReviewServiceError) {
           sendReviewError(reply, error);

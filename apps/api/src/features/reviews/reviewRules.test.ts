@@ -5,6 +5,8 @@ import {
   REVIEW_BODY_MIN_LENGTH,
   ReviewRuleError,
   normalizeReviewListQuery,
+  normalizeAdminReviewQueueQuery,
+  normalizeReviewReport,
   normalizeReviewWrite,
 } from './reviewRules.js';
 
@@ -63,4 +65,20 @@ void test('defaults and validates public review sort and pagination', () => {
   ]) {
     expectRuleError(() => normalizeReviewListQuery(query));
   }
+});
+
+void test('normalizes report detail and moderation queue bounds', () => {
+  assert.deepEqual(normalizeReviewReport({ reason: 'other', detail: '  Specific abuse.  ' }), {
+    reason: 'other',
+    detail: 'Specific abuse.',
+  });
+  expectRuleError(() => normalizeReviewReport({ reason: 'other' }));
+  expectRuleError(() => normalizeReviewReport({ reason: 'unknown' }));
+  assert.deepEqual(normalizeAdminReviewQueueQuery({ queue: 'reported', page: 2, pageSize: 5 }), {
+    queue: 'reported',
+    sort: 'oldest',
+    page: 2,
+    pageSize: 5,
+  });
+  expectRuleError(() => normalizeAdminReviewQueueQuery({ queue: 'hidden', sort: 'recent' }));
 });

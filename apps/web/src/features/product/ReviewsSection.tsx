@@ -16,6 +16,7 @@ const sortOptions: Array<{ value: ReviewSort; label: string }> = [
   { value: 'oldest', label: 'Oldest' },
   { value: 'highest', label: 'Highest rating' },
   { value: 'lowest', label: 'Lowest rating' },
+  { value: 'helpful', label: 'Most helpful' },
 ];
 
 export function ReviewsSection({ productId }: ReviewsSectionProps) {
@@ -66,7 +67,8 @@ export function ReviewsSection({ productId }: ReviewsSectionProps) {
                 state={{ from: returnPath }}
               >
                 Sign in to write a review
-              </Link>
+              </Link>{' '}
+              or mark reviews helpful and report concerns.
             </p>
           )}
           {!isAuthLoading && user?.role === 'customer' && reviews.isOwnerLoading && (
@@ -126,7 +128,15 @@ export function ReviewsSection({ productId }: ReviewsSectionProps) {
           )}
           {!reviews.isListLoading && !reviews.listError && reviews.list && (
             <>
-              <ReviewList reviews={reviews.list.items} />
+              <ReviewList
+                reviews={reviews.list.items}
+                engagementStatus={reviews.engagementStatus}
+                engagementErrors={reviews.engagementErrors}
+                onToggleHelpful={reviews.toggleHelpful}
+                onSubmitReport={reviews.submitReport}
+                onWithdrawReport={reviews.withdrawReport}
+                isEngagementMutating={reviews.isEngagementMutating}
+              />
               {totalPages > 1 && (
                 <nav className="mt-5 flex items-center gap-3" aria-label="Review pages">
                   <Button

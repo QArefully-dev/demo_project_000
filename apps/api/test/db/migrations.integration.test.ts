@@ -36,6 +36,7 @@ const expectedVersions = [
   '013',
   '014',
   '015',
+  '016',
 ];
 
 function migrationVersions(db: Database.Database): string[] {
@@ -128,6 +129,12 @@ void test('migrations create a fresh schema, record every version, and remain id
     db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'reviews'").get(),
     { name: 'reviews' },
   );
+  for (const table of ['review_rating_aggregates', 'review_helpful_votes', 'review_reports']) {
+    assert.deepEqual(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table),
+      { name: table },
+    );
+  }
   for (const index of [
     'audit_events_occurred_at_id_idx',
     'audit_events_action_occurred_at_id_idx',
@@ -152,6 +159,16 @@ void test('migrations create a fresh schema, record every version, and remain id
     );
   }
   for (const trigger of ['audit_events_no_update', 'audit_events_no_delete']) {
+    assert.deepEqual(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = ?").get(trigger),
+      { name: trigger },
+    );
+  }
+  for (const trigger of [
+    'reviews_aggregate_after_insert',
+    'reviews_aggregate_after_update',
+    'reviews_aggregate_after_delete',
+  ]) {
     assert.deepEqual(
       db.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = ?").get(trigger),
       { name: trigger },
@@ -341,6 +358,175 @@ void test('customer review constraints reject invalid scalar and duplicate data'
   );
 });
 
+void test('review depth backfills and trigger-maintains published aggregates', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-review-depth-'));
+  const db = new Database(join(directory, 'shop.db'));
+  db.pragma('foreign_keys = ON');
+  t.after(() => {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  migrateDatabase(
+    db,
+    migrations.filter((migration) => migration.version !== '016'),
+  );
+  db.exec(`
+    INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id)
+    VALUES (801, 'Aggregate product', 'Aggregate migration fixture', 1000, 'Test', 1, 'aggregate-product');
+    INSERT INTO users (id, email, display_name, password_hash, password_salt, role)
+    VALUES
+      (801, 'aggregate-one@example.test', 'Aggregate one', 'hash', 'salt', 'customer'),
+      (802, 'aggregate-two@example.test', 'Aggregate two', 'hash', 'salt', 'customer'),
+      (803, 'aggregate-admin@example.test', 'Aggregate admin', 'hash', 'salt', 'admin');
+    INSERT INTO reviews (id, product_id, user_id, rating, body, status)
+    VALUES
+      (801, 801, 801, 5, 'Published review fixture body.', 'published'),
+      (802, 801, 802, 2, 'Hidden review fixture body...', 'hidden');
+  `);
+
+  migrateDatabase(db);
+  const aggregate = () =>
+    db
+      .prepare(
+        'SELECT published_count, rating_sum, stars_1, stars_2, stars_3, stars_4, stars_5 FROM review_rating_aggregates WHERE product_id = 801',
+      )
+      .get();
+  assert.deepEqual(aggregate(), {
+    published_count: 1,
+    rating_sum: 5,
+    stars_1: 0,
+    stars_2: 0,
+    stars_3: 0,
+    stars_4: 0,
+    stars_5: 1,
+  });
+
+  db.prepare(
+    `INSERT INTO reviews (id, product_id, user_id, rating, body, status)
+     VALUES (803, 801, 803, 1, 'Inserted published review body.', 'published')`,
+  ).run();
+  assert.deepEqual(aggregate(), {
+    published_count: 2,
+    rating_sum: 6,
+    stars_1: 1,
+    stars_2: 0,
+    stars_3: 0,
+    stars_4: 0,
+    stars_5: 1,
+  });
+
+  db.prepare("UPDATE reviews SET status = 'published' WHERE id = 802").run();
+  assert.deepEqual(aggregate(), {
+    published_count: 3,
+    rating_sum: 8,
+    stars_1: 1,
+    stars_2: 1,
+    stars_3: 0,
+    stars_4: 0,
+    stars_5: 1,
+  });
+
+  db.prepare("UPDATE reviews SET status = 'hidden' WHERE id = 802").run();
+  assert.deepEqual(aggregate(), {
+    published_count: 2,
+    rating_sum: 6,
+    stars_1: 1,
+    stars_2: 0,
+    stars_3: 0,
+    stars_4: 0,
+    stars_5: 1,
+  });
+
+  db.prepare("UPDATE reviews SET status = 'published', rating = 4 WHERE id = 802").run();
+  assert.deepEqual(aggregate(), {
+    published_count: 3,
+    rating_sum: 10,
+    stars_1: 1,
+    stars_2: 0,
+    stars_3: 0,
+    stars_4: 1,
+    stars_5: 1,
+  });
+
+  db.prepare('UPDATE reviews SET rating = 3 WHERE id = 801').run();
+  assert.deepEqual(aggregate(), {
+    published_count: 3,
+    rating_sum: 8,
+    stars_1: 1,
+    stars_2: 0,
+    stars_3: 1,
+    stars_4: 1,
+    stars_5: 0,
+  });
+
+  db.prepare('DELETE FROM reviews WHERE id = 802').run();
+  assert.deepEqual(aggregate(), {
+    published_count: 2,
+    rating_sum: 4,
+    stars_1: 1,
+    stars_2: 0,
+    stars_3: 1,
+    stars_4: 0,
+    stars_5: 0,
+  });
+
+  db.prepare('DELETE FROM reviews WHERE id = 803').run();
+  assert.deepEqual(aggregate(), {
+    published_count: 1,
+    rating_sum: 3,
+    stars_1: 0,
+    stars_2: 0,
+    stars_3: 1,
+    stars_4: 0,
+    stars_5: 0,
+  });
+  assert.throws(
+    () =>
+      db
+        .prepare('UPDATE review_rating_aggregates SET published_count = 2 WHERE product_id = 801')
+        .run(),
+    /CHECK constraint failed/,
+  );
+});
+
+void test('review engagement tables enforce report state and cascade before reset', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-review-engagement-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+  db.exec(`
+    INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id)
+    VALUES (811, 'Engagement product', 'Engagement migration fixture', 1000, 'Test', 1, 'engagement-product');
+    INSERT INTO users (id, email, display_name, password_hash, password_salt, role)
+    VALUES
+      (811, 'engagement-author@example.test', 'Author', 'hash', 'salt', 'customer'),
+      (812, 'engagement-reporter@example.test', 'Reporter', 'hash', 'salt', 'customer'),
+      (813, 'engagement-admin@example.test', 'Admin', 'hash', 'salt', 'admin');
+    INSERT INTO reviews (id, product_id, user_id, rating, body, status)
+    VALUES (811, 811, 811, 4, 'Engagement review fixture body.', 'published');
+    INSERT INTO review_helpful_votes (review_id, user_id) VALUES (811, 812);
+    INSERT INTO review_reports (review_id, user_id, reason, detail) VALUES (811, 812, 'other', 'Explained concern');
+  `);
+  assert.throws(
+    () => db.prepare("UPDATE review_reports SET status = 'dismissed' WHERE review_id = 811").run(),
+    /CHECK constraint failed/,
+  );
+  db.prepare('DELETE FROM reviews WHERE id = 811').run();
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM review_helpful_votes').get() as { count: number })
+      .count,
+    0,
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM review_reports').get() as { count: number }).count,
+    0,
+  );
+  resetDatabase(db);
+});
+
 void test('migrations upgrade the legacy schema without losing known data', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-legacy-'));
   const db = new Database(join(directory, 'shop.db'));
@@ -433,7 +619,7 @@ void test('inventory migration copies legacy mix reservations into unified lease
 
   migrateDatabase(
     db,
-    migrations.filter((migration) => migration.version !== '015'),
+    migrations.filter((migration) => migration.version !== '015' && migration.version !== '016'),
   );
   db.prepare(
     `INSERT INTO products (id, name, description, price_cents, category, stock_count)
@@ -519,7 +705,9 @@ void test('lifecycle migration preserves pre-existing order lines and mix snapsh
 
   migrateDatabase(
     db,
-    migrations.filter((migration) => migration.version !== '014' && migration.version !== '015'),
+    migrations.filter(
+      (migration) => migration.version !== '014' && migration.version !== '015' && migration.version !== '016',
+    ),
   );
   db.prepare(
     `INSERT INTO orders

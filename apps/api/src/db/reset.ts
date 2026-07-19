@@ -7,8 +7,9 @@ import type Database from 'better-sqlite3';
  * remain as historical facts even when referenced mutable rows are removed.
  * Does NOT drop tables — schema is preserved.
  *
- * Reset order: inventory movements -> receipts -> inventory allocations -> reservations -> payments ->
- *   promo redemptions -> reviews -> favourites -> reset tokens -> sessions -> mailbox ->
+ * Reset order: inventory movements -> receipts -> inventory allocations -> reservations ->
+ *   checkout reservations -> payments -> promo redemptions -> review reports -> helpful votes ->
+ *   reviews -> rating aggregates -> favourites -> reset tokens -> sessions -> mailbox ->
  *   mix components -> powder mixes -> order access grants -> lifecycle events ->
  *   shipment allocations -> shipments -> order mix snapshots -> order line items ->
  *   orders -> cart line items -> carts -> promo codes -> bundle components ->
@@ -30,7 +31,10 @@ export function resetDatabase(db: Database.Database): void {
       DELETE FROM promo_reservations;
       DELETE FROM payments;
       DELETE FROM promo_redemptions;
+      DELETE FROM review_reports;
+      DELETE FROM review_helpful_votes;
       DELETE FROM reviews;
+      DELETE FROM review_rating_aggregates;
       DELETE FROM favourites;
       DELETE FROM password_reset_tokens;
       DELETE FROM sessions;
