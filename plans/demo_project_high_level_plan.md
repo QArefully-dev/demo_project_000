@@ -65,11 +65,11 @@ Avoid visible platform complexity:
 - shared contracts: TypeBox
 - launch: `npm ci` -> `npm run dev`
 - external services: none
-- implemented commerce: auth, catalog, cart, promotions, checkout, simulated payment, orders, favourites, account, dev mailbox
+- implemented commerce: auth, catalog, cart, inventory, promotions, checkout, simulated payment, orders, favourites, account, dev mailbox
 - implemented catalog depth: typed specifications and tags, advanced filters and stable sorts, comparison, similar products, curated bundles, customer reviews
 - implemented customer journey: composed product detail, comparison entry points, help and policy center, Powderizer custom mixes and history
 - implemented integrity: ordered migrations, append-only audit ledger, sanitized admin audit reads
-- seed: 45 deterministic powder products across 7 categories, plus users, promotions, favourites, catalog metadata, curated bundles
+- seed: 50 deterministic powder products across 7 categories, plus users, promotions, favourites, catalog metadata, curated bundles, and inventory/backorder scenarios
 - tests: focused unit, contract, route, SQLite integration, React integration, and accessibility coverage; broad E2E coverage reserved for course
 - completed expansion record: `plans/powder_shop_catalog_expansion_plan.md`
 
@@ -156,9 +156,9 @@ Status: delivery order for remaining work. `partial` = implemented subset; `futu
 1. Order history and lifecycle: completed
    - foundation: order creation, immutable product and Powderizer snapshots, direct order-detail read
    - remaining: customer order list; processing -> packed -> shipped -> delivered; cancellation, split shipment, delivery failure, tracking events
-2. Inventory: partial
-   - completed: Powderizer component availability accounting, checkout-time stock reservations, atomic reservation consumption, concurrent oversell protection
-   - remaining: ordinary product-line reservations and stock consumption, expiry, backorders
+2. Inventory: completed
+   - implementation record: `plans/inventory_coding_plan.md`
+   - delivered: unified ordinary-product and Powderizer component availability authority; checkout-time 15-minute reservations; atomic authorization and consumption; concurrent oversell protection; expiry release; product-line allocation records; opted-in backorders; idempotent admin stock receipts with FIFO backorder allocation; cancellation stock restoration for unshipped ordinary lines; customer availability and backorder presentation
 3. Returns and refunds: future
    - remaining: return windows, partial quantities, refund rules, stock restoration
 4. Checkout depth: future
