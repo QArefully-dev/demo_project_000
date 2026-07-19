@@ -59,9 +59,23 @@ export function OrderDetailView({
           <div className="space-y-3" aria-label="Purchased items">
             {order.items.map((item) => (
               <div key={item.lineId} className="flex items-center justify-between gap-4 text-sm">
-                <span>
+                <span className="min-w-0">
                   {item.productName}{' '}
                   <span className="text-muted-foreground">× {item.quantity}</span>
+                  {item.inventoryStatus === 'partially_backordered' && (
+                    <span className="block text-xs font-medium text-amber-700">
+                      {item.allocatedQuantity} allocated; {item.backorderedQuantity} awaiting stock
+                    </span>
+                  )}
+                  {item.inventoryStatus === 'backordered' && (
+                    <span className="block text-xs font-medium text-amber-700">Awaiting stock</span>
+                  )}
+                  {item.inventoryStatus === 'allocated' && (
+                    <span className="block text-xs text-muted-foreground">Allocated for fulfilment</span>
+                  )}
+                  {item.inventoryStatus === 'cancelled' && (
+                    <span className="block text-xs text-muted-foreground">Allocation cancelled</span>
+                  )}
                 </span>
                 <span>{formatMoney(item.lineTotalCents)}</span>
               </div>
@@ -192,7 +206,7 @@ export function OrderDetailView({
         <div className="rounded-lg border border-destructive/40 p-4">
           <h2 className="font-medium">Cancel this order</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            This stops simulated fulfilment. It does not issue a refund.
+            This stops simulated fulfilment. Unshipped allocated stock is released; no refund is issued.
           </p>
           <Button
             ref={cancelTriggerRef}

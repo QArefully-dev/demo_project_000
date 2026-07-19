@@ -131,6 +131,12 @@ export function CatalogSidebarControls({
             onChange={() => onAvailabilityChange('available')}
           />
           <AvailabilityChoice
+            checked={availability === 'backorder'}
+            label="Backorder available"
+            value="backorder"
+            onChange={() => onAvailabilityChange('backorder')}
+          />
+          <AvailabilityChoice
             checked={availability === 'out_of_stock'}
             label="Out of stock"
             value="out_of_stock"

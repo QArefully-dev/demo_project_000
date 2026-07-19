@@ -33,6 +33,9 @@ const catalogProduct: Product = {
   imageSetId: 'powdered-water',
   category: 'Impossible',
   stock: 5,
+  availability: 'in_stock',
+  backorderable: false,
+  backorderLeadDays: null,
   slug: 'powdered-water',
   salesCount: 0,
   createdAt: '2026-07-14T00:00:00.000Z',
@@ -175,6 +178,11 @@ describe('CatalogPage URL state', () => {
       'availability',
       (user: ReturnType<typeof userEvent.setup>) =>
         user.click(screen.getByRole('radio', { name: 'In stock' })),
+    ],
+    [
+      'backorder availability',
+      (user: ReturnType<typeof userEvent.setup>) =>
+        user.click(screen.getByRole('radio', { name: 'Backorder available' })),
     ],
     [
       'tag',

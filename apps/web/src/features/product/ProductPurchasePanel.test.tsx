@@ -52,6 +52,9 @@ const product = (overrides: Partial<Product> = {}): Product => ({
   },
   category: 'Impossible',
   stock: 8,
+  availability: 'in_stock',
+  backorderable: false,
+  backorderLeadDays: null,
   slug: 'powdered-water',
   salesCount: 12,
   ...overrides,
@@ -155,7 +158,7 @@ describe('ProductPurchasePanel', () => {
   it('disables unavailable purchases and exposes pending and cart retry states', async () => {
     const user = userEvent.setup();
     const { onAddToCart, onRetryCart } = renderPanel({
-      product: product({ stock: 0 }),
+      product: product({ stock: 0, availability: 'out_of_stock' }),
       cartError: 'Unable to reach cart',
     });
 
@@ -183,6 +186,21 @@ describe('ProductPurchasePanel', () => {
       </MemoryRouter>,
     );
     expect(screen.getByRole('button', { name: 'Adding…' })).toBeDisabled();
+  });
+
+  it('keeps a backorderable product purchasable without promising an arrival date', () => {
+    renderPanel({
+      product: product({
+        stock: 0,
+        availability: 'backorder',
+        backorderable: true,
+        backorderLeadDays: 14,
+      }),
+    });
+
+    expect(screen.getByText('Available to backorder')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add powder' })).toBeEnabled();
+    expect(screen.queryByText(/14 days/i)).not.toBeInTheDocument();
   });
 
   it('sends anonymous wishlist actions to sign-in and toggles authenticated favourites', async () => {

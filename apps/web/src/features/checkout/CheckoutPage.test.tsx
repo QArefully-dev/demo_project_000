@@ -26,6 +26,9 @@ const cart: Cart = {
         imageSetId: 'powdered-water',
         category: 'Impossible',
         stock: 4,
+        availability: 'in_stock',
+        backorderable: false,
+        backorderLeadDays: null,
         mixable: false,
         slug: 'powdered-water',
         salesCount: 0,
@@ -168,6 +171,49 @@ describe('CheckoutPage', () => {
     await user.click(screen.getByRole('button', { name: 'Simulate payment' }));
     await waitFor(() => expect(pay).toHaveBeenCalledTimes(2));
     expect(vi.mocked(pay).mock.calls[1]![0].idempotencyKey).toBe(firstKey);
+  });
+
+  it('rotates a terminal stock-conflict key and preserves the cart until refresh', async () => {
+    const user = userEvent.setup();
+    vi.mocked(pay)
+      .mockRejectedValueOnce(
+        new ApiError('Insufficient stock', 409, {
+          error: 'INSUFFICIENT_STOCK',
+          productIds: ['1'],
+        } as never),
+      )
+      .mockRejectedValueOnce(new ApiError('Payment failed', 402));
+    renderCheckout();
+    await continueToPayment(user);
+    await completeCard(user);
+
+    await user.click(screen.getByRole('button', { name: 'Simulate payment' }));
+    await screen.findByRole('alert');
+    const firstKey = vi.mocked(pay).mock.calls[0]![0].idempotencyKey;
+    expect(screen.getByText('Your cart has not been changed. Refresh it, then review quantities before retrying.')).toBeInTheDocument();
+    expect(clearCart).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Simulate payment' }));
+    await waitFor(() => expect(pay).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(pay).mock.calls[1]![0].idempotencyKey).not.toBe(firstKey);
+  });
+
+  it('rotates an expired reservation key and provides a cart refresh action', async () => {
+    const user = userEvent.setup();
+    vi.mocked(pay).mockRejectedValue(
+      new ApiError('Reservation expired', 409, {
+        error: 'RESERVATION_EXPIRED',
+        reservationExpiresAt: '2026-07-19T12:00:00.000Z',
+      } as never),
+    );
+    renderCheckout();
+    await continueToPayment(user);
+    await completeCard(user);
+
+    await user.click(screen.getByRole('button', { name: 'Simulate payment' }));
+    expect(await screen.findByText('Your checkout reservation expired before payment could complete.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Refresh cart' }));
+    expect(cartContext.retryCart).toHaveBeenCalledOnce();
   });
 
   it('cancels visible validation for edited promo code and applies the new request', async () => {
