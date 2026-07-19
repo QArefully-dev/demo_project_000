@@ -1,6 +1,6 @@
 # Powder Shop Catalog Expansion Plan
 
-Status: Rounds 1-2 implemented. Rounds 3-4 remain backlog.
+Status: Rounds 1-3 implemented. Round 4 remains backlog.
 
 Purpose: retain approved Powder shop expansion ideas for later implementation planning.
 
@@ -156,7 +156,7 @@ Delivered:
 - Lane A: anonymous ordered product comparison and deterministic similar-product discovery, including shared contracts, persisted metadata reads, API routes, comparison UI/storage, and focused coverage.
 - Lane B: append-only audit ledger, sanitized admin audit reads, and audit integration for existing auth, cart, order, and payment mutations.
 
-Round 3 is the next implementation-planning target. The lane details below are retained as the completed-scope record.
+Round 3 is implemented. The lane details below are retained as the completed-scope record.
 
 Lane A, completed serial delivery:
 
@@ -175,7 +175,14 @@ Lane B, completed parallel delivery:
 - Complete audit foundation before bundle and review mutations.
 - Preserve shared transaction rule for required mutation plus audit insert.
 
-### Round 3: Mutation Features
+### Round 3: Mutation Features — Implemented 2026-07-19
+
+Delivered:
+
+- Lane A: curated bundles with ordered schema migration, canonical bundle catalog data, current-price calculation, atomic ordinary-cart-line additions, audit events, API routes, contracts, web browse/add flow, and focused coverage.
+- Lane B: customer reviews with ordered schema migration, authenticated ownership rules, verified-purchase evidence, public summaries and lists, moderation, sanitized audit events, login return paths, product-detail UI, and focused coverage.
+
+The lane details below are retained as the completed-scope record.
 
 Parallel lanes after Round 2 audit foundation:
 
