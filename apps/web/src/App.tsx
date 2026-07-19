@@ -23,6 +23,8 @@ import { ComparisonPage } from './features/comparison/ComparisonPage';
 import { BundlesPage } from './features/bundles/BundlesPage';
 import { OrderHistoryPage } from './features/orders/OrderHistoryPage';
 import { OrderDetailPage } from './features/orders/OrderDetailPage';
+import { AdminRoute } from './components/AdminRoute';
+import { AdminReviewModerationPage } from './features/admin/reviews';
 
 export default function App() {
   return (
@@ -70,6 +72,14 @@ export default function App() {
             <ProtectedRoute>
               <OrderDetailPage />
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/reviews"
+          element={
+            <AdminRoute>
+              <AdminReviewModerationPage />
+            </AdminRoute>
           }
         />
         <Route path="/mailbox" element={<MailboxPage />} />

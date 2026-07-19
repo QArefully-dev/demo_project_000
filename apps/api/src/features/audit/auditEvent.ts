@@ -27,6 +27,11 @@ export const AUDIT_ACTIONS = [
   'review.deleted',
   'review.hidden',
   'review.restored',
+  'review.helpful_added',
+  'review.helpful_removed',
+  'review.report_created',
+  'review.report_withdrawn',
+  'review.reports_dismissed',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
@@ -126,6 +131,23 @@ export type AuditEventInput =
       action: 'review.deleted' | 'review.hidden' | 'review.restored';
       reviewId: number;
       productId: number;
+    })
+  | (WithContext & {
+      action: 'review.helpful_added' | 'review.helpful_removed' | 'review.report_withdrawn';
+      reviewId: number;
+      productId: number;
+    })
+  | (WithContext & {
+      action: 'review.report_created';
+      reviewId: number;
+      productId: number;
+      reason: 'spam' | 'harassment' | 'unsafe' | 'off_topic' | 'other';
+    })
+  | (WithContext & {
+      action: 'review.reports_dismissed';
+      reviewId: number;
+      productId: number;
+      resolvedReportCount: number;
     });
 
 export interface BuiltAuditEvent {
@@ -374,8 +396,31 @@ export function buildAuditEvent(input: AuditEventInput): BuiltAuditEvent {
     case 'review.deleted':
     case 'review.hidden':
     case 'review.restored':
+    case 'review.helpful_added':
+    case 'review.helpful_removed':
+    case 'review.report_withdrawn':
       entity = reviewEntity(input);
       metadata = { productId: requirePositiveSafeInteger(input.productId, 'productId') };
+      break;
+    case 'review.report_created':
+      entity = reviewEntity(input);
+      if (!['spam', 'harassment', 'unsafe', 'off_topic', 'other'].includes(input.reason)) {
+        throw new AuditEventValidationError('reason is not an allowed review report reason');
+      }
+      metadata = {
+        productId: requirePositiveSafeInteger(input.productId, 'productId'),
+        reason: input.reason,
+      };
+      break;
+    case 'review.reports_dismissed':
+      entity = reviewEntity(input);
+      metadata = {
+        productId: requirePositiveSafeInteger(input.productId, 'productId'),
+        resolvedReportCount: requireNonNegativeSafeInteger(
+          input.resolvedReportCount,
+          'resolvedReportCount',
+        ),
+      };
       break;
   }
 

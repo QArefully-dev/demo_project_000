@@ -7,6 +7,7 @@ import {
 } from '@shop/catalog';
 import type Database from 'better-sqlite3';
 import { seedOrderScenarios } from './orderSeedScenarios.js';
+import { seedReviewScenarios } from './reviewSeedScenarios.js';
 
 const USERS = [
   { id: 1, email: 'alice@example.com', display_name: 'Alice', role: 'customer' },
@@ -311,6 +312,7 @@ export function seedDatabase(db: Database.Database): void {
     }
 
     seedOrderScenarios(db);
+    seedReviewScenarios(db);
   });
 
   seed();

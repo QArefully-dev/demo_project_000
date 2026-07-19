@@ -181,6 +181,40 @@ void test('rejects invalid review audit scalars', () => {
   }
 });
 
+void test('builds privacy-safe review engagement and moderation facts', () => {
+  const reported = buildAuditEvent({
+    action: 'review.report_created',
+    context: userContext,
+    reviewId: 91,
+    productId: 12,
+    reason: 'unsafe',
+    detail: 'Sensitive report detail must not enter audit metadata.',
+    reporterEmail: 'reporter@example.test',
+  } as AuditEventInput);
+  const dismissed = buildAuditEvent({
+    action: 'review.reports_dismissed',
+    context: userContext,
+    reviewId: 91,
+    productId: 12,
+    resolvedReportCount: 3,
+    reportIds: [1, 2, 3],
+  } as AuditEventInput);
+
+  assert.deepEqual(reported.metadata, { productId: 12, reason: 'unsafe' });
+  assert.equal(reported.metadataJson.includes('Sensitive report detail'), false);
+  assert.equal(reported.metadataJson.includes('reporter@example.test'), false);
+  assert.deepEqual(dismissed.metadata, { productId: 12, resolvedReportCount: 3 });
+  expectEventError(() =>
+    buildAuditEvent({
+      action: 'review.report_created',
+      context: userContext,
+      reviewId: 91,
+      productId: 12,
+      reason: 'unknown',
+    } as unknown as AuditEventInput),
+  );
+});
+
 void test('normalizes UTC dates and pagination defaults', () => {
   assert.deepEqual(
     normalizeAuditEventQuery({ occurredFrom: '2026-02-03', occurredTo: '2026-02-04' }),

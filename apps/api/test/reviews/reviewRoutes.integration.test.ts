@@ -26,6 +26,12 @@ void test('review routes enforce public visibility, roles, ownership, moderation
   const directory = mkdtempSync(join(tmpdir(), 'shop-review-routes-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
   seedDatabase(db);
+  db.exec(`
+    DELETE FROM review_reports;
+    DELETE FROM review_helpful_votes;
+    DELETE FROM reviews;
+    DELETE FROM review_rating_aggregates;
+  `);
   const app = await buildApp({
     db,
     resetBaseUrl: 'http://web.test',
@@ -207,4 +213,122 @@ void test('review routes enforce public visibility, roles, ownership, moderation
     ).statusCode,
     200,
   );
+});
+
+void test('engagement and moderation routes enforce roles and return current state', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-review-engagement-routes-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  db.exec(`
+    DELETE FROM review_reports;
+    DELETE FROM review_helpful_votes;
+    DELETE FROM reviews;
+    DELETE FROM review_rating_aggregates;
+  `);
+  const app = await buildApp({
+    db,
+    resetBaseUrl: 'http://web.test',
+    clock: { now: () => new Date('2026-07-18T12:00:00.000Z') },
+  });
+  t.after(async () => {
+    await app.close();
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+  const login = async (email: string) =>
+    cookieHeader(
+      await app.inject({
+        method: 'POST',
+        url: '/login',
+        payload: { email, password: 'Password123!' },
+      }),
+    );
+  const alice = await login('alice@example.com');
+  const bob = await login('bob@example.com');
+  const admin = await login('admin@example.com');
+  assert.equal(
+    (
+      await app.inject({
+        method: 'POST',
+        url: '/api/admin/reviews/999999/moderation',
+        headers: { cookie: admin },
+        payload: { decision: 'hide_review' },
+      })
+    ).statusCode,
+    404,
+  );
+  const create = await app.inject({
+    method: 'POST',
+    url: '/api/products/1/reviews',
+    headers: { cookie: alice },
+    payload: { rating: 5, body },
+  });
+  const review = responseJson<ReviewMutationResponse>(create);
+  assert.equal(
+    (
+      await app.inject({
+        method: 'PUT',
+        url: `/api/reviews/${review.id}/helpful`,
+        headers: { cookie: bob },
+      })
+    ).statusCode,
+    200,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: 'PUT',
+        url: `/api/reviews/${review.id}/helpful`,
+        headers: { cookie: alice },
+      })
+    ).statusCode,
+    403,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: 'POST',
+        url: `/api/reviews/${review.id}/reports`,
+        headers: { cookie: bob },
+        payload: { reason: 'other' },
+      })
+    ).statusCode,
+    400,
+  );
+  const report = await app.inject({
+    method: 'POST',
+    url: `/api/reviews/${review.id}/reports`,
+    headers: { cookie: bob },
+    payload: { reason: 'other', detail: 'Targeted abuse.' },
+  });
+  assert.equal(report.statusCode, 200);
+  assert.equal(responseJson<{ viewerHasOpenReport: boolean }>(report).viewerHasOpenReport, true);
+  assert.equal(
+    (
+      await app.inject({
+        url: '/api/admin/reviews/moderation?queue=reported',
+        headers: { cookie: bob },
+      })
+    ).statusCode,
+    403,
+  );
+  const queue = await app.inject({
+    url: '/api/admin/reviews/moderation?queue=reported',
+    headers: { cookie: admin },
+  });
+  assert.equal(queue.statusCode, 200);
+  assert.equal(responseJson<{ total: number }>(queue).total, 1);
+  const moderation = await app.inject({
+    method: 'POST',
+    url: `/api/admin/reviews/${review.id}/moderation`,
+    headers: { cookie: admin },
+    payload: { decision: 'hide_review' },
+  });
+  assert.equal(moderation.statusCode, 200);
+  assert.deepEqual(responseJson<{ status: string; resolvedReportCount: number }>(moderation), {
+    reviewId: review.id,
+    status: 'hidden',
+    resolvedReportCount: 1,
+    decision: 'hide_review',
+  });
 });

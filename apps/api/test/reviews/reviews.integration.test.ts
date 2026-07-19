@@ -21,6 +21,12 @@ function setup() {
   const directory = mkdtempSync(join(tmpdir(), 'shop-reviews-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
   seedDatabase(db);
+  db.exec(`
+    DELETE FROM review_reports;
+    DELETE FROM review_helpful_votes;
+    DELETE FROM reviews;
+    DELETE FROM review_rating_aggregates;
+  `);
   const repository = createReviewRepository(db);
   const auditRepository = createAuditRepository(db);
   const service = createReviewService({
@@ -242,5 +248,97 @@ void test('review lifecycle writes exact body-free audit facts', (t) => {
         metadata: { productId: 1 },
       })),
     ],
+  );
+});
+
+void test('helpful and report workflows are published-only, idempotent, and reopenable', (t) => {
+  const { directory, db, service } = setup();
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+  const review = service.create(1, 1, { rating: 4, body }, context);
+  const bobContext = {
+    actor: { type: 'user' as const, userId: 2 },
+    requestId: 'bob-review-request',
+  };
+  assert.equal(service.addHelpful(2, Number(review.id), bobContext).helpfulCount, 1);
+  assert.equal(service.addHelpful(2, Number(review.id), bobContext).helpfulCount, 1);
+  assert.throws(
+    () => service.addHelpful(1, Number(review.id), context),
+    (error: unknown) => error instanceof ReviewServiceError && error.code === 'FORBIDDEN',
+  );
+  assert.equal(
+    service.createReport(
+      2,
+      Number(review.id),
+      { reason: 'other', detail: '  Targeted abuse.  ' },
+      bobContext,
+    ).viewerHasOpenReport,
+    true,
+  );
+  assert.throws(
+    () => service.createReport(2, Number(review.id), { reason: 'spam' }, bobContext),
+    (error: unknown) => error instanceof ReviewServiceError && error.code === 'DUPLICATE',
+  );
+  assert.equal(service.withdrawReport(2, Number(review.id), bobContext).viewerHasOpenReport, false);
+  assert.equal(
+    service.createReport(2, Number(review.id), { reason: 'spam' }, bobContext).viewerHasOpenReport,
+    true,
+  );
+  const page = service.listProduct(1, { sort: 'helpful' }, 2);
+  assert.equal(page.items[0]?.viewerCanEngage, true);
+  assert.equal(page.items[0]?.viewerHasHelpfulVote, true);
+  assert.equal(page.items[0]?.viewerHasOpenReport, true);
+  service.hide(Number(review.id), { actor: { type: 'user', userId: 3 }, requestId: 'admin' });
+  assert.throws(
+    () => service.removeHelpful(2, Number(review.id), bobContext),
+    (error: unknown) => error instanceof ReviewServiceError && error.code === 'NOT_FOUND',
+  );
+});
+
+void test('moderation emits one decision-accurate audit fact', (t) => {
+  const { directory, db, service } = setup();
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+  const bobContext = { actor: { type: 'user' as const, userId: 2 }, requestId: 'bob-report' };
+  const adminContext = { actor: { type: 'user' as const, userId: 3 }, requestId: 'admin-decision' };
+  const hidden = service.create(1, 1, { rating: 4, body }, context);
+  service.createReport(2, Number(hidden.id), { reason: 'spam' }, bobContext);
+  service.moderate(Number(hidden.id), 'hide_review', 3, adminContext);
+  const dismissed = service.create(1, 2, { rating: 3, body }, context);
+  service.createReport(2, Number(dismissed.id), { reason: 'unsafe' }, bobContext);
+  service.moderate(Number(dismissed.id), 'dismiss_reports', 3, adminContext);
+  const moderationRows = db
+    .prepare(
+      `SELECT action, entity_id, metadata_json
+       FROM audit_events
+       WHERE request_id = 'admin-decision'
+       ORDER BY id ASC`,
+    )
+    .all() as Array<{ action: string; entity_id: string; metadata_json: string }>;
+  assert.deepEqual(
+    moderationRows.map((row) => ({ ...row, metadata: parseMetadataJson(row.metadata_json) })),
+    [
+      {
+        action: 'review.hidden',
+        entity_id: hidden.id,
+        metadata_json: '{"productId":1}',
+        metadata: { productId: 1 },
+      },
+      {
+        action: 'review.reports_dismissed',
+        entity_id: dismissed.id,
+        metadata_json: '{"productId":2,"resolvedReportCount":1}',
+        metadata: { productId: 2, resolvedReportCount: 1 },
+      },
+    ],
+  );
+  assert.equal(
+    db.prepare('SELECT status FROM review_reports WHERE review_id = ?').get(Number(hidden.id))
+      .status,
+    'actioned',
   );
 });
