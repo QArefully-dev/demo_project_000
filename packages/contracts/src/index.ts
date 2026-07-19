@@ -10,3 +10,4 @@ export * from './payments.js';
 export * from './mailbox.js';
 export * from './powderizer.js';
 export * from './audit.js';
+export * from './bundles.js';

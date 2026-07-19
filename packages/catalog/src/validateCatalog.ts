@@ -15,6 +15,7 @@ import {
   type CatalogProduct,
   type CatalogSpecificationKey,
 } from './model.js';
+import { CURATED_BUNDLES, type CatalogBundle, type CatalogBundleComponent } from './bundles.js';
 import { CATALOG_PRODUCTS } from './catalog.js';
 
 const nonConsumableCategories = new Set<CatalogCategory>([
@@ -34,6 +35,66 @@ const authoringSpecificationProperties = new Set([
 
 const assertUnique = (label: string, values: readonly (string | number)[]) => {
   if (new Set(values).size !== values.length) throw new Error(`Catalog has duplicate ${label}`);
+};
+
+const isPositiveSafeInteger = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+
+const isCatalogBundleComponents = (
+  components: unknown,
+): components is readonly CatalogBundleComponent[] => Array.isArray(components);
+
+const validateBundles = (
+  bundles: readonly CatalogBundle[],
+  products: readonly CatalogProduct[],
+): void => {
+  assertUnique(
+    'bundle IDs',
+    bundles.map((bundle) => bundle.id),
+  );
+  assertUnique(
+    'bundle keys',
+    bundles.map((bundle) => bundle.key),
+  );
+  assertUnique(
+    'bundle sort orders',
+    bundles.map((bundle) => bundle.sortOrder),
+  );
+
+  const productIds = new Set(products.map((product) => product.id));
+  for (const bundle of bundles) {
+    if (!isPositiveSafeInteger(bundle.id)) throw new Error(`Invalid bundle ID for ${bundle.key}`);
+    if (!isNormalizedCatalogKey(bundle.key)) throw new Error(`Invalid bundle key ${bundle.key}`);
+    if (typeof bundle.name !== 'string' || !bundle.name.trim() || bundle.name.length > 160)
+      throw new Error(`Invalid bundle name for ${bundle.key}`);
+    if (
+      typeof bundle.description !== 'string' ||
+      !bundle.description.trim() ||
+      bundle.description.length > 500
+    )
+      throw new Error(`Invalid bundle description for ${bundle.key}`);
+    if (!isPositiveSafeInteger(bundle.sortOrder))
+      throw new Error(`Invalid bundle sort order for ${bundle.key}`);
+    if (!isCatalogBundleComponents(bundle.components) || bundle.components.length < 2)
+      throw new Error(`Bundle ${bundle.key} must contain at least two components`);
+
+    assertUnique(
+      `bundle component product IDs for ${bundle.key}`,
+      bundle.components.map((component) => component.productId),
+    );
+    assertUnique(
+      `bundle component sort orders for ${bundle.key}`,
+      bundle.components.map((component) => component.sortOrder),
+    );
+    for (const component of bundle.components) {
+      if (!isPositiveSafeInteger(component.productId) || !productIds.has(component.productId))
+        throw new Error(`Bundle ${bundle.key} references unknown product ${component.productId}`);
+      if (!isPositiveSafeInteger(component.quantity))
+        throw new Error(`Invalid bundle component quantity for ${bundle.key}`);
+      if (!isPositiveSafeInteger(component.sortOrder))
+        throw new Error(`Invalid bundle component sort order for ${bundle.key}`);
+    }
+  }
 };
 
 const assertKeyAndLabel = (
@@ -75,7 +136,10 @@ const validateRegistries = () => {
   }
 };
 
-export function validateCatalog(products: readonly CatalogProduct[] = CATALOG_PRODUCTS): void {
+export function validateCatalog(
+  products: readonly CatalogProduct[] = CATALOG_PRODUCTS,
+  bundles: readonly CatalogBundle[] = CURATED_BUNDLES,
+): void {
   validateRegistries();
   if (products.length !== 50)
     throw new Error(`Catalog expected 50 products, got ${products.length}`);
@@ -215,4 +279,6 @@ export function validateCatalog(products: readonly CatalogProduct[] = CATALOG_PR
     powderedWater.sales_count !== Math.max(...products.map((product) => product.sales_count))
   )
     throw new Error('Powdered Water must remain catalog bestseller');
+
+  validateBundles(bundles, products);
 }

@@ -29,6 +29,25 @@ void test('builds action-specific metadata without caller-provided sensitive fie
   assert.equal(event.metadataJson.includes('replay'), false);
 });
 
+void test('builds a sanitized bundle-added audit event', () => {
+  const event = buildAuditEvent({
+    action: 'cart.bundle_added',
+    context: userContext,
+    cartId: 'cart-1',
+    bundleId: 4,
+    componentCount: 3,
+    quantity: 3,
+    componentNames: ['Powdered Tuesday'],
+    totalCents: 9_999,
+  } as AuditEventInput);
+
+  assert.equal(event.entityType, 'cart');
+  assert.equal(event.entityId, 'cart-1');
+  assert.deepEqual(event.metadata, { bundleId: 4, componentCount: 3, quantity: 3 });
+  assert.equal(event.metadataJson.includes('Powdered Tuesday'), false);
+  assert.equal(event.metadataJson.includes('9999'), false);
+});
+
 void test('enforces actor shape and request context rules', () => {
   expectEventError(() =>
     buildAuditEvent({

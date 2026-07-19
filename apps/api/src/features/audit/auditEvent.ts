@@ -11,6 +11,7 @@ export const AUDIT_ACTIONS = [
   'cart.product_added',
   'cart.product_quantity_changed',
   'cart.product_removed',
+  'cart.bundle_added',
   'checkout.cart_consumed',
   'payment.pre_gateway_failed',
   'payment.declined',
@@ -65,6 +66,13 @@ export type AuditEventInput =
       quantity: number;
     })
   | (WithContext & { action: 'cart.product_removed'; cartId: string; productId: number })
+  | (WithContext & {
+      action: 'cart.bundle_added';
+      cartId: string;
+      bundleId: number;
+      componentCount: number;
+      quantity: number;
+    })
   | (WithContext & { action: 'checkout.cart_consumed'; cartId: string })
   | (WithContext & {
       action: 'payment.pre_gateway_failed';
@@ -238,6 +246,14 @@ export function buildAuditEvent(input: AuditEventInput): BuiltAuditEvent {
     case 'cart.product_removed':
       entity = cartEntity(input);
       metadata = { productId: requirePositiveSafeInteger(input.productId, 'productId') };
+      break;
+    case 'cart.bundle_added':
+      entity = cartEntity(input);
+      metadata = {
+        bundleId: requirePositiveSafeInteger(input.bundleId, 'bundleId'),
+        componentCount: requirePositiveSafeInteger(input.componentCount, 'componentCount'),
+        quantity: requirePositiveSafeInteger(input.quantity, 'quantity'),
+      };
       break;
     case 'payment.pre_gateway_failed':
       entity = paymentEntity(input);

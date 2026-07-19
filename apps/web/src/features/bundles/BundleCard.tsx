@@ -1,0 +1,66 @@
+import { Link } from 'react-router-dom';
+import type { CuratedBundle } from '@shop/contracts/bundles';
+import { Button } from '@/components/ui/button';
+
+function formatPrice(cents: number): string {
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(cents / 100);
+}
+
+type BundleCardProps = {
+  bundle: CuratedBundle;
+  isCartAvailable: boolean;
+  isAdding: boolean;
+  error?: string | null;
+  onAdd: (bundleId: string) => void | Promise<unknown>;
+};
+
+export function BundleCard({ bundle, isCartAvailable, isAdding, error, onAdd }: BundleCardProps) {
+  const disabled = !bundle.available || !isCartAvailable || isAdding;
+  const unavailableMessage = !bundle.available
+    ? 'This bundle is currently unavailable.'
+    : !isCartAvailable
+      ? 'Cart is not ready yet.'
+      : null;
+
+  return (
+    <article className="rounded-xl border bg-surface-raised p-5">
+      <h2 className="text-xl font-semibold">{bundle.name}</h2>
+      <p className="mt-2 text-sm text-muted-foreground">{bundle.description}</p>
+      <ul className="mt-4 space-y-2" aria-label={`${bundle.name} components`}>
+        {bundle.components.map((component) => (
+          <li
+            key={component.product.id}
+            className="flex items-center justify-between gap-4 text-sm"
+          >
+            <Link
+              to={`/products/${component.product.id}`}
+              className="font-medium underline-offset-4 hover:underline"
+            >
+              {component.product.name}
+            </Link>
+            <span className="shrink-0 text-muted-foreground">×{component.quantity}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-5 flex items-center justify-between gap-4 border-t pt-4">
+        <p className="font-semibold">{formatPrice(bundle.totalCents)}</p>
+        <Button disabled={disabled} onClick={() => void onAdd(bundle.id)} aria-busy={isAdding}>
+          {isAdding ? 'Adding…' : 'Add bundle'}
+        </Button>
+      </div>
+      {unavailableMessage && (
+        <p className="mt-3 text-sm text-muted-foreground">{unavailableMessage}</p>
+      )}
+      {error && (
+        <p role="alert" className="mt-3 text-sm text-destructive">
+          {error}
+        </p>
+      )}
+      {isAdding && (
+        <p aria-live="polite" className="sr-only">
+          Adding {bundle.name} to cart
+        </p>
+      )}
+    </article>
+  );
+}

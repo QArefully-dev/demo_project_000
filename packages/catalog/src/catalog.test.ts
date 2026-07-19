@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   CATALOG_ARTWORK_IDS,
   CATALOG_CREATED_AT_BY_ID,
+  CURATED_BUNDLES,
   CATALOG_PRODUCTS,
   catalogProductSpecifications,
   parsePackWeightGrams,
@@ -20,6 +21,152 @@ void test('canonical catalog validates only when explicitly invoked', () => {
   assert.doesNotThrow(() => validateCatalog());
   assert.equal(CATALOG_PRODUCTS.length, 50);
   assert.equal(new Set(CATALOG_ARTWORK_IDS).size, CATALOG_PRODUCTS.length);
+});
+
+void test('curated bundles retain their fixed product-only definitions', () => {
+  assert.deepEqual(
+    CURATED_BUNDLES.map(({ id, key, sortOrder, components }) => ({
+      id,
+      key,
+      sortOrder,
+      components: components.map(({ productId, quantity, sortOrder: componentSortOrder }) => ({
+        productId,
+        quantity,
+        sortOrder: componentSortOrder,
+      })),
+    })),
+    [
+      {
+        id: 1,
+        key: 'powder-starter-set',
+        sortOrder: 1,
+        components: [
+          { productId: 1, quantity: 1, sortOrder: 1 },
+          { productId: 2, quantity: 1, sortOrder: 2 },
+          { productId: 3, quantity: 1, sortOrder: 3 },
+        ],
+      },
+      {
+        id: 2,
+        key: 'pantry-set',
+        sortOrder: 2,
+        components: [
+          { productId: 5, quantity: 1, sortOrder: 1 },
+          { productId: 6, quantity: 1, sortOrder: 2 },
+          { productId: 7, quantity: 1, sortOrder: 3 },
+        ],
+      },
+      {
+        id: 3,
+        key: 'outdoor-kit',
+        sortOrder: 3,
+        components: [
+          { productId: 27, quantity: 1, sortOrder: 1 },
+          { productId: 29, quantity: 1, sortOrder: 2 },
+          { productId: 31, quantity: 1, sortOrder: 3 },
+        ],
+      },
+      {
+        id: 4,
+        key: 'questionable-assortment',
+        sortOrder: 4,
+        components: [
+          { productId: 35, quantity: 1, sortOrder: 1 },
+          { productId: 36, quantity: 1, sortOrder: 2 },
+          { productId: 38, quantity: 1, sortOrder: 3 },
+        ],
+      },
+    ],
+  );
+  assert.ok(CURATED_BUNDLES.every((bundle) => bundle.components.length >= 2));
+});
+
+void test('catalog validation rejects invalid curated bundle references and components', () => {
+  const firstBundle = CURATED_BUNDLES[0];
+  const secondBundle = CURATED_BUNDLES[1];
+  if (!firstBundle || !secondBundle) throw new Error('Catalog must contain curated bundles');
+  assert.throws(
+    () =>
+      validateCatalog(CATALOG_PRODUCTS, [
+        { ...firstBundle, id: secondBundle.id },
+        ...CURATED_BUNDLES.slice(1),
+      ]),
+    /duplicate bundle IDs/,
+  );
+  assert.throws(
+    () =>
+      validateCatalog(CATALOG_PRODUCTS, [
+        { ...firstBundle, key: secondBundle.key },
+        ...CURATED_BUNDLES.slice(1),
+      ]),
+    /duplicate bundle keys/,
+  );
+  assert.throws(
+    () =>
+      validateCatalog(CATALOG_PRODUCTS, [
+        { ...firstBundle, key: 'Not-normalized' },
+        ...CURATED_BUNDLES.slice(1),
+      ]),
+    /Invalid bundle key/,
+  );
+  assert.throws(
+    () =>
+      validateCatalog(CATALOG_PRODUCTS, [
+        { ...firstBundle, sortOrder: secondBundle.sortOrder },
+        ...CURATED_BUNDLES.slice(1),
+      ]),
+    /duplicate bundle sort orders/,
+  );
+  assert.throws(
+    () =>
+      validateCatalog(CATALOG_PRODUCTS, [
+        { ...firstBundle, components: [...firstBundle.components, firstBundle.components[0]] },
+        ...CURATED_BUNDLES.slice(1),
+      ]),
+    /duplicate bundle component product IDs/,
+  );
+  assert.throws(
+    () =>
+      validateCatalog(CATALOG_PRODUCTS, [
+        {
+          ...firstBundle,
+          components: [
+            { ...firstBundle.components[0], quantity: 0 },
+            ...firstBundle.components.slice(1),
+          ],
+        },
+        ...CURATED_BUNDLES.slice(1),
+      ]),
+    /Invalid bundle component quantity/,
+  );
+  assert.throws(
+    () =>
+      validateCatalog(CATALOG_PRODUCTS, [
+        {
+          ...firstBundle,
+          components: [
+            { ...firstBundle.components[0], productId: 999 },
+            ...firstBundle.components.slice(1),
+          ],
+        },
+        ...CURATED_BUNDLES.slice(1),
+      ]),
+    /references unknown product/,
+  );
+  assert.throws(
+    () =>
+      validateCatalog(CATALOG_PRODUCTS, [
+        {
+          ...firstBundle,
+          components: [
+            { ...firstBundle.components[0], productId: 'pantry-set' as never },
+            ...firstBundle.components.slice(1),
+          ],
+        },
+        ...CURATED_BUNDLES.slice(1),
+      ]),
+    /references unknown product/,
+  );
 });
 void test('catalog validation rejects duplicate stable artwork IDs', () => {
   const firstArtworkId = firstCatalogProduct().image_set_id;

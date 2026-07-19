@@ -55,6 +55,7 @@ const cartContext: ReturnType<typeof useCart> = {
   pendingActions: {},
   isActionPending: () => false,
   addItem: vi.fn().mockResolvedValue(true),
+  addBundle: vi.fn().mockResolvedValue(true),
   updateQuantity: vi.fn().mockResolvedValue(true),
   removeItem: vi.fn().mockResolvedValue(true),
   updateMixQuantity: vi.fn().mockResolvedValue(true),

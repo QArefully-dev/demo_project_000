@@ -76,6 +76,7 @@ function controllerCartContext(): ReturnType<typeof useCartContext> {
     pendingActions: {},
     isActionPending: () => false,
     addItem: vi.fn(),
+    addBundle: vi.fn(),
     updateQuantity: vi.fn(),
     removeItem: vi.fn(),
     updateMixQuantity: vi.fn(),

@@ -1,5 +1,10 @@
 import { createHash, scryptSync } from 'node:crypto';
-import { CATALOG_PRODUCTS, catalogProductSpecifications, validateCatalog } from '@shop/catalog';
+import {
+  CATALOG_PRODUCTS,
+  CURATED_BUNDLES,
+  catalogProductSpecifications,
+  validateCatalog,
+} from '@shop/catalog';
 import type Database from 'better-sqlite3';
 
 const USERS = [
@@ -168,6 +173,23 @@ export function seedDatabase(db: Database.Database): void {
         (product_id, specification_key, value_key, display_value, numeric_value)
       VALUES (?, ?, ?, ?, ?)
     `);
+    const upsertBundle = db.prepare(`
+      INSERT INTO curated_bundles (id, key, name, description, active, sort_order)
+      VALUES (@id, @key, @name, @description, @active, @sort_order)
+      ON CONFLICT(id) DO UPDATE SET
+        key = excluded.key,
+        name = excluded.name,
+        description = excluded.description,
+        active = excluded.active,
+        sort_order = excluded.sort_order
+    `);
+    const deleteBundleComponents = db.prepare(
+      'DELETE FROM curated_bundle_components WHERE bundle_id = ?',
+    );
+    const insertBundleComponent = db.prepare(`
+      INSERT INTO curated_bundle_components (bundle_id, product_id, quantity, sort_order)
+      VALUES (?, ?, ?, ?)
+    `);
 
     // Replace only canonical metadata. Local products and their metadata remain untouched.
     deleteCanonicalTags.run();
@@ -190,6 +212,27 @@ export function seedDatabase(db: Database.Database): void {
           specification.valueKey,
           specification.displayValue,
           specification.numericValue,
+        );
+      }
+    }
+
+    // Canonical bundle definitions retain no price data; current product prices remain authoritative.
+    for (const bundle of CURATED_BUNDLES) {
+      upsertBundle.run({
+        id: bundle.id,
+        key: bundle.key,
+        name: bundle.name,
+        description: bundle.description,
+        active: 1,
+        sort_order: bundle.sortOrder,
+      });
+      deleteBundleComponents.run(bundle.id);
+      for (const component of bundle.components) {
+        insertBundleComponent.run(
+          bundle.id,
+          component.productId,
+          component.quantity,
+          component.sortOrder,
         );
       }
     }
@@ -233,6 +276,36 @@ export function seedDatabase(db: Database.Database): void {
     if (canonicalCount !== CATALOG_PRODUCTS.length) {
       throw new Error(
         `Seed assertion failed: expected ${CATALOG_PRODUCTS.length} canonical powder products, got ${canonicalCount}`,
+      );
+    }
+    const canonicalBundleCount = (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM curated_bundles
+           WHERE id IN (${CURATED_BUNDLES.map(() => '?').join(', ')})`,
+        )
+        .get(...CURATED_BUNDLES.map((bundle) => bundle.id)) as { count: number }
+    ).count;
+    if (canonicalBundleCount !== CURATED_BUNDLES.length) {
+      throw new Error(
+        `Seed assertion failed: expected ${CURATED_BUNDLES.length} canonical curated bundles, got ${canonicalBundleCount}`,
+      );
+    }
+    const canonicalComponentCount = (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM curated_bundle_components
+           WHERE bundle_id IN (${CURATED_BUNDLES.map(() => '?').join(', ')})`,
+        )
+        .get(...CURATED_BUNDLES.map((bundle) => bundle.id)) as { count: number }
+    ).count;
+    const expectedComponentCount = CURATED_BUNDLES.reduce(
+      (count, bundle) => count + bundle.components.length,
+      0,
+    );
+    if (canonicalComponentCount !== expectedComponentCount) {
+      throw new Error(
+        `Seed assertion failed: expected ${expectedComponentCount} canonical curated bundle components, got ${canonicalComponentCount}`,
       );
     }
   });

@@ -13,6 +13,7 @@ import favouritesRoutes from './routes/favourites.js';
 import paymentRoutes from './routes/payments.js';
 import mailboxRoutes from './routes/mailbox.js';
 import powderizerRoutes from './routes/powderizer.js';
+import bundleRoutes from './routes/bundles.js';
 import { createAuthService, type AuthService, type Clock } from './features/auth/authService.js';
 import { createSessionRepository } from './features/auth/sessionRepository.js';
 import { createSessionService, type SessionService } from './features/auth/sessionService.js';
@@ -60,6 +61,8 @@ import {
 } from './features/powderizer/powderizerService.js';
 import { PowderMixDomainError } from './features/powderizer/powderizerTypes.js';
 import auditRoutes from './routes/audit.js';
+import { createBundleRepository } from './features/bundles/bundleRepository.js';
+import { createBundleService, type BundleService } from './features/bundles/bundleService.js';
 
 export interface AppDependencies {
   db: Database.Database;
@@ -81,6 +84,7 @@ export interface AppServices {
   audit: AuditReadService;
   favourites: FavouritesService;
   powderizer: PowderizerService;
+  bundles: BundleService;
 }
 
 export type AppContext = { services: AppServices };
@@ -144,6 +148,13 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       mixes,
       utcDateProvider: () => clock.now(),
     }),
+    bundles: createBundleService({
+      bundles: createBundleRepository(dependencies.db),
+      carts,
+      mixes,
+      unitOfWork,
+      audit,
+    }),
     audit: createAuditReadService(auditRepository),
   };
 }
@@ -193,6 +204,7 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(paymentRoutes, context);
   await app.register(mailboxRoutes, context);
   await app.register(powderizerRoutes, context);
+  await app.register(bundleRoutes, context);
   await app.register(auditRoutes, context);
 
   return app;

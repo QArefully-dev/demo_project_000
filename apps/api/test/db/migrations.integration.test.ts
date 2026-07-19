@@ -17,6 +17,7 @@ import { createPowderMixRepository } from '../../src/features/powderizer/powderM
 import { toProductContract } from '../../src/mappers/product.js';
 import type { ProductRow } from '../../src/features/catalog/productRepository.js';
 import { Product } from '@shop/contracts/products';
+import { CURATED_BUNDLES } from '@shop/catalog';
 import { Value } from '@sinclair/typebox/value';
 
 const expectedVersions = [
@@ -31,6 +32,7 @@ const expectedVersions = [
   '009',
   '010',
   '011',
+  '012',
 ];
 
 function migrationVersions(db: Database.Database): string[] {
@@ -148,6 +150,42 @@ void test('migrations create a fresh schema, record every version, and remain id
       { name: table },
     );
   }
+  for (const table of ['curated_bundles', 'curated_bundle_components']) {
+    assert.deepEqual(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table),
+      { name: table },
+    );
+  }
+  assert.deepEqual(
+    db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?")
+      .get('curated_bundle_components_product_bundle_idx'),
+    { name: 'curated_bundle_components_product_bundle_idx' },
+  );
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `INSERT INTO curated_bundles (id, key, name, description, active, sort_order)
+           VALUES (100, 'invalid-bundle', 'Invalid', 'Invalid', 2, 1)`,
+        )
+        .run(),
+    /CHECK constraint failed/,
+  );
+  db.prepare(
+    `INSERT INTO curated_bundles (id, key, name, description, active, sort_order)
+     VALUES (100, 'migration-test-bundle', 'Migration test', 'Migration test bundle', 1, 1)`,
+  ).run();
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `INSERT INTO curated_bundle_components (bundle_id, product_id, quantity, sort_order)
+           VALUES (100, 99999, 1, 1)`,
+        )
+        .run(),
+    /FOREIGN KEY constraint failed/,
+  );
   for (const index of [
     'products_active_created_at_id_idx',
     'products_active_price_cents_id_idx',
@@ -400,6 +438,18 @@ void test('seed and reset operate on a migrated database', (t) => {
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM products').get() as { count: number }).count,
     50,
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM curated_bundles').get() as { count: number }).count,
+    CURATED_BUNDLES.length,
+  );
+  assert.equal(
+    (
+      db.prepare('SELECT COUNT(*) AS count FROM curated_bundle_components').get() as {
+        count: number;
+      }
+    ).count,
+    CURATED_BUNDLES.reduce((count, bundle) => count + bundle.components.length, 0),
   );
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM product_tags').get() as { count: number }).count > 0,
