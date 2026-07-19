@@ -25,6 +25,8 @@ import { createPromoRepository } from '../../src/features/promos/promoRepository
 import { validatePromo } from '../../src/features/promos/promoService.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter, type AuditWriter } from '../../src/features/audit/auditService.js';
+import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
+import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
 
 void test('cart service coordinates cart repository and promo eligibility', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-cart-'));
@@ -64,6 +66,57 @@ void test('cart blocks new inactive selections but retains existing lines', (t) 
   db.prepare('UPDATE products SET active = 0 WHERE id = 1').run();
   assert.equal(addItem(carts, cartId, '1'), 'PRODUCT_NOT_FOUND');
   assert.equal(getCart(carts, cartId)?.items[0]?.productId, '1');
+});
+
+void test('cart reads batch available-to-sell and ignores only expired prepared locks', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-availability-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+  const now = new Date('2026-07-19T12:00:00.000Z');
+  const carts = createCartRepository(db);
+  const inventory = createInventoryService({ repository: createInventoryRepository(db) });
+  const service = createCartService(carts, undefined, undefined, {
+    inventory,
+    clock: { now: () => now },
+  });
+  const cartId = createCart(carts).cartId;
+  carts.addLine(cartId, '1');
+  db.prepare('UPDATE products SET stock_count = 1 WHERE id = 1').run();
+  db.prepare(
+    `INSERT INTO payments
+      (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand)
+     VALUES ('cart-availability', 'cart-availability', 'prepared', 1, '4242', 'Visa')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO inventory_reservations
+      (payment_idempotency_key, product_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
+     VALUES ('cart-availability', 1, 'product', 1, 0, '2026-07-19T12:01:00.000Z', ?)`,
+  ).run(now.toISOString());
+  assert.equal(service.get(cartId)?.items[0]?.product.stock, 0);
+  assert.equal(service.get(cartId)?.items[0]?.product.availability, 'out_of_stock');
+
+  const expiredKey = 'cart-expired-lock';
+  db.prepare(
+    `INSERT INTO payments
+      (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand, reservation_expires_at)
+     VALUES (?, ?, 'prepared', 1, '4242', 'Visa', '2026-07-19T12:00:00.000Z')`,
+  ).run(expiredKey, expiredKey);
+  carts.reserve(cartId, expiredKey, now.toISOString());
+  assert.notEqual(service.add(cartId, '2'), 'CART_RESERVED');
+
+  carts.releaseReservation(expiredKey);
+  const authorizedKey = 'cart-authorized-lock';
+  db.prepare(
+    `INSERT INTO payments
+      (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand, reservation_expires_at)
+     VALUES (?, ?, 'authorized_pending_finalize', 1, '4242', 'Visa', '2026-07-19T11:00:00.000Z')`,
+  ).run(authorizedKey, authorizedKey);
+  carts.reserve(cartId, authorizedKey, now.toISOString());
+  assert.equal(service.add(cartId, '3'), 'CART_RESERVED');
 });
 
 void test('cart reads persisted mixes as first-class lines and promos count bag quantity', (t) => {

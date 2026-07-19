@@ -20,6 +20,10 @@ export function toProductContract(row: ProductRow | CustomerProductRow): Product
   const packaging = packagingByArtworkId.get(imageSetId);
   const tags = 'tags' in row ? row.tags : [];
   const specificationGroups = 'specificationGroups' in row ? row.specificationGroups : [];
+  const stock = row.available_to_sell ?? row.stock_count;
+  const backorderable = row.backorderable === 1;
+  const availability =
+    stock > 0 ? 'in_stock' : backorderable && row.active === 1 ? 'backorder' : 'out_of_stock';
 
   return {
     id: String(row.id),
@@ -29,14 +33,17 @@ export function toProductContract(row: ProductRow | CustomerProductRow): Product
     imageSetId,
     ...(packaging ? { packaging } : {}),
     category: row.category,
-    stock: row.stock_count,
+    stock,
+    availability,
+    backorderable,
+    backorderLeadDays: backorderable ? (row.backorder_lead_days ?? null) : null,
     slug: row.slug ?? '',
     compareAtPriceCents: row.compare_at_price_cents ?? undefined,
     salesCount: row.sales_count ?? 0,
     mixable: row.mixable === 1,
     mixUnitGrams: row.mix_unit_grams ?? undefined,
     createdAt: toUtcIsoInstant(row.created_at),
-    available: row.active === 1 && row.stock_count > 0,
+    available: row.active === 1 && (stock > 0 || backorderable),
     tags,
     specificationGroups,
   };

@@ -5,12 +5,25 @@ export interface CatalogPredicate {
   params: readonly unknown[];
 }
 
+/**
+ * Bound-time available-to-sell expression. `p` is intentionally fixed so no
+ * caller can introduce a dynamic SQL identifier.
+ */
+export const availableToSellSql = `MAX(0, p.stock_count - COALESCE((
+  SELECT SUM(r.reserved_quantity)
+  FROM inventory_reservations r
+  WHERE r.product_id = p.id AND (r.expires_at IS NULL OR r.expires_at > ?)
+), 0))`;
+
 function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, '\\$&');
 }
 
 /** Builds one active-first predicate shared exactly by catalog count and list queries. */
-export function buildCatalogPredicate(query: NormalizedCatalogQuery): CatalogPredicate {
+export function buildCatalogPredicate(
+  query: NormalizedCatalogQuery,
+  now: string,
+): CatalogPredicate {
   const conditions: string[] = ['p.active = 1'];
   const params: unknown[] = [];
   if (query.q) {
@@ -51,8 +64,18 @@ export function buildCatalogPredicate(query: NormalizedCatalogQuery): CatalogPre
     );
     params.push(specification.key, specification.valueKey);
   }
-  if (query.availability === 'available') conditions.push('p.stock_count > 0');
-  if (query.availability === 'out_of_stock') conditions.push('p.stock_count = 0');
+  if (query.availability === 'available') {
+    conditions.push(`${availableToSellSql} > 0`);
+    params.push(now);
+  }
+  if (query.availability === 'backorder') {
+    conditions.push(`${availableToSellSql} = 0 AND p.backorderable = 1`);
+    params.push(now);
+  }
+  if (query.availability === 'out_of_stock') {
+    conditions.push(`${availableToSellSql} = 0 AND p.backorderable = 0`);
+    params.push(now);
+  }
   return { where: `WHERE ${conditions.join(' AND ')}`, params };
 }
 

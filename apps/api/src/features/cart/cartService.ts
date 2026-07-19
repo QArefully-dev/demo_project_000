@@ -8,10 +8,16 @@ import { derivePowderMixUsageLabel } from '../powderizer/powderMixRules.js';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
+import type { InventoryService } from '../inventory/inventoryService.js';
 
 export interface CartAuditDependencies {
   unitOfWork: UnitOfWork;
   audit: AuditWriter;
+}
+
+export interface CartAvailabilityDependencies {
+  inventory: Pick<InventoryService, 'availableToSell'>;
+  clock: { now(): Date };
 }
 
 export interface CartService {
@@ -39,6 +45,7 @@ export function createCartService(
   repository: CartRepository,
   mixes?: PowderMixRepository,
   auditDependencies?: CartAuditDependencies,
+  availabilityDependencies?: CartAvailabilityDependencies,
 ): CartService {
   return {
     create: (context) =>
@@ -54,11 +61,11 @@ export function createCartService(
         }
         return result;
       }),
-    get: (cartId) => getCart(repository, cartId, mixes),
+    get: (cartId) => getCart(repository, cartId, mixes, availabilityDependencies),
     add: (cartId, productId, context) =>
       runCartMutation(auditDependencies, () => {
         requireAuditContext(auditDependencies, context);
-        const result = addItem(repository, cartId, productId, mixes);
+        const result = addItem(repository, cartId, productId, mixes, availabilityDependencies);
         if (context && auditDependencies && typeof result !== 'string') {
           auditDependencies.audit.append({
             action: 'cart.product_added',
@@ -75,7 +82,14 @@ export function createCartService(
     update: (cartId, productId, quantity, context) =>
       runCartMutation(auditDependencies, () => {
         requireAuditContext(auditDependencies, context);
-        const result = updateItem(repository, cartId, productId, quantity, mixes);
+        const result = updateItem(
+          repository,
+          cartId,
+          productId,
+          quantity,
+          mixes,
+          availabilityDependencies,
+        );
         if (context && auditDependencies && typeof result !== 'string') {
           auditDependencies.audit.append(
             quantity === 0
@@ -94,7 +108,7 @@ export function createCartService(
     remove: (cartId, productId, context) =>
       runCartMutation(auditDependencies, () => {
         requireAuditContext(auditDependencies, context);
-        const result = removeItem(repository, cartId, productId, mixes);
+        const result = removeItem(repository, cartId, productId, mixes, availabilityDependencies);
         if (context && auditDependencies && typeof result !== 'string') {
           auditDependencies.audit.append({
             action: 'cart.product_removed',
@@ -158,11 +172,25 @@ export function getCart(
   repository: CartRepository,
   cartId: string,
   mixes?: PowderMixRepository,
+  availabilityDependencies?: CartAvailabilityDependencies,
 ): Cart | undefined {
   if (!repository.exists(cartId)) return undefined;
-  const items = repository.listLines(cartId).map((row) => ({
+  const rows = repository.listLines(cartId);
+  const availability = availabilityDependencies?.inventory.availableToSell(
+    rows.map((row) => row.product_id),
+    availabilityDependencies.clock.now().toISOString(),
+  );
+  const availableByProduct = new Map(
+    availability?.map((product) => [product.productId, product.availableToSell]),
+  );
+  const items = rows.map((row) => ({
     productId: String(row.product_id),
-    product: toProductContract(row),
+    product: toProductContract({
+      ...row,
+      ...(availabilityDependencies
+        ? { available_to_sell: availableByProduct.get(row.product_id) ?? 0 }
+        : {}),
+    }),
     quantity: row.quantity,
     lineTotalCents: row.price_cents * row.quantity,
   }));
@@ -181,13 +209,15 @@ export function addItem(
   cartId: string,
   productId: string,
   mixes?: PowderMixRepository,
+  availabilityDependencies?: CartAvailabilityDependencies,
 ): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_FOUND' | 'CART_RESERVED' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
-  if (repository.isReserved(cartId)) return 'CART_RESERVED';
+  if (repository.isReserved(cartId, availabilityDependencies?.clock.now().toISOString()))
+    return 'CART_RESERVED';
   if (!repository.productExists(productId)) return 'PRODUCT_NOT_FOUND';
   repository.addLine(cartId, productId);
   repository.touch(cartId);
-  return getCart(repository, cartId, mixes) ?? 'CART_NOT_FOUND';
+  return getCart(repository, cartId, mixes, availabilityDependencies) ?? 'CART_NOT_FOUND';
 }
 
 export function updateItem(
@@ -196,16 +226,18 @@ export function updateItem(
   productId: string,
   quantity: number,
   mixes?: PowderMixRepository,
+  availabilityDependencies?: CartAvailabilityDependencies,
 ): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_IN_CART' | 'CART_RESERVED' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
-  if (repository.isReserved(cartId)) return 'CART_RESERVED';
+  if (repository.isReserved(cartId, availabilityDependencies?.clock.now().toISOString()))
+    return 'CART_RESERVED';
   const changed =
     quantity === 0
       ? repository.removeLine(cartId, productId)
       : repository.updateLine(cartId, productId, quantity);
   if (!changed) return 'PRODUCT_NOT_IN_CART';
   repository.touch(cartId);
-  return getCart(repository, cartId, mixes) ?? 'CART_NOT_FOUND';
+  return getCart(repository, cartId, mixes, availabilityDependencies) ?? 'CART_NOT_FOUND';
 }
 
 export function removeItem(
@@ -213,10 +245,12 @@ export function removeItem(
   cartId: string,
   productId: string,
   mixes?: PowderMixRepository,
+  availabilityDependencies?: CartAvailabilityDependencies,
 ): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_IN_CART' | 'CART_RESERVED' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
-  if (repository.isReserved(cartId)) return 'CART_RESERVED';
+  if (repository.isReserved(cartId, availabilityDependencies?.clock.now().toISOString()))
+    return 'CART_RESERVED';
   if (!repository.removeLine(cartId, productId)) return 'PRODUCT_NOT_IN_CART';
   repository.touch(cartId);
-  return getCart(repository, cartId, mixes) ?? 'CART_NOT_FOUND';
+  return getCart(repository, cartId, mixes, availabilityDependencies) ?? 'CART_NOT_FOUND';
 }
