@@ -19,7 +19,7 @@ export interface InventoryService {
   }): readonly InventoryReservationAllocation[];
   releaseReservation(paymentIdempotencyKey: string): void;
   expirePrepared(now: string): readonly string[];
-  authorizeReservation(paymentIdempotencyKey: string): void;
+  authorizeReservation(paymentIdempotencyKey: string, now: string): void;
   commitReservation(input: {
     paymentIdempotencyKey: string;
     orderId: number;
@@ -115,8 +115,8 @@ export function createInventoryService(dependencies: { repository: InventoryRepo
     expirePrepared(now) {
       return repository.releaseExpired(now);
     },
-    authorizeReservation(paymentIdempotencyKey) {
-      if (!repository.authorizeReservation(paymentIdempotencyKey)) {
+    authorizeReservation(paymentIdempotencyKey, now) {
+      if (!repository.authorizeReservation(paymentIdempotencyKey, now)) {
         throw new InventoryError('RESERVATION_EXPIRED', 'Checkout inventory reservation has expired.');
       }
     },

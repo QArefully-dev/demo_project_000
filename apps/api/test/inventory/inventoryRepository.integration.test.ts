@@ -76,7 +76,7 @@ void test('commit creates exactly one ordinary allocation and receipt replay has
       now: '2026-07-19T12:00:00.000Z', expiresAt: '2026-07-19T12:15:00.000Z',
     });
     assert.equal(split[0]?.backorderedQuantity, 3);
-    inventory.authorizeReservation('backorder');
+    inventory.authorizeReservation('backorder', '2026-07-19T12:00:01.000Z');
     inventory.commitReservation({
       paymentIdempotencyKey: 'backorder', orderId: order.orderId,
       ordinaryLines: [{ orderLineItemId: order.lineId, productId: 49, quantity: 3 }],
@@ -125,7 +125,7 @@ void test('cancellation restores debited stock into oldest remaining backorder',
       paymentIdempotencyKey: 'first-order', demands: [{ productId: 49, quantity: 1, demandKind: 'product' }],
       now: '2026-07-19T12:00:00.000Z', expiresAt: '2026-07-19T12:15:00.000Z',
     });
-    inventory.authorizeReservation('first-order');
+    inventory.authorizeReservation('first-order', '2026-07-19T12:00:01.000Z');
     inventory.commitReservation({
       paymentIdempotencyKey: 'first-order', orderId: first.orderId,
       ordinaryLines: [{ orderLineItemId: first.lineId, productId: 49, quantity: 1 }], occurredAt: '2026-07-19T12:01:00.000Z',
@@ -138,7 +138,7 @@ void test('cancellation restores debited stock into oldest remaining backorder',
       paymentIdempotencyKey: 'second-order', demands: [{ productId: 49, quantity: 1, demandKind: 'product' }],
       now: '2026-07-19T12:02:00.000Z', expiresAt: '2026-07-19T12:17:00.000Z',
     });
-    inventory.authorizeReservation('second-order');
+    inventory.authorizeReservation('second-order', '2026-07-19T12:02:01.000Z');
     inventory.commitReservation({
       paymentIdempotencyKey: 'second-order', orderId: second.orderId,
       ordinaryLines: [{ orderLineItemId: second.lineId, productId: 49, quantity: 1 }], occurredAt: '2026-07-19T12:03:00.000Z',
@@ -149,6 +149,66 @@ void test('cancellation restores debited stock into oldest remaining backorder',
   assert.deepEqual(
     db.prepare('SELECT allocated_quantity, backordered_quantity FROM order_inventory_allocations WHERE order_line_item_id = ?').get(second.lineId),
     { allocated_quantity: 1, backordered_quantity: 0 },
+  );
+  assert.equal((db.prepare('SELECT stock_count FROM products WHERE id = 49').get() as { stock_count: number }).stock_count, 0);
+});
+
+void test('authorization at or after expiry cannot revive prepared reservation', (t) => {
+  const { db, inventory } = fixture(t);
+  db.prepare('UPDATE products SET stock_count = 1, backorderable = 0, backorder_lead_days = NULL WHERE id = 1').run();
+  insertPayment(db, 'late-authorization');
+  db.transaction(() => inventory.reserveCheckout({
+    paymentIdempotencyKey: 'late-authorization', demands: [{ productId: 1, quantity: 1, demandKind: 'product' }],
+    now: '2026-07-19T12:00:00.000Z', expiresAt: '2026-07-19T12:15:00.000Z',
+  }))();
+  for (const now of ['2026-07-19T12:15:00.000Z', '2026-07-19T12:15:00.001Z']) {
+    assert.throws(
+      () => db.transaction(() => inventory.authorizeReservation('late-authorization', now))(),
+      (error: unknown) => error instanceof InventoryError && error.code === 'RESERVATION_EXPIRED',
+    );
+  }
+  assert.equal(
+    (db.prepare('SELECT expires_at FROM inventory_reservations WHERE payment_idempotency_key = ?').get('late-authorization') as { expires_at: string }).expires_at,
+    '2026-07-19T12:15:00.000Z',
+  );
+});
+
+void test('receipt allocation becomes cancellable stock and reassigns FIFO', (t) => {
+  const { db, inventory } = fixture(t);
+  db.prepare('UPDATE products SET stock_count = 0, backorderable = 1, backorder_lead_days = 14 WHERE id = 49').run();
+  const placeBackorder = (key: string, occurredAt: string) => {
+    const order = insertOrderLine(db, 49, 2);
+    insertPayment(db, key);
+    db.transaction(() => {
+      inventory.reserveCheckout({
+        paymentIdempotencyKey: key, demands: [{ productId: 49, quantity: 2, demandKind: 'product' }],
+        now: occurredAt, expiresAt: '2026-07-19T12:15:00.000Z',
+      });
+      inventory.authorizeReservation(key, occurredAt);
+      inventory.commitReservation({
+        paymentIdempotencyKey: key, orderId: order.orderId,
+        ordinaryLines: [{ orderLineItemId: order.lineId, productId: 49, quantity: 2 }], occurredAt,
+      });
+    })();
+    return order;
+  };
+  const first = placeBackorder('receipt-first', '2026-07-19T12:00:00.000Z');
+  const second = placeBackorder('receipt-second', '2026-07-19T12:01:00.000Z');
+  db.transaction(() => inventory.receiveStock({
+    idempotencyKey: 'receipt-cancel', productId: 49, quantity: 2, receivedByUserId: 3,
+    occurredAt: '2026-07-19T12:02:00.000Z',
+  }))();
+  assert.deepEqual(
+    db.prepare('SELECT allocated_quantity, backordered_quantity, stock_debited_quantity FROM order_inventory_allocations WHERE order_line_item_id = ?').get(first.lineId),
+    { allocated_quantity: 2, backordered_quantity: 0, stock_debited_quantity: 2 },
+  );
+  const reassigned = db.transaction(() => inventory.cancelOrderInventory({
+    orderId: first.orderId, occurredAt: '2026-07-19T12:03:00.000Z',
+  }))();
+  assert.deepEqual(reassigned, [{ orderId: second.orderId, orderLineItemId: second.lineId, quantity: 2 }]);
+  assert.deepEqual(
+    db.prepare('SELECT allocated_quantity, backordered_quantity, stock_debited_quantity FROM order_inventory_allocations WHERE order_line_item_id = ?').get(second.lineId),
+    { allocated_quantity: 2, backordered_quantity: 0, stock_debited_quantity: 2 },
   );
   assert.equal((db.prepare('SELECT stock_count FROM products WHERE id = 49').get() as { stock_count: number }).stock_count, 0);
 });

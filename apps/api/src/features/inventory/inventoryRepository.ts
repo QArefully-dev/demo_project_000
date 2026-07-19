@@ -39,7 +39,7 @@ export interface InventoryRepository {
   }): void;
   listReservations(paymentIdempotencyKey: string): readonly ReservationRow[];
   releaseReservation(paymentIdempotencyKey: string): void;
-  authorizeReservation(paymentIdempotencyKey: string): boolean;
+  authorizeReservation(paymentIdempotencyKey: string, now: string): boolean;
   listExpiredPaymentKeys(now: string): readonly string[];
   releaseExpired(now: string): readonly string[];
   decrementStock(productId: number, quantity: number): boolean;
@@ -131,10 +131,11 @@ export function createInventoryRepository(db: Database.Database): InventoryRepos
     releaseReservation(paymentIdempotencyKey) {
       db.prepare('DELETE FROM inventory_reservations WHERE payment_idempotency_key = ?').run(paymentIdempotencyKey);
     },
-    authorizeReservation(paymentIdempotencyKey) {
+    authorizeReservation(paymentIdempotencyKey, now) {
       return db.prepare(
-        'UPDATE inventory_reservations SET expires_at = NULL WHERE payment_idempotency_key = ? AND expires_at IS NOT NULL',
-      ).run(paymentIdempotencyKey).changes > 0;
+        `UPDATE inventory_reservations SET expires_at = NULL
+         WHERE payment_idempotency_key = ? AND expires_at IS NOT NULL AND expires_at > ?`,
+      ).run(paymentIdempotencyKey, now).changes > 0;
     },
     listExpiredPaymentKeys(now) {
       return (db.prepare(
@@ -209,9 +210,10 @@ export function createInventoryRepository(db: Database.Database): InventoryRepos
     fulfillBackorder({ orderLineItemId, quantity, updatedAt }) {
       const changed = db.prepare(
         `UPDATE order_inventory_allocations
-         SET allocated_quantity = allocated_quantity + ?, backordered_quantity = backordered_quantity - ?, updated_at = ?
+         SET allocated_quantity = allocated_quantity + ?, backordered_quantity = backordered_quantity - ?,
+             stock_debited_quantity = stock_debited_quantity + ?, updated_at = ?
          WHERE order_line_item_id = ? AND backordered_quantity >= ?`,
-      ).run(quantity, quantity, updatedAt, orderLineItemId, quantity).changes;
+      ).run(quantity, quantity, quantity, updatedAt, orderLineItemId, quantity).changes;
       if (changed !== 1) throw new Error('Inventory backorder allocation changed concurrently.');
     },
     listOrderAllocations(orderId) {
