@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0",
+  "message_type": "worker_assignment_v1",
+  "message_id": "[message-id]",
+  "run_id": "[run-id]",
+  "packet_id": "[packet-id]",
+  "role": "worker",
+  "assignment_revision": 1,
+  "objective": "[bounded implementation outcome]",
+  "depends_on": [],
+  "owns": ["[write path or glob]"],
+  "reads": [
+    {
+      "path": "[repository-relative path]",
+      "symbols": ["[symbol or section]"],
+      "purpose": "[context needed for packet]"
+    }
+  ],
+  "acceptance_criteria": ["[observable completion condition]"],
+  "constraints": [],
+  "invariants": [],
+  "non_goals": [],
+  "steps": ["[ordered implementation step]"],
+  "resolved_upstream_inputs": [],
+  "relevant_evidence": [],
+  "verification_duties": [
+    {
+      "evidence_id": "[planned evidence-id]",
+      "command": "[exact command or none]",
+      "scope": "[scope to verify]",
+      "expected": "[pass condition]",
+      "runner": "worker"
+    }
+  ],
+  "handoff_targets": [],
+  "report_contract": "worker_report_v1"
+}
