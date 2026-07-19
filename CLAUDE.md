@@ -64,7 +64,7 @@ Dependency direction: `packages/contracts` -> `apps/api` + `apps/web`; `packages
 
 ## Commands
 
-Prerequisite: Node 22.x; root `engines` range authoritative. Before dependency install or broad gate: `node --version` -> `v22.x`. Stop on Node 23+ even when npm runs. Run commands from repository root unless stated otherwise.
+Prerequisite: Node 22.x; root `engines` range authoritative. Windows Node 22 path: `C:\Users\iwano\AppData\Local\Programs\nodejs-v22`. Before dependency install or broad gate: prepend path when needed (`$env:PATH='C:\Users\iwano\AppData\Local\Programs\nodejs-v22;' + $env:PATH`) -> `node --version` -> `v22.x`. Never report Node 22 unavailable while path exists. Stop on Node 23+ even when npm runs. Run commands from repository root unless stated otherwise.
 
 ### Toolchain and dependency health
 
