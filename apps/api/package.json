@@ -10,8 +10,8 @@
     "seed": "tsx src/db/run-seed.ts",
     "reset": "tsx src/db/run-reset.ts",
     "test": "npm run test:unit && npm run test:integration",
-    "test:unit": "tsx --test src/features/promos/promoService.test.ts src/features/powderizer/powderMixRules.test.ts src/features/reviews/reviewRules.test.ts src/features/orders/orderLifecycle.test.ts src/db/powderCatalog.test.ts test/config.test.ts",
-    "test:integration": "tsx --test test/db/*.integration.test.ts test/catalog/*.integration.test.ts test/cart/*.integration.test.ts test/checkout/*.integration.test.ts test/orders/*.integration.test.ts test/auth/*.integration.test.ts test/audit/*.integration.test.ts test/favourites/*.integration.test.ts test/http/*.integration.test.ts test/powderizer/*.integration.test.ts test/reviews/*.integration.test.ts"
+    "test:unit": "tsx --test src/features/promos/promoService.test.ts src/features/powderizer/powderMixRules.test.ts src/features/inventory/inventoryRules.test.ts src/features/reviews/reviewRules.test.ts src/features/orders/orderLifecycle.test.ts src/db/powderCatalog.test.ts test/config.test.ts",
+    "test:integration": "tsx --test test/db/*.integration.test.ts test/catalog/*.integration.test.ts test/cart/*.integration.test.ts test/checkout/*.integration.test.ts test/inventory/*.integration.test.ts test/orders/*.integration.test.ts test/auth/*.integration.test.ts test/audit/*.integration.test.ts test/favourites/*.integration.test.ts test/http/*.integration.test.ts test/powderizer/*.integration.test.ts test/reviews/*.integration.test.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.1",

@@ -6,7 +6,7 @@ export const shippingArticle = defineHelpArticle({
   slug: 'shipping',
   path: '/help/shipping',
   title: 'Shipping',
-  summary: 'Order and delivery states are simulated for this local demo.',
+  summary: 'Local stock, order, and delivery states are simulated for this demo.',
   blocks: [
     {
       kind: 'paragraph',
@@ -20,7 +20,7 @@ export const shippingArticle = defineHelpArticle({
       paragraphs: [
         {
           id: 'shipping-no-fulfilment-services',
-          text: 'No carrier, dispatch process, delivery estimate, or fulfilment service is connected to this demo. Tracking references and timeline updates are simulated local-demo data only.',
+          text: 'No carrier, dispatch process, delivery estimate, or fulfilment service is connected to this demo. Tracking references and timeline updates are simulated local-demo data only. Local stock is reserved during checkout, but it does not create a real shipment.',
         },
         {
           id: 'shipping-no-fulfilment-status',
@@ -50,7 +50,7 @@ export const shippingArticle = defineHelpArticle({
       paragraphs: [
         {
           id: 'shipping-testing-guidance-test-data',
-          text: 'Use only test information while exploring checkout. Do not rely on this site for delivery planning or product availability.',
+          text: 'Use only test information while exploring checkout. The demo tracks local stock, short-lived checkout reservations, and eligible backorders. A displayed backorder lead-time estimate is not a delivery promise, and this site is not for real-world availability or delivery planning.',
         },
       ],
     },
@@ -105,25 +105,25 @@ export const packSizesArticle = defineHelpArticle({
   slug: 'pack-sizes',
   path: '/help/pack-sizes',
   title: 'Pack sizes',
-  summary: 'Displayed quantities describe catalog presentation, not fulfilled stock.',
+  summary: 'Local stock and backorder labels support this demo’s simulated checkout flow.',
   blocks: [
     {
       kind: 'paragraph',
       id: 'pack-sizes-display-quantity',
-      text: 'A product card or product page can display a quantity as part of its catalog presentation. That displayed quantity is the product-specific information to read for that item.',
+      text: 'Product cards and product pages show the current local-demo availability state. In-stock items have local stock available; selected products can instead be marked available to backorder.',
     },
     {
       kind: 'notice',
       id: 'pack-sizes-no-stock',
-      heading: 'Not fulfilment information',
+      heading: 'Local inventory, not real fulfilment',
       paragraphs: [
         {
           id: 'pack-sizes-no-stock-quantities',
-          text: 'Displayed quantities do not represent weighed inventory, available stock, or a pack that will be prepared or delivered.',
+          text: 'Checkout temporarily reserves local stock while payment is processed. A successful simulated order consumes reserved stock; a backordered quantity waits for a local administrator to record a stock receipt.',
         },
         {
           id: 'pack-sizes-no-stock-inventory',
-          text: 'This local demo does not maintain real fulfilment inventory.',
+          text: 'Local stock and backorder states are for testing only. They are not supplier inventory, a delivery promise, or a real fulfilment commitment.',
         },
       ],
     },

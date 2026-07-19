@@ -52,7 +52,7 @@ import { createPromoRepository } from './features/promos/promoRepository.js';
 import { createPromoService, type PromoService } from './features/promos/promoService.js';
 import { createPaymentRepository } from './features/payments/paymentRepository.js';
 import { simulatedPaymentGateway } from './features/payments/paymentGateway.js';
-import { createUnitOfWork } from './db/unitOfWork.js';
+import { createUnitOfWork, type UnitOfWork } from './db/unitOfWork.js';
 import { createAuditRepository } from './features/audit/auditRepository.js';
 import {
   createAuditReadService,
@@ -72,6 +72,12 @@ import reviewsRoutes from './routes/reviews.js';
 import { createReviewRepository } from './features/reviews/reviewRepository.js';
 import { createReviewService, type ReviewService } from './features/reviews/reviewService.js';
 import adminOrdersRoutes from './routes/adminOrders.js';
+import adminInventoryRoutes from './routes/adminInventory.js';
+import { createInventoryRepository } from './features/inventory/inventoryRepository.js';
+import {
+  createInventoryService,
+  type InventoryService,
+} from './features/inventory/inventoryService.js';
 
 export interface AppDependencies {
   db: Database.Database;
@@ -97,6 +103,9 @@ export interface AppServices {
   powderizer: PowderizerService;
   bundles: BundleService;
   reviews: ReviewService;
+  inventory: InventoryService;
+  inventoryUnitOfWork: UnitOfWork;
+  clock: Clock;
 }
 
 export type AppContext = { services: AppServices };
@@ -110,6 +119,9 @@ function createAppServices(dependencies: AppDependencies): AppServices {
   const products = createProductRepository(dependencies.db);
   const mixes = createPowderMixRepository(dependencies.db);
   const unitOfWork = createUnitOfWork(dependencies.db);
+  const inventory = createInventoryService({
+    repository: createInventoryRepository(dependencies.db),
+  });
   const auditRepository = createAuditRepository(dependencies.db);
   const audit = createAuditWriter({ repository: auditRepository, clock });
   return {
@@ -135,10 +147,10 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       audit,
     }),
     mailbox,
-    products: createProductService(products),
-    carts: createCartService(carts, mixes, { unitOfWork, audit }),
+    products: createProductService(products, { clock }),
+    carts: createCartService(carts, mixes, { unitOfWork, audit }, { inventory, clock }),
     promos: createPromoService({ promos, carts, mixes, clock }),
-    orders: createOrderService({ repository: orders, unitOfWork, clock, audit }),
+    orders: createOrderService({ repository: orders, unitOfWork, clock, audit, inventory }),
     orderAccess: createOrderAccessService({
       repository: orders,
       clock,
@@ -156,6 +168,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       mixes,
       products,
       audit,
+      inventory,
     }),
     favourites: createFavouritesService(createFavouritesRepository(dependencies.db)),
     powderizer: createPowderizerService({
@@ -171,6 +184,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       mixes,
       unitOfWork,
       audit,
+      availability: { inventory, clock },
     }),
     reviews: createReviewService({
       repository: createReviewRepository(dependencies.db),
@@ -178,6 +192,9 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       audit,
       clock,
     }),
+    inventory,
+    inventoryUnitOfWork: unitOfWork,
+    clock,
     audit: createAuditReadService(auditRepository),
   };
 }
@@ -223,6 +240,7 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(promoRoutes, context);
   await app.register(ordersRoutes, context);
   await app.register(adminOrdersRoutes, context);
+  await app.register(adminInventoryRoutes, context);
   await app.register(authRoutes, context);
   await app.register(favouritesRoutes, context);
   await app.register(paymentRoutes, context);

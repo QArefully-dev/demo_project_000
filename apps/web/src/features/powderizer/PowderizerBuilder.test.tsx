@@ -9,6 +9,9 @@ import { RatioEditor } from './RatioEditor';
 const metadata = {
   createdAt: '2026-07-14T00:00:00.000Z',
   available: true,
+  availability: 'in_stock' as const,
+  backorderable: false,
+  backorderLeadDays: null,
   tags: [],
   specificationGroups: [],
 };

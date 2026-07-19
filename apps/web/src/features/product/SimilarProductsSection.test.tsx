@@ -28,6 +28,9 @@ const product = (id: string, overrides: Partial<Product> = {}): Product => ({
   specificationGroups: [],
   mixable: false,
   ...overrides,
+  availability: overrides.availability ?? 'in_stock',
+  backorderable: overrides.backorderable ?? false,
+  backorderLeadDays: overrides.backorderLeadDays ?? null,
 });
 
 function renderSection(productId = 'source') {

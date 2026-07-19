@@ -73,6 +73,9 @@ const product = (overrides: Partial<Product> = {}): Product => ({
   tags: overrides.tags ?? [],
   specificationGroups: overrides.specificationGroups ?? [],
   mixable: overrides.mixable ?? false,
+  availability: overrides.availability ?? 'in_stock',
+  backorderable: overrides.backorderable ?? false,
+  backorderLeadDays: overrides.backorderLeadDays ?? null,
 });
 
 function renderPage(path = '/products/powdered-water') {
@@ -165,7 +168,7 @@ describe('ProductPage', () => {
     unmount();
 
     productApi.getProduct.mockResolvedValueOnce(
-      product({ compareAtPriceCents: undefined, stock: 0 }),
+      product({ compareAtPriceCents: undefined, stock: 0, availability: 'out_of_stock' }),
     );
     productApi.getSimilarProducts.mockResolvedValueOnce([]);
     renderPage();

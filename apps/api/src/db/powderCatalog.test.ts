@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { CATALOG_PRODUCTS, validateCatalog } from '@shop/catalog';
+import { CATALOG_PRODUCTS, type CatalogProduct, validateCatalog } from '@shop/catalog';
 
 void test('canonical powder catalog satisfies Phase 1 constraints', () => {
   assert.doesNotThrow(() => validateCatalog());
@@ -11,7 +11,9 @@ void test('canonical powder catalog satisfies Phase 1 constraints', () => {
     14,
   );
   assert.equal(
-    CATALOG_PRODUCTS.find((product) => product.slug === 'powdered-water')?.sales_count,
+    (CATALOG_PRODUCTS as readonly CatalogProduct[]).find(
+      (product) => product.slug === 'powdered-water',
+    )?.sales_count,
     1200,
   );
   assert.equal(
