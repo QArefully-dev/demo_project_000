@@ -1,14 +1,22 @@
-export interface ProductSpecification {
-  label: string;
-  value: string;
-}
+import type { Product, ProductSpecification } from '@shop/contracts/products';
 
 interface ProductSpecificationsProps {
-  specifications: readonly ProductSpecification[];
+  specificationGroups: Product['specificationGroups'];
 }
 
-export function ProductSpecifications({ specifications }: ProductSpecificationsProps) {
-  if (specifications.length === 0) return null;
+function hasDisplayValue(specification: ProductSpecification): boolean {
+  return Boolean(specification.label?.trim() && specification.value?.trim());
+}
+
+export function ProductSpecifications({ specificationGroups }: ProductSpecificationsProps) {
+  const groups = specificationGroups
+    .map((group) => ({
+      ...group,
+      specifications: group.specifications.filter(hasDisplayValue),
+    }))
+    .filter((group) => group.label?.trim() && group.specifications.length > 0);
+
+  if (groups.length === 0) return null;
 
   return (
     <section
@@ -18,17 +26,26 @@ export function ProductSpecifications({ specifications }: ProductSpecificationsP
       <h2 id="product-specifications-heading" className="text-2xl font-semibold tracking-tight">
         Specifications
       </h2>
-      <dl className="mt-6 divide-y">
-        {specifications.map(({ label, value }) => (
-          <div
-            key={label}
-            className="grid gap-1 py-4 first:pt-0 last:pb-0 sm:grid-cols-[minmax(10rem,1fr)_2fr]"
-          >
-            <dt className="font-medium">{label}</dt>
-            <dd className="text-muted-foreground">{value}</dd>
-          </div>
+      <div className="mt-6 grid gap-8">
+        {groups.map((group) => (
+          <section key={group.key} aria-labelledby={`product-specifications-${group.key}`}>
+            <h3 id={`product-specifications-${group.key}`} className="text-lg font-semibold">
+              {group.label}
+            </h3>
+            <dl className="mt-3 divide-y">
+              {group.specifications.map((specification, index) => (
+                <div
+                  key={`${group.key}:${specification.key}:${index}`}
+                  className="grid gap-1 py-4 first:pt-0 last:pb-0 sm:grid-cols-[minmax(10rem,1fr)_2fr]"
+                >
+                  <dt className="font-medium">{specification.label}</dt>
+                  <dd className="text-muted-foreground">{specification.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
         ))}
-      </dl>
+      </div>
     </section>
   );
 }

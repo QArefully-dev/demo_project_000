@@ -52,6 +52,15 @@ export function AccountMenu() {
         <div className="px-2 py-1.5 text-xs text-muted-foreground">{user.email}</div>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => navigate('/account')}>My Account</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => navigate('/orders')}>My Orders</DropdownMenuItem>
+        {user.role === 'admin' && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => navigate('/admin/reviews')}>
+              Review moderation
+            </DropdownMenuItem>
+          </>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => void handleLogout()}>Sign Out</DropdownMenuItem>
       </DropdownMenuContent>

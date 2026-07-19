@@ -3,6 +3,7 @@ import { Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { WishlistButton } from '@/components/WishlistButton';
+import { CompareProductButton } from '@/features/comparison/CompareProductButton';
 import { formatMoney } from '@/lib/formatMoney';
 
 interface ProductPurchasePanelProps {
@@ -10,9 +11,9 @@ interface ProductPurchasePanelProps {
   isCartAvailable: boolean;
   isAdding: boolean;
   actionError: string | null;
-  cartError: string | null;
+  cartError?: string | null;
   onAddToCart: () => Promise<void>;
-  onRetryCart: () => void;
+  onRetryCart?: () => void;
 }
 
 export function ProductPurchasePanel({
@@ -24,7 +25,9 @@ export function ProductPurchasePanel({
   onAddToCart,
   onRetryCart,
 }: ProductPurchasePanelProps) {
-  const inStock = product.stock > 0;
+  const inStock = product.availability === 'in_stock';
+  const backorder = product.availability === 'backorder';
+  const purchasable = inStock || backorder;
   const isOnSale =
     product.compareAtPriceCents != null && product.compareAtPriceCents > product.priceCents;
   const savings = isOnSale ? product.compareAtPriceCents! - product.priceCents : 0;
@@ -94,12 +97,25 @@ export function ProductPurchasePanel({
       </ul>
 
       <div className="mt-6 rounded-xl bg-surface-soft p-4">
-        <p className={inStock ? 'font-semibold text-success' : 'font-semibold text-destructive'}>
-          {inStock ? 'In stock' : 'Out of stock'}
+        <p
+          className={
+            inStock
+              ? 'font-semibold text-success'
+              : backorder
+                ? 'font-semibold text-amber-700'
+                : 'font-semibold text-destructive'
+          }
+        >
+          {inStock ? 'In stock' : backorder ? 'Available to backorder' : 'Out of stock'}
         </p>
         {inStock && (
           <p className="mt-1 text-sm text-muted-foreground">
             {product.stock === 1 ? '1 item available' : `${product.stock} items available`}
+          </p>
+        )}
+        {backorder && (
+          <p className="mt-1 text-sm text-muted-foreground">
+            This item can be ordered when stock is replenished. Checkout confirms availability.
           </p>
         )}
       </div>
@@ -108,14 +124,14 @@ export function ProductPurchasePanel({
         <Button
           size="lg"
           className="h-12 flex-1 text-base"
-          disabled={!isCartAvailable || !inStock || isAdding}
+          disabled={!isCartAvailable || !purchasable || isAdding}
           onClick={() => void onAddToCart()}
         >
           {!isCartAvailable
             ? 'Cart unavailable'
             : isAdding
               ? 'Adding…'
-              : inStock
+              : purchasable
                 ? 'Add powder'
                 : 'Unavailable'}
         </Button>
@@ -123,13 +139,16 @@ export function ProductPurchasePanel({
           <WishlistButton productId={product.id} product={product} />
         </div>
       </div>
+      <div className="mt-3">
+        <CompareProductButton productId={product.id} productName={product.name} />
+      </div>
 
       {actionError && (
         <p role="alert" className="mt-3 text-sm text-destructive">
           {actionError}
         </p>
       )}
-      {cartError && (
+      {cartError && onRetryCart && (
         <div role="alert" className="mt-3 flex flex-wrap items-center gap-2">
           <p className="text-sm text-destructive">{cartError}</p>
           <Button variant="outline" size="sm" onClick={onRetryCart}>

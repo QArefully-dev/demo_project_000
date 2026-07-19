@@ -1,41 +1,12 @@
-import type { Order } from '@shop/contracts/orders';
-import { DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME } from '@shop/contracts/powderizer';
-import type { PowderMixOrderItem } from '@shop/contracts/powderizer';
 import { parsePersistedCheckoutQuote } from '../payments/paymentRepository.js';
+import type { AuditContext } from '../audit/auditEvent.js';
 import type { CheckoutDependencies, CheckoutResult } from './checkoutTypes.js';
-
-function normalizeOrderMixItem(mix: PowderMixOrderItem): Order['mixItems'][number] {
-  if (mix.snapshotVersion === 1) {
-    return {
-      ...mix,
-      bagColourScheme: DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
-      usageLabel: 'Check ingredient labels',
-    };
-  }
-  return mix;
-}
-
-function orderFromQuote(
-  orderId: number,
-  quote: ReturnType<typeof parsePersistedCheckoutQuote>,
-  createdAt: string,
-): Order {
-  return {
-    id: String(orderId),
-    items: quote.lines,
-    mixItems: quote.version === 1 ? [] : quote.mixLines.map(normalizeOrderMixItem),
-    subtotalCents: quote.subtotalCents,
-    discountCents: quote.discountCents,
-    totalCents: quote.totalCents,
-    promoApplied: quote.promoCode,
-    createdAt,
-  };
-}
 
 /** Finalizes only an already-authorized intent; rollback leaves it resumable. */
 export function finalizeAuthorizedCheckout(
   dependencies: CheckoutDependencies,
   idempotencyKey: string,
+  auditContext: AuditContext,
 ): CheckoutResult {
   return dependencies.unitOfWork.run(() => {
     const payment = dependencies.payments.load(idempotencyKey);
@@ -57,7 +28,23 @@ export function finalizeAuthorizedCheckout(
       mixItems: quote.version === 1 ? [] : quote.mixLines,
       createdAt,
     });
-    dependencies.mixes.consumeReservedStock(idempotencyKey);
+    const order = dependencies.orders.findById(orderId);
+    if (!order) throw new Error('Created order could not be hydrated');
+    if (quote.version === 4 || (quote.version !== 1 && quote.mixLines.length > 0)) {
+      dependencies.inventory.commitReservation({
+        paymentIdempotencyKey: idempotencyKey,
+        orderId,
+        ordinaryLines:
+          quote.version === 4
+            ? order.items.map((line) => ({
+                orderLineItemId: Number(line.lineId),
+                productId: Number(line.productId),
+                quantity: line.quantity,
+              }))
+            : [],
+        occurredAt: createdAt,
+      });
+    }
     if (quote.promoCode)
       dependencies.promos.commitReservation({ paymentIdempotencyKey: idempotencyKey, orderId });
     dependencies.mailbox.add({
@@ -70,7 +57,7 @@ export function finalizeAuthorizedCheckout(
     dependencies.carts.remove(quote.cartId);
     const result: CheckoutResult = {
       success: true,
-      order: orderFromQuote(orderId, quote, createdAt),
+      order,
     };
     if (
       !dependencies.payments.transition({
@@ -85,6 +72,27 @@ export function finalizeAuthorizedCheckout(
     ) {
       throw new Error('Checkout authorization state changed during finalization');
     }
+    dependencies.audit.append({
+      action: 'order.created',
+      context: auditContext,
+      orderId,
+      totalCents: quote.totalCents,
+      itemCount: quote.lines.reduce((total, item) => total + item.quantity, 0),
+      mixItemCount:
+        quote.version === 1 ? 0 : quote.mixLines.reduce((total, item) => total + item.quantity, 0),
+    });
+    dependencies.audit.append({
+      action: 'payment.succeeded',
+      context: auditContext,
+      paymentId: payment.id,
+      orderId,
+      amountCents: quote.totalCents,
+    });
+    dependencies.audit.append({
+      action: 'checkout.cart_consumed',
+      context: auditContext,
+      cartId: quote.cartId,
+    });
     return result;
   });
 }

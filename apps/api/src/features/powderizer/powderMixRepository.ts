@@ -5,7 +5,7 @@ import {
   type PowderMixFineness,
   type PowderMixPriceVersion,
 } from '@shop/contracts/powderizer';
-import type { PowderMixAllocation, PowderMixStockRequirement } from './powderizerTypes.js';
+import type { PowderMixAllocation } from './powderizerTypes.js';
 
 export interface PowderMixRow {
   id: string;
@@ -93,13 +93,6 @@ export interface PowderMixRepository {
   updateQuote(mixId: string, mix: Omit<NewPowderMix, 'id' | 'cartId' | 'quantity'>): boolean;
   updateQuantity(cartId: string, mixId: string, quantity: number): boolean;
   remove(cartId: string, mixId: string): boolean;
-  reserveStock(
-    paymentIdempotencyKey: string,
-    requirements: readonly PowderMixStockRequirement[],
-  ): void;
-  releaseStockReservation(paymentIdempotencyKey: string): void;
-  reservedStock(productId: number): number;
-  consumeReservedStock(paymentIdempotencyKey: string): void;
 }
 
 /** Direct persistence for cart-scoped powder mixes; callers own transaction boundaries. */
@@ -224,55 +217,6 @@ export function createPowderMixRepository(db: Database.Database): PowderMixRepos
       return (
         db.prepare('DELETE FROM powder_mixes WHERE cart_id = ? AND id = ?').run(cartId, mixId)
           .changes > 0
-      );
-    },
-    reserveStock(paymentIdempotencyKey, requirements) {
-      const insert = db.prepare(
-        `INSERT INTO powder_mix_stock_reservations
-          (payment_idempotency_key, product_id, bag_equivalents) VALUES (?, ?, ?)`,
-      );
-      for (const requirement of requirements) {
-        insert.run(paymentIdempotencyKey, requirement.productId, requirement.bagEquivalents);
-      }
-    },
-    releaseStockReservation(paymentIdempotencyKey) {
-      db.prepare('DELETE FROM powder_mix_stock_reservations WHERE payment_idempotency_key = ?').run(
-        paymentIdempotencyKey,
-      );
-    },
-    reservedStock(productId) {
-      return (
-        db
-          .prepare(
-            `SELECT COALESCE(SUM(bag_equivalents), 0) AS reserved
-             FROM powder_mix_stock_reservations WHERE product_id = ?`,
-          )
-          .get(productId) as { reserved: number }
-      ).reserved;
-    },
-    consumeReservedStock(paymentIdempotencyKey) {
-      const reservations = db
-        .prepare(
-          `SELECT product_id, bag_equivalents FROM powder_mix_stock_reservations
-           WHERE payment_idempotency_key = ?`,
-        )
-        .all(paymentIdempotencyKey) as Array<{ product_id: number; bag_equivalents: number }>;
-      const decrement = db.prepare(
-        `UPDATE products SET stock_count = stock_count - ? WHERE id = ? AND stock_count >= ?`,
-      );
-      for (const reservation of reservations) {
-        if (
-          decrement.run(
-            reservation.bag_equivalents,
-            reservation.product_id,
-            reservation.bag_equivalents,
-          ).changes !== 1
-        ) {
-          throw new Error('Reserved mix stock is no longer available.');
-        }
-      }
-      db.prepare('DELETE FROM powder_mix_stock_reservations WHERE payment_idempotency_key = ?').run(
-        paymentIdempotencyKey,
       );
     },
   };

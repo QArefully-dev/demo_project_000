@@ -250,6 +250,8 @@ export const impossibleProducts = createCatalogProducts([
     compare_at_price_cents: null,
     category: 'Impossible',
     stock_count: 1,
+    backorderable: true,
+    backorderLeadDays: 14,
     sales_count: 49,
     active: true,
     created_at: '2025-02-18T00:00:00.000Z',

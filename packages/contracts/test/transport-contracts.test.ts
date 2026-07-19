@@ -10,6 +10,7 @@ import {
   PersistedCheckoutQuote,
   PersistedCheckoutQuoteV2,
   PersistedCheckoutQuoteV3,
+  PersistedCheckoutQuoteV4,
   parsePersistedCheckoutQuote,
 } from '../src/payments.js';
 import {
@@ -151,6 +152,8 @@ void test('cart and order transports accept empty and populated mix item arrays'
 
   const emptyOrder = {
     id: '1',
+    status: 'processing',
+    version: 0,
     items: [],
     mixItems: [],
     subtotalCents: 0,
@@ -163,7 +166,7 @@ void test('cart and order transports accept empty and populated mix item arrays'
   assert.equal(
     Value.Check(Order, {
       ...emptyOrder,
-      mixItems: [{ ...powderMixItem, snapshotVersion: 2 }],
+      mixItems: [{ ...powderMixItem, lineId: '2', snapshotVersion: 2 }],
       subtotalCents: 2500,
       totalCents: 2500,
     }),
@@ -179,6 +182,7 @@ void test('cart and order transports accept empty and populated mix item arrays'
       mixItems: [
         {
           ...rawV1,
+          lineId: '2',
           bagColourScheme: 'ultraviolet-cyan',
           usageLabel: 'Check ingredient labels',
         },
@@ -214,7 +218,7 @@ void test('order mix snapshots parse strict v1 and v2 compatibility forms', () =
   assert.equal(Value.Check(PowderMixOrderItem, { ...v2, unexpectedPersistedField: true }), false);
 });
 
-void test('persisted checkout quotes preserve strict v2 and write mix fields in v3', () => {
+void test('persisted checkout quotes preserve strict v1-v3 and write inventory split in v4', () => {
   const baseQuote = {
     cartId: uuid,
     customer: {
@@ -235,16 +239,24 @@ void test('persisted checkout quotes preserve strict v2 and write mix fields in 
   delete (legacyV1Mix as Partial<typeof legacyV1Mix>).usageLabel;
   const v2 = { ...baseQuote, version: 2, mixLines: [legacyV1Mix] };
   const v3 = { ...baseQuote, version: 3, mixLines: [{ ...powderMixItem, snapshotVersion: 2 }] };
+  const v4 = {
+    ...baseQuote,
+    version: 4,
+    mixLines: [{ ...powderMixItem, snapshotVersion: 2 }],
+    inventoryAllocations: [{ productId: '1', reservedQuantity: 1, backorderedQuantity: 0 }],
+  };
 
   assert.equal(Value.Check(PersistedCheckoutQuote, { ...baseQuote, version: 1 }), true);
   assert.equal(Value.Check(PersistedCheckoutQuoteV2, v2), true);
   assert.equal(Value.Check(PersistedCheckoutQuoteV3, v3), true);
+  assert.equal(Value.Check(PersistedCheckoutQuoteV4, v4), true);
   assert.deepEqual(parsePersistedCheckoutQuote({ ...baseQuote, version: 1 }), {
     ...baseQuote,
     version: 1,
   });
   assert.deepEqual(parsePersistedCheckoutQuote(v2), v2);
   assert.deepEqual(parsePersistedCheckoutQuote(v3), v3);
+  assert.deepEqual(parsePersistedCheckoutQuote(v4), v4);
   assert.equal(Value.Check(PersistedCheckoutQuoteV2, { ...v2, mixLines: v3.mixLines }), false);
   assert.equal(
     Value.Check(PersistedCheckoutQuoteV3, { ...v3, unexpectedPersistedField: true }),

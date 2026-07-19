@@ -36,11 +36,23 @@ Extended familiar journeys:
 - write verified-purchase review
 - manage wishlist, profile, sessions, and notification preferences
 
+## Reverse Process
+
+Powder -> original object. Customer selects eligible powder, uploads or chooses object specification, accepts quote, waits for controlled reconstruction.
+
+- price: `reverse price = corresponding powdering-process price * 10,000`; integer minor units; no discounts, promotions, gift cards, or loyalty redemption
+- special request: manual review, custom scope, extra compliance and reconstruction fee; quote required before checkout
+- positioning: deliberately prohibitive; ordinary objects expensive, impossible or conceptual objects exceptionally expensive
+- lead time: long and price-linked; quote shows multi-week to multi-year estimated completion window, reconstruction stages, and status updates
+- examples: powder -> fireplace; powder -> Victorian townhouse; powder -> fresh air; powder -> working time machine; powder -> original moonlight from specific night
+- safety: clearly fictional demo service; impossible/conceptual requests remain `Not for consumption`; approval, cancellation, refund, and delivery rules defined in future vertical slice
+- scope: high-level product direction only; no reverse-process implementation, catalog eligibility matrix, or pricing engine yet
+
 Avoid visible platform complexity:
 
 - no seller marketplace as main concept
 - no warehouse or logistics product requiring explanation
-- no live trading or financial-market dependency
+- no external financial-market or production trading dependency
 - no microservice topology exposed to users
 - optional admin tooling stays secondary and absent from normal journey
 
@@ -53,10 +65,13 @@ Avoid visible platform complexity:
 - shared contracts: TypeBox
 - launch: `npm ci` -> `npm run dev`
 - external services: none
-- implemented: auth, catalog, search, filters, sorting, product pages, cart, promotions, checkout, simulated payment, orders, favourites, account, dev mailbox
-- seed: 45 deterministic powder products across 7 categories, plus users, promotions, and favourites
-- tests: focused unit and SQLite integration baseline required; broad API and E2E coverage reserved for course
-- active expansion: catalog, review, and audit slices in `plans/catalog_reviews_audit_seed_content_implementation_plan.md`; each slice remains additive to the powder storefront
+- implemented commerce: auth, catalog, cart, inventory, promotions, checkout, simulated payment, orders, returns and refunds, favourites, account, dev mailbox
+- implemented catalog depth: typed specifications and tags, advanced filters and stable sorts, comparison, similar products, curated bundles, customer reviews with helpfulness and abuse reporting
+- implemented customer journey: composed product detail, comparison entry points, help and policy center, Powderizer custom mixes and history
+- implemented integrity: ordered migrations, append-only audit ledger, sanitized admin audit reads
+- seed: 50 deterministic powder products across 7 categories, plus users, promotions, favourites, catalog metadata, curated bundles, and inventory/backorder scenarios
+- tests: focused unit, contract, route, SQLite integration, React integration, and accessibility coverage; broad E2E coverage reserved for course
+- completed expansion record: `plans/powder_shop_catalog_expansion_plan.md`
 
 ## Hard Constraints
 
@@ -113,55 +128,75 @@ Build vertical slices:
 
 Avoid empty scaffolding, copied framework internals, vendored projects, generated-code padding, duplicate abstractions.
 
-## Active Expansion
+## Completed Catalog Expansion
 
-Implementation plan: `plans/catalog_reviews_audit_seed_content_implementation_plan.md`.
+Implementation record: `plans/powder_shop_catalog_expansion_plan.md`.
 
-Direction reconciliation: its generic-store catalog capabilities are additive engineering work. Product naming, seed content, imagery, and customer copy remain QArefully Powder Co. unless a later approved plan changes this direction.
+Delivered:
 
-Scope:
-
-- powder product options, specifications, bundles, comparison
-- customer reviews and verified-purchase summaries
+- structured powder specifications, normalized tags, advanced filtering, stable sorting
+- anonymous ordered comparison with catalog and product-detail entry points
 - deterministic similar products
-- price, date, name filters and stable sorting
-- append-only auditing
-- deterministic named seed scenarios and validation tooling
-- help, policy, FAQ, shipping, returns, size-guide pages
-- focused core unit and SQLite integration tests
+- curated bundles with current-price totals and atomic cart addition
+- authenticated customer reviews, verified-purchase evidence, moderation, rating summaries
+- append-only audit ledger across auth, cart, order, payment, bundle, review mutations
+- typed help and policy center with product-context links
+- resilient product-detail composition; secondary section failure preserves core purchase flow
 
-## Expansion Order
+Preserved:
 
-1. Active catalog and review expansion
-   - powder pack sizes, SKU-compatible options, specifications
-   - variant price and stock, specifications, bundles, comparisons
-   - customer reviews, deterministic similar products
-   - price, date, name filtering and stable sorting
-   - append-only audit events, seed scenarios, customer help and policy content
-2. Order history and lifecycle
-   - processing -> packed -> shipped -> delivered
-   - cancellation, split shipment, delivery failure, tracking events
-3. Inventory
-   - reservations, expiry, backorders, concurrent purchase protection
-4. Returns and refunds
-   - return windows, partial quantities, refund rules, stock restoration
-5. Checkout depth
-   - saved addresses, billing address, delivery methods, estimates, gift options
-6. Pricing and promotions
-   - scheduled sales, category offers, stacking, gift cards, loyalty points
-7. Review depth
-   - moderation workflows, helpful votes, abuse controls, aggregate maintenance
-8. Account depth
-   - addresses, sessions, preferences, data export, account deletion
-9. Async behavior
-   - local job queue, notifications, retry policy, captured webhooks, failure injection
-10. Secondary admin
-   - products, orders, refunds, reviews, users, feature flags, expanded audit tooling
+- QArefully Powder Co. identity, safety messaging, deterministic local runtime
+- backend authority for price, stock, purchase evidence, review ownership, audit records
+- Powderizer contracts, pricing, stock rules, snapshots, history compatibility
 
-11. Powderizer (deferred additive vertical slice)
-   - Phase 7: server-authoritative custom mixes, configuration validation, quotes, and immutable order snapshots
-   - Phase 8: accessible `/powderizer` builder and cart/edit checkout flow
-   - not part of required rebrand completion
+## Future Expansion Order
+
+Status: delivery order for remaining work. `partial` = implemented subset; `future` = listed capability not delivered.
+
+1. Order history and lifecycle: completed
+   - foundation: order creation, immutable product and Powderizer snapshots, direct order-detail read
+   - remaining: customer order list; processing -> packed -> shipped -> delivered; cancellation, split shipment, delivery failure, tracking events
+2. Inventory: completed
+   - implementation record: `plans/inventory_coding_plan.md`
+   - delivered: unified ordinary-product and Powderizer component availability authority; checkout-time 15-minute reservations; atomic authorization and consumption; concurrent oversell protection; expiry release; product-line allocation records; opted-in backorders; idempotent admin stock receipts with FIFO backorder allocation; cancellation stock restoration for unshipped ordinary lines; customer availability and backorder presentation
+3. Returns and refunds: completed
+   - implementation record: `plans/old/returns_and_refunds_coding_plan.md`
+   - delivered: authenticated owner requests for delivered ordinary-product quantities within a 30-day UTC window; partial quantities across shipments; reason and bounded optional note; customer order-detail eligibility, history, and resilient request panel
+   - delivered: admin API queue and guarded `requested -> approved -> received -> refunded` or `requested -> rejected` workflow with optimistic versions and idempotency keys
+   - delivered: deterministic integer refund proration from immutable original line totals and order discounts; immutable refund facts and simulated local gateway references; original orders, payments, and promotion redemptions unchanged
+   - delivered: atomic receipt-time stock restoration, immutable return/inventory/audit ledgers, and existing FIFO backorder allocation; deterministic reset and seed scenarios
+   - scope limits: no Powderizer returns, exchanges, real payment reversal, customer withdrawal, or admin web UI
+4. Checkout depth: future
+   - foundation: validated contact, shipping address, server quote, idempotent simulated payment
+   - remaining: saved addresses, billing address, delivery methods, estimates, gift options
+5. Pricing and promotions: partial
+   - completed: percentage and fixed discounts, start/end scheduling, item/subtotal gates, global and per-user limits, reservation-safe redemption
+   - remaining: category offers, stacking, gift cards, loyalty points, sales presentation
+6. Review depth: completed
+   - implementation record: `plans/review_depth_coding_plan.md`
+   - delivered: persisted, trigger-maintained published rating aggregates; customer helpful-vote toggles and abuse reports with withdrawal and caps; public helpful sorting and viewer engagement state; role-gated reported and hidden moderation queues; atomic hide/action and dismiss decisions; deterministic review moderation seed scenarios; customer and admin accessibility coverage
+7. Account depth: partial
+   - completed: session creation, expiry, logout, password-change invalidation, profile read, password change
+   - remaining: addresses, session list and selective revocation, preferences, data export, account deletion
+8. Async behavior: future
+   - remaining: local job queue, notifications, retry policy, captured webhooks, failure injection
+9. Secondary admin: partial
+   - completed: review moderation API and UI; paginated, filtered, read-only audit API
+   - remaining: product, order, refund, user, and feature-flag management
+10. Reverse Process: future
+   - powder -> original object reconstruction; eligible-powder selection, object specification, controlled reconstruction order, staged status updates
+   - pricing: corresponding powdering-process price * 10,000; integer minor units; no discount, promotion, gift-card, or loyalty redemption
+   - special requests: manual review, bespoke scope, additional fee, quote acceptance before checkout
+   - fulfilment: price-linked multi-week to multi-year wait; cancellation, refund, approval, and delivery rules
+   - seed examples: powder -> fireplace; Victorian townhouse; fresh air; working time machine; original moonlight from specified night
+11. Live trading and auctions: future
+   - local simulated real-time powder trading and timed auctions; bids, offers, matching, settlement, cancellation, and immutable event history
+   - concurrency: atomic bid validation, optimistic conflicts, deterministic clocks, reconnect recovery, and duplicate-event handling
+   - scope: no real money, external exchange, market data, broker, or production trading dependency
+12. Geography configs: future
+   - region profiles: USA, Europe, China; configurable catalog, stock, currency, trading hours, time zones, language, formatting, and policy text
+   - behavior: region-aware availability, auction windows, order validation, seeded scenarios, and deterministic time-zone boundaries
+   - architecture: shared domain core -> explicit region config -> localized API and UI behavior
 
 ## Agentic AI and QA Surface
 
@@ -205,7 +240,7 @@ Integration boundary:
 
 `domain service -> SQLite adapter -> temporary database`
 
-Excluded:
+Excluded from minimum baseline; scoped vertical slices may add focused coverage when risk requires:
 
 - HTTP route tests
 - API tests through Fastify injection, `fetch`, or other client

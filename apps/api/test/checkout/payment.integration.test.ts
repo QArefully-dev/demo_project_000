@@ -18,12 +18,16 @@ import { addItem, createCart, getCart } from '../../src/features/cart/cartServic
 import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
 import { createPromoRepository } from '../../src/features/promos/promoRepository.js';
 import { createPaymentRepository } from '../../src/features/payments/paymentRepository.js';
-import { createOrderRepository } from '../../src/features/checkout/orderRepository.js';
+import { createOrderRepository } from '../../src/features/orders/orderRepository.js';
 import { createMailboxRepository } from '../../src/features/mailbox/mailboxRepository.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { simulatedPaymentGateway } from '../../src/features/payments/paymentGateway.js';
 import { createPowderMixRepository } from '../../src/features/powderizer/powderMixRepository.js';
 import { createProductRepository } from '../../src/features/catalog/productRepository.js';
+import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
+import { createAuditWriter } from '../../src/features/audit/auditService.js';
+import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
+import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
 
 function checkout(
   params: CheckoutParams,
@@ -45,6 +49,11 @@ function checkout(
     clock: { now: dependencies.now ?? (() => new Date()) },
     mixes: createPowderMixRepository(dependencies.db),
     products: createProductRepository(dependencies.db),
+    audit: createAuditWriter({
+      repository: createAuditRepository(dependencies.db),
+      clock: { now: dependencies.now ?? (() => new Date()) },
+    }),
+    inventory: createInventoryService({ repository: createInventoryRepository(dependencies.db) }),
   }).process(params);
 }
 
@@ -96,6 +105,10 @@ void test('atomic checkout orchestration', async (t) => {
     cardCvc: '123',
     idempotencyKey,
     userId: null,
+    auditContext: {
+      actor: { type: 'anonymous', userId: null },
+      requestId: `request-${idempotencyKey}`,
+    },
   });
   const freshCart = () => {
     resetDatabase(db);
@@ -132,7 +145,13 @@ void test('atomic checkout orchestration', async (t) => {
       ).response_json,
     );
     assert.equal(
-      (db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }).count,
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM orders WHERE customer_email = 'checkout@example.test'",
+          )
+          .get() as { count: number }
+      ).count,
       1,
     );
   });
@@ -152,7 +171,13 @@ void test('atomic checkout orchestration', async (t) => {
       deferred.resolve({ status: 'success' });
       assert.equal((await first).success, true);
       assert.equal(
-        (db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }).count,
+        (
+          db
+            .prepare(
+              "SELECT COUNT(*) AS count FROM orders WHERE customer_email = 'checkout@example.test'",
+            )
+            .get() as { count: number }
+        ).count,
         1,
       );
     },
@@ -181,6 +206,14 @@ void test('atomic checkout orchestration', async (t) => {
       const replay = await checkout(params, { db, gateway });
       assert.deepEqual(replay, first);
       assert.equal(getCart(carts, cartId)?.totalItems, 1);
+      const events = db
+        .prepare('SELECT action, entity_id FROM audit_events WHERE request_id = ?')
+        .all(params.auditContext.requestId) as Array<{ action: string; entity_id: string }>;
+      assert.deepEqual(
+        events.map((event) => event.action),
+        [result.status === 'declined' ? 'payment.declined' : 'payment.timed_out'],
+      );
+      assert.match(events[0]?.entity_id ?? '', /^\d+$/);
     }
   });
 
@@ -196,6 +229,41 @@ void test('atomic checkout orchestration', async (t) => {
 
     assert.deepEqual(result, { success: false, error: 'CART_NOT_FOUND' });
     assert.equal(gateway.calls(), 0);
+    const event = db
+      .prepare('SELECT action, entity_id, metadata_json FROM audit_events WHERE request_id = ?')
+      .get('request-missing-cart') as {
+      action: string;
+      entity_id: string;
+      metadata_json: string;
+    };
+    assert.equal(event.action, 'payment.pre_gateway_failed');
+    assert.match(event.entity_id, /^\d+$/);
+    assert.equal(event.metadata_json, '{"errorCode":"CART_NOT_FOUND"}');
+  });
+
+  await t.test('rolls back pre-gateway failure when its audit write fails', async () => {
+    resetDatabase(db);
+    seedDatabase(db);
+    db.exec(
+      `CREATE TRIGGER abort_pre_gateway_audit BEFORE INSERT ON audit_events
+       WHEN NEW.action = 'payment.pre_gateway_failed'
+       BEGIN SELECT RAISE(ABORT, 'audit failure'); END`,
+    );
+    try {
+      await assert.rejects(() =>
+        checkout(payment('missing-audit-cart', 'pre-gateway-audit-rollback'), { db }),
+      );
+      assert.equal(
+        (
+          db
+            .prepare('SELECT COUNT(*) AS count FROM payments WHERE idempotency_key = ?')
+            .get('pre-gateway-audit-rollback') as { count: number }
+        ).count,
+        0,
+      );
+    } finally {
+      db.exec('DROP TRIGGER IF EXISTS abort_pre_gateway_audit');
+    }
   });
 
   await t.test('does not call gateway when cart is empty', async () => {
@@ -286,6 +354,76 @@ void test('atomic checkout orchestration', async (t) => {
     assert.equal(getCart(carts, promoCartId), undefined);
   });
 
+  await t.test('expires prepared reservations and rejects late gateway completion', async () => {
+    const cartId = freshCart();
+    const deferred = deferredGateway();
+    const params = payment(cartId, 'expired-reservation');
+    let current = new Date('2026-07-14T10:00:00.000Z');
+    const first = checkout(params, { db, gateway: deferred.gateway, now: () => current });
+    current = new Date('2026-07-14T10:15:00.000Z');
+    const expired = await checkout(params, { db, gateway: deferred.gateway, now: () => current });
+    assert.deepEqual(expired, {
+      success: false,
+      error: 'RESERVATION_EXPIRED',
+      reservationExpiresAt: '2026-07-14T10:15:00.000Z',
+    });
+    assert.notEqual(addItem(carts, cartId, '2'), 'CART_RESERVED');
+    assert.equal(
+      (
+        db
+          .prepare(
+            'SELECT COUNT(*) AS count FROM inventory_reservations WHERE payment_idempotency_key = ?',
+          )
+          .get(params.idempotencyKey) as { count: number }
+      ).count,
+      0,
+    );
+    deferred.resolve({ status: 'success' });
+    assert.deepEqual(await first, expired);
+  });
+
+  await t.test(
+    'terminalizes an expired reservation when gateway success arrives late',
+    async () => {
+      const cartId = freshCart();
+      const deferred = deferredGateway();
+      const params = payment(cartId, 'late-gateway-expiry');
+      let current = new Date('2026-07-14T10:00:00.000Z');
+      const first = checkout(params, { db, gateway: deferred.gateway, now: () => current });
+      current = new Date('2026-07-14T10:15:00.000Z');
+      deferred.resolve({ status: 'success' });
+      const expired = {
+        success: false as const,
+        error: 'RESERVATION_EXPIRED' as const,
+        reservationExpiresAt: '2026-07-14T10:15:00.000Z',
+      };
+      assert.deepEqual(await first, expired);
+      assert.equal(
+        (
+          db
+            .prepare('SELECT status, response_json FROM payments WHERE idempotency_key = ?')
+            .get(params.idempotencyKey) as { status: string; response_json: string }
+        ).status,
+        'failed_pre_gateway',
+      );
+      assert.equal(
+        (
+          db
+            .prepare(
+              'SELECT COUNT(*) AS count FROM inventory_reservations WHERE payment_idempotency_key = ?',
+            )
+            .get(params.idempotencyKey) as { count: number }
+        ).count,
+        0,
+      );
+      assert.notEqual(addItem(carts, cartId, '2'), 'CART_RESERVED');
+      assert.deepEqual(
+        await checkout(params, { db, gateway: deferred.gateway, now: () => current }),
+        expired,
+      );
+    },
+  );
+
   await t.test('rolls back order and redemption writes together', async () => {
     const cartId = freshCart();
     for (const productId of ['2', '3', '4', '5']) addItem(carts, cartId, productId);
@@ -296,7 +434,13 @@ void test('atomic checkout orchestration', async (t) => {
     assert.deepEqual(result, { success: false, error: 'IDEMPOTENT_IN_PROGRESS' });
     assert.equal(getCart(carts, cartId)?.totalItems, 5);
     assert.equal(
-      (db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }).count,
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM orders WHERE customer_email = 'checkout@example.test'",
+          )
+          .get() as { count: number }
+      ).count,
       0,
     );
     db.exec('DROP TRIGGER IF EXISTS abort_checkout_mailbox');
@@ -326,8 +470,54 @@ void test('atomic checkout orchestration', async (t) => {
     const resumed = await checkout(payment(cartId, 'resume-after-finalize'), { db });
     assert.equal(resumed.success, true);
     assert.equal(
-      (db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }).count,
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM orders WHERE customer_email = 'checkout@example.test'",
+          )
+          .get() as { count: number }
+      ).count,
       1,
+    );
+  });
+
+  await t.test('rolls back audited finalization and appends its events once on retry', async () => {
+    const cartId = freshCart();
+    const params = payment(cartId, 'audit-finalize-rollback');
+    db.exec(
+      `CREATE TRIGGER abort_order_audit BEFORE INSERT ON audit_events
+       WHEN NEW.action = 'order.created'
+       BEGIN SELECT RAISE(ABORT, 'audit failure'); END`,
+    );
+    const failed = await checkout(params, { db });
+    assert.deepEqual(failed, { success: false, error: 'IDEMPOTENT_IN_PROGRESS' });
+    assert.equal(
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM orders WHERE customer_email = 'checkout@example.test'",
+          )
+          .get() as { count: number }
+      ).count,
+      0,
+    );
+    assert.equal(getCart(carts, cartId)?.totalItems, 1);
+    assert.equal(
+      (
+        db
+          .prepare('SELECT status FROM payments WHERE idempotency_key = ?')
+          .get(params.idempotencyKey) as { status: string }
+      ).status,
+      'authorized_pending_finalize',
+    );
+    db.exec('DROP TRIGGER IF EXISTS abort_order_audit');
+    assert.equal((await checkout(params, { db })).success, true);
+    const events = db
+      .prepare('SELECT action FROM audit_events WHERE request_id = ? ORDER BY id')
+      .all(params.auditContext.requestId) as Array<{ action: string }>;
+    assert.deepEqual(
+      events.map((event) => event.action),
+      ['order.created', 'payment.succeeded', 'checkout.cart_consumed'],
     );
   });
 

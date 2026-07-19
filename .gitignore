@@ -9,3 +9,4 @@ dist/
 .env
 .env.local
 nul
+__pycache__/

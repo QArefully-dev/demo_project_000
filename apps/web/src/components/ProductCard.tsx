@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +13,7 @@ interface ProductCardProps {
   onAddToCart: (productId: string) => Promise<boolean>;
   isCartAvailable: boolean;
   isAdding?: boolean;
+  comparisonControl?: ReactNode;
 }
 
 export function ProductCard({
@@ -20,9 +21,12 @@ export function ProductCard({
   onAddToCart,
   isCartAvailable,
   isAdding = false,
+  comparisonControl,
 }: ProductCardProps) {
   const [actionError, setActionError] = useState<string | null>(null);
-  const inStock = product.stock > 0;
+  const inStock = product.availability === 'in_stock';
+  const backorder = product.availability === 'backorder';
+  const purchasable = inStock || backorder;
   const isOnSale =
     product.compareAtPriceCents != null && product.compareAtPriceCents > product.priceCents;
   const isBestseller = product.salesCount >= 250;
@@ -93,13 +97,16 @@ export function ProductCard({
       </CardContent>
       <CardFooter className="border-t-0 bg-transparent p-4 pt-0 sm:px-5 sm:pb-5">
         <div className="w-full space-y-2">
-          {!inStock && <p className="text-xs font-medium text-destructive">Out of stock</p>}
+          {backorder && (
+            <p className="text-xs font-medium text-amber-700">Available to backorder</p>
+          )}
+          {!purchasable && <p className="text-xs font-medium text-destructive">Out of stock</p>}
           {inStock && product.stock <= 5 && (
             <p className="text-xs font-medium text-sale">Only {product.stock} left</p>
           )}
           <Button
             className="w-full"
-            disabled={!isCartAvailable || !inStock || isAdding}
+            disabled={!isCartAvailable || !purchasable || isAdding}
             onClick={() => {
               void handleAddToCart();
             }}
@@ -108,10 +115,11 @@ export function ProductCard({
               ? 'Cart unavailable'
               : isAdding
                 ? 'Adding...'
-                : inStock
+                : purchasable
                   ? 'Add powder'
                   : 'Unavailable'}
           </Button>
+          {comparisonControl}
           {actionError && (
             <p role="alert" className="text-center text-xs text-destructive">
               {actionError}

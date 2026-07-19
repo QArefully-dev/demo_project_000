@@ -10,6 +10,11 @@ export type MixCheckoutConflict =
     }
   | { code: 'MIX_STOCK_UNAVAILABLE'; mixIds: string[]; productIds: string[] };
 
+export type CheckoutConflict =
+  | MixCheckoutConflict
+  | { code: 'RESERVATION_EXPIRED'; reservationExpiresAt: string }
+  | { code: 'INSUFFICIENT_STOCK'; productIds: string[] };
+
 export type CheckoutState = {
   contact: Record<ContactField, string>;
   card: Record<CardField, string>;
@@ -25,7 +30,7 @@ export type CheckoutState = {
   paymentError: string | null;
   idempotencyKey: string;
   cartRecoveryMessage: string | null;
-  mixConflict: MixCheckoutConflict | null;
+  mixConflict: CheckoutConflict | null;
 };
 
 export type CheckoutEvent =
@@ -46,7 +51,7 @@ export type CheckoutEvent =
   | { type: 'promo-removed'; idempotencyKey: string }
   | { type: 'quote-changed'; idempotencyKey: string }
   | { type: 'cart-recovered'; message: string }
-  | { type: 'mix-conflict'; conflict: MixCheckoutConflict }
+  | { type: 'mix-conflict'; conflict: CheckoutConflict; idempotencyKey: string }
   | { type: 'submission-started' }
   | { type: 'submission-failed'; error: string }
   | { type: 'submission-finished' };
@@ -153,7 +158,12 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
     case 'cart-recovered':
       return { ...state, cartRecoveryMessage: event.message };
     case 'mix-conflict':
-      return { ...state, mixConflict: event.conflict, paymentError: null };
+      return {
+        ...state,
+        mixConflict: event.conflict,
+        paymentError: null,
+        idempotencyKey: event.idempotencyKey,
+      };
     case 'submission-started':
       return { ...state, submitting: true, paymentError: null };
     case 'submission-failed':

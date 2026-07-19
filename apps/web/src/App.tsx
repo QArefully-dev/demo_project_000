@@ -19,6 +19,12 @@ import { BagDesignsPage } from './features/designs/BagDesignsPage';
 import { PowderizerPage } from './features/powderizer/PowderizerPage';
 import { HelpIndexPage } from './features/help/HelpIndexPage';
 import { HelpArticlePage } from './features/help/HelpArticlePage';
+import { ComparisonPage } from './features/comparison/ComparisonPage';
+import { BundlesPage } from './features/bundles/BundlesPage';
+import { OrderHistoryPage } from './features/orders/OrderHistoryPage';
+import { OrderDetailPage } from './features/orders/OrderDetailPage';
+import { AdminRoute } from './components/AdminRoute';
+import { AdminReviewModerationPage } from './features/admin/reviews';
 
 export default function App() {
   return (
@@ -26,6 +32,8 @@ export default function App() {
       <Route element={<Layout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/catalog" element={<CatalogPage />} />
+        <Route path="/compare" element={<ComparisonPage />} />
+        <Route path="/bundles" element={<BundlesPage />} />
         <Route path="/products/:id" element={<ProductPage />} />
         <Route path="/cart" element={<CartPage />} />
         <Route path="/checkout" element={<CheckoutPage />} />
@@ -48,6 +56,30 @@ export default function App() {
             <ProtectedRoute>
               <WishlistPage />
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/orders"
+          element={
+            <ProtectedRoute>
+              <OrderHistoryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/orders/:orderId"
+          element={
+            <ProtectedRoute>
+              <OrderDetailPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/reviews"
+          element={
+            <AdminRoute>
+              <AdminReviewModerationPage />
+            </AdminRoute>
           }
         />
         <Route path="/mailbox" element={<MailboxPage />} />

@@ -1,7 +1,7 @@
 import { useLocation, useSearchParams, Link } from 'react-router-dom';
 import { useCategories } from '@/hooks/useCategories';
 import { cn } from '@/lib/utils';
-import { powderizerItem } from './nav/navItems';
+import { bundlesItem, powderizerItem } from './nav/navItems';
 
 /**
  * Functional category filter navigation.
@@ -50,6 +50,13 @@ export function CategoryNav() {
         className={cn(linkClassName(pathname === '/powderizer'), powderizerItem.className)}
       >
         {powderizerItem.label}
+      </Link>
+      <Link
+        to="/bundles"
+        aria-current={pathname === '/bundles' ? 'page' : undefined}
+        className={linkClassName(pathname === '/bundles')}
+      >
+        {bundlesItem.label}
       </Link>
       <Link
         to="/catalog?onSale=true&sort=bestselling"

@@ -55,6 +55,13 @@ export const ProductSpecificationGroup = Type.Object(
 );
 export type ProductSpecificationGroup = Static<typeof ProductSpecificationGroup>;
 
+export const ProductAvailability = Type.Union([
+  Type.Literal('in_stock'),
+  Type.Literal('backorder'),
+  Type.Literal('out_of_stock'),
+]);
+export type ProductAvailability = Static<typeof ProductAvailability>;
+
 export const Product = Type.Object(
   {
     id: PositiveIntegerString,
@@ -65,6 +72,9 @@ export const Product = Type.Object(
     packaging: Type.Optional(ProductPackaging),
     category: Type.String(),
     stock: Type.Integer({ minimum: 0 }),
+    availability: ProductAvailability,
+    backorderable: Type.Boolean(),
+    backorderLeadDays: Type.Union([Type.Integer({ minimum: 1, maximum: 365 }), Type.Null()]),
     slug: Type.String(),
     compareAtPriceCents: Type.Optional(MoneyCents),
     salesCount: Type.Integer({ minimum: 0 }),
@@ -144,7 +154,11 @@ export const ProductQuery = Type.Object({
   tag: Type.Optional(Type.Array(NormalizedCatalogKey, { maxItems: 8 })),
   spec: Type.Optional(Type.Array(SpecificationFilterToken, { maxItems: 8 })),
   availability: Type.Optional(
-    Type.Union([Type.Literal('available'), Type.Literal('out_of_stock')]),
+    Type.Union([
+      Type.Literal('available'),
+      Type.Literal('backorder'),
+      Type.Literal('out_of_stock'),
+    ]),
   ),
   sort: Type.Optional(ProductSort),
   page: Type.Optional(Type.Integer({ minimum: 1, maximum: 10000 })),
@@ -164,8 +178,46 @@ export const CategoriesResponse = Type.Array(Type.String());
 export type CategoriesResponse = Static<typeof CategoriesResponse>;
 export const BestsellersResponse = Type.Array(Product);
 export type BestsellersResponse = Static<typeof BestsellersResponse>;
-export const RelatedResponse = Type.Array(Product);
-export type RelatedResponse = Static<typeof RelatedResponse>;
+/** A bounded, comma-separated selection. Domain code additionally enforces uniqueness. */
+export const ProductComparisonQuery = Type.Object(
+  {
+    ids: Type.String({
+      minLength: 3,
+      maxLength: 67,
+      pattern: '^[1-9][0-9]*(?:,[1-9][0-9]*){1,3}$',
+    }),
+  },
+  { additionalProperties: false },
+);
+export type ProductComparisonQuery = Static<typeof ProductComparisonQuery>;
+
+export const ProductComparisonItem = Type.Union([
+  Type.Object(
+    { id: PositiveIntegerString, status: Type.Literal('available'), product: Product },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { id: PositiveIntegerString, status: Type.Literal('inactive') },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { id: PositiveIntegerString, status: Type.Literal('missing') },
+    { additionalProperties: false },
+  ),
+]);
+export type ProductComparisonItem = Static<typeof ProductComparisonItem>;
+
+export const ProductComparisonResponse = Type.Object(
+  { items: Type.Array(ProductComparisonItem, { minItems: 2, maxItems: 4 }) },
+  { additionalProperties: false },
+);
+export type ProductComparisonResponse = Static<typeof ProductComparisonResponse>;
+
+export const SimilarProductsResponse = Type.Array(Product, { maxItems: 5 });
+export type SimilarProductsResponse = Static<typeof SimilarProductsResponse>;
+/** Compatibility name retained while clients transition to /similar. */
+export const RelatedResponse = SimilarProductsResponse;
+export type RelatedResponse = SimilarProductsResponse;
 export const ProductListResponse = Type.Array(Product);
 export type ProductListResponse = Static<typeof ProductListResponse>;
 export const ProductDetailResponse = Product;

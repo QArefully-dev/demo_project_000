@@ -3,8 +3,11 @@ import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import {
   Product,
+  ProductComparisonQuery,
+  ProductComparisonResponse,
   ProductFilterOptionsResponse,
   ProductQuery,
+  SimilarProductsResponse,
   ProductSpecificationGroup,
   ProductTag,
 } from '../src/products.js';
@@ -30,6 +33,9 @@ const product = {
   imageSetId: 'protein-powder',
   category: 'Performance',
   stock: 5,
+  availability: 'in_stock',
+  backorderable: false,
+  backorderLeadDays: null,
   slug: 'protein-powder',
   salesCount: 10,
   mixable: true,
@@ -144,6 +150,74 @@ void test('catalog query transport accepts bounded repeated discovery filters', 
   assert.equal(Value.Check(ProductQuery, { tag: Array.from({ length: 9 }, () => 'plant') }), false);
   assert.equal(
     Value.Check(ProductQuery, { spec: Array.from({ length: 9 }, () => 'texture:fine') }),
+    false,
+  );
+});
+
+void test('comparison transport preserves strict ordered mixed status items', () => {
+  const response = {
+    items: [
+      { id: '3', status: 'available', product },
+      { id: '2', status: 'inactive' },
+      { id: '999', status: 'missing' },
+    ],
+  };
+  assert.equal(Value.Check(ProductComparisonResponse, response), true);
+  assert.equal(
+    Value.Check(ProductComparisonResponse, {
+      items: [
+        { id: '1', status: 'available', product },
+        { id: '2', status: 'inactive', product },
+      ],
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(ProductComparisonResponse, {
+      items: Array.from({ length: 5 }, (_, index) => ({
+        id: String(index + 1),
+        status: 'missing',
+      })),
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(ProductComparisonResponse, { items: [{ id: '1', status: 'missing' }] }),
+    false,
+  );
+  assert.equal(
+    Value.Check(ProductComparisonResponse, {
+      items: [
+        { id: '1', status: 'missing', active: false },
+        { id: '2', status: 'inactive' },
+      ],
+    }),
+    false,
+  );
+});
+
+void test('comparison query syntax is bounded and rejects malformed tokens', () => {
+  assert.equal(Value.Check(ProductComparisonQuery, { ids: '3,1,9007199254740991' }), true);
+  for (const ids of ['1, 2', '1,,2', '0,2', '+1,2', '-1,2', '1,a', '1,2,3,4,5']) {
+    assert.equal(Value.Check(ProductComparisonQuery, { ids }), false, ids);
+  }
+  assert.equal(Value.Check(ProductComparisonQuery, { ids: '1,2', extra: true }), false);
+});
+
+void test('similar products transport accepts zero through five products only', () => {
+  assert.equal(Value.Check(SimilarProductsResponse, []), true);
+  assert.equal(
+    Value.Check(
+      SimilarProductsResponse,
+      Array.from({ length: 5 }, () => product),
+    ),
+    true,
+  );
+  assert.equal(
+    Value.Check(
+      SimilarProductsResponse,
+      Array.from({ length: 6 }, () => product),
+    ),
     false,
   );
 });

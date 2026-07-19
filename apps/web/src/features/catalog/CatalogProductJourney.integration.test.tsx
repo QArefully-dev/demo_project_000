@@ -3,16 +3,17 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import type { Product } from '@shop/contracts/products';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getProduct, getRelatedProducts } from '@/api/products';
+import { getProduct, getSimilarProducts } from '@/api/products';
 import { useCategories } from '@/hooks/useCategories';
 import { useProductFilterOptions } from '@/hooks/useProductFilterOptions';
 import { useProducts } from '@/hooks/useProducts';
 import { CatalogPage } from './CatalogPage';
 import { ProductPage } from '../product/ProductPage';
+import { ComparisonSelectionProvider } from '@/features/comparison/ComparisonSelectionContext';
 
 vi.mock('@/api/products', () => ({
   getProduct: vi.fn(),
-  getRelatedProducts: vi.fn(),
+  getSimilarProducts: vi.fn(),
 }));
 vi.mock('@/hooks/useProducts', () => ({ useProducts: vi.fn() }));
 vi.mock('@/hooks/useCategories', () => ({ useCategories: vi.fn() }));
@@ -42,6 +43,9 @@ const catalogProduct: Product = {
   salesCount: 0,
   createdAt: '2026-07-14T00:00:00.000Z',
   available: true,
+  availability: 'in_stock',
+  backorderable: false,
+  backorderLeadDays: null,
   tags: [],
   specificationGroups: [],
   mixable: false,
@@ -77,7 +81,7 @@ describe('catalog to product journey', () => {
       refetch: vi.fn().mockResolvedValue(undefined),
     });
     vi.mocked(getProduct).mockResolvedValue(catalogProduct);
-    vi.mocked(getRelatedProducts).mockResolvedValue([]);
+    vi.mocked(getSimilarProducts).mockResolvedValue([]);
     vi.mocked(useProductFilterOptions).mockReturnValue({
       options: { tags: [], specificationGroups: [] },
       isLoading: false,
@@ -94,11 +98,15 @@ describe('catalog to product journey', () => {
           '/catalog?q=water&tag=pantry&tag=drink-mix&spec=texture%3Afine&sort=price_desc&page=2&pageSize=24',
         ]}
       >
-        <NavigationControls />
-        <Routes>
-          <Route path="/catalog" element={<CatalogPage />} />
-          <Route path="/products/:id" element={<ProductPage />} />
-        </Routes>
+        <ComparisonSelectionProvider
+          storage={{ getItem: () => null, setItem: () => undefined, removeItem: () => undefined }}
+        >
+          <NavigationControls />
+          <Routes>
+            <Route path="/catalog" element={<CatalogPage />} />
+            <Route path="/products/:id" element={<ProductPage />} />
+          </Routes>
+        </ComparisonSelectionProvider>
       </MemoryRouter>,
     );
 

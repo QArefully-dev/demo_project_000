@@ -70,6 +70,7 @@ Each checkout request includes an idempotency key. Retrying the same key with th
 - **Shopping cart** with quantity controls, subtotal display, and 5-item minimum promo gate
 - **Checkout** with contact/shipping details and promo code entry
 - **Payment** with simulated gateway (test cards below), order confirmation, and email receipt
+- **Order history and lifecycle** with simulated shipments, tracking timelines, and eligible-order cancellation
 - **User accounts**: sign up, log in, log out, forgot/reset password via dev mailbox
 - **Favourites / wishlist** with heart toggle and wishlist page
 - **Account page** with password change
@@ -77,7 +78,7 @@ Each checkout request includes an idempotency key. Retrying the same key with th
 
 ## Seeded Data
 
-- **45 products** across 7 powder categories: Pantry Staples, Performance, Drinks, Household, Outdoors, Questionable, and Impossible
+- **50 products** across 7 powder categories: Pantry Staples, Performance, Drinks, Household, Outdoors, Questionable, and Impossible
 - **14 sale products** with compare-at prices
 - **3 users** (credentials below)
 - **7 promo codes** (details below)
@@ -93,6 +94,146 @@ The catalog moves from everyday powders to deliberate nonsense. Household, conce
 | admin@example.com   | Password123!  | admin    |
 
 Alice has 3 pre-seeded favourite products.
+
+### Order Lifecycle Fixtures
+
+`npm run reset` restores four local-demo order scenarios. Normal `npm run seed` inserts a missing scenario once and never overwrites a lifecycle change made afterwards.
+
+- Alice: `alice-processing` â€” eligible for simulated cancellation
+- Alice: `alice-packed` â€” eligible for simulated cancellation before shipment
+- Alice: `alice-split-shipped` â€” one delivered parcel and one in-transit parcel, including a Powderizer line
+- Alice: `alice-delivery-failed` â€” simulated delivery failure
+- Bob: `bob-delivered` â€” delivered parcel
+
+Signed-in customers can browse `/orders` and open their own `/orders/:orderId` detail pages. Bob cannot access Alice's orders. A guest checkout confirmation is available only through its short-lived, exact-order browser cookie; there is no guest history or guest cancellation.
+
+Order state, tracking references, delivery events, and inventory are local simulation data. Checkout holds local stock in a 15-minute reservation while payment is processed, then consumes only the reserved quantity after simulated authorization. Eligible products may show as available to backorder when local stock is exhausted; an administrator's local stock receipt fulfills waiting quantities FIFO. None of this represents carrier service, supplier inventory, dispatch, delivery, or notifications. An owner can cancel only while an order is `processing` or `packed` and no shipment has left; cancellation returns unshipped ordinary local stock to inventory and does not refund, alter payment, totals, promo use, or purchased snapshots.
+
+### Admin Lifecycle API (Local Simulation)
+
+There is intentionally no operations UI. Sign in as `admin@example.com`, retain the session cookie, and use these local API commands with a fresh UUID `idempotencyKey` and the current order or shipment `version` from `GET /api/orders/:orderId`. For packing, copy an exact `lineKind` and `lineId` from that response; do not invent line IDs.
+
+```http
+POST /api/admin/orders/:orderId/shipments
+Content-Type: application/json
+
+{
+  "version": 0,
+  "idempotencyKey": "00000000-0000-4000-8000-000000000201",
+  "shipments": [{
+    "trackingReference": "QA-LOCAL-001",
+    "lines": [{
+      "lineKind": "product",
+      "lineId": "<GET /api/orders/:orderId -> items[n].lineId>",
+      "quantity": 1
+    }]
+  }]
+}
+```
+
+```http
+POST /api/admin/order-shipments/:shipmentId/transition
+Content-Type: application/json
+
+{
+  "version": 0,
+  "status": "shipped",
+  "idempotencyKey": "00000000-0000-4000-8000-000000000202"
+}
+```
+
+```http
+POST /api/admin/order-shipments/:shipmentId/tracking-events
+Content-Type: application/json
+
+{
+  "version": 1,
+  "code": "in_transit",
+  "title": "In transit",
+  "detail": "Simulated local-demo update.",
+  "location": "Demo transit hub",
+  "idempotencyKey": "00000000-0000-4000-8000-000000000203"
+}
+```
+
+Shipment transitions are `packed -> shipped -> delivered` or `packed -> shipped -> delivery_failed`. Payloads use server-owned timestamps; changing an idempotency key payload or sending a stale version returns a conflict.
+
+### Admin Inventory Receipt API (Local Simulation)
+
+There is no inventory UI. Sign in as `admin@example.com`, retain the session cookie, and record a local stock receipt with a fresh UUID `idempotencyKey`. The command immediately allocates the oldest eligible backorders first, then leaves any remainder as local stock.
+
+```http
+POST /api/admin/inventory/receipts
+Content-Type: application/json
+
+{
+  "productId": "49",
+  "quantity": 5,
+  "idempotencyKey": "00000000-0000-4000-8000-000000000204"
+}
+```
+
+Replaying the exact receipt key returns its original result; changing its product or quantity returns a conflict. This is a local-demo stock command only, not a supplier, warehouse, or fulfilment integration.
+
+### Returns and Refunds (Local Simulation)
+
+Delivered ordinary products can be returned within a 30-day window measured from the exact delivery event time. Custom Powderizer mixes are excluded from returns. The workflow is:
+
+1. **Customer** opens a delivered order detail page, selects eligible quantities, chooses a reason, optionally adds a note, and submits the request.
+2. **Admin** approves or rejects the request, receives the returned items, and issues a simulated refund.
+
+There is intentionally no admin UI. Sign in as `admin@example.com`, retain the session cookie, and use these local API commands with a fresh UUID `idempotencyKey` and the current return `version` from `GET /api/admin/returns`.
+
+#### List returns (admin)
+
+```http
+GET /api/admin/returns?status=requested&page=1&pageSize=10
+```
+
+#### Approve or reject a return (admin)
+
+```http
+POST /api/admin/returns/:returnId/decision
+Content-Type: application/json
+
+{
+  "version": 1,
+  "idempotencyKey": "00000000-0000-4000-8000-000000000301",
+  "decision": "approve"
+}
+```
+
+#### Receive returned items (admin)
+
+```http
+POST /api/admin/returns/:returnId/receive
+Content-Type: application/json
+
+{
+  "version": 2,
+  "idempotencyKey": "00000000-0000-4000-8000-000000000302"
+}
+```
+
+#### Issue simulated refund (admin)
+
+```http
+POST /api/admin/returns/:returnId/refund
+Content-Type: application/json
+
+{
+  "version": 3,
+  "idempotencyKey": "00000000-0000-4000-8000-000000000303"
+}
+```
+
+Refunds are simulated only — no real money, postage, carrier, or payment gateway is involved. Refund amounts are calculated from the original purchase price and order discount, prorated across returned quantities. The original order totals, payment row, and promotion redemptions are never modified.
+
+#### Testing return flow
+
+- `bob-delivered` order (Bob, Password123!) has a delivered Protein Powder shipment and a pre-seeded completed/refunded return for inspection.
+- To create a fresh eligible order: use the admin lifecycle API to advance any order to delivered within the last 30 days, then sign in as the order owner.
+- The return window is 30 days from the exact shipment delivery event. Once expired, the order shows no eligible items.
 
 ### Promo Codes
 

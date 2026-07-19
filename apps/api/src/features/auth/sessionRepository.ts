@@ -26,9 +26,9 @@ interface SessionRow {
 export interface SessionRepository {
   create(session: SessionRecord): void;
   findUser(token: string): (SessionRecord & { user: SessionUser }) | null;
-  delete(token: string): void;
-  deleteForUser(userId: number): void;
-  deleteOtherForUser(userId: number, token: string): void;
+  delete(token: string): boolean;
+  deleteForUser(userId: number): number;
+  deleteOtherForUser(userId: number, token: string): number;
 }
 
 export function createSessionRepository(db: Database.Database): SessionRepository {
@@ -56,13 +56,14 @@ export function createSessionRepository(db: Database.Database): SessionRepositor
       };
     },
     delete(token) {
-      db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+      return db.prepare('DELETE FROM sessions WHERE token = ?').run(token).changes === 1;
     },
     deleteForUser(userId) {
-      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+      return db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId).changes;
     },
     deleteOtherForUser(userId, token) {
-      db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(userId, token);
+      return db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(userId, token)
+        .changes;
     },
   };
 }

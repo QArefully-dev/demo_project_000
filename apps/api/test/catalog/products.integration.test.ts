@@ -8,6 +8,7 @@ import {
   type ProductDetailResponse,
   type ProductFilterOptionsResponse,
   type ProductListPaginatedResponse,
+  SimilarProductsResponse,
 } from '@shop/contracts/products';
 import { Value } from '@sinclair/typebox/value';
 import { buildApp } from '../../src/app.js';
@@ -60,6 +61,10 @@ void test('customer catalog endpoints exclude inactive products', async (t) => {
 
   assert.equal((await app.inject({ method: 'GET', url: '/api/products/1' })).statusCode, 404);
   assert.equal(
+    (await app.inject({ method: 'GET', url: '/api/products/1/similar' })).statusCode,
+    404,
+  );
+  assert.equal(
     (await app.inject({ method: 'GET', url: '/api/products/1/related' })).statusCode,
     404,
   );
@@ -70,6 +75,65 @@ void test('customer catalog endpoints exclude inactive products', async (t) => {
   assert.equal(
     body.items.some((product) => product.id === '1'),
     false,
+  );
+});
+
+void test('similar products endpoint is deterministic and related remains its compatibility alias', async (t) => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'shop-product-similar-'));
+  const db = openDatabase({ path: join(tempDir, 'shop.db') });
+  seedDatabase(db);
+  const candidate = (
+    db.prepare('SELECT id FROM products WHERE id != 1 ORDER BY id ASC LIMIT 1').get() as {
+      id: number;
+    }
+  ).id;
+  db.prepare('UPDATE products SET active = 0 WHERE id NOT IN (?, ?)').run(1, candidate);
+  db.prepare(
+    'UPDATE products SET category = (SELECT category FROM products WHERE id = 1), price_cents = (SELECT price_cents FROM products WHERE id = 1), stock_count = 0, active = 1 WHERE id = ?',
+  ).run(candidate);
+  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
+  t.after(async () => {
+    await app.close();
+    closeDatabase(db);
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  const similar = await app.inject({ method: 'GET', url: '/api/products/1/similar' });
+  const repeated = await app.inject({ method: 'GET', url: '/api/products/1/similar' });
+  const related = await app.inject({ method: 'GET', url: '/api/products/1/related' });
+  assert.equal(similar.statusCode, 200);
+  assert.equal(repeated.statusCode, 200);
+  assert.equal(related.statusCode, 200);
+  assert.equal(similar.body, repeated.body);
+  assert.equal(similar.body, related.body);
+  const products = similar.json<SimilarProductsResponse>();
+  assert.equal(Value.Check(SimilarProductsResponse, products), true);
+  assert.deepEqual(
+    products.map((product) => product.id),
+    [String(candidate)],
+  );
+  assert.equal(products[0].available, false);
+  assert.equal(
+    products.some((product) => product.id === '1'),
+    false,
+  );
+
+  assert.equal(
+    (await app.inject({ method: 'GET', url: '/api/products/999/similar' })).statusCode,
+    404,
+  );
+  assert.equal(
+    (await app.inject({ method: 'GET', url: '/api/products/999/related' })).statusCode,
+    404,
+  );
+  db.prepare('UPDATE products SET active = 0 WHERE id = 1').run();
+  assert.equal(
+    (await app.inject({ method: 'GET', url: '/api/products/1/similar' })).statusCode,
+    404,
+  );
+  assert.equal(
+    (await app.inject({ method: 'GET', url: '/api/products/1/related' })).statusCode,
+    404,
   );
 });
 

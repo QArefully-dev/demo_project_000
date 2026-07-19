@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
 import * as cartApi from '@/api/cart';
 import * as powderizerApi from '@/api/powderizer';
+import * as bundlesApi from '@/api/bundles';
 import { clearCartId, getCartId, setCartId } from '@/lib/cartStorage';
 import { CartProvider, useCartContext } from './CartContext';
 
@@ -19,6 +20,9 @@ vi.mock('@/api/powderizer', () => ({
   removePowderMix: vi.fn(),
   requotePowderMix: vi.fn(),
   updatePowderMixQuantity: vi.fn(),
+}));
+vi.mock('@/api/bundles', () => ({
+  addBundleToCart: vi.fn(),
 }));
 
 function deferred<T>() {
@@ -50,6 +54,9 @@ function cart(id: string, productIds: string[] = []): Cart {
         salesCount: 0,
         createdAt: '2026-07-14T00:00:00.000Z',
         available: true,
+        availability: 'in_stock',
+        backorderable: false,
+        backorderLeadDays: null,
         tags: [],
         specificationGroups: [],
       },
@@ -84,7 +91,7 @@ describe('useCart', () => {
 
     const secondProvider = renderHook(() => useCartContext(), { wrapper: providerWrapper });
     await waitFor(() => expect(cartApi.getCart).toHaveBeenCalledTimes(2));
-    expect(secondProvider.result.current.cartId).toBe('fresh-cart');
+    await waitFor(() => expect(secondProvider.result.current.cartId).toBe('fresh-cart'));
 
     await act(async () => {
       first.resolve(cart('stale-cart'));
@@ -142,6 +149,92 @@ describe('useCart', () => {
     expect(cartApi.addToCart).toHaveBeenNthCalledWith(2, 'new-cart', 'powder');
     expect(result.current.cartId).toBe('new-cart');
     expect(result.current.error).toBeNull();
+  });
+
+  it('uses a bundle-specific pending key and adds the bundle to the active cart', async () => {
+    setCartId('cart');
+    const response = deferred<Cart>();
+    vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
+    vi.mocked(bundlesApi.addBundleToCart).mockReturnValueOnce(response.promise);
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    let action!: Promise<boolean>;
+    act(() => {
+      action = result.current.addBundle('starter');
+    });
+    expect(result.current.isActionPending('bundle:starter', 'bundle-add')).toBe(true);
+    expect(bundlesApi.addBundleToCart).toHaveBeenCalledWith('cart', 'starter');
+
+    await act(async () => {
+      response.resolve(cart('cart', ['one', 'two']));
+      await response.promise;
+    });
+    expect(await action).toBe(true);
+    expect(result.current.isActionPending('bundle:starter')).toBe(false);
+  });
+
+  it('recovers a missing cart before retrying a bundle add', async () => {
+    setCartId('old-cart');
+    vi.mocked(cartApi.getCart)
+      .mockResolvedValueOnce(cart('old-cart'))
+      .mockResolvedValueOnce(cart('new-cart'));
+    vi.mocked(cartApi.createCart).mockResolvedValueOnce({ cartId: 'new-cart' });
+    vi.mocked(bundlesApi.addBundleToCart)
+      .mockRejectedValueOnce(new ApiError('Cart not found', 404))
+      .mockResolvedValueOnce(cart('new-cart', ['one', 'two']));
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    await act(async () => expect(await result.current.addBundle('starter')).toBe(true));
+
+    expect(bundlesApi.addBundleToCart).toHaveBeenNthCalledWith(1, 'old-cart', 'starter');
+    expect(bundlesApi.addBundleToCart).toHaveBeenNthCalledWith(2, 'new-cart', 'starter');
+  });
+
+  it('keeps the prior cart and exposes an error when a bundle add fails', async () => {
+    setCartId('cart');
+    vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart', ['existing']));
+    vi.mocked(bundlesApi.addBundleToCart).mockRejectedValueOnce(new Error('Bundle unavailable'));
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    await act(async () => expect(await result.current.addBundle('starter')).toBe(false));
+
+    expect(result.current.cart?.items.map((item) => item.productId)).toEqual(['existing']);
+    expect(result.current.error).toBe('Bundle unavailable');
+  });
+
+  it('does not let an older bundle response overwrite a newer cart response', async () => {
+    setCartId('cart');
+    const olderResponse = deferred<Cart>();
+    const newerResponse = deferred<Cart>();
+    vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
+    vi.mocked(bundlesApi.addBundleToCart)
+      .mockReturnValueOnce(olderResponse.promise)
+      .mockReturnValueOnce(newerResponse.promise);
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    let olderAction!: Promise<boolean>;
+    let newerAction!: Promise<boolean>;
+    act(() => {
+      olderAction = result.current.addBundle('starter');
+      newerAction = result.current.addBundle('pantry');
+    });
+
+    await act(async () => {
+      newerResponse.resolve(cart('cart', ['one', 'two']));
+      await newerResponse.promise;
+    });
+    await act(async () => {
+      olderResponse.resolve(cart('cart', ['one']));
+      await olderResponse.promise;
+    });
+
+    expect(await olderAction).toBe(true);
+    expect(await newerAction).toBe(true);
+    expect(result.current.cart?.items.map((item) => item.productId)).toEqual(['one', 'two']);
   });
 
   it('tracks concurrent actions by product', async () => {

@@ -27,7 +27,7 @@ export interface NormalizedCatalogQuery {
   addedTo?: string;
   tags: readonly string[];
   specifications: readonly CatalogSpecificationFilter[];
-  availability?: 'available' | 'out_of_stock';
+  availability?: 'available' | 'backorder' | 'out_of_stock';
   sort: ProductSort;
   page: number;
   pageSize: number;

@@ -6,6 +6,8 @@ import {
   helpArticles,
   helpContentRegistry,
   helpIndexLink,
+  productCommerceLinks,
+  productFactLinks,
   policyArticles,
 } from './helpContentRegistry';
 
@@ -53,6 +55,19 @@ describe('helpContentRegistry', () => {
     }
   });
 
+  it('exports product-context links from canonical registry articles', () => {
+    const registryByPath = new Map<string, (typeof helpContentRegistry)[number]>(
+      helpContentRegistry.map((article) => [article.path, article]),
+    );
+
+    for (const link of [
+      ...Object.values(productFactLinks),
+      ...Object.values(productCommerceLinks),
+    ]) {
+      expect(registryByPath.get(link.path)?.title).toBe(link.label);
+    }
+  });
+
   it('exposes readonly group selectors and exact group-and-slug lookup', () => {
     expect(getArticlesForGroup('help')).toEqual(helpArticles);
     expect(getArticlesForGroup('policy')).toEqual(policyArticles);
@@ -82,5 +97,14 @@ describe('helpContentRegistry', () => {
       faqBlock.entries.length,
     );
     expect(faqBlock.entries.every((entry) => entry.question.trim() !== '')).toBe(true);
+  });
+
+  it('describes local inventory without promising fulfilment', () => {
+    const packSizes = getHelpArticle('help', 'pack-sizes');
+    expect(packSizes).toBeDefined();
+    expect(JSON.stringify(packSizes)).toContain('local stock');
+    expect(JSON.stringify(packSizes)).toContain('backorder');
+    expect(JSON.stringify(packSizes)).toContain('not supplier inventory');
+    expect(JSON.stringify(getHelpArticle('help', 'shipping'))).toContain('not a delivery promise');
   });
 });

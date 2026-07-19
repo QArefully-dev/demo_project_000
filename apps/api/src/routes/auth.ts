@@ -14,7 +14,16 @@ import {
 } from '@shop/contracts/auth';
 import { ErrorResponse } from '@shop/contracts/common';
 import { toPublicUser } from '../features/auth/authService.js';
+import type { AuditContext } from '../features/audit/auditEvent.js';
 import type { AppContext } from '../app.js';
+
+function anonymousAuditContext(requestId: string): AuditContext {
+  return { actor: { type: 'anonymous', userId: null }, requestId };
+}
+
+function userAuditContext(userId: number, requestId: string): AuditContext {
+  return { actor: { type: 'user', userId }, requestId };
+}
 
 /** Auth routes. */
 export default function authRoutes(app: FastifyInstance, { services }: AppContext): void {
@@ -36,7 +45,12 @@ export default function authRoutes(app: FastifyInstance, { services }: AppContex
     async (request, reply) => {
       const { email, password, displayName } = request.body;
 
-      const result = await services.auth.signup({ email, password, displayName });
+      const result = await services.auth.signup({
+        email,
+        password,
+        displayName,
+        auditContext: anonymousAuditContext(request.id),
+      });
 
       if (!result.ok) {
         if (result.error === 'EMAIL_EXISTS') {
@@ -47,7 +61,10 @@ export default function authRoutes(app: FastifyInstance, { services }: AppContex
         return;
       }
 
-      createSession(services.sessions, reply, result.userId);
+      createSession(services.sessions, reply, result.userId, {
+        context: userAuditContext(result.userId, request.id),
+        source: 'signup',
+      });
       reply.code(201).send(result.user);
     },
   );
@@ -75,7 +92,10 @@ export default function authRoutes(app: FastifyInstance, { services }: AppContex
         return;
       }
 
-      createSession(services.sessions, reply, result.userId);
+      createSession(services.sessions, reply, result.userId, {
+        context: userAuditContext(result.userId, request.id),
+        source: 'login',
+      });
       reply.code(200).send(result.user);
     },
   );
@@ -91,7 +111,13 @@ export default function authRoutes(app: FastifyInstance, { services }: AppContex
       },
     },
     async (request, reply) => {
-      destroySession(services.sessions, request, reply);
+      const user = request.authenticatedUser;
+      destroySession(
+        services.sessions,
+        request,
+        reply,
+        user ? userAuditContext(user.id, request.id) : undefined,
+      );
       reply.code(200).send({ success: true as const });
     },
   );
@@ -110,7 +136,7 @@ export default function authRoutes(app: FastifyInstance, { services }: AppContex
     },
     async (request, reply) => {
       const { email } = request.body;
-      services.passwordReset.request(email);
+      services.passwordReset.request(email, anonymousAuditContext(request.id));
       // Always return success — no user enumeration.
       reply.code(200).send({ success: true as const });
     },
@@ -131,7 +157,11 @@ export default function authRoutes(app: FastifyInstance, { services }: AppContex
     async (request, reply) => {
       const { token, newPassword } = request.body;
 
-      const result = await services.passwordReset.reset({ token, newPassword });
+      const result = await services.passwordReset.reset({
+        token,
+        newPassword,
+        requestId: request.id,
+      });
 
       if (result === 'INVALID_TOKEN') {
         sendBadRequest(reply, 'Invalid or missing reset token');
@@ -200,6 +230,7 @@ export default function authRoutes(app: FastifyInstance, { services }: AppContex
         newPassword,
         invalidateOtherSessions: () =>
           services.sessions.invalidateOtherForUser(user.id, sessionToken ?? ''),
+        auditContext: userAuditContext(user.id, request.id),
       });
 
       if (result === 'INVALID_CURRENT') {

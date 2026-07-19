@@ -41,9 +41,23 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
         cardCvc: request.body.cardCvc,
         idempotencyKey: request.body.idempotencyKey,
         userId,
+        auditContext: {
+          actor: userId === null ? { type: 'anonymous', userId: null } : { type: 'user', userId },
+          requestId: request.id,
+        },
       });
 
       if (result.success) {
+        if (userId === null) {
+          const { token } = services.orderAccess.issue(Number(result.order.id));
+          reply.setCookie(`qpc_order_${result.order.id}`, token, {
+            httpOnly: true,
+            sameSite: 'lax',
+            path: `/api/orders/${result.order.id}`,
+            maxAge: 24 * 60 * 60,
+            secure: false,
+          });
+        }
         reply.code(201);
         return result.order;
       }
@@ -84,6 +98,15 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
             mixIds: result.mixIds,
             productIds: result.productIds,
           });
+          return;
+        case 'RESERVATION_EXPIRED':
+          reply.code(409).send({
+            error: 'RESERVATION_EXPIRED',
+            reservationExpiresAt: result.reservationExpiresAt,
+          });
+          return;
+        case 'INSUFFICIENT_STOCK':
+          reply.code(409).send({ error: 'INSUFFICIENT_STOCK', productIds: result.productIds });
           return;
         case 'IDEMPOTENT_IN_PROGRESS':
           sendConflict(reply, 'Payment is already being processed');

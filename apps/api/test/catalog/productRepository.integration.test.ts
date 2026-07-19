@@ -44,7 +44,6 @@ void test('product repository owns catalog SQL', (t) => {
       .list({ onSale: true, sort: 'newest', pageSize: 48 })
       .items.every((product) => product.compare_at_price_cents !== null),
   );
-  assert.ok(products.listRelated(45).every((product) => product.category === 'Impossible'));
   db.prepare('UPDATE products SET active = 0 WHERE id IN (1, 2)').run();
   assert.equal(products.findById(1)?.active, 0);
   assert.equal(products.findActiveById(1), undefined);
@@ -58,6 +57,84 @@ void test('product repository owns catalog SQL', (t) => {
     products.listMixProducts([1, 2]).map((product) => product.id),
     [1, 2],
   );
+});
+
+void test('customer reads hydrate persisted metadata in stable catalog order', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-catalog-hydration-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+  const products = createProductRepository(db);
+  const persistedTag = db
+    .prepare(
+      'SELECT product_id, tag_key FROM product_tags ORDER BY product_id ASC, tag_key ASC LIMIT 1',
+    )
+    .get() as { product_id: number; tag_key: string };
+  db.prepare('UPDATE catalog_tags SET label = ? WHERE key = ?').run(
+    'Persisted alpha',
+    persistedTag.tag_key,
+  );
+  db.prepare(
+    `INSERT INTO products
+      (id, name, description, price_cents, category, stock_count, image_set_id, slug,
+       compare_at_price_cents, sales_count, mixable, mix_unit_grams, active, created_at)
+     VALUES (99, 'Local powder', 'Local metadata', 999, 'Performance', 3, NULL, 'local-powder',
+       NULL, 0, 0, NULL, 1, '2026-07-01T00:00:00.000Z')`,
+  ).run();
+  db.prepare('INSERT INTO catalog_tags (key, label) VALUES (?, ?), (?, ?)').run(
+    'z-local',
+    'Zulu',
+    'a-local',
+    'Alpha',
+  );
+  db.prepare('INSERT INTO product_tags (product_id, tag_key) VALUES (99, ?), (99, ?)').run(
+    'z-local',
+    'a-local',
+  );
+  db.prepare(
+    `INSERT INTO product_specifications (product_id, specification_key, value_key, display_value)
+     VALUES (99, 'source', 'local-source', 'Local source'),
+            (99, 'texture', 'fine', 'Fine'),
+            (99, 'unknown-future-key', 'ignored', 'Ignored')`,
+  ).run();
+  db.prepare('UPDATE products SET active = 0 WHERE id = 2').run();
+
+  const changedCanonical = products.findActiveById(persistedTag.product_id);
+  assert.ok(changedCanonical?.tags.some((tag) => tag.label === 'Persisted alpha'));
+
+  const local = products.findActiveById(99);
+  assert.deepEqual(local?.tags, [
+    { key: 'a-local', label: 'Alpha' },
+    { key: 'z-local', label: 'Zulu' },
+  ]);
+  assert.deepEqual(
+    local?.specificationGroups.map((group) => [
+      group.key,
+      group.specifications.map((fact) => fact.key),
+    ]),
+    [
+      ['appearance', ['texture']],
+      ['origin-and-use', ['source']],
+    ],
+  );
+
+  assert.equal(products.findActiveById(2), undefined);
+  assert.deepEqual(
+    products.listByIds([99, 2]).map((product) => [product.id, product.active]),
+    [
+      [2, 0],
+      [99, 1],
+    ],
+  );
+  const candidates = products.listActiveCandidatesExcluding(1);
+  assert.equal(
+    candidates.some((product) => product.id === 1 || product.id === 2),
+    false,
+  );
+  assert.ok(candidates.some((product) => product.id === 99 && product.tags.length === 2));
 });
 
 void test('advanced catalog predicates are inclusive, composable, and stable', (t) => {
@@ -228,10 +305,79 @@ void test('catalog SQL builder only emits allowlisted identifiers', () => {
     spec: ['texture:fine'],
     sort: 'name_asc',
   });
-  const predicate = buildCatalogPredicate(normalized);
+  const predicate = buildCatalogPredicate(normalized, '2026-07-19T12:00:00.000Z');
   assert.match(predicate.where, /EXISTS \(SELECT 1 FROM product_tags/);
   assert.match(predicate.where, /EXISTS \(SELECT 1 FROM product_specifications/);
   assert.deepEqual(predicate.params, ['plant-based', 'texture', 'fine']);
   assert.equal(catalogOrderBy(normalized.sort), 'ORDER BY p.name COLLATE NOCASE ASC, p.id ASC');
   assert.throws(() => normalizeCatalogQuery({ spec: ['not-real:any'] }), CatalogQueryError);
+});
+
+void test('reservation-aware availability filters count and paginate against one instant', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-catalog-availability-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+  const products = createProductRepository(db);
+  const now = '2026-07-19T12:00:00.000Z';
+  const future = '2026-07-19T12:01:00.000Z';
+  const expired = '2026-07-19T11:59:59.000Z';
+  db.prepare(
+    `UPDATE products
+     SET stock_count = CASE id WHEN 1 THEN 1 WHEN 2 THEN 0 WHEN 3 THEN 1 ELSE stock_count END,
+         backorderable = CASE id WHEN 2 THEN 1 ELSE 0 END,
+         backorder_lead_days = CASE id WHEN 2 THEN 14 ELSE NULL END
+     WHERE id IN (1, 2, 3)`,
+  ).run();
+  const payment = db.prepare(
+    `INSERT INTO payments
+      (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand)
+     VALUES (?, ?, 'prepared', 1, '4242', 'Visa')`,
+  );
+  const reservation = db.prepare(
+    `INSERT INTO inventory_reservations
+      (payment_idempotency_key, product_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
+     VALUES (?, ?, 'product', 1, 0, ?, ?)`,
+  );
+  payment.run('catalog-live', 'catalog-live');
+  reservation.run('catalog-live', 1, future, now);
+  payment.run('catalog-expired', 'catalog-expired');
+  reservation.run('catalog-expired', 3, expired, now);
+
+  const available = products.list({ availability: 'available', pageSize: 48 }, now);
+  const backorder = products.list({ availability: 'backorder', pageSize: 48 }, now);
+  const unavailable = products.list({ availability: 'out_of_stock', pageSize: 48 }, now);
+  assert.equal(
+    available.items.some((product) => product.id === 1),
+    false,
+  );
+  assert.equal(
+    available.items.some((product) => product.id === 3),
+    true,
+  );
+  assert.deepEqual(
+    backorder.items.map((product) => product.id),
+    [2],
+  );
+  assert.equal(
+    unavailable.items.some((product) => product.id === 1),
+    true,
+  );
+  assert.equal(
+    unavailable.items.some((product) => product.id === 2),
+    false,
+  );
+
+  const full = products.list({ availability: 'out_of_stock', pageSize: 48 }, now);
+  const pages = [1, 2, 3, 4, 5].flatMap(
+    (page) => products.list({ availability: 'out_of_stock', page, pageSize: 2 }, now).items,
+  );
+  assert.equal(full.total, full.items.length);
+  assert.deepEqual(
+    pages.map((product) => product.id),
+    full.items.map((product) => product.id),
+  );
 });

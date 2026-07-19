@@ -147,26 +147,5 @@ export function prepareMixes(cartId: string, dependencies: CheckoutDependencies)
       })),
     };
   }
-  const unavailable = requirements.filter((requirement) => {
-    const product = dependencies.products.findById(requirement.productId);
-    return (
-      !product ||
-      product.stock_count - dependencies.mixes.reservedStock(requirement.productId) <
-        requirement.bagEquivalents
-    );
-  });
-  if (unavailable.length) {
-    const unavailableIds = new Set(unavailable.map((requirement) => requirement.productId));
-    return {
-      success: false,
-      error: 'MIX_STOCK_UNAVAILABLE',
-      mixIds: persisted
-        .filter((mix) =>
-          mix.components.some((component) => unavailableIds.has(component.product_id)),
-        )
-        .map((mix) => mix.id),
-      productIds: unavailable.map((requirement) => String(requirement.productId)),
-    };
-  }
   return { requirements, mixItems };
 }

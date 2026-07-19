@@ -6,9 +6,12 @@ import type { MailboxRepository } from '../mailbox/mailboxRepository.js';
 import type { PaymentGateway } from '../payments/paymentGateway.js';
 import type { PaymentRepository } from '../payments/paymentRepository.js';
 import type { PromoRepository } from '../promos/promoRepository.js';
-import type { OrderRepository } from './orderRepository.js';
+import type { OrderRepository } from '../orders/orderRepository.js';
 import type { PowderMixRepository } from '../powderizer/powderMixRepository.js';
 import type { ProductRepository } from '../catalog/productRepository.js';
+import type { AuditContext } from '../audit/auditEvent.js';
+import type { AuditWriter } from '../audit/auditService.js';
+import type { InventoryService } from '../inventory/inventoryService.js';
 
 export type CheckoutErrorCode =
   | 'CART_NOT_FOUND'
@@ -19,17 +22,26 @@ export type CheckoutErrorCode =
   | 'TIMEOUT'
   | 'IDEMPOTENT_CONFLICT'
   | 'IDEMPOTENT_IN_PROGRESS'
+  | 'RESERVATION_EXPIRED'
+  | 'INSUFFICIENT_STOCK'
   | 'CHECKOUT_FAILED';
 
 export type CheckoutResult =
   | { success: true; order: Order }
-  | { success: false; error: CheckoutErrorCode; promoError?: string; promoErrorCode?: string }
+  | {
+      success: false;
+      error: Exclude<CheckoutErrorCode, 'RESERVATION_EXPIRED' | 'INSUFFICIENT_STOCK'>;
+      promoError?: string;
+      promoErrorCode?: string;
+    }
   | {
       success: false;
       error: 'MIX_REQUOTE_REQUIRED';
       mixes: Array<{ mixId: string; oldUnitPriceCents: number; newUnitPriceCents: number }>;
     }
-  | { success: false; error: 'MIX_STOCK_UNAVAILABLE'; mixIds: string[]; productIds: string[] };
+  | { success: false; error: 'MIX_STOCK_UNAVAILABLE'; mixIds: string[]; productIds: string[] }
+  | { success: false; error: 'RESERVATION_EXPIRED'; reservationExpiresAt: string }
+  | { success: false; error: 'INSUFFICIENT_STOCK'; productIds: string[] };
 
 export interface CheckoutParams {
   cartId: string;
@@ -42,6 +54,7 @@ export interface CheckoutParams {
   cardCvc: string;
   idempotencyKey: string;
   userId: number | null;
+  auditContext: AuditContext;
 }
 
 export interface CheckoutDependencies {
@@ -55,6 +68,8 @@ export interface CheckoutDependencies {
   clock: Clock;
   mixes: PowderMixRepository;
   products: ProductRepository;
+  audit: AuditWriter;
+  inventory: InventoryService;
 }
 
 export interface CheckoutService {

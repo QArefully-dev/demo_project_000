@@ -11,12 +11,15 @@ export interface CartRepository {
   exists(cartId: string): boolean;
   listLines(cartId: string): CartLineRow[];
   productExists(productId: string): boolean;
+  lineQuantity(cartId: string, productId: string): number;
   addLine(cartId: string, productId: string): void;
+  addLineQuantity(cartId: string, productId: string, quantity: number): void;
   updateLine(cartId: string, productId: string, quantity: number): boolean;
   removeLine(cartId: string, productId: string): boolean;
   reserve(cartId: string, paymentIdempotencyKey: string, createdAt: string): boolean;
   releaseReservation(paymentIdempotencyKey: string): boolean;
-  isReserved(cartId: string): boolean;
+  /** Expired prepared checkout locks do not block cart mutation. */
+  isReserved(cartId: string, now?: string): boolean;
   touch(cartId: string): void;
   remove(cartId: string): void;
 }
@@ -43,11 +46,26 @@ export function createCartRepository(db: Database.Database): CartRepository {
         undefined
       );
     },
+    lineQuantity(cartId, productId) {
+      return (
+        (
+          db
+            .prepare('SELECT quantity FROM cart_line_items WHERE cart_id = ? AND product_id = ?')
+            .get(cartId, productId) as { quantity: number } | undefined
+        )?.quantity ?? 0
+      );
+    },
     addLine(cartId, productId) {
       db.prepare(
         `INSERT INTO cart_line_items (cart_id, product_id, quantity) VALUES (?, ?, 1)
          ON CONFLICT(cart_id, product_id) DO UPDATE SET quantity = quantity + 1`,
       ).run(cartId, productId);
+    },
+    addLineQuantity(cartId, productId, quantity) {
+      db.prepare(
+        `INSERT INTO cart_line_items (cart_id, product_id, quantity) VALUES (?, ?, ?)
+         ON CONFLICT(cart_id, product_id) DO UPDATE SET quantity = quantity + excluded.quantity`,
+      ).run(cartId, productId, quantity);
     },
     updateLine(cartId, productId, quantity) {
       return (
@@ -87,9 +105,21 @@ export function createCartRepository(db: Database.Database): CartRepository {
           .run(paymentIdempotencyKey).changes > 0
       );
     },
-    isReserved(cartId) {
+    isReserved(cartId, now) {
       return (
-        db.prepare('SELECT 1 FROM cart_reservations WHERE cart_id = ?').get(cartId) !== undefined
+        db
+          .prepare(
+            `SELECT 1
+             FROM cart_reservations cr
+             LEFT JOIN payments p ON p.idempotency_key = cr.payment_idempotency_key
+             WHERE cr.cart_id = ?
+               AND NOT (
+                 p.status = 'prepared'
+                 AND p.reservation_expires_at IS NOT NULL
+                 AND p.reservation_expires_at <= ?
+               )`,
+          )
+          .get(cartId, now ?? new Date().toISOString()) !== undefined
       );
     },
     touch(cartId) {

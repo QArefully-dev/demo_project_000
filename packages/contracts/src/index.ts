@@ -9,3 +9,8 @@ export * from './orders.js';
 export * from './payments.js';
 export * from './mailbox.js';
 export * from './powderizer.js';
+export * from './audit.js';
+export * from './bundles.js';
+export * from './reviews.js';
+export * from './inventory.js';
+export * from './returns.js';

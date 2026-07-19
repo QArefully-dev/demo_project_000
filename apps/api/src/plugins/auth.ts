@@ -1,7 +1,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { SessionService } from '../features/auth/sessionService.js';
 import type { SessionUser } from '../features/auth/sessionRepository.js';
-import { sendUnauthorized } from '../utils/errors.js';
+import type { AuditContext } from '../features/audit/auditEvent.js';
+import type { SessionAuditDetails } from '../features/auth/sessionService.js';
+import { sendForbidden, sendUnauthorized } from '../utils/errors.js';
 
 export type AuthenticatedUser = SessionUser;
 
@@ -10,8 +12,9 @@ export function createSession(
   sessions: SessionService,
   reply: FastifyReply,
   userId: number,
+  audit?: SessionAuditDetails,
 ): string {
-  const { token, expiresAt } = sessions.create(userId);
+  const { token, expiresAt } = sessions.create(userId, audit);
   reply.setCookie('sid', token, {
     httpOnly: true,
     sameSite: 'lax',
@@ -26,9 +29,10 @@ export function destroySession(
   sessions: SessionService,
   request: FastifyRequest,
   reply: FastifyReply,
+  context?: AuditContext,
 ): void {
   const token = request.cookies?.sid;
-  if (token) sessions.destroy(token);
+  if (token) sessions.destroy(token, context);
   reply.clearCookie('sid', { path: '/' });
 }
 
@@ -45,6 +49,40 @@ export function requireAuth(sessions: SessionService) {
     const user = getAuthenticatedUser(sessions, request);
     if (!user) {
       sendUnauthorized(reply);
+      return;
+    }
+    request.authenticatedUser = user;
+    request.sessionToken = request.cookies?.sid ?? null;
+  };
+}
+
+/** Require a valid session whose user has the administrator role. */
+export function requireAdmin(sessions: SessionService) {
+  return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const user = getAuthenticatedUser(sessions, request);
+    if (!user) {
+      sendUnauthorized(reply);
+      return;
+    }
+    if (user.role !== 'admin') {
+      sendForbidden(reply);
+      return;
+    }
+    request.authenticatedUser = user;
+    request.sessionToken = request.cookies?.sid ?? null;
+  };
+}
+
+/** Require a valid session whose user has the customer role. */
+export function requireCustomer(sessions: SessionService) {
+  return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const user = getAuthenticatedUser(sessions, request);
+    if (!user) {
+      sendUnauthorized(reply);
+      return;
+    }
+    if (user.role !== 'customer') {
+      sendForbidden(reply);
       return;
     }
     request.authenticatedUser = user;

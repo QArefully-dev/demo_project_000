@@ -1,6 +1,6 @@
 # Powder Shop Catalog Expansion Plan
 
-Status: Round 1 completed 2026-07-17. Rounds 2-4 remain backlog.
+Status: Rounds 1-3 implemented. Round 4 remains backlog.
 
 Purpose: retain approved Powder shop expansion ideas for later implementation planning.
 
@@ -123,9 +123,14 @@ Avoid:
 
 Each lane requires scoped coding plan. Each plan must audit current Powderizer work, schema, contracts, routes, tests before phase design. Code remains implementation truth.
 
-### Round 1: Catalog Foundation
+### Round 1: Catalog Foundation — Implemented 2026-07-17
 
-Completion: Lane A catalog foundation and Lane B help/policy content completed. See `plans/round_1_lane_a_catalog_foundation_plan.md` and `plans/round_1_lane_b_help_policy_plan.md`.
+Delivered:
+
+- Lane A: structured specifications and tags, plus advanced catalog filtering and sorting.
+- Lane B: API-independent help and policy center, including typed content, FAQ, routes, footer links, and accessibility coverage.
+
+Round 2 is implemented. The lane details below are retained as the completed-scope record.
 
 Lane A, serial:
 
@@ -144,9 +149,16 @@ Lane B, parallel with Lane A:
 - Keep API-independent.
 - Defer product-context links requiring `ProductPage` edits until Round 4.
 
-### Round 2: Read Features and Audit Foundation
+### Round 2: Read Features and Audit Foundation — Implemented 2026-07-18
 
-Lane A, close serial delivery:
+Delivered:
+
+- Lane A: anonymous ordered product comparison and deterministic similar-product discovery, including shared contracts, persisted metadata reads, API routes, comparison UI/storage, and focused coverage.
+- Lane B: append-only audit ledger, sanitized admin audit reads, and audit integration for existing auth, cart, order, and payment mutations.
+
+Round 3 is implemented. The lane details below are retained as the completed-scope record.
+
+Lane A, completed serial delivery:
 
 `product comparison -> deterministic similar products`
 
@@ -155,7 +167,7 @@ Lane A, close serial delivery:
 - Comparison first establishes active-product and ordered multi-product read behavior.
 - Similarity next reuses active state, tags, specifications, price, availability.
 
-Lane B, parallel with Lane A:
+Lane B, completed parallel delivery:
 
 `append-only audit foundation -> existing auth, cart, order, payment audit integration`
 
@@ -163,7 +175,14 @@ Lane B, parallel with Lane A:
 - Complete audit foundation before bundle and review mutations.
 - Preserve shared transaction rule for required mutation plus audit insert.
 
-### Round 3: Mutation Features
+### Round 3: Mutation Features — Implemented 2026-07-19
+
+Delivered:
+
+- Lane A: curated bundles with ordered schema migration, canonical bundle catalog data, current-price calculation, atomic ordinary-cart-line additions, audit events, API routes, contracts, web browse/add flow, and focused coverage.
+- Lane B: customer reviews with ordered schema migration, authenticated ownership rules, verified-purchase evidence, public summaries and lists, moderation, sanitized audit events, login return paths, product-detail UI, and focused coverage.
+
+The lane details below are retained as the completed-scope record.
 
 Parallel lanes after Round 2 audit foundation:
 
@@ -178,14 +197,16 @@ Parallel conditions:
 - Reviews own auth, ownership, paid-order evidence, moderation integration.
 - Defer final `ProductPage` composition to Round 4.
 
-### Round 4: Product-Detail Composition
+### Round 4: Frontend Journey and Product-Detail Composition
 
-`specifications -> bundles -> reviews -> similar products`
+`comparison entry points -> specifications -> bundles -> reviews -> similar products`
 
+- Close the Round 2 discoverability gap with comparison actions on catalog cards and product detail, plus a clear path to the comparison page.
+- Keep anonymous 2-4 product selection, requested order, shareable URL state, and latest valid browser selection consistent across entry points.
 - Integrate completed slices into richer product-detail page.
 - Preserve core product and purchase flow when secondary sections fail.
 - Give each remote section independent loading, empty, failure state.
-- Add deferred comparison actions, bundle component links, help and policy context links.
+- Add bundle component links and help and policy context links.
 
 ### Parallelism Guardrails
 
