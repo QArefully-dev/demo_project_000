@@ -175,6 +175,66 @@ Content-Type: application/json
 
 Replaying the exact receipt key returns its original result; changing its product or quantity returns a conflict. This is a local-demo stock command only, not a supplier, warehouse, or fulfilment integration.
 
+### Returns and Refunds (Local Simulation)
+
+Delivered ordinary products can be returned within a 30-day window measured from the exact delivery event time. Custom Powderizer mixes are excluded from returns. The workflow is:
+
+1. **Customer** opens a delivered order detail page, selects eligible quantities, chooses a reason, optionally adds a note, and submits the request.
+2. **Admin** approves or rejects the request, receives the returned items, and issues a simulated refund.
+
+There is intentionally no admin UI. Sign in as `admin@example.com`, retain the session cookie, and use these local API commands with a fresh UUID `idempotencyKey` and the current return `version` from `GET /api/admin/returns`.
+
+#### List returns (admin)
+
+```http
+GET /api/admin/returns?status=requested&page=1&pageSize=10
+```
+
+#### Approve or reject a return (admin)
+
+```http
+POST /api/admin/returns/:returnId/decision
+Content-Type: application/json
+
+{
+  "version": 1,
+  "idempotencyKey": "00000000-0000-4000-8000-000000000301",
+  "decision": "approve"
+}
+```
+
+#### Receive returned items (admin)
+
+```http
+POST /api/admin/returns/:returnId/receive
+Content-Type: application/json
+
+{
+  "version": 2,
+  "idempotencyKey": "00000000-0000-4000-8000-000000000302"
+}
+```
+
+#### Issue simulated refund (admin)
+
+```http
+POST /api/admin/returns/:returnId/refund
+Content-Type: application/json
+
+{
+  "version": 3,
+  "idempotencyKey": "00000000-0000-4000-8000-000000000303"
+}
+```
+
+Refunds are simulated only — no real money, postage, carrier, or payment gateway is involved. Refund amounts are calculated from the original purchase price and order discount, prorated across returned quantities. The original order totals, payment row, and promotion redemptions are never modified.
+
+#### Testing return flow
+
+- `bob-delivered` order (Bob, Password123!) has a delivered Protein Powder shipment and a pre-seeded completed/refunded return for inspection.
+- To create a fresh eligible order: use the admin lifecycle API to advance any order to delivered within the last 30 days, then sign in as the order owner.
+- The return window is 30 days from the exact shipment delivery event. Once expired, the order shows no eligible items.
+
 ### Promo Codes
 
 | Code      | Type    | Value | Notes                               |

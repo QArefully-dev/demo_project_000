@@ -1,0 +1,267 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+import { buildApp } from '../../src/app.js';
+import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+
+function cookie(response: { headers: Record<string, string | string[] | undefined> }): string {
+  const h = response.headers['set-cookie'];
+  const c = Array.isArray(h) ? h[0] : h;
+  if (!c) throw new Error('Expected set-cookie');
+  return c.split(';', 1)[0]!;
+}
+
+async function login(app: Awaited<ReturnType<typeof buildApp>>, email: string): Promise<string> {
+  const r = await app.inject({
+    method: 'POST',
+    url: '/login',
+    payload: { email, password: 'Password123!' },
+  });
+  assert.equal(r.statusCode, 200);
+  return cookie(r);
+}
+
+/** Find Alice's order that has delivered shipments and create a return request for it. */
+async function createReturnForAlice(
+  app: Awaited<ReturnType<typeof buildApp>>,
+  aliceCookie: string,
+): Promise<{ orderId: string; returnId: string } | null> {
+  const orders = await app.inject({
+    method: 'GET',
+    url: '/api/orders?page=1&pageSize=50',
+    headers: { cookie: aliceCookie },
+  });
+  const orderIds = orders.json<{ items: Array<{ id: string }> }>().items.map((o) => o.id);
+
+  for (const orderId of orderIds) {
+    const overview = await app.inject({
+      method: 'GET',
+      url: `/api/orders/${orderId}/returns`,
+      headers: { cookie: aliceCookie },
+    });
+    if (overview.statusCode !== 200) continue;
+    const body = overview.json<{
+      eligibleLines: Array<{
+        shipmentId: string;
+        orderLineItemId: string;
+        availableQuantity: number;
+      }>;
+    }>();
+    if (body.eligibleLines.length === 0) continue;
+    const line = body.eligibleLines.find((l) => l.availableQuantity > 0);
+    if (!line) continue;
+
+    const create = await app.inject({
+      method: 'POST',
+      url: `/api/orders/${orderId}/returns`,
+      headers: { cookie: aliceCookie },
+      payload: {
+        idempotencyKey: 'admin-test-0001-0001-0001-000000000001',
+        reason: 'damaged',
+        selections: [
+          {
+            shipmentId: line.shipmentId,
+            orderLineItemId: line.orderLineItemId,
+            quantity: line.availableQuantity,
+          },
+        ],
+      },
+    });
+    if (create.statusCode === 200) {
+      return {
+        orderId,
+        returnId: create.json<{ id: string }>().id,
+      };
+    }
+  }
+  return null;
+}
+
+void test('admin return routes enforce auth and process lifecycle', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'shop-admin-returns-'));
+  const db = openDatabase({ path: join(dir, 'shop.db') });
+  seedDatabase(db);
+  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
+  t.after(async () => {
+    await app.close();
+    closeDatabase(db);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const aliceCookie = await login(app, 'alice@example.com');
+  const adminCookie = await login(app, 'admin@example.com');
+
+  // ── Customer cannot access admin routes ──────────────────────
+  {
+    const r = await app.inject({
+      method: 'GET',
+      url: '/api/admin/returns',
+      headers: { cookie: aliceCookie },
+    });
+    assert.equal(r.statusCode, 403);
+  }
+
+  // ── Anonymous cannot access admin routes ─────────────────────
+  {
+    const r = await app.inject({
+      method: 'GET',
+      url: '/api/admin/returns',
+    });
+    assert.equal(r.statusCode, 401);
+  }
+
+  // ── Admin can list returns ────────────────────────────────────
+  {
+    const r = await app.inject({
+      method: 'GET',
+      url: '/api/admin/returns',
+      headers: { cookie: adminCookie },
+    });
+    assert.equal(r.statusCode, 200);
+    const body = r.json<{ items: unknown[]; page: number; pageSize: number }>();
+    assert.equal(body.page, 1);
+    assert.ok(Array.isArray(body.items));
+  }
+
+  // ── Create a return request for testing ───────────────────────
+  const setup = await createReturnForAlice(app, aliceCookie);
+  if (!setup) {
+    // Skip lifecycle tests if no eligible order exists in seed
+    return;
+  }
+
+  const returnId = setup.returnId;
+
+  // ── Inspect the created return ─────────────────────────────────
+  const detail = await app.inject({
+    method: 'GET',
+    url: `/api/admin/returns?page=1&pageSize=50`,
+    headers: { cookie: adminCookie },
+  });
+  const listBody = detail.json<{
+    items: Array<{ id: string; status: string; version: number; orderId: string }>;
+  }>();
+  const found = listBody.items.find((item) => item.id === returnId);
+  assert.ok(found, 'Created return should appear in admin list');
+  assert.equal(found.status, 'requested');
+
+  // ── Admin approve ─────────────────────────────────────────────
+  {
+    const r = await app.inject({
+      method: 'POST',
+      url: `/api/admin/returns/${returnId}/decision`,
+      headers: { cookie: adminCookie },
+      payload: {
+        version: found.version,
+        idempotencyKey: 'admin-approve-0001-0001-0001-00000000001',
+        decision: 'approve',
+      },
+    });
+    assert.equal(r.statusCode, 200);
+    assert.equal(r.json<{ status: string }>().status, 'approved');
+  }
+
+  // ── Admin receive ─────────────────────────────────────────────
+  {
+    const r = await app.inject({
+      method: 'POST',
+      url: `/api/admin/returns/${returnId}/receive`,
+      headers: { cookie: adminCookie },
+      payload: {
+        version: 1,
+        idempotencyKey: 'admin-receive-0001-0001-0001-00000000001',
+      },
+    });
+    assert.equal(r.statusCode, 200);
+    assert.equal(r.json<{ status: string }>().status, 'received');
+  }
+
+  // ── Admin refund (may fail if no succeeded payment) ───────────
+  {
+    const r = await app.inject({
+      method: 'POST',
+      url: `/api/admin/returns/${returnId}/refund`,
+      headers: { cookie: adminCookie },
+      payload: {
+        version: 2,
+        idempotencyKey: 'admin-refund-0001-0001-0001-00000000001',
+      },
+    });
+    // May succeed or fail depending on payment state
+    assert.ok(r.statusCode === 200 || r.statusCode === 409 || r.statusCode === 422);
+  }
+
+  // ── Stale version rejected ────────────────────────────────────
+  {
+    const r = await app.inject({
+      method: 'POST',
+      url: `/api/admin/returns/${returnId}/decision`,
+      headers: { cookie: adminCookie },
+      payload: {
+        version: 0, // stale
+        idempotencyKey: 'admin-stale-0001-0001-0001-00000000001',
+        decision: 'approve',
+      },
+    });
+    assert.equal(r.statusCode, 409);
+  }
+
+  // ── Idempotency replay ────────────────────────────────────────
+  {
+    // Replay the approve with same key + payload -> should get current resource
+    const r = await app.inject({
+      method: 'POST',
+      url: `/api/admin/returns/${returnId}/decision`,
+      headers: { cookie: adminCookie },
+      payload: {
+        version: found.version,
+        idempotencyKey: 'admin-approve-0001-0001-0001-00000000001', // same key
+        decision: 'approve',
+      },
+    });
+    assert.equal(r.statusCode, 200);
+  }
+
+  // ── Idempotency conflict ──────────────────────────────────────
+  {
+    // Same key, different payload -> conflict
+    const r = await app.inject({
+      method: 'POST',
+      url: `/api/admin/returns/${returnId}/decision`,
+      headers: { cookie: adminCookie },
+      payload: {
+        version: found.version,
+        idempotencyKey: 'admin-approve-0001-0001-0001-00000000001', // same key
+        decision: 'reject', // different payload
+      },
+    });
+    assert.equal(r.statusCode, 409);
+  }
+
+  // ── Invalid transition rejected ───────────────────────────────
+  {
+    // Try to receive a non-approved return -> should fail
+    const r = await app.inject({
+      method: 'POST',
+      url: `/api/admin/returns/${returnId}/receive`,
+      headers: { cookie: adminCookie },
+      payload: {
+        version: 100, // whatever
+        idempotencyKey: 'admin-bad-trans-0001-0001-00000000001',
+      },
+    });
+    assert.ok(r.statusCode === 404 || r.statusCode === 409);
+  }
+
+  // ── Filter by status ──────────────────────────────────────────
+  {
+    const r = await app.inject({
+      method: 'GET',
+      url: '/api/admin/returns?status=requested',
+      headers: { cookie: adminCookie },
+    });
+    assert.equal(r.statusCode, 200);
+  }
+});

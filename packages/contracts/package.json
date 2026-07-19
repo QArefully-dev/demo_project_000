@@ -65,6 +65,10 @@
     "./inventory": {
       "types": "./dist/inventory.d.ts",
       "import": "./dist/inventory.js"
+    },
+    "./returns": {
+      "types": "./dist/returns.d.ts",
+      "import": "./dist/returns.js"
     }
   },
   "dependencies": {

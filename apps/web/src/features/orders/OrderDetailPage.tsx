@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { Component, useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { cancelOrder, getOrder } from '@/api/orders';
 import { ApiError } from '@/api/client';
@@ -7,6 +7,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Button } from '@/components/ui/button';
 import type { OrderDetailResponse } from '@shop/contracts/orders';
 import { OrderDetailView } from './OrderDetailView';
+import { ReturnPanel } from '@/features/returns/ReturnPanel';
 
 export function OrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
@@ -143,6 +144,7 @@ export function OrderDetailPage() {
         onRequestCancellation={() => setConfirming(true)}
         cancelTriggerRef={cancelTrigger}
       />
+      <ReturnErrorBoundary>{orderId && <ReturnPanel orderId={orderId} />}</ReturnErrorBoundary>
       {confirming && (
         <div
           role="dialog"
@@ -178,4 +180,22 @@ export function OrderDetailPage() {
       )}
     </div>
   );
+}
+
+class ReturnErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return null;
+    }
+    return this.props.children;
+  }
 }

@@ -69,6 +69,8 @@ import auditRoutes from './routes/audit.js';
 import { createBundleRepository } from './features/bundles/bundleRepository.js';
 import { createBundleService, type BundleService } from './features/bundles/bundleService.js';
 import reviewsRoutes from './routes/reviews.js';
+import returnsRoutes from './routes/returns.js';
+import adminReturnsRoutes from './routes/adminReturns.js';
 import { createReviewRepository } from './features/reviews/reviewRepository.js';
 import { createReviewService, type ReviewService } from './features/reviews/reviewService.js';
 import adminOrdersRoutes from './routes/adminOrders.js';
@@ -78,6 +80,10 @@ import {
   createInventoryService,
   type InventoryService,
 } from './features/inventory/inventoryService.js';
+import type { ReturnService } from './features/returns/returnService.js';
+import { createReturnRepository } from './features/returns/returnRepository.js';
+import { createReturnService } from './features/returns/returnService.js';
+import { createRefundGateway } from './features/returns/refundGateway.js';
 
 export interface AppDependencies {
   db: Database.Database;
@@ -105,6 +111,7 @@ export interface AppServices {
   reviews: ReviewService;
   inventory: InventoryService;
   inventoryUnitOfWork: UnitOfWork;
+  returns: ReturnService;
   clock: Clock;
 }
 
@@ -194,6 +201,15 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     }),
     inventory,
     inventoryUnitOfWork: unitOfWork,
+    returns: createReturnService({
+      returnRepository: createReturnRepository(dependencies.db),
+      orderRepository: orders,
+      unitOfWork,
+      clock,
+      audit,
+      inventory,
+      refundGateway: createRefundGateway(),
+    }),
     clock,
     audit: createAuditReadService(auditRepository),
   };
@@ -249,6 +265,8 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(bundleRoutes, context);
   await app.register(auditRoutes, context);
   await app.register(reviewsRoutes, context);
+  await app.register(returnsRoutes, context);
+  await app.register(adminReturnsRoutes, context);
 
   return app;
 }

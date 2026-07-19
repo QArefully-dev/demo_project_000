@@ -5,11 +5,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OrderDetailResponse, OrderListResponse } from '@shop/contracts/orders';
 import { ApiError } from '@/api/client';
 import { cancelOrder, getOrder, getOrders } from '@/api/orders';
+import { fetchReturnOverview } from '@/api/returns';
 import { OrderDetailPage } from './OrderDetailPage';
 import { OrderHistoryPage } from './OrderHistoryPage';
 import { OrderConfirmationPage } from '@/features/checkout/OrderConfirmationPage';
 
 vi.mock('@/api/orders', () => ({ getOrders: vi.fn(), getOrder: vi.fn(), cancelOrder: vi.fn() }));
+vi.mock('@/api/returns', () => ({ fetchReturnOverview: vi.fn(), createReturnRequest: vi.fn() }));
 
 const detail: OrderDetailResponse = {
   id: '12',
@@ -120,6 +122,12 @@ describe('customer order UI', () => {
     vi.mocked(getOrders).mockReset();
     vi.mocked(getOrder).mockReset();
     vi.mocked(cancelOrder).mockReset();
+    vi.mocked(fetchReturnOverview).mockReset();
+    vi.mocked(fetchReturnOverview).mockResolvedValue({
+      windowDays: 30,
+      eligibleLines: [],
+      requests: [],
+    });
   });
 
   it('renders list results and advances the URL-owned page', async () => {
@@ -299,5 +307,53 @@ describe('customer order UI', () => {
       </MemoryRouter>,
     );
     expect(await screen.findByText('Order not found.')).toBeInTheDocument();
+  });
+
+  it('renders ReturnPanel below order detail on delivered orders', async () => {
+    const deliveredDetail: OrderDetailResponse = {
+      ...detail,
+      status: 'delivered',
+      canCancel: false,
+      shipments: [
+        {
+          ...detail.shipments[0]!,
+          status: 'delivered',
+        },
+      ],
+    };
+    vi.mocked(getOrder).mockResolvedValue(deliveredDetail);
+    vi.mocked(fetchReturnOverview).mockResolvedValue({
+      windowDays: 30,
+      eligibleLines: [
+        {
+          shipmentId: '71',
+          shipmentNumber: 1,
+          orderLineItemId: '31',
+          productName: 'Oat powder',
+          deliveredQuantity: 3,
+          reservedQuantity: 0,
+          availableQuantity: 3,
+          deliveredAt: '2026-07-01T12:00:00.000Z',
+          windowClosesAt: '2026-07-31T12:00:00.000Z',
+        },
+      ],
+      requests: [],
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/orders/12']}>
+        <Routes>
+          <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    // Core order content renders
+    expect(await screen.findByText('Order #12')).toBeInTheDocument();
+    // Return panel renders
+    expect(await screen.findByText('Return items')).toBeInTheDocument();
+    expect(await screen.findByText('(3 of 3 available)')).toBeInTheDocument();
+    // Oat powder appears in both order detail and return panel
+    expect(screen.getAllByText('Oat powder')).toHaveLength(2);
   });
 });

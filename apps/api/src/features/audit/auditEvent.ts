@@ -32,10 +32,16 @@ export const AUDIT_ACTIONS = [
   'review.report_created',
   'review.report_withdrawn',
   'review.reports_dismissed',
+  'return.requested',
+  'return.approved',
+  'return.rejected',
+  'return.received',
+  'payment.refunded',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
-export type AuditEntityType = 'user' | 'cart' | 'payment' | 'order' | 'shipment' | 'review';
+export type AuditEntityType =
+  'user' | 'cart' | 'payment' | 'order' | 'shipment' | 'review' | 'return';
 export type AuditActor =
   | { type: 'anonymous'; userId: null }
   | { type: 'user'; userId: number }
@@ -68,6 +74,7 @@ type UserEventAction = Exclude<
   | `order.${string}`
   | `shipment.${string}`
   | `review.${string}`
+  | `return.${string}`
 >;
 
 export type AuditEventInput =
@@ -148,6 +155,17 @@ export type AuditEventInput =
       reviewId: number;
       productId: number;
       resolvedReportCount: number;
+    })
+  // ── return events ──────────────────────────────────────────────
+  | (WithContext & { action: 'return.requested'; returnId: number; orderId: number })
+  | (WithContext & { action: 'return.approved'; returnId: number; orderId: number })
+  | (WithContext & { action: 'return.rejected'; returnId: number; orderId: number })
+  | (WithContext & { action: 'return.received'; returnId: number; orderId: number })
+  | (WithContext & {
+      action: 'payment.refunded';
+      returnId: number;
+      orderId: number;
+      amountCents: number;
     });
 
 export interface BuiltAuditEvent {
@@ -275,6 +293,13 @@ function reviewEntity(input: Record<string, unknown>): { entityType: 'review'; e
   return {
     entityType: 'review',
     entityId: String(requirePositiveSafeInteger(input.reviewId, 'reviewId')),
+  };
+}
+
+function returnEntity(input: Record<string, unknown>): { entityType: 'return'; entityId: string } {
+  return {
+    entityType: 'return',
+    entityId: String(requirePositiveSafeInteger(input.returnId, 'returnId')),
   };
 }
 
@@ -420,6 +445,22 @@ export function buildAuditEvent(input: AuditEventInput): BuiltAuditEvent {
           input.resolvedReportCount,
           'resolvedReportCount',
         ),
+      };
+      break;
+    case 'return.requested':
+    case 'return.approved':
+    case 'return.rejected':
+    case 'return.received':
+      entity = returnEntity(input);
+      metadata = {
+        orderId: requirePositiveSafeInteger(input.orderId, 'orderId'),
+      };
+      break;
+    case 'payment.refunded':
+      entity = returnEntity(input);
+      metadata = {
+        orderId: requirePositiveSafeInteger(input.orderId, 'orderId'),
+        amountCents: requireNonNegativeSafeInteger(input.amountCents, 'amountCents'),
       };
       break;
   }

@@ -67,6 +67,29 @@ describe('Help pages', () => {
     );
   });
 
+  it('renders updated returns article with simulated workflow content', () => {
+    renderHelpRoute('/help/returns');
+
+    expect(screen.getByRole('article', { name: 'Returns' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Returns' })).toBeInTheDocument();
+    // Simulated-only notice
+    expect(
+      screen.getByRole('note', { name: 'Simulated only — no real returns or payments' }),
+    ).toBeInTheDocument();
+    // Eligibility section
+    expect(screen.getByRole('heading', { level: 2, name: 'Eligibility' })).toBeInTheDocument();
+    expect(screen.getByText(/30 days/)).toBeInTheDocument();
+    expect(screen.getByText(/Powderizer powder mixes are excluded/)).toBeInTheDocument();
+    // Workflow section
+    expect(screen.getByRole('heading', { level: 2, name: 'How it works' })).toBeInTheDocument();
+    expect(screen.getByText(/demo administrator/)).toBeInTheDocument();
+    // Cancellation distinction
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Returns vs cancellation' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Cancellation stops simulated fulfilment/)).toBeInTheDocument();
+  });
+
   it('uses direct native summary disclosure for FAQ entries', () => {
     const { container } = renderHelpRoute('/help/faq');
 

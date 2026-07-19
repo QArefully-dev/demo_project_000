@@ -63,36 +63,66 @@ export const returnsArticle = defineHelpArticle({
   slug: 'returns',
   path: '/help/returns',
   title: 'Returns',
-  summary: 'This demo has no real purchases, returns, or refunds.',
+  summary: 'Simulated 30-day return workflow for delivered ordinary products.',
   blocks: [
     {
       kind: 'paragraph',
       id: 'returns-demo-purpose',
-      text: 'QArefully Powder Co. demonstrates a simulated shopping flow. It does not sell or fulfil products.',
+      text: 'QArefully Powder Co. provides a simulated returns and refunds workflow for QA testing. All purchases, payments, and refunds are simulated only and do not represent real transactions.',
     },
     {
       kind: 'notice',
-      id: 'returns-not-available',
-      heading: 'No return workflow',
+      id: 'returns-notice',
+      heading: 'Simulated only — no real returns or payments',
       paragraphs: [
         {
-          id: 'returns-not-available-workflow',
-          text: 'There is no real purchase, return, refund, return window, postage process, or customer-service return workflow in this demo. Cancelling an eligible simulated order only stops its simulated fulfilment state; it does not create a refund or change its payment total.',
-        },
-        {
-          id: 'returns-not-available-requests',
-          text: 'Do not send items, payment details, or return requests in response to anything shown here.',
+          id: 'returns-notice-real',
+          text: 'No real money, postage, carrier, or return label is involved. Refunds are local simulation records and are never processed by a payment gateway. Do not send physical items, payment details, or real return requests to anything shown in this demo.',
         },
       ],
     },
     {
       kind: 'section',
-      id: 'returns-order-status',
-      heading: 'Simulated order status',
+      id: 'returns-eligibility',
+      heading: 'Eligibility',
       paragraphs: [
         {
-          id: 'returns-order-status-simulated',
-          text: 'Any checkout confirmation or order status is interface data for testing and does not create eligibility for a return or refund.',
+          id: 'returns-eligibility-window',
+          text: 'You can request a return within 30 days of an ordinary product shipment being marked as delivered. The 30-day window is measured from the exact delivery event time shown in your order timeline.',
+        },
+        {
+          id: 'returns-eligibility-products',
+          text: 'Only ordinary catalogue products are eligible. Custom Powderizer powder mixes are excluded from returns. Only delivered shipment quantities can be returned; backordered, shipped, or failed-delivery items are not eligible.',
+        },
+      ],
+    },
+    {
+      kind: 'section',
+      id: 'returns-workflow',
+      heading: 'How it works',
+      paragraphs: [
+        {
+          id: 'returns-workflow-request',
+          text: 'From your order detail page, select the delivered items and quantities you want to return, choose a reason, and optionally add a note. Submit the request.',
+        },
+        {
+          id: 'returns-workflow-admin',
+          text: 'A demo administrator reviews your request and may approve or reject it. If approved and the items are marked as received, a simulated refund is calculated. The refund amount is based on your original purchase price and discount, prorated across returned quantities.',
+        },
+        {
+          id: 'returns-workflow-refund',
+          text: 'Once refunded, a simulated reference number appears in your return history. The refund amount is shown in your local currency format. No real funds are transferred.',
+        },
+      ],
+    },
+    {
+      kind: 'section',
+      id: 'returns-cancellation',
+      heading: 'Returns vs cancellation',
+      paragraphs: [
+        {
+          id: 'returns-cancellation-diff',
+          text: 'Cancellation stops simulated fulfilment before shipping and releases allocated stock, but does not issue a refund. Returns apply after delivery and can result in a simulated refund when processed by an administrator. Cancellation and returns are separate workflows.',
         },
       ],
     },
