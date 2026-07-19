@@ -60,7 +60,10 @@ describe('helpContentRegistry', () => {
       helpContentRegistry.map((article) => [article.path, article]),
     );
 
-    for (const link of [...Object.values(productFactLinks), ...Object.values(productCommerceLinks)]) {
+    for (const link of [
+      ...Object.values(productFactLinks),
+      ...Object.values(productCommerceLinks),
+    ]) {
       expect(registryByPath.get(link.path)?.title).toBe(link.label);
     }
   });

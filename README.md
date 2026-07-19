@@ -70,6 +70,7 @@ Each checkout request includes an idempotency key. Retrying the same key with th
 - **Shopping cart** with quantity controls, subtotal display, and 5-item minimum promo gate
 - **Checkout** with contact/shipping details and promo code entry
 - **Payment** with simulated gateway (test cards below), order confirmation, and email receipt
+- **Order history and lifecycle** with simulated shipments, tracking timelines, and eligible-order cancellation
 - **User accounts**: sign up, log in, log out, forgot/reset password via dev mailbox
 - **Favourites / wishlist** with heart toggle and wishlist page
 - **Account page** with password change
@@ -77,7 +78,7 @@ Each checkout request includes an idempotency key. Retrying the same key with th
 
 ## Seeded Data
 
-- **45 products** across 7 powder categories: Pantry Staples, Performance, Drinks, Household, Outdoors, Questionable, and Impossible
+- **50 products** across 7 powder categories: Pantry Staples, Performance, Drinks, Household, Outdoors, Questionable, and Impossible
 - **14 sale products** with compare-at prices
 - **3 users** (credentials below)
 - **7 promo codes** (details below)
@@ -93,6 +94,69 @@ The catalog moves from everyday powders to deliberate nonsense. Household, conce
 | admin@example.com   | Password123!  | admin    |
 
 Alice has 3 pre-seeded favourite products.
+
+### Order Lifecycle Fixtures
+
+`npm run reset` restores four local-demo order scenarios. Normal `npm run seed` inserts a missing scenario once and never overwrites a lifecycle change made afterwards.
+
+- Alice: `alice-processing` â€” eligible for simulated cancellation
+- Alice: `alice-packed` â€” eligible for simulated cancellation before shipment
+- Alice: `alice-split-shipped` â€” one delivered parcel and one in-transit parcel, including a Powderizer line
+- Alice: `alice-delivery-failed` â€” simulated delivery failure
+- Bob: `bob-delivered` â€” delivered parcel
+
+Signed-in customers can browse `/orders` and open their own `/orders/:orderId` detail pages. Bob cannot access Alice's orders. A guest checkout confirmation is available only through its short-lived, exact-order browser cookie; there is no guest history or guest cancellation.
+
+Order state, tracking references, and delivery events are local simulation data. They do not represent carrier service, dispatch, delivery, stock reservation, or notifications. An owner can cancel only while an order is `processing` or `packed` and no shipment has left; cancellation stops simulated fulfilment only. It does not refund, alter payment, totals, promo use, or purchased snapshots.
+
+### Admin Lifecycle API (Local Simulation)
+
+There is intentionally no operations UI. Sign in as `admin@example.com`, retain the session cookie, and use these local API commands with a fresh UUID `idempotencyKey` and the current order or shipment `version` from `GET /api/orders/:orderId`. For packing, copy an exact `lineKind` and `lineId` from that response; do not invent line IDs.
+
+```http
+POST /api/admin/orders/:orderId/shipments
+Content-Type: application/json
+
+{
+  "version": 0,
+  "idempotencyKey": "00000000-0000-4000-8000-000000000201",
+  "shipments": [{
+    "trackingReference": "QA-LOCAL-001",
+    "lines": [{
+      "lineKind": "product",
+      "lineId": "<GET /api/orders/:orderId -> items[n].lineId>",
+      "quantity": 1
+    }]
+  }]
+}
+```
+
+```http
+POST /api/admin/order-shipments/:shipmentId/transition
+Content-Type: application/json
+
+{
+  "version": 0,
+  "status": "shipped",
+  "idempotencyKey": "00000000-0000-4000-8000-000000000202"
+}
+```
+
+```http
+POST /api/admin/order-shipments/:shipmentId/tracking-events
+Content-Type: application/json
+
+{
+  "version": 1,
+  "code": "in_transit",
+  "title": "In transit",
+  "detail": "Simulated local-demo update.",
+  "location": "Demo transit hub",
+  "idempotencyKey": "00000000-0000-4000-8000-000000000203"
+}
+```
+
+Shipment transitions are `packed -> shipped -> delivered` or `packed -> shipped -> delivery_failed`. Payloads use server-owned timestamps; changing an idempotency key payload or sending a stale version returns a conflict.
 
 ### Promo Codes
 

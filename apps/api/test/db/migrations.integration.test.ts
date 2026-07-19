@@ -34,6 +34,7 @@ const expectedVersions = [
   '011',
   '012',
   '013',
+  '014',
 ];
 
 function migrationVersions(db: Database.Database): string[] {
@@ -172,6 +173,39 @@ void test('migrations create a fresh schema, record every version, and remain id
       { name: table },
     );
   }
+  for (const table of [
+    'order_shipments',
+    'order_shipment_items',
+    'order_lifecycle_events',
+    'order_access_grants',
+  ]) {
+    assert.deepEqual(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table),
+      { name: table },
+    );
+  }
+  for (const index of [
+    'orders_demo_seed_key_idx',
+    'orders_user_created_at_id_idx',
+    'order_shipments_order_number_idx',
+    'order_shipment_items_order_line_item_idx',
+    'order_shipment_items_order_mix_item_idx',
+    'order_lifecycle_events_order_occurred_id_idx',
+    'order_lifecycle_events_shipment_occurred_id_idx',
+    'order_access_grants_expires_at_idx',
+    'order_access_grants_order_id_idx',
+  ]) {
+    assert.deepEqual(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?").get(index),
+      { name: index },
+    );
+  }
+  assert.deepEqual(
+    db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = ?")
+      .get('order_lifecycle_events_no_update'),
+    { name: 'order_lifecycle_events_no_update' },
+  );
   assert.deepEqual(
     db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?")
@@ -339,12 +373,250 @@ void test('migrations upgrade the legacy schema without losing known data', (t) 
     user_id: null,
   });
   assert.deepEqual(
+    db.prepare('SELECT lifecycle_status, version, cancelled_at, demo_seed_key FROM orders').get(),
+    { lifecycle_status: 'processing', version: 0, cancelled_at: null, demo_seed_key: null },
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT event_type, title, shipment_id, occurred_at
+         FROM order_lifecycle_events WHERE order_id = 1`,
+      )
+      .all(),
+    [
+      {
+        event_type: 'order_created',
+        title: 'Order created',
+        shipment_id: null,
+        occurred_at: db.prepare('SELECT created_at FROM orders WHERE id = 1').pluck().get(),
+      },
+    ],
+  );
+  assert.deepEqual(
     db
       .prepare(
         'SELECT status, response_json, cart_id, quote_json FROM payments WHERE idempotency_key = ?',
       )
       .get('legacy-payment'),
     { status: 'success', response_json: '{"success":true}', cart_id: null, quote_json: null },
+  );
+});
+
+void test('lifecycle migration preserves pre-existing order lines and mix snapshots', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-lifecycle-upgrade-'));
+  const db = new Database(join(directory, 'shop.db'));
+  db.pragma('foreign_keys = ON');
+  t.after(() => {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  migrateDatabase(
+    db,
+    migrations.filter((migration) => migration.version !== '014'),
+  );
+  db.prepare(
+    `INSERT INTO orders
+      (customer_name, customer_email, shipping_address, subtotal_cents, discount_cents, total_cents, created_at)
+     VALUES ('Snapshot customer', 'snapshot@example.test', '2 Snapshot Lane', 2500, 250, 2250, '2026-07-18T12:00:00.000Z')`,
+  ).run();
+  const orderId = Number(
+    db
+      .prepare("SELECT id FROM orders WHERE customer_email = 'snapshot@example.test'")
+      .pluck()
+      .get(),
+  );
+  db.prepare(
+    `INSERT INTO order_line_items
+      (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents)
+     VALUES (?, 77, 'Snapshot product', 2500, 1, 2500)`,
+  ).run(orderId);
+  const snapshotJson = '{"snapshotVersion":2,"mixId":"preserved-snapshot"}';
+  db.prepare('INSERT INTO order_powder_mix_items (order_id, snapshot_json) VALUES (?, ?)').run(
+    orderId,
+    snapshotJson,
+  );
+
+  migrateDatabase(db);
+
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT customer_name, customer_email, subtotal_cents, discount_cents, total_cents,
+                lifecycle_status, version, cancelled_at
+         FROM orders WHERE id = ?`,
+      )
+      .get(orderId),
+    {
+      customer_name: 'Snapshot customer',
+      customer_email: 'snapshot@example.test',
+      subtotal_cents: 2500,
+      discount_cents: 250,
+      total_cents: 2250,
+      lifecycle_status: 'processing',
+      version: 0,
+      cancelled_at: null,
+    },
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        'SELECT product_id, product_name, product_price_cents, quantity, line_total_cents FROM order_line_items WHERE order_id = ?',
+      )
+      .get(orderId),
+    {
+      product_id: 77,
+      product_name: 'Snapshot product',
+      product_price_cents: 2500,
+      quantity: 1,
+      line_total_cents: 2500,
+    },
+  );
+  assert.deepEqual(
+    db.prepare('SELECT snapshot_json FROM order_powder_mix_items WHERE order_id = ?').get(orderId),
+    { snapshot_json: snapshotJson },
+  );
+  assert.deepEqual(
+    db
+      .prepare('SELECT event_type, occurred_at FROM order_lifecycle_events WHERE order_id = ?')
+      .get(orderId),
+    { event_type: 'order_created', occurred_at: '2026-07-18T12:00:00.000Z' },
+  );
+});
+
+void test('order lifecycle constraints reject invalid data and lifecycle-event updates', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-lifecycle-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  db.prepare(
+    `INSERT INTO orders
+      (customer_name, customer_email, shipping_address, subtotal_cents, total_cents, created_at)
+     VALUES ('Lifecycle', 'lifecycle@example.test', '1 Test Road', 1000, 1000, '2026-07-19T12:00:00.000Z')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO order_line_items
+      (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents)
+     VALUES (1, 1, 'Product', 1000, 1, 1000)`,
+  ).run();
+  db.prepare(
+    `INSERT INTO order_powder_mix_items (order_id, snapshot_json)
+     VALUES (1, '{"snapshotVersion":2}')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO order_shipments
+      (order_id, shipment_number, status, tracking_reference, created_at, updated_at)
+     VALUES (1, 1, 'packed', 'SIM-001', '2026-07-19T12:00:00.000Z', '2026-07-19T12:00:00.000Z')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO order_lifecycle_events (order_id, event_type, title, occurred_at)
+     VALUES (1, 'order_created', 'Order created', '2026-07-19T12:00:00.000Z')`,
+  ).run();
+
+  assert.throws(
+    () => db.prepare("UPDATE orders SET lifecycle_status = 'invalid' WHERE id = 1").run(),
+    /CHECK constraint failed/,
+  );
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `INSERT INTO order_shipment_items
+            (shipment_id, order_line_item_id, order_powder_mix_item_id, quantity)
+           VALUES (1, 1, 1, 1)`,
+        )
+        .run(),
+    /CHECK constraint failed/,
+  );
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `INSERT INTO order_shipment_items (shipment_id, quantity)
+           VALUES (1, 1)`,
+        )
+        .run(),
+    /CHECK constraint failed/,
+  );
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `INSERT INTO order_shipment_items (shipment_id, order_line_item_id, quantity)
+           VALUES (1, 1, 0)`,
+        )
+        .run(),
+    /CHECK constraint failed/,
+  );
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `INSERT INTO order_shipments
+            (order_id, shipment_number, status, created_at, updated_at)
+           VALUES (1, 2, 'processing', '2026-07-19T12:00:00.000Z', '2026-07-19T12:00:00.000Z')`,
+        )
+        .run(),
+    /CHECK constraint failed/,
+  );
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `INSERT INTO order_lifecycle_events (order_id, event_type, title, occurred_at)
+           VALUES (1, 'invalid_event', 'Invalid event', '2026-07-19T12:00:00.000Z')`,
+        )
+        .run(),
+    /CHECK constraint failed/,
+  );
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `INSERT INTO order_lifecycle_events
+            (order_id, event_type, tracking_code, title, occurred_at)
+           VALUES (1, 'shipment_tracking_updated', 'unknown_code', 'Unknown code', '2026-07-19T12:00:00.000Z')`,
+        )
+        .run(),
+    /CHECK constraint failed/,
+  );
+  db.prepare(
+    `INSERT INTO order_shipment_items (shipment_id, order_line_item_id, quantity)
+     VALUES (1, 1, 1)`,
+  ).run();
+  db.prepare(
+    `INSERT INTO order_shipment_items (shipment_id, order_powder_mix_item_id, quantity)
+     VALUES (1, 1, 1)`,
+  ).run();
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT order_line_item_id, order_powder_mix_item_id, quantity
+         FROM order_shipment_items WHERE shipment_id = 1 ORDER BY order_line_item_id IS NULL, order_line_item_id`,
+      )
+      .all(),
+    [
+      { order_line_item_id: 1, order_powder_mix_item_id: null, quantity: 1 },
+      { order_line_item_id: null, order_powder_mix_item_id: 1, quantity: 1 },
+    ],
+  );
+  const createdEventId = Number(
+    db
+      .prepare(
+        "SELECT id FROM order_lifecycle_events WHERE order_id = 1 AND event_type = 'order_created'",
+      )
+      .pluck()
+      .get(),
+  );
+  assert.throws(
+    () =>
+      db
+        .prepare('UPDATE order_lifecycle_events SET title = ? WHERE id = ?')
+        .run('Changed', createdEventId),
+    /order_lifecycle_events are immutable/,
   );
 });
 

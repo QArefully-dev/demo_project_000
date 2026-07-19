@@ -5,7 +5,7 @@ import { changePassword as changePasswordApi } from '@/api/auth';
 import { Button } from '@/components/ui/button';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { ApiError } from '@/api/client';
-import { Heart, LogOut } from 'lucide-react';
+import { Heart, LogOut, Package } from 'lucide-react';
 
 /**
  * Account page — authenticated user details, password change, and actions.
@@ -131,6 +131,13 @@ export function AccountPage() {
 
       {/* Actions */}
       <div className="mt-6 space-y-3">
+        <Link
+          to="/orders"
+          className="flex w-full items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent"
+        >
+          <Package className="h-4 w-4" />
+          View Orders
+        </Link>
         <Link
           to="/wishlist"
           className="flex w-full items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent"

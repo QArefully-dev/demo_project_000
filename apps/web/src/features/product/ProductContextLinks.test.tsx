@@ -18,7 +18,9 @@ function renderLinks(packagingQuantity?: string) {
 describe('ProductContextLinks', () => {
   it('shows pack-size guidance only when a packaging quantity exists', () => {
     const { rerender } = renderLinks();
-    expect(screen.queryByRole('link', { name: productFactLinks.packSizes.label })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: productFactLinks.packSizes.label }),
+    ).not.toBeInTheDocument();
 
     rerender(
       <MemoryRouter>
@@ -34,7 +36,10 @@ describe('ProductContextLinks', () => {
   it('renders only canonical registry labels and paths', () => {
     renderLinks('250g');
 
-    for (const link of [...Object.values(productFactLinks), ...Object.values(productCommerceLinks)]) {
+    for (const link of [
+      ...Object.values(productFactLinks),
+      ...Object.values(productCommerceLinks),
+    ]) {
       expect(screen.getByRole('link', { name: link.label })).toHaveAttribute('href', link.path);
     }
   });

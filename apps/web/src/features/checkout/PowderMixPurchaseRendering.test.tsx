@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import type { Cart } from '@shop/contracts/cart';
-import type { Order } from '@shop/contracts/orders';
+import type { OrderDetailResponse } from '@shop/contracts/orders';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -65,15 +65,20 @@ describe('persisted powder-mix purchase rendering', () => {
   });
 
   it('shows persisted mix identity on the order confirmation', async () => {
-    const order: Order = {
+    const order: OrderDetailResponse = {
       id: '12',
+      status: 'processing',
+      version: 0,
       items: [],
-      mixItems: [{ ...mixItem, snapshotVersion: 2 }],
+      mixItems: [{ ...mixItem, lineId: '44', snapshotVersion: 2 }],
       subtotalCents: 1200,
       discountCents: 0,
       totalCents: 1200,
       promoApplied: null,
       createdAt: '2026-07-14T00:00:00.000Z',
+      shipments: [],
+      events: [],
+      canCancel: false,
     };
     vi.mocked(getOrder).mockResolvedValue(order);
     render(

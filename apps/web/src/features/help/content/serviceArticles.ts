@@ -20,11 +20,26 @@ export const shippingArticle = defineHelpArticle({
       paragraphs: [
         {
           id: 'shipping-no-fulfilment-services',
-          text: 'No carrier, dispatch process, tracking number, delivery estimate, or fulfilment service is connected to this demo.',
+          text: 'No carrier, dispatch process, delivery estimate, or fulfilment service is connected to this demo. Tracking references and timeline updates are simulated local-demo data only.',
         },
         {
           id: 'shipping-no-fulfilment-status',
           text: 'An order status shown in the interface is simulated state only and does not mean a parcel has been sent.',
+        },
+      ],
+    },
+    {
+      kind: 'section',
+      id: 'shipping-simulated-tracking',
+      heading: 'Simulated tracking',
+      paragraphs: [
+        {
+          id: 'shipping-simulated-tracking-status',
+          text: 'A tracking reference or shipment event appears only within an eligible order detail page. It cannot be used with a carrier and does not represent a real parcel.',
+        },
+        {
+          id: 'shipping-simulated-tracking-changes',
+          text: 'Demo administrators advance shipment states manually for testing. There are no automatic updates, carrier integrations, or delivery notifications.',
         },
       ],
     },
@@ -62,7 +77,7 @@ export const returnsArticle = defineHelpArticle({
       paragraphs: [
         {
           id: 'returns-not-available-workflow',
-          text: 'There is no real purchase, return, refund, return window, postage process, or customer-service return workflow in this demo.',
+          text: 'There is no real purchase, return, refund, return window, postage process, or customer-service return workflow in this demo. Cancelling an eligible simulated order only stops its simulated fulfilment state; it does not create a refund or change its payment total.',
         },
         {
           id: 'returns-not-available-requests',

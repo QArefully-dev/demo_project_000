@@ -241,8 +241,12 @@ describe('ProductPage', () => {
 
     firstSimilar.resolve([product({ id: 'stale', name: 'Stale powder' })]);
     secondSimilar.resolve([product({ id: 'fresh', name: 'Fresh powder' })]);
-    expect(await screen.findByRole('heading', { name: 'Fresh powder', level: 3 })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Stale powder', level: 3 })).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Fresh powder', level: 3 }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'Stale powder', level: 3 }),
+    ).not.toBeInTheDocument();
   });
 
   it('renders an explicit empty similar state and keeps ranked API order in cards', async () => {
@@ -295,15 +299,14 @@ describe('ProductPage', () => {
           mark: 'H2O',
           batchCode: 'IMP-07',
           quantity: '300g',
+          consumptionLabel: null,
         },
         specificationGroups: [
           {
             key: 'format',
             label: 'Format',
             order: 1,
-            specifications: [
-              { key: 'weight', label: 'Weight', valueKey: '300g', value: '300g' },
-            ],
+            specifications: [{ key: 'weight', label: 'Weight', valueKey: '300g', value: '300g' }],
           },
         ],
       }),
@@ -318,7 +321,9 @@ describe('ProductPage', () => {
     const sections = [...container.querySelectorAll('section')];
     const position = (label: string) =>
       sections.findIndex((section) => section.getAttribute('aria-labelledby') === label);
-    expect(position('product-details-heading')).toBeLessThan(position('product-specifications-heading'));
+    expect(position('product-details-heading')).toBeLessThan(
+      position('product-specifications-heading'),
+    );
     expect(position('product-specifications-heading')).toBeLessThan(
       position('product-context-links-heading'),
     );

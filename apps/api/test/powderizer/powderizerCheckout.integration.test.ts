@@ -10,7 +10,7 @@ import {
   createCheckoutService,
   type CheckoutParams,
 } from '../../src/features/checkout/checkoutService.js';
-import { createOrderRepository } from '../../src/features/checkout/orderRepository.js';
+import { createOrderRepository } from '../../src/features/orders/orderRepository.js';
 import { createProductRepository } from '../../src/features/catalog/productRepository.js';
 import { createMailboxRepository } from '../../src/features/mailbox/mailboxRepository.js';
 import { createPaymentRepository } from '../../src/features/payments/paymentRepository.js';
@@ -98,14 +98,12 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
     ).quote_json.includes('"version":3'),
     true,
   );
-  assert.equal(
-    (
-      db
-        .prepare('SELECT snapshot_json FROM order_powder_mix_items WHERE order_id = ?')
-        .get(Number(result.order.id)) as { snapshot_json: string }
-    ).snapshot_json.includes('"snapshotVersion":2'),
-    true,
-  );
+  const storedSnapshot = (
+    db
+      .prepare('SELECT snapshot_json FROM order_powder_mix_items WHERE order_id = ?')
+      .get(Number(result.order.id)) as { snapshot_json: string }
+  ).snapshot_json;
+  assert.equal(storedSnapshot.includes('"snapshotVersion":2'), true);
   assert.equal(
     (
       db.prepare('SELECT COUNT(*) AS count FROM powder_mix_stock_reservations').get() as {
@@ -125,9 +123,15 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
   if (!orderedMix) throw new Error('Expected ordered mix');
   db.prepare('UPDATE order_powder_mix_items SET snapshot_json = ? WHERE order_id = ?').run(
     JSON.stringify({
-      ...orderedMix,
-      bagColourScheme: undefined,
-      usageLabel: undefined,
+      mixId: orderedMix.mixId,
+      components: orderedMix.components,
+      bagSizeGrams: orderedMix.bagSizeGrams,
+      fineness: orderedMix.fineness,
+      customLabel: orderedMix.customLabel,
+      priceVersion: orderedMix.priceVersion,
+      unitPriceCents: orderedMix.unitPriceCents,
+      quantity: orderedMix.quantity,
+      lineTotalCents: orderedMix.lineTotalCents,
       snapshotVersion: 1,
     }),
     Number(result.order.id),
@@ -143,6 +147,10 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
   assert.throws(
     () => createOrderRepository(db).findById(Number(result.order.id)),
     /Invalid order mix snapshot/,
+  );
+  db.prepare('UPDATE order_powder_mix_items SET snapshot_json = ? WHERE order_id = ?').run(
+    storedSnapshot,
+    Number(result.order.id),
   );
   const replay = await checkout.process(params);
   assert.equal(replay.success, true);

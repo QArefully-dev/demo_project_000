@@ -151,6 +151,8 @@ void test('cart and order transports accept empty and populated mix item arrays'
 
   const emptyOrder = {
     id: '1',
+    status: 'processing',
+    version: 0,
     items: [],
     mixItems: [],
     subtotalCents: 0,
@@ -163,7 +165,7 @@ void test('cart and order transports accept empty and populated mix item arrays'
   assert.equal(
     Value.Check(Order, {
       ...emptyOrder,
-      mixItems: [{ ...powderMixItem, snapshotVersion: 2 }],
+      mixItems: [{ ...powderMixItem, lineId: '2', snapshotVersion: 2 }],
       subtotalCents: 2500,
       totalCents: 2500,
     }),
@@ -179,6 +181,7 @@ void test('cart and order transports accept empty and populated mix item arrays'
       mixItems: [
         {
           ...rawV1,
+          lineId: '2',
           bagColourScheme: 'ultraviolet-cyan',
           usageLabel: 'Check ingredient labels',
         },

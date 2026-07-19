@@ -51,7 +51,12 @@ function renderSection(productId = 'product-1') {
 }
 
 beforeEach(() => {
-  hooks.useBundles.mockReturnValue({ bundles: [], error: null, isLoading: false, refetch: vi.fn() });
+  hooks.useBundles.mockReturnValue({
+    bundles: [],
+    error: null,
+    isLoading: false,
+    refetch: vi.fn(),
+  });
   hooks.useCartContext.mockReturnValue({
     addBundle: vi.fn().mockResolvedValue(true),
     isActionPending: () => false,
@@ -67,21 +72,38 @@ describe('ProductBundlesSection', () => {
 
   it('keeps loading, empty, failure, and retry states inside section', async () => {
     const user = userEvent.setup();
-    hooks.useBundles.mockReturnValue({ bundles: [], error: null, isLoading: true, refetch: vi.fn() });
+    hooks.useBundles.mockReturnValue({
+      bundles: [],
+      error: null,
+      isLoading: true,
+      refetch: vi.fn(),
+    });
     const { rerender } = renderSection();
     expect(screen.getByRole('heading', { name: 'Complete your selection' })).toBeInTheDocument();
     expect(document.querySelector('[class*="animate-spin"]')).toBeInTheDocument();
 
-    hooks.useBundles.mockReturnValue({ bundles: [], error: null, isLoading: false, refetch: vi.fn() });
+    hooks.useBundles.mockReturnValue({
+      bundles: [],
+      error: null,
+      isLoading: false,
+      refetch: vi.fn(),
+    });
     rerender(
       <MemoryRouter>
         <ProductBundlesSection productId="product-1" />
       </MemoryRouter>,
     );
-    expect(screen.getByText('No curated bundles are available for this product right now.')).toBeInTheDocument();
+    expect(
+      screen.getByText('No curated bundles are available for this product right now.'),
+    ).toBeInTheDocument();
 
     const refetch = vi.fn();
-    hooks.useBundles.mockReturnValue({ bundles: [], error: 'Bundles unavailable', isLoading: false, refetch });
+    hooks.useBundles.mockReturnValue({
+      bundles: [],
+      error: 'Bundles unavailable',
+      isLoading: false,
+      refetch,
+    });
     rerender(
       <MemoryRouter>
         <ProductBundlesSection productId="product-1" />
@@ -93,7 +115,12 @@ describe('ProductBundlesSection', () => {
   });
 
   it('renders server totals and component product links', () => {
-    hooks.useBundles.mockReturnValue({ bundles: [bundle], error: null, isLoading: false, refetch: vi.fn() });
+    hooks.useBundles.mockReturnValue({
+      bundles: [bundle],
+      error: null,
+      isLoading: false,
+      refetch: vi.fn(),
+    });
     renderSection();
     expect(screen.getByText('\u00a350.00')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Protein Powder' })).toHaveAttribute(
@@ -110,16 +137,21 @@ describe('ProductBundlesSection', () => {
       isActionPending: () => false,
       isCartAvailable: true,
     });
-    hooks.useBundles.mockReturnValue({ bundles: [bundle, { ...bundle, id: 'other', name: 'Other set' }], error: null, isLoading: false, refetch: vi.fn() });
+    hooks.useBundles.mockReturnValue({
+      bundles: [bundle, { ...bundle, id: 'other', name: 'Other set' }],
+      error: null,
+      isLoading: false,
+      refetch: vi.fn(),
+    });
     renderSection();
 
     await user.click(screen.getAllByRole('button', { name: 'Add bundle' })[0]!);
     expect(addBundle).toHaveBeenCalledTimes(1);
     expect(addBundle).toHaveBeenCalledWith('starter');
     expect(screen.getByRole('alert')).toHaveTextContent('Could not add this bundle. Try again.');
-    expect(screen.getByRole('heading', { name: 'Other set' }).closest('article')).not.toHaveTextContent(
-      'Could not add this bundle. Try again.',
-    );
+    expect(
+      screen.getByRole('heading', { name: 'Other set' }).closest('article'),
+    ).not.toHaveTextContent('Could not add this bundle. Try again.');
   });
 
   it('disables unavailable bundles', () => {

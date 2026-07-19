@@ -225,6 +225,8 @@ describe('CheckoutPage', () => {
     const user = userEvent.setup();
     vi.mocked(pay).mockResolvedValue({
       id: '12',
+      status: 'processing',
+      version: 0,
       items: [],
       mixItems: [],
       subtotalCents: 1000,
@@ -292,6 +294,8 @@ describe('CheckoutPage', () => {
       )
       .mockResolvedValueOnce({
         id: '12',
+        status: 'processing',
+        version: 0,
         items: [],
         mixItems: [],
         subtotalCents: 1400,

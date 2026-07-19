@@ -53,6 +53,14 @@ describe('Help pages', () => {
       screen.getByRole('heading', { level: 2, name: 'No real delivery service' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('note', { name: 'No real delivery service' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Simulated tracking' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Tracking references and timeline updates are simulated local-demo data only/,
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Back to Help center' })).toHaveAttribute(
       'href',
       '/help',

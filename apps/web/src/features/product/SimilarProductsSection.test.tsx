@@ -146,7 +146,9 @@ describe('SimilarProductsSection', () => {
     await user.click(screen.getByRole('button', { name: 'Add powder' }));
 
     expect(cart.onAddToCart).toHaveBeenCalledWith('cart-failure');
-    expect(await screen.findByRole('alert')).toHaveTextContent('Could not add this item. Try again.');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not add this item. Try again.',
+    );
     expect(screen.getByRole('heading', { name: 'Powder cart-failure' })).toBeInTheDocument();
   });
 });

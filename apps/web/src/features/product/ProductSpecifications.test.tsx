@@ -25,14 +25,14 @@ describe('ProductSpecifications', () => {
   it('preserves contract group and specification order', () => {
     render(<ProductSpecifications specificationGroups={specificationGroups} />);
 
-    expect(screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual([
-      'Preparation',
-      'Storage',
-    ]);
-    expect(within(screen.getByRole('heading', { name: 'Preparation', level: 3 }).parentElement!).getAllByRole('term').map((term) => term.textContent)).toEqual([
-      'Format',
-      'Colour',
-    ]);
+    expect(
+      screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent),
+    ).toEqual(['Preparation', 'Storage']);
+    expect(
+      within(screen.getByRole('heading', { name: 'Preparation', level: 3 }).parentElement!)
+        .getAllByRole('term')
+        .map((term) => term.textContent),
+    ).toEqual(['Format', 'Colour']);
   });
 
   it('keeps same labels in separate groups as separate description lists', () => {
@@ -51,9 +51,7 @@ describe('ProductSpecifications', () => {
             key: 'partial',
             label: 'Partial',
             order: 2,
-            specifications: [
-              { key: 'unknown', label: 'Unknown', valueKey: 'unknown', value: '' },
-            ],
+            specifications: [{ key: 'unknown', label: 'Unknown', valueKey: 'unknown', value: '' }],
           },
         ]}
       />,

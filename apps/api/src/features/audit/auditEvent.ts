@@ -18,6 +18,10 @@ export const AUDIT_ACTIONS = [
   'payment.timed_out',
   'payment.succeeded',
   'order.created',
+  'order.shipment_packed',
+  'order.cancelled',
+  'shipment.transitioned',
+  'shipment.tracking_updated',
   'review.created',
   'review.updated',
   'review.deleted',
@@ -26,7 +30,7 @@ export const AUDIT_ACTIONS = [
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
-export type AuditEntityType = 'user' | 'cart' | 'payment' | 'order' | 'review';
+export type AuditEntityType = 'user' | 'cart' | 'payment' | 'order' | 'shipment' | 'review';
 export type AuditActor =
   | { type: 'anonymous'; userId: null }
   | { type: 'user'; userId: number }
@@ -56,7 +60,8 @@ type UserEventAction = Exclude<
   | `cart.${string}`
   | `checkout.${string}`
   | `payment.${string}`
-  | 'order.created'
+  | `order.${string}`
+  | `shipment.${string}`
   | `review.${string}`
 >;
 
@@ -102,6 +107,15 @@ export type AuditEventInput =
       itemCount: number;
       mixItemCount: number;
     })
+  | (WithContext & { action: 'order.shipment_packed'; orderId: number; shipmentCount: number })
+  | (WithContext & { action: 'order.cancelled'; orderId: number })
+  | (WithContext & {
+      action: 'shipment.transitioned';
+      shipmentId: number;
+      orderId: number;
+      status: 'shipped' | 'delivered' | 'delivery_failed';
+    })
+  | (WithContext & { action: 'shipment.tracking_updated'; shipmentId: number; orderId: number })
   | (WithContext & {
       action: 'review.created' | 'review.updated';
       reviewId: number;
@@ -225,6 +239,16 @@ function orderEntity(input: Record<string, unknown>): { entityType: 'order'; ent
   };
 }
 
+function shipmentEntity(input: Record<string, unknown>): {
+  entityType: 'shipment';
+  entityId: string;
+} {
+  return {
+    entityType: 'shipment',
+    entityId: String(requirePositiveSafeInteger(input.shipmentId, 'shipmentId')),
+  };
+}
+
 function reviewEntity(input: Record<string, unknown>): { entityType: 'review'; entityId: string } {
   return {
     entityType: 'review',
@@ -314,6 +338,30 @@ export function buildAuditEvent(input: AuditEventInput): BuiltAuditEvent {
         itemCount: requireNonNegativeSafeInteger(input.itemCount, 'itemCount'),
         mixItemCount: requireNonNegativeSafeInteger(input.mixItemCount, 'mixItemCount'),
       };
+      break;
+    case 'order.shipment_packed':
+      entity = orderEntity(input);
+      metadata = {
+        shipmentCount: requirePositiveSafeInteger(input.shipmentCount, 'shipmentCount'),
+      };
+      break;
+    case 'order.cancelled':
+      entity = orderEntity(input);
+      metadata = {};
+      break;
+    case 'shipment.transitioned':
+      entity = shipmentEntity(input);
+      if (!['shipped', 'delivered', 'delivery_failed'].includes(input.status)) {
+        throw new AuditEventValidationError('status is not an allowed shipment status');
+      }
+      metadata = {
+        orderId: requirePositiveSafeInteger(input.orderId, 'orderId'),
+        status: input.status,
+      };
+      break;
+    case 'shipment.tracking_updated':
+      entity = shipmentEntity(input);
+      metadata = { orderId: requirePositiveSafeInteger(input.orderId, 'orderId') };
       break;
     case 'review.created':
     case 'review.updated':

@@ -48,6 +48,16 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
       });
 
       if (result.success) {
+        if (userId === null) {
+          const { token } = services.orderAccess.issue(Number(result.order.id));
+          reply.setCookie(`qpc_order_${result.order.id}`, token, {
+            httpOnly: true,
+            sameSite: 'lax',
+            path: `/api/orders/${result.order.id}`,
+            maxAge: 24 * 60 * 60,
+            secure: false,
+          });
+        }
         reply.code(201);
         return result.order;
       }

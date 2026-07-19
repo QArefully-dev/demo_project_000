@@ -139,6 +139,35 @@ void test('builds body-free, scalar-only review audit metadata', () => {
   assert.equal(hidden.metadataJson.includes('bodyExcerpt'), false);
 });
 
+void test('builds lifecycle audit rows with shipment identity and allowlisted metadata', () => {
+  const transitioned = buildAuditEvent({
+    action: 'shipment.transitioned',
+    context: userContext,
+    shipmentId: 11,
+    orderId: 7,
+    status: 'delivered',
+    trackingReference: 'not-retained',
+  } as AuditEventInput);
+  const packed = buildAuditEvent({
+    action: 'order.shipment_packed',
+    context: userContext,
+    orderId: 7,
+    shipmentCount: 2,
+    allocation: [{ lineId: '1' }],
+  } as AuditEventInput);
+  assert.deepEqual(
+    {
+      entityType: transitioned.entityType,
+      entityId: transitioned.entityId,
+      metadata: transitioned.metadata,
+    },
+    { entityType: 'shipment', entityId: '11', metadata: { orderId: 7, status: 'delivered' } },
+  );
+  assert.deepEqual(packed.metadata, { shipmentCount: 2 });
+  assert.equal(transitioned.metadataJson.includes('not-retained'), false);
+  assert.equal(packed.metadataJson.includes('allocation'), false);
+});
+
 void test('rejects invalid review audit scalars', () => {
   for (const input of [
     { action: 'review.created', reviewId: 0, productId: 12, rating: 5 },
@@ -168,6 +197,14 @@ void test('accepts review audit actions and entity type filters', () => {
   assert.deepEqual(normalizeAuditEventQuery({ action: 'review.restored', entityType: 'review' }), {
     action: 'review.restored',
     entityType: 'review',
+    page: 1,
+    pageSize: 50,
+  });
+});
+
+void test('accepts shipment audit entity filters', () => {
+  assert.deepEqual(normalizeAuditEventQuery({ entityType: 'shipment' }), {
+    entityType: 'shipment',
     page: 1,
     pageSize: 50,
   });

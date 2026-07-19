@@ -5,6 +5,212 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { CATALOG_PRODUCTS, CURATED_BUNDLES, catalogProductSpecifications } from '@shop/catalog';
 import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
+import { DEMO_ORDER_SCENARIO_KEYS } from '../../src/db/orderSeedScenarios.js';
+
+void test('seed installs deterministic lifecycle scenarios once and reset restores them', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-order-seed-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+  const scenarioRows = db
+    .prepare(
+      `SELECT orders.demo_seed_key, users.email, orders.lifecycle_status, orders.created_at
+       FROM orders JOIN users ON users.id = orders.user_id
+       WHERE orders.demo_seed_key IS NOT NULL
+       ORDER BY orders.created_at DESC, orders.id DESC`,
+    )
+    .all();
+  assert.deepEqual(scenarioRows, [
+    {
+      demo_seed_key: 'alice-processing',
+      email: 'alice@example.com',
+      lifecycle_status: 'processing',
+      created_at: '2026-07-15T09:00:00.000Z',
+    },
+    {
+      demo_seed_key: 'alice-packed',
+      email: 'alice@example.com',
+      lifecycle_status: 'packed',
+      created_at: '2026-07-14T15:00:00.000Z',
+    },
+    {
+      demo_seed_key: 'alice-split-shipped',
+      email: 'alice@example.com',
+      lifecycle_status: 'shipped',
+      created_at: '2026-07-14T09:00:00.000Z',
+    },
+    {
+      demo_seed_key: 'alice-delivery-failed',
+      email: 'alice@example.com',
+      lifecycle_status: 'delivery_failed',
+      created_at: '2026-07-13T09:00:00.000Z',
+    },
+    {
+      demo_seed_key: 'bob-delivered',
+      email: 'bob@example.com',
+      lifecycle_status: 'delivered',
+      created_at: '2026-07-12T09:00:00.000Z',
+    },
+  ]);
+  assert.deepEqual(
+    db
+      .prepare(
+        'SELECT demo_seed_key FROM orders WHERE demo_seed_key IS NOT NULL ORDER BY demo_seed_key',
+      )
+      .pluck()
+      .all(),
+    [...DEMO_ORDER_SCENARIO_KEYS].sort(),
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT shipment_number, status, tracking_reference
+         FROM order_shipments
+         WHERE order_id = (SELECT id FROM orders WHERE demo_seed_key = 'alice-split-shipped')
+         ORDER BY shipment_number`,
+      )
+      .all(),
+    [
+      { shipment_number: 1, status: 'delivered', tracking_reference: 'QA-ALICE-SPLIT-01' },
+      { shipment_number: 2, status: 'shipped', tracking_reference: 'QA-ALICE-SPLIT-02' },
+    ],
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT shipment_number, product_quantity, mix_quantity
+         FROM (
+           SELECT shipments.shipment_number,
+             SUM(CASE WHEN shipment_items.order_line_item_id IS NOT NULL THEN shipment_items.quantity ELSE 0 END) AS product_quantity,
+             SUM(CASE WHEN shipment_items.order_powder_mix_item_id IS NOT NULL THEN shipment_items.quantity ELSE 0 END) AS mix_quantity
+           FROM order_shipments AS shipments
+           JOIN order_shipment_items AS shipment_items ON shipment_items.shipment_id = shipments.id
+           WHERE shipments.order_id = (SELECT id FROM orders WHERE demo_seed_key = 'alice-split-shipped')
+           GROUP BY shipments.id
+         ) ORDER BY shipment_number`,
+      )
+      .all(),
+    [
+      { shipment_number: 1, product_quantity: 1, mix_quantity: 0 },
+      { shipment_number: 2, product_quantity: 1, mix_quantity: 1 },
+    ],
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT event_type, occurred_at
+         FROM order_lifecycle_events
+         WHERE order_id = (SELECT id FROM orders WHERE demo_seed_key = 'alice-delivery-failed')
+         ORDER BY occurred_at, id`,
+      )
+      .all(),
+    [
+      { event_type: 'order_created', occurred_at: '2026-07-13T09:00:00.000Z' },
+      { event_type: 'shipment_packed', occurred_at: '2026-07-13T10:00:00.000Z' },
+      { event_type: 'shipment_shipped', occurred_at: '2026-07-14T08:00:00.000Z' },
+      { event_type: 'shipment_delivery_failed', occurred_at: '2026-07-14T15:00:00.000Z' },
+    ],
+  );
+  assert.equal(
+    (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM payments
+           WHERE status = 'succeeded'
+             AND order_id IN (SELECT id FROM orders WHERE demo_seed_key IS NOT NULL)`,
+        )
+        .get() as { count: number }
+    ).count,
+    DEMO_ORDER_SCENARIO_KEYS.length,
+  );
+
+  const seededProductSnapshot = db
+    .prepare(
+      `SELECT product_name, product_price_cents, quantity, line_total_cents
+       FROM order_line_items
+       WHERE order_id = (SELECT id FROM orders WHERE demo_seed_key = 'alice-packed')`,
+    )
+    .get();
+  const seededMixSnapshot = db
+    .prepare(
+      `SELECT snapshot_json FROM order_powder_mix_items
+       WHERE order_id = (SELECT id FROM orders WHERE demo_seed_key = 'alice-split-shipped')`,
+    )
+    .get();
+  db.prepare("UPDATE products SET name = 'Changed Campfire', price_cents = 1 WHERE id = 27").run();
+  seedDatabase(db);
+  assert.deepEqual(db.prepare('SELECT name, price_cents FROM products WHERE id = 27').get(), {
+    name: 'Campfire',
+    price_cents: 1695,
+  });
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT product_name, product_price_cents, quantity, line_total_cents
+         FROM order_line_items
+         WHERE order_id = (SELECT id FROM orders WHERE demo_seed_key = 'alice-packed')`,
+      )
+      .get(),
+    seededProductSnapshot,
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT snapshot_json FROM order_powder_mix_items
+         WHERE order_id = (SELECT id FROM orders WHERE demo_seed_key = 'alice-split-shipped')`,
+      )
+      .get(),
+    seededMixSnapshot,
+  );
+
+  db.prepare(
+    `UPDATE orders SET lifecycle_status = 'cancelled', version = 99
+     WHERE demo_seed_key = 'alice-processing'`,
+  ).run();
+  seedDatabase(db);
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT lifecycle_status, version FROM orders WHERE demo_seed_key = 'alice-processing'`,
+      )
+      .get(),
+    { lifecycle_status: 'cancelled', version: 99 },
+  );
+  assert.equal(
+    (
+      db.prepare('SELECT COUNT(*) AS count FROM orders WHERE demo_seed_key IS NOT NULL').get() as {
+        count: number;
+      }
+    ).count,
+    DEMO_ORDER_SCENARIO_KEYS.length,
+  );
+  assert.equal(
+    (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM order_lifecycle_events
+           WHERE order_id IN (SELECT id FROM orders WHERE demo_seed_key IS NOT NULL)`,
+        )
+        .get() as { count: number }
+    ).count,
+    19,
+  );
+
+  resetDatabase(db);
+  seedDatabase(db);
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT lifecycle_status, version FROM orders WHERE demo_seed_key = 'alice-processing'`,
+      )
+      .get(),
+    { lifecycle_status: 'processing', version: 0 },
+  );
+});
 
 void test('seed preserves local state; reset restores canonical data', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-seed-'));
@@ -219,10 +425,35 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
       (customer_name, customer_email, shipping_address, subtotal_cents, total_cents)
      VALUES ('Seed reset', 'seed-reset@example.test', '1 Reset Road', 1000, 1000)`,
   ).run();
+  const resetOrderId = Number(
+    db
+      .prepare("SELECT id FROM orders WHERE customer_email = 'seed-reset@example.test'")
+      .pluck()
+      .get(),
+  );
   db.prepare(
     `INSERT INTO order_powder_mix_items (order_id, snapshot_json)
-     VALUES (last_insert_rowid(), '{"version":1}')`,
-  ).run();
+     VALUES (?, '{"version":1}')`,
+  ).run(resetOrderId);
+  db.prepare(
+    `INSERT INTO order_shipments
+      (order_id, shipment_number, status, tracking_reference, created_at, updated_at)
+     VALUES (?, 1, 'packed', 'RESET-001', '2026-07-19T12:00:00.000Z', '2026-07-19T12:00:00.000Z')`,
+  ).run(resetOrderId);
+  const resetShipmentId = Number(
+    db
+      .prepare("SELECT id FROM order_shipments WHERE tracking_reference = 'RESET-001'")
+      .pluck()
+      .get(),
+  );
+  db.prepare(
+    `INSERT INTO order_lifecycle_events (order_id, shipment_id, event_type, title, occurred_at)
+     VALUES (?, ?, 'shipment_packed', 'Shipment packed', '2026-07-19T12:00:00.000Z')`,
+  ).run(resetOrderId, resetShipmentId);
+  db.prepare(
+    `INSERT INTO order_access_grants (order_id, token_digest, expires_at, created_at)
+     VALUES (?, 'seed-reset-grant-digest', '2026-07-20T12:00:00.000Z', '2026-07-19T12:00:00.000Z')`,
+  ).run(resetOrderId);
   db.prepare(
     `INSERT INTO reviews (product_id, user_id, rating, body)
      VALUES (1, 1, 5, '12345678901234567890')`,
@@ -258,15 +489,19 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
     ).count,
     50,
   );
-  for (const table of [
-    'powder_mixes',
-    'powder_mix_components',
-    'powder_mix_stock_reservations',
-    'order_powder_mix_items',
-  ]) {
+  for (const [table, expectedCount] of [
+    ['powder_mixes', 0],
+    ['powder_mix_components', 0],
+    ['powder_mix_stock_reservations', 0],
+    ['order_access_grants', 0],
+    ['order_lifecycle_events', 19],
+    ['order_shipment_items', 6],
+    ['order_shipments', 5],
+    ['order_powder_mix_items', 1],
+  ] as const) {
     assert.equal(
       (db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count,
-      0,
+      expectedCount,
     );
   }
   assert.equal(

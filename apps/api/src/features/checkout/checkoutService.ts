@@ -60,6 +60,10 @@ function replay(
   if (payment.fingerprint !== fingerprint) return { success: false, error: 'IDEMPOTENT_CONFLICT' };
   if (payment.status === 'prepared') return { success: false, error: 'IDEMPOTENT_IN_PROGRESS' };
   if (payment.status === 'authorized_pending_finalize') return { resume: true };
+  if (payment.status === 'succeeded' && payment.orderId !== null) {
+    const order = dependencies.orders.findById(payment.orderId);
+    return order ? { success: true, order } : { success: false, error: 'CHECKOUT_FAILED' };
+  }
   if (payment.responseJson) {
     try {
       const result = JSON.parse(payment.responseJson) as CheckoutResult;
@@ -67,10 +71,6 @@ function replay(
     } catch {
       return { success: false, error: 'CHECKOUT_FAILED' };
     }
-  }
-  if (payment.status === 'succeeded' && payment.orderId !== null) {
-    const order = dependencies.orders.findById(payment.orderId);
-    return order ? { success: true, order } : { success: false, error: 'CHECKOUT_FAILED' };
   }
   if (payment.status === 'declined') return { success: false, error: 'DECLINED' };
   if (payment.status === 'timed_out') return { success: false, error: 'TIMEOUT' };

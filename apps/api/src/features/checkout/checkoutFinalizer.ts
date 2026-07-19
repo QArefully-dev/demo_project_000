@@ -1,37 +1,6 @@
-import type { Order } from '@shop/contracts/orders';
-import { DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME } from '@shop/contracts/powderizer';
-import type { PowderMixOrderItem } from '@shop/contracts/powderizer';
 import { parsePersistedCheckoutQuote } from '../payments/paymentRepository.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { CheckoutDependencies, CheckoutResult } from './checkoutTypes.js';
-
-function normalizeOrderMixItem(mix: PowderMixOrderItem): Order['mixItems'][number] {
-  if (mix.snapshotVersion === 1) {
-    return {
-      ...mix,
-      bagColourScheme: DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
-      usageLabel: 'Check ingredient labels',
-    };
-  }
-  return mix;
-}
-
-function orderFromQuote(
-  orderId: number,
-  quote: ReturnType<typeof parsePersistedCheckoutQuote>,
-  createdAt: string,
-): Order {
-  return {
-    id: String(orderId),
-    items: quote.lines,
-    mixItems: quote.version === 1 ? [] : quote.mixLines.map(normalizeOrderMixItem),
-    subtotalCents: quote.subtotalCents,
-    discountCents: quote.discountCents,
-    totalCents: quote.totalCents,
-    promoApplied: quote.promoCode,
-    createdAt,
-  };
-}
 
 /** Finalizes only an already-authorized intent; rollback leaves it resumable. */
 export function finalizeAuthorizedCheckout(
@@ -70,9 +39,11 @@ export function finalizeAuthorizedCheckout(
       createdAt,
     });
     dependencies.carts.remove(quote.cartId);
+    const order = dependencies.orders.findById(orderId);
+    if (!order) throw new Error('Created order could not be hydrated');
     const result: CheckoutResult = {
       success: true,
-      order: orderFromQuote(orderId, quote, createdAt),
+      order,
     };
     if (
       !dependencies.payments.transition({

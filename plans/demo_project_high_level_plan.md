@@ -53,10 +53,13 @@ Avoid visible platform complexity:
 - shared contracts: TypeBox
 - launch: `npm ci` -> `npm run dev`
 - external services: none
-- implemented: auth, catalog, search, filters, sorting, product pages, cart, promotions, checkout, simulated payment, orders, favourites, account, dev mailbox
-- seed: 45 deterministic powder products across 7 categories, plus users, promotions, and favourites
-- tests: focused unit and SQLite integration baseline required; broad API and E2E coverage reserved for course
-- active expansion: catalog, review, and audit slices in `plans/catalog_reviews_audit_seed_content_implementation_plan.md`; each slice remains additive to the powder storefront
+- implemented commerce: auth, catalog, cart, promotions, checkout, simulated payment, orders, favourites, account, dev mailbox
+- implemented catalog depth: typed specifications and tags, advanced filters and stable sorts, comparison, similar products, curated bundles, customer reviews
+- implemented customer journey: composed product detail, comparison entry points, help and policy center, Powderizer custom mixes and history
+- implemented integrity: ordered migrations, append-only audit ledger, sanitized admin audit reads
+- seed: 45 deterministic powder products across 7 categories, plus users, promotions, favourites, catalog metadata, curated bundles
+- tests: focused unit, contract, route, SQLite integration, React integration, and accessibility coverage; broad E2E coverage reserved for course
+- completed expansion record: `plans/powder_shop_catalog_expansion_plan.md`
 
 ## Hard Constraints
 
@@ -113,55 +116,56 @@ Build vertical slices:
 
 Avoid empty scaffolding, copied framework internals, vendored projects, generated-code padding, duplicate abstractions.
 
-## Active Expansion
+## Completed Catalog Expansion
 
-Implementation plan: `plans/catalog_reviews_audit_seed_content_implementation_plan.md`.
+Implementation record: `plans/powder_shop_catalog_expansion_plan.md`.
 
-Direction reconciliation: its generic-store catalog capabilities are additive engineering work. Product naming, seed content, imagery, and customer copy remain QArefully Powder Co. unless a later approved plan changes this direction.
+Delivered:
 
-Scope:
-
-- powder product options, specifications, bundles, comparison
-- customer reviews and verified-purchase summaries
+- structured powder specifications, normalized tags, advanced filtering, stable sorting
+- anonymous ordered comparison with catalog and product-detail entry points
 - deterministic similar products
-- price, date, name filters and stable sorting
-- append-only auditing
-- deterministic named seed scenarios and validation tooling
-- help, policy, FAQ, shipping, returns, size-guide pages
-- focused core unit and SQLite integration tests
+- curated bundles with current-price totals and atomic cart addition
+- authenticated customer reviews, verified-purchase evidence, moderation, rating summaries
+- append-only audit ledger across auth, cart, order, payment, bundle, review mutations
+- typed help and policy center with product-context links
+- resilient product-detail composition; secondary section failure preserves core purchase flow
 
-## Expansion Order
+Preserved:
 
-1. Active catalog and review expansion
-   - powder pack sizes, SKU-compatible options, specifications
-   - variant price and stock, specifications, bundles, comparisons
-   - customer reviews, deterministic similar products
-   - price, date, name filtering and stable sorting
-   - append-only audit events, seed scenarios, customer help and policy content
-2. Order history and lifecycle
-   - processing -> packed -> shipped -> delivered
-   - cancellation, split shipment, delivery failure, tracking events
-3. Inventory
-   - reservations, expiry, backorders, concurrent purchase protection
-4. Returns and refunds
-   - return windows, partial quantities, refund rules, stock restoration
-5. Checkout depth
-   - saved addresses, billing address, delivery methods, estimates, gift options
-6. Pricing and promotions
-   - scheduled sales, category offers, stacking, gift cards, loyalty points
-7. Review depth
-   - moderation workflows, helpful votes, abuse controls, aggregate maintenance
-8. Account depth
-   - addresses, sessions, preferences, data export, account deletion
-9. Async behavior
-   - local job queue, notifications, retry policy, captured webhooks, failure injection
-10. Secondary admin
-   - products, orders, refunds, reviews, users, feature flags, expanded audit tooling
+- QArefully Powder Co. identity, safety messaging, deterministic local runtime
+- backend authority for price, stock, purchase evidence, review ownership, audit records
+- Powderizer contracts, pricing, stock rules, snapshots, history compatibility
 
-11. Powderizer (deferred additive vertical slice)
-   - Phase 7: server-authoritative custom mixes, configuration validation, quotes, and immutable order snapshots
-   - Phase 8: accessible `/powderizer` builder and cart/edit checkout flow
-   - not part of required rebrand completion
+## Future Expansion Order
+
+Status: delivery order for remaining work. `partial` = implemented subset; `future` = listed capability not delivered.
+
+1. Order history and lifecycle: completed
+   - foundation: order creation, immutable product and Powderizer snapshots, direct order-detail read
+   - remaining: customer order list; processing -> packed -> shipped -> delivered; cancellation, split shipment, delivery failure, tracking events
+2. Inventory: partial
+   - completed: Powderizer component availability accounting, checkout-time stock reservations, atomic reservation consumption, concurrent oversell protection
+   - remaining: ordinary product-line reservations and stock consumption, expiry, backorders
+3. Returns and refunds: future
+   - remaining: return windows, partial quantities, refund rules, stock restoration
+4. Checkout depth: future
+   - foundation: validated contact, shipping address, server quote, idempotent simulated payment
+   - remaining: saved addresses, billing address, delivery methods, estimates, gift options
+5. Pricing and promotions: partial
+   - completed: percentage and fixed discounts, start/end scheduling, item/subtotal gates, global and per-user limits, reservation-safe redemption
+   - remaining: category offers, stacking, gift cards, loyalty points, sales presentation
+6. Review depth: partial
+   - completed: admin-only hide/restore endpoints, published-only summaries and star distributions
+   - remaining: moderation UI and queues, helpful votes, abuse controls, aggregate persistence
+7. Account depth: partial
+   - completed: session creation, expiry, logout, password-change invalidation, profile read, password change
+   - remaining: addresses, session list and selective revocation, preferences, data export, account deletion
+8. Async behavior: future
+   - remaining: local job queue, notifications, retry policy, captured webhooks, failure injection
+9. Secondary admin: partial
+   - completed: admin review-moderation API; paginated, filtered, read-only audit API
+   - remaining: admin UI; product, order, refund, review, user, feature-flag management
 
 ## Agentic AI and QA Surface
 
@@ -205,7 +209,7 @@ Integration boundary:
 
 `domain service -> SQLite adapter -> temporary database`
 
-Excluded:
+Excluded from minimum baseline; scoped vertical slices may add focused coverage when risk requires:
 
 - HTTP route tests
 - API tests through Fastify injection, `fetch`, or other client

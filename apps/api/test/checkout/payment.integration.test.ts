@@ -18,7 +18,7 @@ import { addItem, createCart, getCart } from '../../src/features/cart/cartServic
 import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
 import { createPromoRepository } from '../../src/features/promos/promoRepository.js';
 import { createPaymentRepository } from '../../src/features/payments/paymentRepository.js';
-import { createOrderRepository } from '../../src/features/checkout/orderRepository.js';
+import { createOrderRepository } from '../../src/features/orders/orderRepository.js';
 import { createMailboxRepository } from '../../src/features/mailbox/mailboxRepository.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { simulatedPaymentGateway } from '../../src/features/payments/paymentGateway.js';
@@ -142,7 +142,13 @@ void test('atomic checkout orchestration', async (t) => {
       ).response_json,
     );
     assert.equal(
-      (db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }).count,
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM orders WHERE customer_email = 'checkout@example.test'",
+          )
+          .get() as { count: number }
+      ).count,
       1,
     );
   });
@@ -162,7 +168,13 @@ void test('atomic checkout orchestration', async (t) => {
       deferred.resolve({ status: 'success' });
       assert.equal((await first).success, true);
       assert.equal(
-        (db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }).count,
+        (
+          db
+            .prepare(
+              "SELECT COUNT(*) AS count FROM orders WHERE customer_email = 'checkout@example.test'",
+            )
+            .get() as { count: number }
+        ).count,
         1,
       );
     },
@@ -239,7 +251,11 @@ void test('atomic checkout orchestration', async (t) => {
         checkout(payment('missing-audit-cart', 'pre-gateway-audit-rollback'), { db }),
       );
       assert.equal(
-        (db.prepare('SELECT COUNT(*) AS count FROM payments').get() as { count: number }).count,
+        (
+          db
+            .prepare('SELECT COUNT(*) AS count FROM payments WHERE idempotency_key = ?')
+            .get('pre-gateway-audit-rollback') as { count: number }
+        ).count,
         0,
       );
     } finally {
@@ -345,7 +361,13 @@ void test('atomic checkout orchestration', async (t) => {
     assert.deepEqual(result, { success: false, error: 'IDEMPOTENT_IN_PROGRESS' });
     assert.equal(getCart(carts, cartId)?.totalItems, 5);
     assert.equal(
-      (db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }).count,
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM orders WHERE customer_email = 'checkout@example.test'",
+          )
+          .get() as { count: number }
+      ).count,
       0,
     );
     db.exec('DROP TRIGGER IF EXISTS abort_checkout_mailbox');
@@ -375,7 +397,13 @@ void test('atomic checkout orchestration', async (t) => {
     const resumed = await checkout(payment(cartId, 'resume-after-finalize'), { db });
     assert.equal(resumed.success, true);
     assert.equal(
-      (db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }).count,
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM orders WHERE customer_email = 'checkout@example.test'",
+          )
+          .get() as { count: number }
+      ).count,
       1,
     );
   });
@@ -391,7 +419,13 @@ void test('atomic checkout orchestration', async (t) => {
     const failed = await checkout(params, { db });
     assert.deepEqual(failed, { success: false, error: 'IDEMPOTENT_IN_PROGRESS' });
     assert.equal(
-      (db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }).count,
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM orders WHERE customer_email = 'checkout@example.test'",
+          )
+          .get() as { count: number }
+      ).count,
       0,
     );
     assert.equal(getCart(carts, cartId)?.totalItems, 1);

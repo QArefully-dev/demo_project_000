@@ -22,8 +22,13 @@ import { createProductRepository } from './features/catalog/productRepository.js
 import { createProductService, type ProductService } from './features/catalog/productService.js';
 import { createCartRepository } from './features/cart/cartRepository.js';
 import { createCartService, type CartService } from './features/cart/cartService.js';
-import { createOrderRepository } from './features/checkout/orderRepository.js';
-import { createOrderService, type OrderService } from './features/checkout/orderService.js';
+import { createOrderRepository } from './features/orders/orderRepository.js';
+import { createOrderService, type OrderService } from './features/orders/orderService.js';
+import {
+  createOrderAccessService,
+  type OrderAccessService,
+  type OrderAccessTokenSource,
+} from './features/orders/orderAccessService.js';
 import {
   createCheckoutService,
   type CheckoutService,
@@ -66,12 +71,14 @@ import { createBundleService, type BundleService } from './features/bundles/bund
 import reviewsRoutes from './routes/reviews.js';
 import { createReviewRepository } from './features/reviews/reviewRepository.js';
 import { createReviewService, type ReviewService } from './features/reviews/reviewService.js';
+import adminOrdersRoutes from './routes/adminOrders.js';
 
 export interface AppDependencies {
   db: Database.Database;
   resetBaseUrl: string;
   clock?: Clock;
   resetTokenSource?: ResetTokenSource;
+  orderAccessTokenSource?: OrderAccessTokenSource;
 }
 
 export interface AppServices {
@@ -83,6 +90,7 @@ export interface AppServices {
   carts: CartService;
   promos: PromoService;
   orders: OrderService;
+  orderAccess: OrderAccessService;
   checkout: CheckoutService;
   audit: AuditReadService;
   favourites: FavouritesService;
@@ -130,7 +138,12 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     products: createProductService(products),
     carts: createCartService(carts, mixes, { unitOfWork, audit }),
     promos: createPromoService({ promos, carts, mixes, clock }),
-    orders: createOrderService(orders),
+    orders: createOrderService({ repository: orders, unitOfWork, clock, audit }),
+    orderAccess: createOrderAccessService({
+      repository: orders,
+      clock,
+      tokenSource: dependencies.orderAccessTokenSource,
+    }),
     checkout: createCheckoutService({
       unitOfWork,
       carts,
@@ -209,6 +222,7 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(cartRoutes, context);
   await app.register(promoRoutes, context);
   await app.register(ordersRoutes, context);
+  await app.register(adminOrdersRoutes, context);
   await app.register(authRoutes, context);
   await app.register(favouritesRoutes, context);
   await app.register(paymentRoutes, context);

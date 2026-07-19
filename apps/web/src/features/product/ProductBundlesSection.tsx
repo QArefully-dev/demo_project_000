@@ -12,7 +12,9 @@ type ProductBundlesSectionProps = {
 export function ProductBundlesSection({ productId }: ProductBundlesSectionProps) {
   const { bundles, error: loadError, isLoading, refetch } = useBundles(productId);
   const { addBundle, isActionPending, isCartAvailable } = useCartContext();
-  const [actionError, setActionError] = useState<{ bundleId: string; message: string } | null>(null);
+  const [actionError, setActionError] = useState<{ bundleId: string; message: string } | null>(
+    null,
+  );
 
   useEffect(() => {
     setActionError(null);

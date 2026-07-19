@@ -6,7 +6,7 @@ import type { MailboxRepository } from '../mailbox/mailboxRepository.js';
 import type { PaymentGateway } from '../payments/paymentGateway.js';
 import type { PaymentRepository } from '../payments/paymentRepository.js';
 import type { PromoRepository } from '../promos/promoRepository.js';
-import type { OrderRepository } from './orderRepository.js';
+import type { OrderRepository } from '../orders/orderRepository.js';
 import type { PowderMixRepository } from '../powderizer/powderMixRepository.js';
 import type { ProductRepository } from '../catalog/productRepository.js';
 import type { AuditContext } from '../audit/auditEvent.js';

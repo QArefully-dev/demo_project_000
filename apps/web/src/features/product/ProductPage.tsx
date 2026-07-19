@@ -23,11 +23,7 @@ export function ProductPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const addInFlightProductIdsRef = useRef(new Set<string>());
   const activeProductIdRef = useRef<string | undefined>(id);
-  const {
-    addItem,
-    isCartAvailable,
-    isActionPending,
-  } = useCartContext();
+  const { addItem, isCartAvailable, isActionPending } = useCartContext();
 
   useEffect(() => {
     let cancelled = false;

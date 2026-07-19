@@ -21,6 +21,8 @@ import { HelpIndexPage } from './features/help/HelpIndexPage';
 import { HelpArticlePage } from './features/help/HelpArticlePage';
 import { ComparisonPage } from './features/comparison/ComparisonPage';
 import { BundlesPage } from './features/bundles/BundlesPage';
+import { OrderHistoryPage } from './features/orders/OrderHistoryPage';
+import { OrderDetailPage } from './features/orders/OrderDetailPage';
 
 export default function App() {
   return (
@@ -51,6 +53,22 @@ export default function App() {
           element={
             <ProtectedRoute>
               <WishlistPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/orders"
+          element={
+            <ProtectedRoute>
+              <OrderHistoryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/orders/:orderId"
+          element={
+            <ProtectedRoute>
+              <OrderDetailPage />
             </ProtectedRoute>
           }
         />
