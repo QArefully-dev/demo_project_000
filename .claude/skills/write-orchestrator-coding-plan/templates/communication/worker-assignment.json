@@ -6,6 +6,11 @@
   "packet_id": "[packet-id]",
   "role": "worker",
   "assignment_revision": 1,
+  "worktree": {
+    "path": "[absolute worktree path]",
+    "branch": "[implementation branch]",
+    "base_revision": "[source branch HEAD revision]"
+  },
   "objective": "[bounded implementation outcome]",
   "depends_on": [],
   "owns": ["[write path or glob]"],

@@ -60,7 +60,7 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
 - `.claude/skills/`: repo-local agent skills; load only when task matches
 - root configs: workspaces/scripts in `package.json`; shared TypeScript, ESLint, Prettier configuration
 
-Dependency direction: `packages/contracts` + `packages/catalog` -> `apps/api` -> HTTP -> `apps/web`.
+Dependency direction: `packages/contracts` -> `apps/api` + `apps/web`; `packages/catalog` -> `apps/api`; `apps/api` -> HTTP -> `apps/web`.
 
 ## Commands
 

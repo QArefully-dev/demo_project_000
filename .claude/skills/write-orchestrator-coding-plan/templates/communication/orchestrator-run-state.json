@@ -3,6 +3,16 @@
   "state_type": "orchestrator_run_state_v1",
   "run_id": "[run-id]",
   "plan_artifact": "[saved plan path]",
+  "source_checkout": {
+    "path": "[absolute source checkout path]",
+    "branch": "[source branch]",
+    "head_revision": "[source branch HEAD revision]"
+  },
+  "worktree": {
+    "path": "[absolute worktree path]",
+    "branch": "[implementation branch]",
+    "base_revision": "[source branch HEAD revision]"
+  },
   "current_change_set": null,
   "packets": [
     {

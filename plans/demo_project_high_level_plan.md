@@ -36,6 +36,18 @@ Extended familiar journeys:
 - write verified-purchase review
 - manage wishlist, profile, sessions, and notification preferences
 
+## Reverse Process
+
+Powder -> original object. Customer selects eligible powder, uploads or chooses object specification, accepts quote, waits for controlled reconstruction.
+
+- price: `reverse price = corresponding powdering-process price * 10,000`; integer minor units; no discounts, promotions, gift cards, or loyalty redemption
+- special request: manual review, custom scope, extra compliance and reconstruction fee; quote required before checkout
+- positioning: deliberately prohibitive; ordinary objects expensive, impossible or conceptual objects exceptionally expensive
+- lead time: long and price-linked; quote shows multi-week to multi-year estimated completion window, reconstruction stages, and status updates
+- examples: powder -> fireplace; powder -> Victorian townhouse; powder -> fresh air; powder -> working time machine; powder -> original moonlight from specific night
+- safety: clearly fictional demo service; impossible/conceptual requests remain `Not for consumption`; approval, cancellation, refund, and delivery rules defined in future vertical slice
+- scope: high-level product direction only; no reverse-process implementation, catalog eligibility matrix, or pricing engine yet
+
 Avoid visible platform complexity:
 
 - no seller marketplace as main concept
@@ -166,6 +178,12 @@ Status: delivery order for remaining work. `partial` = implemented subset; `futu
 9. Secondary admin: partial
    - completed: admin review-moderation API; paginated, filtered, read-only audit API
    - remaining: admin UI; product, order, refund, review, user, feature-flag management
+10. Reverse Process: future
+   - powder -> original object reconstruction; eligible-powder selection, object specification, controlled reconstruction order, staged status updates
+   - pricing: corresponding powdering-process price * 10,000; integer minor units; no discount, promotion, gift-card, or loyalty redemption
+   - special requests: manual review, bespoke scope, additional fee, quote acceptance before checkout
+   - fulfilment: price-linked multi-week to multi-year wait; cancellation, refund, approval, and delivery rules
+   - seed examples: powder -> fireplace; Victorian townhouse; fresh air; working time machine; original moonlight from specified night
 
 ## Agentic AI and QA Surface
 

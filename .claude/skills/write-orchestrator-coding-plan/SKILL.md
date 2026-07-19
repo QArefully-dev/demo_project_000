@@ -5,7 +5,7 @@ description: Write repository-grounded, coding-oriented implementation plans for
 
 # Write Orchestrator Coding Plan
 
-Turn selected high-level scope into coding plan orchestrator can execute through coordinated subagents. Produce plan only unless user also requests implementation.
+Turn selected high-level scope into coding plan orchestrator can execute through coordinated subagents. Produce plan only unless user also requests implementation. Require runtime implementation in dedicated Git worktree created from current branch.
 
 ## Input Gate
 
@@ -53,6 +53,22 @@ Cover relevant coding details:
 - verification: critical unit, contract, route, SQLite integration, React integration, accessibility, manual checks
 
 Omit irrelevant layers. Prefer extension of established patterns over new abstractions. Name non-goals to prevent scope drift.
+
+## Runtime Worktree Contract
+
+Treat planning checkout as source checkout. Runtime orchestrator must isolate every new implementation:
+
+1. Before any implementation write, record source checkout absolute path, current branch, and `HEAD` revision.
+2. Require named current branch. If source checkout uses detached `HEAD`, stop and ask user to select branch.
+3. If relevant uncommitted or untracked source-checkout changes are absent from branch `HEAD`, stop and ask user to commit them or choose baseline. Never copy, stash, discard, or import them without explicit approval.
+4. Create unique implementation branch and dedicated worktree from recorded current branch `HEAD`: `git worktree add -b <implementation-branch> <absolute-worktree-path> <source-branch>`.
+5. Verify worktree branch and base revision before `G0`. Record source branch, source revision, worktree branch, and absolute worktree path in checkpoint.
+6. Run all implementation edits, generated-file writes, tests, reviews, fixes, convergence, and final verification inside worktree. Keep source checkout read-only after worktree creation, except saved plan and run-scoped temp state.
+7. Include worktree context in every worker and reviewer assignment. Resolve repository-relative paths against worktree root. Run every assigned command with worktree as working directory.
+8. Never merge, rebase, cherry-pick, copy changes, delete worktree, or remove implementation branch at completion. User owns integration into source branch.
+9. Final orchestrator reply must report absolute worktree path, implementation branch, source branch, and base revision. State worktree remains intact and user will handle merge.
+
+One runtime run -> one shared implementation worktree. Parallel subagents use disjoint ownership inside same worktree; do not create per-packet worktrees unless user explicitly requests them.
 
 ## Orchestration Model
 
@@ -155,6 +171,7 @@ Runtime state:
 
 - `orchestrator_run_state_v1`: canonical recovery snapshot and current state, not transcript.
 - location: `[platform temp root]/orchestrator/[run_id]/state.json`; atomically replace current snapshot.
+- Worktree identity: source checkout path, source branch, base revision, implementation branch, absolute worktree path.
 - Track packet states, assignment revisions, active blockers/questions, actionable finding facts plus lifecycle, accepted handoffs/interfaces, evidence ledger, decisions, and invalidations.
 - Update snapshot after accepted report, directive, finding transition, decision, handoff, or evidence invalidation.
 - Inline messages remain events. Do not append event history to checkpoint.
@@ -227,6 +244,14 @@ Use following structure. Remove irrelevant optional subsections; keep execution 
 Status: proposed
 Source: `[source plan path]` -> `[selected heading]`
 Repository baseline: `[commit/branch if useful, otherwise inspection date]`
+
+## Runtime Worktree
+
+- source: current branch at runtime -> recorded branch and `HEAD`
+- create: dedicated implementation branch + worktree before any implementation write
+- execution root: all worker, reviewer, test, fix, and convergence activity runs in worktree
+- integration: no automatic merge, rebase, cherry-pick, copy-back, or cleanup; user handles merge
+- completion reply: absolute worktree path + implementation branch + source branch + base revision
 
 ## Objective
 
@@ -350,20 +375,25 @@ Repository baseline: `[commit/branch if useful, otherwise inspection date]`
 - worker return: `worker_report_v1`
 - reviewer return: `reviewer_report_v1`
 - recovery snapshot: `orchestrator_run_state_v1`
+- worktree context: every assignment includes absolute path, implementation branch, and base revision; every repository-relative path resolves under worktree root
 - templates: reference canonical `templates/communication/*.json`; embed once only when portability requires it
 - record shapes: reference canonical `references/communication-record-shapes.md` when object arrays become non-empty
 
 ## Orchestrator Run Order
 
 1. End planning context after saving plan.
-2. Start fresh runtime orchestrator; load repository instructions, plan, canonical contracts, current checkpoint.
-3. Validate `G0`; project role-minimum context into assignments.
-4. Launch fresh/minimal worker contexts for `P1 || P2`.
-5. Accept reports; update checkpoint and evidence ledger; do not duplicate valid runs.
-6. Launch inspect-only reviewers with exact change sets and relevant evidence; validate `G1`.
-7. Route stable finding IDs through worker-targeted fix directives once; close after fix plus targeted evidence without reviewer return.
-8. Launch `S1`; run fan-in tests once.
-9. Validate `G2`; run final suite once after all fixes settle.
+2. Start fresh runtime orchestrator; load source-checkout repository instructions, plan, canonical contracts, current checkpoint.
+3. Record current source branch and `HEAD`; handle detached `HEAD` or relevant uncommitted-input blocker under worktree contract.
+4. Create dedicated implementation branch and worktree from recorded source branch `HEAD`; persist worktree identity.
+5. Switch runtime execution root to worktree; load applicable repository instructions from worktree.
+6. Validate `G0`; project role-minimum context plus worktree context into assignments.
+7. Launch fresh/minimal worker contexts for `P1 || P2` inside worktree.
+8. Accept reports; update checkpoint and evidence ledger; do not duplicate valid runs.
+9. Launch inspect-only reviewers inside worktree with exact change sets and relevant evidence; validate `G1`.
+10. Route stable finding IDs through worker-targeted fix directives once; close after fix plus targeted evidence without reviewer return.
+11. Launch `S1` inside worktree; run fan-in tests once.
+12. Validate `G2`; run final suite once inside worktree after all fixes settle.
+13. Leave implementation branch and worktree intact. Reply with absolute worktree path, implementation branch, source branch, and base revision. State user owns merge.
 
 ## Risks and Open Questions
 
@@ -420,9 +450,13 @@ Before saving plan, confirm:
 - runtime begins after fresh context boundary
 - subagents receive role-minimum context; no full plan, source plan, prior reports, global ledger, or unrelated state
 - compact checkpoint captures current packet state; actionable finding source, severity, location, issue, required fix, lifecycle, and evidence; accepted handoffs; evidence ledger; decisions; invalidations; no transcript history
+- runtime creates one dedicated worktree from current source branch `HEAD` before implementation writes
+- every implementation, review, fix, and verification action runs inside recorded worktree
+- source checkout receives no implementation changes and runtime performs no merge-back or worktree cleanup
 - reviewer findings close after worker fix and targeted verification; no return review loop
 - migrations, contracts, transactions, auth, error paths covered where relevant
 - final integration and regression gate present
+- completion reply reports retained absolute worktree path, implementation branch, source branch, and base revision; user owns merge
 - plan contains no implementation changes or unrelated scope
 - output follows `$llm-oriented-markdowns`
 

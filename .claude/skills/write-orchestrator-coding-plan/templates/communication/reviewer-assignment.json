@@ -6,6 +6,11 @@
   "packet_id": "[packet-id]",
   "role": "reviewer",
   "assignment_revision": 1,
+  "worktree": {
+    "path": "[absolute worktree path]",
+    "branch": "[implementation branch]",
+    "base_revision": "[source branch HEAD revision]"
+  },
   "objective": "[bounded review outcome]",
   "review_target": {
     "implementation_packet_id": "[worker packet-id]",

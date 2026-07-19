@@ -2,6 +2,28 @@
 
 Read when populating non-empty object arrays in canonical communication templates. Keep keys exact. Retain `[]` when no applicable records exist.
 
+## Worktree Context
+
+`worker_assignment_v1.worktree`, `reviewer_assignment_v1.worktree`, and `orchestrator_run_state_v1.worktree`:
+
+```json
+{
+  "path": "[absolute worktree path]",
+  "branch": "[implementation branch]",
+  "base_revision": "[source branch HEAD revision]"
+}
+```
+
+`orchestrator_run_state_v1.source_checkout`:
+
+```json
+{
+  "path": "[absolute source checkout path]",
+  "branch": "[source branch]",
+  "head_revision": "[source branch HEAD revision]"
+}
+```
+
 ## Shared Evidence
 
 Use for `worker_assignment_v1.relevant_evidence[]`, `reviewer_assignment_v1.supplied_evidence[]`, `worker_report_v1.verification[]`, and `orchestrator_run_state_v1.evidence_ledger[]`.
