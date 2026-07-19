@@ -20,6 +20,8 @@ import { createPowderizerService } from '../../src/features/powderizer/powderize
 import { createPromoRepository } from '../../src/features/promos/promoRepository.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
+import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
+import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
 
 void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', async (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-mix-checkout-'));
@@ -67,6 +69,7 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
       repository: createAuditRepository(db),
       clock: { now: () => new Date('2026-07-14T10:00:00.000Z') },
     }),
+    inventory: createInventoryService({ repository: createInventoryRepository(db) }),
   });
   const params: CheckoutParams = {
     cartId,
@@ -95,7 +98,7 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
       db
         .prepare('SELECT quote_json FROM payments WHERE idempotency_key = ?')
         .get(params.idempotencyKey) as { quote_json: string }
-    ).quote_json.includes('"version":3'),
+    ).quote_json.includes('"version":4'),
     true,
   );
   const storedSnapshot = (
@@ -106,7 +109,7 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
   assert.equal(storedSnapshot.includes('"snapshotVersion":2'), true);
   assert.equal(
     (
-      db.prepare('SELECT COUNT(*) AS count FROM powder_mix_stock_reservations').get() as {
+        db.prepare('SELECT COUNT(*) AS count FROM inventory_reservations').get() as {
         count: number;
       }
     ).count,
@@ -209,6 +212,7 @@ void test('mix price and stock conflicts block gateway before reservation', asyn
       repository: createAuditRepository(db),
       clock: { now: () => new Date('2026-07-14T10:00:00.000Z') },
     }),
+    inventory: createInventoryService({ repository: createInventoryRepository(db) }),
   });
   const payment = (cartId: string): CheckoutParams => ({
     cartId,
@@ -241,7 +245,7 @@ void test('mix price and stock conflicts block gateway before reservation', asyn
   assert.equal(calls, 0);
   const stockCart = makeCart();
   db.prepare('UPDATE products SET stock_count = 0 WHERE id = 1').run();
-  assert.equal((await checkout.process(payment(stockCart))).error, 'MIX_STOCK_UNAVAILABLE');
+  assert.equal((await checkout.process(payment(stockCart))).error, 'INSUFFICIENT_STOCK');
   assert.equal(calls, 0);
 
   db.prepare('UPDATE products SET stock_count = 10 WHERE id = 1').run();

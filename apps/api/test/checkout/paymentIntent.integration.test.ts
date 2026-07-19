@@ -81,6 +81,7 @@ void test('payment intent persistence, cart reservations, and promo reservations
           cartId,
           quote: quote(cartId),
           updatedAt: createdAt,
+          reservationExpiresAt: '2026-07-14T10:15:00.000Z',
         }),
         true,
       );
@@ -110,6 +111,7 @@ void test('payment intent persistence, cart reservations, and promo reservations
           cardCvc: '123',
         } as unknown as PersistedCheckoutQuote,
         updatedAt: createdAt,
+        reservationExpiresAt: '2026-07-14T10:15:00.000Z',
       }),
     /Invalid persisted checkout quote/,
   );

@@ -26,6 +26,8 @@ import { createPowderMixRepository } from '../../src/features/powderizer/powderM
 import { createProductRepository } from '../../src/features/catalog/productRepository.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
+import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
+import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
 
 function checkout(
   params: CheckoutParams,
@@ -51,6 +53,7 @@ function checkout(
       repository: createAuditRepository(dependencies.db),
       clock: { now: dependencies.now ?? (() => new Date()) },
     }),
+    inventory: createInventoryService({ repository: createInventoryRepository(dependencies.db) }),
   }).process(params);
 }
 
@@ -349,6 +352,29 @@ void test('atomic checkout orchestration', async (t) => {
       true,
     );
     assert.equal(getCart(carts, promoCartId), undefined);
+  });
+
+  await t.test('expires prepared reservations and rejects late gateway completion', async () => {
+    const cartId = freshCart();
+    const deferred = deferredGateway();
+    const params = payment(cartId, 'expired-reservation');
+    let current = new Date('2026-07-14T10:00:00.000Z');
+    const first = checkout(params, { db, gateway: deferred.gateway, now: () => current });
+    current = new Date('2026-07-14T10:15:00.000Z');
+    const expired = await checkout(params, { db, gateway: deferred.gateway, now: () => current });
+    assert.deepEqual(expired, {
+      success: false,
+      error: 'RESERVATION_EXPIRED',
+      reservationExpiresAt: '2026-07-14T10:15:00.000Z',
+    });
+    assert.notEqual(addItem(carts, cartId, '2'), 'CART_RESERVED');
+    assert.equal(
+      (db.prepare('SELECT COUNT(*) AS count FROM inventory_reservations WHERE payment_idempotency_key = ?')
+        .get(params.idempotencyKey) as { count: number }).count,
+      0,
+    );
+    deferred.resolve({ status: 'success' });
+    assert.deepEqual(await first, expired);
   });
 
   await t.test('rolls back order and redemption writes together', async () => {

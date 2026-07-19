@@ -7,6 +7,7 @@ import { validatePromo } from '../promos/promoService.js';
 import { createCheckoutQuote } from './checkoutQuote.js';
 import { finalizeAuthorizedCheckout } from './checkoutFinalizer.js';
 import { prepareMixes } from './checkoutMixPreparation.js';
+import { InventoryError } from '../inventory/inventoryTypes.js';
 import type { PreGatewayFailureCode } from '../audit/auditEvent.js';
 import type {
   CheckoutDependencies,
@@ -23,6 +24,7 @@ export type {
 } from './checkoutTypes.js';
 
 type Preparation = CheckoutResult | { quoteTotalCents: number; card: ValidCard } | { resume: true };
+const RESERVATION_LEASE_MS = 15 * 60_000;
 
 function preGatewayFailureCode(result: CheckoutResult): PreGatewayFailureCode {
   if (!result.success) {
@@ -83,6 +85,7 @@ function prepare(
   dependencies: CheckoutDependencies,
 ): Preparation {
   const fingerprint = createSafeFingerprint(params, card);
+  expirePreparedReservations(dependencies);
   const existing = dependencies.payments.load(params.idempotencyKey);
   if (existing) return replay(existing, fingerprint, dependencies);
   return dependencies.unitOfWork.run(() => {
@@ -141,12 +144,6 @@ function prepare(
       );
     const preparedCart = withPreparedMixes(cart, mixPreparation.mixItems);
     const createdAt = dependencies.clock.now().toISOString();
-    const quote = createCheckoutQuote({
-      cart: preparedCart,
-      checkout: params,
-      promo: promo?.promoCode,
-      createdAt,
-    });
     if (!dependencies.carts.reserve(params.cartId, params.idempotencyKey, createdAt)) {
       return failPreparation(
         params.idempotencyKey,
@@ -156,9 +153,9 @@ function prepare(
       );
     }
     if (
-      quote.promoCode &&
+      promo?.code &&
       !dependencies.promos.reserve({
-        code: quote.promoCode,
+        code: promo.code,
         userId: params.userId,
         paymentIdempotencyKey: params.idempotencyKey,
         createdAt,
@@ -172,13 +169,53 @@ function prepare(
         dependencies,
       );
     }
-    dependencies.mixes.reserveStock(params.idempotencyKey, mixPreparation.requirements);
+    const reservationExpiresAt = new Date(Date.parse(createdAt) + RESERVATION_LEASE_MS).toISOString();
+    let inventoryAllocations;
+    try {
+      inventoryAllocations = dependencies.inventory.reserveCheckout({
+        paymentIdempotencyKey: params.idempotencyKey,
+        demands: [
+          ...preparedCart.items.map((item) => ({
+            productId: Number(item.productId),
+            quantity: item.quantity,
+            demandKind: 'product' as const,
+          })),
+          ...mixPreparation.requirements.map((requirement) => ({
+            productId: requirement.productId,
+            quantity: requirement.bagEquivalents,
+            demandKind: 'powder_mix' as const,
+          })),
+        ],
+        now: createdAt,
+        expiresAt: reservationExpiresAt,
+      });
+    } catch (error) {
+      dependencies.carts.releaseReservation(params.idempotencyKey);
+      dependencies.promos.releaseReservation(params.idempotencyKey);
+      if (error instanceof InventoryError && error.code === 'INSUFFICIENT_STOCK') {
+        return failPreparation(
+          params.idempotencyKey,
+          { success: false, error: 'INSUFFICIENT_STOCK', productIds: error.productIds.map(String) },
+          params.auditContext,
+          dependencies,
+        );
+      }
+      throw error;
+    }
+    const quote = createCheckoutQuote({
+      cart: preparedCart,
+      checkout: params,
+      promo: promo?.promoCode,
+      createdAt,
+      inventoryAllocations,
+    });
     if (
       !dependencies.payments.persistQuote({
         idempotencyKey: params.idempotencyKey,
         cartId: params.cartId,
         quote,
         updatedAt: createdAt,
+        reservationExpiresAt,
       })
     ) {
       throw new Error('Checkout intent quote persistence failed');
@@ -235,7 +272,7 @@ function providerFailure(
     });
     dependencies.carts.releaseReservation(idempotencyKey);
     dependencies.promos.releaseReservation(idempotencyKey);
-    dependencies.mixes.releaseStockReservation(idempotencyKey);
+    dependencies.inventory.releaseReservation(idempotencyKey);
     if (transitioned) {
       const payment = dependencies.payments.load(idempotencyKey);
       if (!payment) throw new Error('Checkout intent disappeared after provider failure');
@@ -271,18 +308,56 @@ export function createCheckoutService(dependencies: CheckoutDependencies): Check
           params.auditContext,
           dependencies,
         );
-      dependencies.unitOfWork.run(() =>
-        dependencies.payments.transition({
+      const authorized = dependencies.unitOfWork.run(() => {
+        const transitioned = dependencies.payments.transition({
           idempotencyKey: params.idempotencyKey,
           expectedStatus: 'prepared',
           nextStatus: 'authorized_pending_finalize',
           gatewayReference: gatewayResult.reference,
           updatedAt: dependencies.clock.now().toISOString(),
-        }),
-      );
+        });
+        if (!transitioned) return false;
+        dependencies.inventory.authorizeReservation(
+          params.idempotencyKey,
+          dependencies.clock.now().toISOString(),
+        );
+        return true;
+      });
+      if (!authorized) {
+        return replay(
+          dependencies.payments.load(params.idempotencyKey)!,
+          createSafeFingerprint(params, card),
+          dependencies,
+        ) as CheckoutResult;
+      }
       return resumeFinalization(dependencies, params.idempotencyKey, params.auditContext);
     },
   };
+}
+
+function expirePreparedReservations(dependencies: CheckoutDependencies): void {
+  const now = dependencies.clock.now().toISOString();
+  dependencies.unitOfWork.run(() => {
+    for (const idempotencyKey of dependencies.inventory.expirePrepared(now)) {
+      const payment = dependencies.payments.load(idempotencyKey);
+      if (!payment || payment.status !== 'prepared') continue;
+      const result: CheckoutResult = {
+        success: false,
+        error: 'RESERVATION_EXPIRED',
+        reservationExpiresAt: payment.reservationExpiresAt ?? now,
+      };
+      dependencies.payments.transition({
+        idempotencyKey,
+        expectedStatus: 'prepared',
+        nextStatus: 'failed_pre_gateway',
+        failureReason: result.error,
+        responseJson: JSON.stringify(result),
+        updatedAt: now,
+      });
+      dependencies.carts.releaseReservation(idempotencyKey);
+      dependencies.promos.releaseReservation(idempotencyKey);
+    }
+  });
 }
 
 function resumeFinalization(

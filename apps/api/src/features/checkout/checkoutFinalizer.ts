@@ -28,7 +28,20 @@ export function finalizeAuthorizedCheckout(
       mixItems: quote.version === 1 ? [] : quote.mixLines,
       createdAt,
     });
-    dependencies.mixes.consumeReservedStock(idempotencyKey);
+    const order = dependencies.orders.findById(orderId);
+    if (!order) throw new Error('Created order could not be hydrated');
+    if (quote.version === 4) {
+      dependencies.inventory.commitReservation({
+        paymentIdempotencyKey: idempotencyKey,
+        orderId,
+        ordinaryLines: order.items.map((line) => ({
+          orderLineItemId: Number(line.lineId),
+          productId: Number(line.productId),
+          quantity: line.quantity,
+        })),
+        occurredAt: createdAt,
+      });
+    }
     if (quote.promoCode)
       dependencies.promos.commitReservation({ paymentIdempotencyKey: idempotencyKey, orderId });
     dependencies.mailbox.add({
@@ -39,8 +52,6 @@ export function finalizeAuthorizedCheckout(
       createdAt,
     });
     dependencies.carts.remove(quote.cartId);
-    const order = dependencies.orders.findById(orderId);
-    if (!order) throw new Error('Created order could not be hydrated');
     const result: CheckoutResult = {
       success: true,
       order,
