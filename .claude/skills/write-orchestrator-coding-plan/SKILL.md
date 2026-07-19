@@ -207,6 +207,14 @@ Reviewer default: inspect exact assigned change set, invariants, contracts, and 
 
 Issue flow: `stable reviewer finding ID -> worker-targeted fix directive with finding ID -> worker targeted verification -> orchestrator records closure change set/evidence -> next task`. Reviewer-targeted `fix` corrects report or protocol only. Do not send implementation fix back to originating reviewer. Final convergence or completion gate catches remaining regression; avoid reviewer-worker-reviewer loops.
 
+Fix worker selection:
+
+- default: route finding to originating implementation worker with `action=fix` directive referencing current packet and assignment revision. Reviewer supplies independent perspective; originating worker retains design and invariant context. Do not launch replacement solely for fresh context.
+- fresh replacement worker: use when finding exposes flawed architecture or security model, fix crosses packet ownership, originating worker fix attempt fails, or originating worker unavailable.
+- fresh replacement bootstrap: reissue full `worker_assignment_v1` with incremented `assignment_revision`, then send `action=fix` directive containing stable finding IDs, relevant finding facts, current change set, affected paths, and verification delta. Never send directive-only to context lacking active assignment.
+- context projection: current assignment + fix directive + relevant checkpoint and evidence only. Exclude full reviewer report, transcript, closed findings, global ledger, and unrelated packet state.
+- closure: worker freshness does not replace targeted verification or final convergence/completion gate.
+
 ## Output Format
 
 Apply `$llm-oriented-markdowns` to generated plan. If unavailable, enforce: terse AI-facing prose, no articles/filler/pleasantries/hedging, no Mermaid, no tables, no decorative separators, max two list levels, arrows for dependencies, no repeated requirements.
