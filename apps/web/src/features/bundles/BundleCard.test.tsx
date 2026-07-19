@@ -50,12 +50,18 @@ function renderCard(overrides: Partial<React.ComponentProps<typeof BundleCard>> 
 describe('BundleCard', () => {
   it('shows current total, component quantities, and product links', () => {
     renderCard();
+    expect(screen.getByRole('heading', { name: 'Starter set', level: 2 })).toBeInTheDocument();
     expect(screen.getByText('£50.00')).toBeInTheDocument();
     expect(screen.getByText('×2')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Protein Powder' })).toHaveAttribute(
       'href',
       '/products/1',
     );
+  });
+
+  it('supports a nested card heading for a parent section', () => {
+    renderCard({ headingLevel: 3 });
+    expect(screen.getByRole('heading', { name: 'Starter set', level: 3 })).toBeInTheDocument();
   });
 
   it('disables unavailable bundles and prevents duplicate pending adds', () => {

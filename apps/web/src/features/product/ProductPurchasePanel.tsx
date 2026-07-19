@@ -3,6 +3,7 @@ import { Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { WishlistButton } from '@/components/WishlistButton';
+import { CompareProductButton } from '@/features/comparison/CompareProductButton';
 import { formatMoney } from '@/lib/formatMoney';
 
 interface ProductPurchasePanelProps {
@@ -10,9 +11,9 @@ interface ProductPurchasePanelProps {
   isCartAvailable: boolean;
   isAdding: boolean;
   actionError: string | null;
-  cartError: string | null;
+  cartError?: string | null;
   onAddToCart: () => Promise<void>;
-  onRetryCart: () => void;
+  onRetryCart?: () => void;
 }
 
 export function ProductPurchasePanel({
@@ -123,13 +124,16 @@ export function ProductPurchasePanel({
           <WishlistButton productId={product.id} product={product} />
         </div>
       </div>
+      <div className="mt-3">
+        <CompareProductButton productId={product.id} productName={product.name} />
+      </div>
 
       {actionError && (
         <p role="alert" className="mt-3 text-sm text-destructive">
           {actionError}
         </p>
       )}
-      {cartError && (
+      {cartError && onRetryCart && (
         <div role="alert" className="mt-3 flex flex-wrap items-center gap-2">
           <p className="text-sm text-destructive">{cartError}</p>
           <Button variant="outline" size="sm" onClick={onRetryCart}>

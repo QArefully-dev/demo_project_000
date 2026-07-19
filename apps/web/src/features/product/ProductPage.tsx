@@ -5,10 +5,14 @@ import { ApiError } from '@/api/client';
 import { getProduct } from '@/api/products';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { ProductBundlesSection } from '@/features/product/ProductBundlesSection';
 import { useCartContext } from '@/hooks/CartContext';
+import { ProductContextLinks } from './ProductContextLinks';
 import { ProductDetails } from './ProductDetails';
 import { ProductGallery } from './ProductGallery';
 import { ProductPurchasePanel } from './ProductPurchasePanel';
+import { ProductSpecifications } from './ProductSpecifications';
+import { ReviewsSection } from './ReviewsSection';
 import { SimilarProductsSection } from './SimilarProductsSection';
 
 export function ProductPage() {
@@ -20,9 +24,7 @@ export function ProductPage() {
   const addInFlightProductIdsRef = useRef(new Set<string>());
   const activeProductIdRef = useRef<string | undefined>(id);
   const {
-    error: cartError,
     addItem,
-    retryCart,
     isCartAvailable,
     isActionPending,
   } = useCartContext();
@@ -114,16 +116,18 @@ export function ProductPage() {
           isCartAvailable={isCartAvailable}
           isAdding={isActionPending(product.id, 'add')}
           actionError={actionError}
-          cartError={cartError}
           onAddToCart={handleAddToCart}
-          onRetryCart={() => void retryCart()}
         />
       </div>
 
       <div className="mt-12 grid gap-6">
         <ProductDetails description={product.description} />
+        <ProductSpecifications specificationGroups={product.specificationGroups} />
+        <ProductContextLinks packagingQuantity={product.packaging?.quantity} />
       </div>
 
+      <ProductBundlesSection productId={product.id} />
+      <ReviewsSection productId={product.id} />
       <SimilarProductsSection
         productId={product.id}
         isCartAvailable={isCartAvailable}

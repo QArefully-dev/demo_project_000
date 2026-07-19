@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { Product } from '@shop/contracts/products';
@@ -61,6 +61,7 @@ describe('SimilarProductsSection', () => {
     productsApi.getSimilarProducts.mockReturnValueOnce(response.promise);
 
     renderSection();
+    expect(screen.getByRole('heading', { name: 'Similar powders' })).toBeInTheDocument();
     expect(screen.getByText('Finding similar powders...')).toBeInTheDocument();
 
     response.resolve([product('third'), product('first')]);
@@ -72,11 +73,12 @@ describe('SimilarProductsSection', () => {
     );
   });
 
-  it('renders nothing for an empty response', async () => {
+  it('renders an explicit section-local empty state', async () => {
     productsApi.getSimilarProducts.mockResolvedValueOnce([]);
     renderSection();
 
-    await waitFor(() => expect(screen.queryByLabelText('Similar powders')).not.toBeInTheDocument());
+    expect(await screen.findByRole('heading', { name: 'Similar powders' })).toBeInTheDocument();
+    expect(screen.getByText('No similar powders available right now.')).toBeInTheDocument();
   });
 
   it('keeps failures section-local and retries the request', async () => {
@@ -87,6 +89,7 @@ describe('SimilarProductsSection', () => {
     renderSection();
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not load similar powders.');
+    expect(screen.getByRole('heading', { name: 'Similar powders' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByRole('heading', { name: 'Powder retry' })).toBeInTheDocument();
     expect(productsApi.getSimilarProducts).toHaveBeenCalledTimes(2);
@@ -119,5 +122,31 @@ describe('SimilarProductsSection', () => {
     second.resolve([product('fresh')]);
     expect(await screen.findByRole('heading', { name: 'Powder fresh' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Powder stale' })).not.toBeInTheDocument();
+  });
+
+  it('keeps similar products visible when their cart action fails', async () => {
+    const user = userEvent.setup();
+    productsApi.getSimilarProducts.mockResolvedValueOnce([product('cart-failure')]);
+    const cart = {
+      onAddToCart: vi.fn().mockResolvedValue(false),
+      isAdding: vi.fn(() => false),
+    };
+    render(
+      <MemoryRouter>
+        <SimilarProductsSection
+          productId="source"
+          isCartAvailable
+          isAdding={cart.isAdding}
+          onAddToCart={cart.onAddToCart}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: 'Powder cart-failure' });
+    await user.click(screen.getByRole('button', { name: 'Add powder' }));
+
+    expect(cart.onAddToCart).toHaveBeenCalledWith('cart-failure');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not add this item. Try again.');
+    expect(screen.getByRole('heading', { name: 'Powder cart-failure' })).toBeInTheDocument();
   });
 });

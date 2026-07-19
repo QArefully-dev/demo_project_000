@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +13,7 @@ interface ProductCardProps {
   onAddToCart: (productId: string) => Promise<boolean>;
   isCartAvailable: boolean;
   isAdding?: boolean;
+  comparisonControl?: ReactNode;
 }
 
 export function ProductCard({
@@ -20,6 +21,7 @@ export function ProductCard({
   onAddToCart,
   isCartAvailable,
   isAdding = false,
+  comparisonControl,
 }: ProductCardProps) {
   const [actionError, setActionError] = useState<string | null>(null);
   const inStock = product.stock > 0;
@@ -112,6 +114,7 @@ export function ProductCard({
                   ? 'Add powder'
                   : 'Unavailable'}
           </Button>
+          {comparisonControl}
           {actionError && (
             <p role="alert" className="text-center text-xs text-destructive">
               {actionError}

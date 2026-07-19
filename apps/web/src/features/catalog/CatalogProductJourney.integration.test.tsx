@@ -9,6 +9,7 @@ import { useProductFilterOptions } from '@/hooks/useProductFilterOptions';
 import { useProducts } from '@/hooks/useProducts';
 import { CatalogPage } from './CatalogPage';
 import { ProductPage } from '../product/ProductPage';
+import { ComparisonSelectionProvider } from '@/features/comparison/ComparisonSelectionContext';
 
 vi.mock('@/api/products', () => ({
   getProduct: vi.fn(),
@@ -94,11 +95,15 @@ describe('catalog to product journey', () => {
           '/catalog?q=water&tag=pantry&tag=drink-mix&spec=texture%3Afine&sort=price_desc&page=2&pageSize=24',
         ]}
       >
-        <NavigationControls />
-        <Routes>
-          <Route path="/catalog" element={<CatalogPage />} />
-          <Route path="/products/:id" element={<ProductPage />} />
-        </Routes>
+        <ComparisonSelectionProvider
+          storage={{ getItem: () => null, setItem: () => undefined, removeItem: () => undefined }}
+        >
+          <NavigationControls />
+          <Routes>
+            <Route path="/catalog" element={<CatalogPage />} />
+            <Route path="/products/:id" element={<ProductPage />} />
+          </Routes>
+        </ComparisonSelectionProvider>
       </MemoryRouter>,
     );
 

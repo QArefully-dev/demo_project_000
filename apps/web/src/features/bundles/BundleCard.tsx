@@ -8,14 +8,23 @@ function formatPrice(cents: number): string {
 
 type BundleCardProps = {
   bundle: CuratedBundle;
+  headingLevel?: 2 | 3;
   isCartAvailable: boolean;
   isAdding: boolean;
   error?: string | null;
   onAdd: (bundleId: string) => void | Promise<unknown>;
 };
 
-export function BundleCard({ bundle, isCartAvailable, isAdding, error, onAdd }: BundleCardProps) {
+export function BundleCard({
+  bundle,
+  headingLevel = 2,
+  isCartAvailable,
+  isAdding,
+  error,
+  onAdd,
+}: BundleCardProps) {
   const disabled = !bundle.available || !isCartAvailable || isAdding;
+  const Heading = `h${headingLevel}` as const;
   const unavailableMessage = !bundle.available
     ? 'This bundle is currently unavailable.'
     : !isCartAvailable
@@ -24,7 +33,7 @@ export function BundleCard({ bundle, isCartAvailable, isAdding, error, onAdd }: 
 
   return (
     <article className="rounded-xl border bg-surface-raised p-5">
-      <h2 className="text-xl font-semibold">{bundle.name}</h2>
+      <Heading className="text-xl font-semibold">{bundle.name}</Heading>
       <p className="mt-2 text-sm text-muted-foreground">{bundle.description}</p>
       <ul className="mt-4 space-y-2" aria-label={`${bundle.name} components`}>
         {bundle.components.map((component) => (

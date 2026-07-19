@@ -18,9 +18,6 @@ const sortOptions: Array<{ value: ReviewSort; label: string }> = [
   { value: 'lowest', label: 'Lowest rating' },
 ];
 
-/**
- * Deliberately standalone until Round 4 composes it into ProductPage.
- */
 export function ReviewsSection({ productId }: ReviewsSectionProps) {
   const { user, loading: isAuthLoading } = useAuth();
   const location = useLocation();
@@ -82,7 +79,12 @@ export function ReviewsSection({ productId }: ReviewsSectionProps) {
               <p role="alert" className="text-sm text-destructive">
                 Could not load your review.
               </p>
-              <Button type="button" variant="link" className="mt-1 px-0" onClick={reviews.retry}>
+              <Button
+                type="button"
+                variant="link"
+                className="mt-1 px-0"
+                onClick={reviews.retryOwner}
+              >
                 Try again
               </Button>
             </div>
@@ -112,7 +114,12 @@ export function ReviewsSection({ productId }: ReviewsSectionProps) {
               <p role="alert" className="text-sm text-destructive">
                 Could not load reviews.
               </p>
-              <Button type="button" variant="link" className="mt-1 px-0" onClick={reviews.retry}>
+              <Button
+                type="button"
+                variant="link"
+                className="mt-1 px-0"
+                onClick={reviews.retryList}
+              >
                 Try again
               </Button>
             </div>

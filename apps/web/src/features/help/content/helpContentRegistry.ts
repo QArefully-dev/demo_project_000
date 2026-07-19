@@ -4,6 +4,15 @@ import { policyArticles as authoredPolicyArticles } from './policyArticles';
 import { powderSafetyArticle, storageArticle } from './powderGuidanceArticles';
 import { packSizesArticle, returnsArticle, shippingArticle } from './serviceArticles';
 
+type ContentLink = Readonly<{
+  label: string;
+  path: string;
+}>;
+
+function toContentLink(article: Pick<HelpArticle, 'title' | 'path'>): ContentLink {
+  return { label: article.title, path: article.path };
+}
+
 export const helpIndexLink = {
   label: 'Help center',
   path: '/help',
@@ -24,6 +33,20 @@ export const helpContentRegistry = [
   ...helpArticles,
   ...policyArticles,
 ] as const satisfies readonly HelpArticle[];
+
+/** Product-detail links derive labels and routes from canonical help and policy articles. */
+export const productFactLinks = {
+  powderSafety: toContentLink(powderSafetyArticle),
+  storage: toContentLink(storageArticle),
+  packSizes: toContentLink(packSizesArticle),
+} as const;
+
+export const productCommerceLinks = {
+  shipping: toContentLink(shippingArticle),
+  returns: toContentLink(returnsArticle),
+  privacy: toContentLink(authoredPolicyArticles[0]),
+  terms: toContentLink(authoredPolicyArticles[1]),
+} as const;
 
 export function getArticlesForGroup(group: 'help'): typeof helpArticles;
 export function getArticlesForGroup(group: 'policy'): typeof policyArticles;

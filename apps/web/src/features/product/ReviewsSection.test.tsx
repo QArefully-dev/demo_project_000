@@ -59,7 +59,8 @@ function reviewState(): UseProductReviewsResult {
     mutationError: null,
     setSort: vi.fn(),
     setPage: vi.fn(),
-    retry: vi.fn(),
+    retryList: vi.fn(),
+    retryOwner: vi.fn(),
     submitReview: vi.fn().mockResolvedValue(true),
     removeReview: vi.fn().mockResolvedValue(true),
   };
@@ -103,5 +104,38 @@ describe('ReviewsSection', () => {
       </MemoryRouter>,
     );
     expect(screen.getByRole('alert')).toHaveTextContent('Could not load reviews.');
+  });
+
+  it('keeps an empty published review list explicit', () => {
+    state.reviews = {
+      ...reviewState(),
+      list: { ...list, summary: { ...list.summary, total: 0 }, items: [] },
+    };
+    render(
+      <MemoryRouter>
+        <ReviewsSection productId="p1" />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('No published reviews yet.')).toBeInTheDocument();
+  });
+
+  it('keeps published reviews visible when the owner request fails', () => {
+    state.auth.user = {
+      id: 'customer',
+      email: 'customer@example.com',
+      displayName: 'Customer',
+      role: 'customer',
+    };
+    state.reviews = { ...reviewState(), ownerError: 'offline' };
+    render(
+      <MemoryRouter>
+        <ReviewsSection productId="p1" />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Ada')).toBeInTheDocument();
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not load your review.');
   });
 });

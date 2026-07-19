@@ -5,19 +5,11 @@ import { getProductComparison } from '@/api/products';
 import { Button } from '@/components/ui/button';
 import { ComparisonMatrix } from './ComparisonMatrix';
 import { parseComparisonSelection, removeComparisonId } from './comparisonSelection';
-import { loadComparisonSelection, saveComparisonSelection } from './comparisonStorage';
+import { useComparisonSelection } from './ComparisonSelectionContext';
 
 interface LoadedComparison {
   response: ProductComparisonResponse;
   products: Product[];
-}
-
-function getStorage(): Storage | null {
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
 }
 
 export function ComparisonPage() {
@@ -30,14 +22,13 @@ export function ComparisonPage() {
   const skipStorageRestore = useRef(false);
   const selection = parseComparisonSelection(searchParams);
   const selectedIds = selection.status === 'valid' ? (selection.ids ?? []) : [];
+  const { selectedIds: draftIds, syncValidSelection, toggle } = useComparisonSelection();
 
   useEffect(() => {
     if (selection.status !== 'missing' || skipStorageRestore.current) return;
-    const storage = getStorage();
-    const stored = storage ? loadComparisonSelection(storage) : null;
-    if (!stored) return;
-    setSearchParams({ ids: stored.join(',') }, { replace: true });
-  }, [selection.status, setSearchParams]);
+    if (draftIds.length < 2) return;
+    setSearchParams({ ids: draftIds.join(',') }, { replace: true });
+  }, [draftIds, selection.status, setSearchParams]);
 
   useEffect(() => {
     if (selection.status !== 'valid' || selectedIds.length === 0) {
@@ -59,14 +50,8 @@ export function ComparisonPage() {
         const products = response.items.flatMap((item) =>
           item.status === 'available' ? [item.product] : [],
         );
-        if (products.length >= 2 && products.length <= 4) {
-          const storage = getStorage();
-          if (storage)
-            saveComparisonSelection(
-              storage,
-              products.map((product) => product.id),
-            );
-        }
+        if (products.length >= 2 && products.length <= 4)
+          syncValidSelection(products.map((product) => product.id));
         setLoaded({ response, products });
       })
       .catch((loadError: unknown) => {
@@ -79,7 +64,7 @@ export function ComparisonPage() {
       });
 
     return () => controller.abort();
-  }, [selection.status, selection.value, retry]);
+  }, [selection.status, selection.value, retry, syncValidSelection]);
 
   const updateIds = (ids: readonly string[]) => {
     if (ids.length < 2) {
@@ -150,7 +135,10 @@ export function ComparisonPage() {
       {loaded && loaded.products.length >= 2 && (
         <ComparisonMatrix
           products={loaded.products}
-          onRemove={(id) => updateIds(removeComparisonId(selectedIds, id))}
+          onRemove={(id) => {
+            toggle(id);
+            updateIds(removeComparisonId(selectedIds, id));
+          }}
         />
       )}
       {loaded && loaded.products.length < 2 && (

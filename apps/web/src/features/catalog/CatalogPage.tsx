@@ -9,6 +9,8 @@ import { ProductGrid } from '@/components/ProductGrid';
 import { ProductCard } from '@/components/ProductCard';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { Button } from '@/components/ui/button';
+import { CompareProductButton } from '@/features/comparison/CompareProductButton';
+import { ComparisonTray } from '@/features/comparison/ComparisonTray';
 import { CatalogSidebar } from './CatalogSidebar';
 import { CatalogToolbar } from './CatalogToolbar';
 import { PAGE_SIZES, SORT_OPTIONS } from './catalogOptions';
@@ -211,6 +213,7 @@ export function CatalogPage() {
           onClearFilters={clearFilters}
         />
         <div className="min-w-0">
+          <ComparisonTray />
           {products.length === 0 && isLoading ? (
             <CatalogSkeleton />
           ) : products.length === 0 ? (
@@ -229,6 +232,9 @@ export function CatalogPage() {
                     isCartAvailable={isCartAvailable}
                     isAdding={isActionPending(product.id, 'add')}
                     onAddToCart={addItem}
+                    comparisonControl={
+                      <CompareProductButton productId={product.id} productName={product.name} />
+                    }
                   />
                 ))}
               </ProductGrid>

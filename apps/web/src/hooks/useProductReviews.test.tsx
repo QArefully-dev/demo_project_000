@@ -93,6 +93,48 @@ describe('useProductReviews', () => {
     expect(result.current.list?.items[0]?.id).toBe('two');
   });
 
+  it('aborts and ignores stale public and owner responses after a product route change', async () => {
+    authState.user = {
+      id: 'customer',
+      email: 'customer@example.com',
+      displayName: 'Customer',
+      role: 'customer',
+    };
+    const listOne = deferred<ReviewListResponse>();
+    const listTwo = deferred<ReviewListResponse>();
+    const ownerOne = deferred<OwnedReview | null>();
+    const ownerTwo = deferred<OwnedReview | null>();
+    reviewsApi.getProductReviews
+      .mockReturnValueOnce(listOne.promise)
+      .mockReturnValueOnce(listTwo.promise);
+    reviewsApi.getMyProductReview
+      .mockReturnValueOnce(ownerOne.promise)
+      .mockReturnValueOnce(ownerTwo.promise);
+    const { result, rerender } = renderHook(({ productId }) => useProductReviews(productId), {
+      initialProps: { productId: 'one' },
+    });
+
+    rerender({ productId: 'two' });
+    await waitFor(() => {
+      expect(reviewsApi.getProductReviews).toHaveBeenCalledTimes(2);
+      expect(reviewsApi.getMyProductReview).toHaveBeenCalledTimes(2);
+    });
+    expect((reviewsApi.getProductReviews.mock.calls[0]?.[2] as AbortSignal).aborted).toBe(true);
+    expect((reviewsApi.getMyProductReview.mock.calls[0]?.[1] as AbortSignal).aborted).toBe(true);
+
+    await act(async () => {
+      listTwo.resolve(response('two'));
+      ownerTwo.resolve(ownedReview('two'));
+      await Promise.all([listTwo.promise, ownerTwo.promise]);
+      listOne.resolve(response('one'));
+      ownerOne.resolve(ownedReview('one'));
+      await Promise.all([listOne.promise, ownerOne.promise]);
+    });
+
+    await waitFor(() => expect(result.current.ownerReview?.id).toBe('two'));
+    expect(result.current.list?.items[0]?.id).toBe('two');
+  });
+
   it('resets to the first page and reloads when the sort changes', async () => {
     reviewsApi.getProductReviews.mockResolvedValue(response('one'));
     const { result } = renderHook(() => useProductReviews('one'));
@@ -172,7 +214,7 @@ describe('useProductReviews', () => {
 
     act(() => result.current.setPage(2));
     await waitFor(() => expect(result.current.page).toBe(2));
-    act(() => result.current.retry());
+    act(() => result.current.retryList());
 
     await waitFor(() =>
       expect(reviewsApi.getProductReviews).toHaveBeenLastCalledWith(

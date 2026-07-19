@@ -29,7 +29,8 @@ export interface UseProductReviewsResult {
   mutationError: string | null;
   setSort: (sort: ReviewSort) => void;
   setPage: (page: number) => void;
-  retry: () => void;
+  retryList: () => void;
+  retryOwner: () => void;
   submitReview: (body: CreateReviewBody) => Promise<boolean>;
   removeReview: () => Promise<boolean>;
 }
@@ -53,7 +54,8 @@ export function useProductReviews(productId: string): UseProductReviewsResult {
   const [sort, setSortState] = useState<ReviewSort>('newest');
   const [page, setPageState] = useState(1);
   const previousProductId = useRef(productId);
-  const [reloadVersion, setReloadVersion] = useState(0);
+  const [listReloadVersion, setListReloadVersion] = useState(0);
+  const [ownerReloadVersion, setOwnerReloadVersion] = useState(0);
   const [isMutating, setIsMutating] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
 
@@ -101,14 +103,14 @@ export function useProductReviews(productId: string): UseProductReviewsResult {
       current = false;
       controller.abort();
     };
-  }, [page, productId, reloadVersion, sort]);
+  }, [listReloadVersion, page, productId, sort]);
 
   useEffect(() => {
     const controller = new AbortController();
     let current = true;
+    setOwnerReview(null);
+    setOwnerError(null);
     if (!user) {
-      setOwnerReview(null);
-      setOwnerError(null);
       setIsOwnerLoading(false);
       return () => controller.abort();
     }
@@ -132,9 +134,14 @@ export function useProductReviews(productId: string): UseProductReviewsResult {
       current = false;
       controller.abort();
     };
-  }, [productId, reloadVersion, user?.id]);
+  }, [ownerReloadVersion, productId, user?.id]);
 
-  const refresh = useCallback(() => setReloadVersion((version) => version + 1), []);
+  const retryList = useCallback(() => setListReloadVersion((version) => version + 1), []);
+  const retryOwner = useCallback(() => setOwnerReloadVersion((version) => version + 1), []);
+  const refresh = useCallback(() => {
+    retryList();
+    retryOwner();
+  }, [retryList, retryOwner]);
 
   const setSort = useCallback((nextSort: ReviewSort) => {
     setSortState(nextSort);
@@ -196,7 +203,8 @@ export function useProductReviews(productId: string): UseProductReviewsResult {
     mutationError,
     setSort,
     setPage,
-    retry: refresh,
+    retryList,
+    retryOwner,
     submitReview,
     removeReview,
   };

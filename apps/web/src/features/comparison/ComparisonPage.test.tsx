@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import type { Product, ProductComparisonResponse } from '@shop/contracts/products';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ComparisonPage } from './ComparisonPage';
+import { ComparisonSelectionProvider, useComparisonSelection } from './ComparisonSelectionContext';
 
 const api = vi.hoisted(() => ({ getProductComparison: vi.fn() }));
 vi.mock('@/api/products', () => api);
@@ -37,6 +38,11 @@ function Location() {
   return <output data-testid="location">{useLocation().search}</output>;
 }
 
+function Selection() {
+  const { selectedIds } = useComparisonSelection();
+  return <output data-testid="selection">{selectedIds.join(',')}</output>;
+}
+
 function renderPage(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -44,10 +50,11 @@ function renderPage(path: string) {
         <Route
           path="/compare"
           element={
-            <>
+            <ComparisonSelectionProvider>
               <ComparisonPage />
               <Location />
-            </>
+              <Selection />
+            </ComparisonSelectionProvider>
           }
         />
       </Routes>
@@ -70,6 +77,19 @@ describe('ComparisonPage', () => {
     const headers = screen.getAllByRole('columnheader').map((header) => header.textContent);
     expect(headers[1]).toContain('Powder 3');
     expect(headers[2]).toContain('Powder 1');
+  });
+
+  it('uses a direct URL instead of a stored provider selection and syncs available response order', async () => {
+    window.localStorage.setItem('shop.comparison.product-ids.v1', JSON.stringify(['4', '2']));
+    api.getProductComparison.mockResolvedValueOnce(response(product('1'), product('3')));
+    renderPage('/compare?ids=3,1');
+
+    await screen.findByRole('table');
+    expect(api.getProductComparison).toHaveBeenCalledWith(['3', '1'], expect.any(AbortSignal));
+    expect(screen.getByTestId('selection')).toHaveTextContent('1,3');
+    expect(window.localStorage.getItem('shop.comparison.product-ids.v1')).toBe(
+      JSON.stringify(['1', '3']),
+    );
   });
 
   it('restores a valid stored selection only when the URL omits ids', async () => {

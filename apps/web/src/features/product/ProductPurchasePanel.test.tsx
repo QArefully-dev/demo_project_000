@@ -6,12 +6,21 @@ import type { PublicUser } from '@shop/contracts/auth';
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ProductPurchasePanel } from './ProductPurchasePanel';
+import {
+  ComparisonSelectionProvider,
+  useComparisonSelection,
+} from '@/features/comparison/ComparisonSelectionContext';
 
 const authState = vi.hoisted(() => ({ user: null as PublicUser | null }));
 const favouriteState = vi.hoisted(() => ({
   favouriteIds: new Set<string>(),
   toggleFavourite: vi.fn(),
 }));
+const comparisonStorage = {
+  getItem: () => null,
+  setItem: () => undefined,
+  removeItem: () => undefined,
+};
 
 vi.mock('@/hooks/AuthContext', () => ({
   useAuth: () => ({ user: authState.user }),
@@ -58,23 +67,25 @@ function renderPanel(overrides: Partial<ComponentProps<typeof ProductPurchasePan
   const onRetryCart = vi.fn();
   const result = render(
     <MemoryRouter initialEntries={['/products/powdered-water']}>
-      <Routes>
-        <Route
-          path="*"
-          element={
-            <ProductPurchasePanel
-              product={product()}
-              isCartAvailable
-              isAdding={false}
-              actionError={null}
-              cartError={null}
-              onAddToCart={onAddToCart}
-              onRetryCart={onRetryCart}
-              {...overrides}
-            />
-          }
-        />
-      </Routes>
+      <ComparisonSelectionProvider storage={comparisonStorage}>
+        <Routes>
+          <Route
+            path="*"
+            element={
+              <ProductPurchasePanel
+                product={product()}
+                isCartAvailable
+                isAdding={false}
+                actionError={null}
+                cartError={null}
+                onAddToCart={onAddToCart}
+                onRetryCart={onRetryCart}
+                {...overrides}
+              />
+            }
+          />
+        </Routes>
+      </ComparisonSelectionProvider>
     </MemoryRouter>,
   );
   return { ...result, onAddToCart, onRetryCart };
@@ -85,19 +96,35 @@ function Location() {
   return <output>{location.pathname}</output>;
 }
 
+function ComparisonPath() {
+  const { comparePath } = useComparisonSelection();
+  return <output data-testid="compare-path">{comparePath ?? ''}</output>;
+}
+
+function ComparisonCompleter() {
+  const { toggle } = useComparisonSelection();
+  return (
+    <button type="button" onClick={() => toggle('2')}>
+      Add catalog comparison item
+    </button>
+  );
+}
+
 describe('ProductPurchasePanel', () => {
   it('renders sale savings and regular price without sale metadata', () => {
     const { rerender } = render(
       <MemoryRouter>
-        <ProductPurchasePanel
-          product={product()}
-          isCartAvailable
-          isAdding={false}
-          actionError={null}
-          cartError={null}
-          onAddToCart={async () => {}}
-          onRetryCart={() => {}}
-        />
+        <ComparisonSelectionProvider storage={comparisonStorage}>
+          <ProductPurchasePanel
+            product={product()}
+            isCartAvailable
+            isAdding={false}
+            actionError={null}
+            cartError={null}
+            onAddToCart={async () => {}}
+            onRetryCart={() => {}}
+          />
+        </ComparisonSelectionProvider>
       </MemoryRouter>,
     );
 
@@ -108,15 +135,17 @@ describe('ProductPurchasePanel', () => {
 
     rerender(
       <MemoryRouter>
-        <ProductPurchasePanel
-          product={product({ compareAtPriceCents: undefined })}
-          isCartAvailable
-          isAdding={false}
-          actionError={null}
-          cartError={null}
-          onAddToCart={async () => {}}
-          onRetryCart={() => {}}
-        />
+        <ComparisonSelectionProvider storage={comparisonStorage}>
+          <ProductPurchasePanel
+            product={product({ compareAtPriceCents: undefined })}
+            isCartAvailable
+            isAdding={false}
+            actionError={null}
+            cartError={null}
+            onAddToCart={async () => {}}
+            onRetryCart={() => {}}
+          />
+        </ComparisonSelectionProvider>
       </MemoryRouter>,
     );
     expect(screen.queryByText('Sale')).not.toBeInTheDocument();
@@ -140,15 +169,17 @@ describe('ProductPurchasePanel', () => {
 
     render(
       <MemoryRouter>
-        <ProductPurchasePanel
-          product={product()}
-          isCartAvailable
-          isAdding
-          actionError={null}
-          cartError={null}
-          onAddToCart={async () => {}}
-          onRetryCart={() => {}}
-        />
+        <ComparisonSelectionProvider storage={comparisonStorage}>
+          <ProductPurchasePanel
+            product={product()}
+            isCartAvailable
+            isAdding
+            actionError={null}
+            cartError={null}
+            onAddToCart={async () => {}}
+            onRetryCart={() => {}}
+          />
+        </ComparisonSelectionProvider>
       </MemoryRouter>,
     );
     expect(screen.getByRole('button', { name: 'Adding…' })).toBeDisabled();
@@ -161,26 +192,28 @@ describe('ProductPurchasePanel', () => {
     favouriteState.toggleFavourite.mockReset();
     render(
       <MemoryRouter initialEntries={['/products/powdered-water']}>
-        <Routes>
-          <Route
-            path="*"
-            element={
-              <>
-                <ProductPurchasePanel
-                  product={product()}
-                  isCartAvailable
-                  isAdding={false}
-                  actionError={null}
-                  cartError={null}
-                  onAddToCart={async () => {}}
-                  onRetryCart={() => {}}
-                />
-                <Location />
-              </>
-            }
-          />
-          <Route path="/login" element={<Location />} />
-        </Routes>
+        <ComparisonSelectionProvider storage={comparisonStorage}>
+          <Routes>
+            <Route
+              path="*"
+              element={
+                <>
+                  <ProductPurchasePanel
+                    product={product()}
+                    isCartAvailable
+                    isAdding={false}
+                    actionError={null}
+                    cartError={null}
+                    onAddToCart={async () => {}}
+                    onRetryCart={() => {}}
+                  />
+                  <Location />
+                </>
+              }
+            />
+            <Route path="/login" element={<Location />} />
+          </Routes>
+        </ComparisonSelectionProvider>
       </MemoryRouter>,
     );
 
@@ -203,5 +236,39 @@ describe('ProductPurchasePanel', () => {
       expect.objectContaining({ id: 'powdered-water' }),
     );
     authenticated.unmount();
+  });
+
+  it('adds a secondary comparison action without changing cart availability', async () => {
+    const user = userEvent.setup();
+    const onAddToCart = vi.fn(async () => {});
+    render(
+      <MemoryRouter>
+        <ComparisonSelectionProvider storage={comparisonStorage}>
+          <ProductPurchasePanel
+            product={product({ id: '1' })}
+            isCartAvailable
+            isAdding={false}
+            actionError={null}
+            cartError={null}
+            onAddToCart={onAddToCart}
+            onRetryCart={() => {}}
+          />
+          <ComparisonPath />
+          <ComparisonCompleter />
+        </ComparisonSelectionProvider>
+      </MemoryRouter>,
+    );
+
+    const compare = screen.getByRole('button', { name: 'Compare Powdered Water' });
+    expect(compare).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Add powder' })).toBeEnabled();
+
+    await user.click(compare);
+    expect(compare).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Add powder' })).toBeEnabled();
+    expect(onAddToCart).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Add catalog comparison item' }));
+    expect(screen.getByTestId('compare-path')).toHaveTextContent('/compare?ids=1,2');
   });
 });

@@ -21,6 +21,7 @@ export function useBundles(productId?: string) {
     controllerRef.current = controller;
     const request = ++requestRef.current;
     if (mountedRef.current) {
+      setBundles([]);
       setIsLoading(true);
       setError(null);
     }

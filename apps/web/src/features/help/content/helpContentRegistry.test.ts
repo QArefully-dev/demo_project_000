@@ -6,6 +6,8 @@ import {
   helpArticles,
   helpContentRegistry,
   helpIndexLink,
+  productCommerceLinks,
+  productFactLinks,
   policyArticles,
 } from './helpContentRegistry';
 
@@ -50,6 +52,16 @@ describe('helpContentRegistry', () => {
     for (const article of helpContentRegistry) {
       const expectedPrefix = article.group === 'help' ? '/help/' : '/policies/';
       expect(article.path).toBe(`${expectedPrefix}${article.slug}`);
+    }
+  });
+
+  it('exports product-context links from canonical registry articles', () => {
+    const registryByPath = new Map<string, (typeof helpContentRegistry)[number]>(
+      helpContentRegistry.map((article) => [article.path, article]),
+    );
+
+    for (const link of [...Object.values(productFactLinks), ...Object.values(productCommerceLinks)]) {
+      expect(registryByPath.get(link.path)?.title).toBe(link.label);
     }
   });
 

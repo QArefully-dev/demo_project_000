@@ -7,6 +7,7 @@ import { useCategories } from '@/hooks/useCategories';
 import { useProductFilterOptions } from '@/hooks/useProductFilterOptions';
 import { useProducts } from '@/hooks/useProducts';
 import { CatalogPage } from './CatalogPage';
+import { ComparisonSelectionProvider } from '@/features/comparison/ComparisonSelectionContext';
 
 vi.mock('@/hooks/useProducts', () => ({ useProducts: vi.fn() }));
 vi.mock('@/hooks/useCategories', () => ({ useCategories: vi.fn() }));
@@ -84,11 +85,15 @@ function LocationControls() {
 function renderCatalog(initialEntry: string) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <LocationControls />
-      <Routes>
-        <Route path="/catalog" element={<CatalogPage />} />
-        <Route path="/products/:id" element={<p>Product route</p>} />
-      </Routes>
+      <ComparisonSelectionProvider
+        storage={{ getItem: () => null, setItem: () => undefined, removeItem: () => undefined }}
+      >
+        <LocationControls />
+        <Routes>
+          <Route path="/catalog" element={<CatalogPage />} />
+          <Route path="/products/:id" element={<p>Product route</p>} />
+        </Routes>
+      </ComparisonSelectionProvider>
     </MemoryRouter>,
   );
 }
@@ -373,6 +378,47 @@ describe('CatalogPage URL state', () => {
       page: 1,
       pageSize: 12,
     });
+  });
+
+  it('preserves comparison selection while filter, sort, and page controls update the catalog URL', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useProducts).mockReturnValue({
+      products: [catalogProduct, { ...catalogProduct, id: '2', name: 'Powdered Salt' }],
+      isLoading: false,
+      error: null,
+      total: 48,
+      currentPage: 1,
+      currentPageSize: 12,
+      refetch: vi.fn().mockResolvedValue(undefined),
+    });
+    renderCatalog('/catalog?page=2');
+
+    await user.click(screen.getByRole('button', { name: 'Compare Powdered Water' }));
+    await user.click(screen.getByRole('button', { name: 'Compare Powdered Salt' }));
+    expect(screen.getByRole('link', { name: 'Compare selected' })).toHaveAttribute(
+      'href',
+      '/compare?ids=1,2',
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Compare Powdered Water' }));
+    expect(screen.getByText('1 product selected for comparison')).toBeVisible();
+    expect(screen.getByTestId('location')).toHaveTextContent('/catalog?page=2');
+    await user.click(screen.getByRole('button', { name: 'Clear selection' }));
+    expect(screen.getByText('0 products selected for comparison')).toBeVisible();
+    expect(screen.getByTestId('location')).toHaveTextContent('/catalog?page=2');
+
+    await user.click(screen.getByRole('button', { name: 'Compare Powdered Water' }));
+    await user.click(screen.getByRole('button', { name: 'Compare Powdered Salt' }));
+
+    await user.click(screen.getByRole('radio', { name: 'Pantry Staples' }));
+    await user.selectOptions(screen.getByLabelText('Sort'), 'oldest');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent('category=Pantry+Staples');
+    expect(screen.getByRole('link', { name: 'Compare selected' })).toHaveAttribute(
+      'href',
+      '/compare?ids=1,2',
+    );
   });
 
   afterEach(() => {

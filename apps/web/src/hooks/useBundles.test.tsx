@@ -64,6 +64,7 @@ describe('useBundles', () => {
     const oldSignal = vi.mocked(bundlesApi.getBundles).mock.calls[0]?.[1];
     rerender({ productId: '2' });
     await waitFor(() => expect(bundlesApi.getBundles).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(bundlesApi.getBundles).mock.calls[1]?.[0]).toBe('2');
     expect(oldSignal?.aborted).toBe(true);
 
     await act(async () => {
@@ -75,5 +76,31 @@ describe('useBundles', () => {
       await oldResponse.promise;
     });
     expect(result.current.bundles.map((item) => item.id)).toEqual(['2']);
+  });
+
+  it('clears loaded bundles while loading a replacement product', async () => {
+    const firstResponse = deferred<CuratedBundle[]>();
+    const secondResponse = deferred<CuratedBundle[]>();
+    vi.mocked(bundlesApi.getBundles)
+      .mockReturnValueOnce(firstResponse.promise)
+      .mockReturnValueOnce(secondResponse.promise);
+    const { result, rerender } = renderHook(
+      ({ productId }: { productId: string }) => useBundles(productId),
+      { initialProps: { productId: '1' } },
+    );
+    await act(async () => {
+      firstResponse.resolve([bundle('1')]);
+      await firstResponse.promise;
+    });
+    expect(result.current.bundles.map((item) => item.id)).toEqual(['1']);
+
+    rerender({ productId: '2' });
+    await waitFor(() => expect(bundlesApi.getBundles).toHaveBeenCalledTimes(2));
+    expect(result.current.bundles).toEqual([]);
+
+    await act(async () => {
+      secondResponse.resolve([bundle('2')]);
+      await secondResponse.promise;
+    });
   });
 });

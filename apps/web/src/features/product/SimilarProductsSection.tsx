@@ -12,6 +12,14 @@ interface SimilarProductsSectionProps {
   onAddToCart: (productId: string) => Promise<boolean>;
 }
 
+function SimilarProductsHeading() {
+  return (
+    <h2 id="similar-products-heading" className="section-heading">
+      Similar powders
+    </h2>
+  );
+}
+
 /**
  * An independently loaded shelf. Its network state deliberately never affects
  * the product detail or purchase controls above it.
@@ -53,7 +61,8 @@ export function SimilarProductsSection({
 
   if (products === null && error === null) {
     return (
-      <section className="mt-16" aria-label="Similar powders" aria-busy="true">
+      <section className="mt-16" aria-labelledby="similar-products-heading" aria-busy="true">
+        <SimilarProductsHeading />
         <p className="text-sm text-muted-foreground">Finding similar powders...</p>
       </section>
     );
@@ -61,7 +70,8 @@ export function SimilarProductsSection({
 
   if (error) {
     return (
-      <section className="mt-16" aria-label="Similar powders">
+      <section className="mt-16" aria-labelledby="similar-products-heading">
+        <SimilarProductsHeading />
         <p role="alert" className="text-sm text-muted-foreground">
           Could not load similar powders.
         </p>
@@ -76,7 +86,16 @@ export function SimilarProductsSection({
     );
   }
 
-  if (!products || products.length === 0) return null;
+  if (!products || products.length === 0) {
+    return (
+      <section className="mt-16" aria-labelledby="similar-products-heading">
+        <SimilarProductsHeading />
+        <p className="mt-2 text-sm text-muted-foreground">
+          No similar powders available right now.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section className="mt-16" aria-labelledby="similar-products-heading">

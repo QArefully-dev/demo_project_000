@@ -13,13 +13,9 @@ function normalizeId(value: unknown): string | null {
   return String(numericId);
 }
 
-/**
- * Validates a comparison selection without changing its requested order.
- * Returned IDs are canonical decimal strings. Leading-zero forms are rejected
- * to match the shared product-ID transport contract.
- */
-export function normalizeComparisonIds(ids: readonly unknown[]): string[] | null {
-  if (ids.length < MIN_COMPARISON_PRODUCTS || ids.length > MAX_COMPARISON_PRODUCTS) return null;
+/** Validates an in-progress selection, including an empty draft. */
+export function normalizeComparisonDraftIds(ids: readonly unknown[]): string[] | null {
+  if (ids.length > MAX_COMPARISON_PRODUCTS) return null;
 
   const normalized: string[] = [];
   const seen = new Set<string>();
@@ -32,9 +28,61 @@ export function normalizeComparisonIds(ids: readonly unknown[]): string[] | null
   return normalized;
 }
 
+/**
+ * Validates a comparison selection without changing its requested order.
+ * Returned IDs are canonical decimal strings. Leading-zero forms are rejected
+ * to match the shared product-ID transport contract.
+ */
+export function normalizeComparisonIds(ids: readonly unknown[]): string[] | null {
+  if (ids.length < MIN_COMPARISON_PRODUCTS || ids.length > MAX_COMPARISON_PRODUCTS) return null;
+  return normalizeComparisonDraftIds(ids);
+}
+
 export function serializeComparisonIds(ids: readonly unknown[]): string | null {
   const normalized = normalizeComparisonIds(ids);
   return normalized === null ? null : normalized.join(',');
+}
+
+/** Produces one shareable comparison route from a complete selection. */
+export function comparisonPath(ids: readonly unknown[]): string | null {
+  const serialized = serializeComparisonIds(ids);
+  return serialized === null ? null : `/compare?ids=${serialized}`;
+}
+
+export type ComparisonDraftChange =
+  | { status: 'added'; ids: string[] }
+  | { status: 'removed'; ids: string[] }
+  | { status: 'at-capacity'; ids: string[] }
+  | { status: 'invalid'; ids: string[] };
+
+/** Adds an ID without sorting; a fifth ID leaves the draft unchanged. */
+export function addComparisonId(ids: readonly unknown[], id: unknown): ComparisonDraftChange {
+  const draft = normalizeComparisonDraftIds(ids);
+  const normalizedId = normalizeId(id);
+  if (draft === null || normalizedId === null) {
+    return { status: 'invalid', ids: draft ?? [] };
+  }
+  if (draft.includes(normalizedId)) return { status: 'invalid', ids: draft };
+  if (draft.length === MAX_COMPARISON_PRODUCTS) return { status: 'at-capacity', ids: draft };
+  return { status: 'added', ids: [...draft, normalizedId] };
+}
+
+/** Toggles an ID while preserving insertion order for remaining and re-added IDs. */
+export function toggleComparisonId(ids: readonly unknown[], id: unknown): ComparisonDraftChange {
+  const draft = normalizeComparisonDraftIds(ids);
+  const normalizedId = normalizeId(id);
+  if (draft === null || normalizedId === null) {
+    return { status: 'invalid', ids: draft ?? [] };
+  }
+  if (draft.includes(normalizedId)) {
+    return { status: 'removed', ids: draft.filter((candidateId) => candidateId !== normalizedId) };
+  }
+  return addComparisonId(draft, normalizedId);
+}
+
+/** Clears a draft without touching its last complete persisted selection. */
+export function clearComparisonIds(): string[] {
+  return [];
 }
 
 /**

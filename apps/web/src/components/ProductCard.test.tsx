@@ -5,6 +5,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ProductCard } from './ProductCard';
+import { ComparisonSelectionProvider } from '@/features/comparison/ComparisonSelectionContext';
+import { CompareProductButton } from '@/features/comparison/CompareProductButton';
 
 vi.mock('@/components/WishlistButton', () => ({
   WishlistButton: ({ productId }: { productId: string }) => (
@@ -128,5 +130,54 @@ describe('ProductCard', () => {
 
     renderCard({ id: 'pending-item' }, { isAdding: true });
     expect(screen.getByRole('button', { name: 'Adding...' })).toBeDisabled();
+  });
+
+  it('renders comparison control only when supplied', () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <ProductCard
+          product={product()}
+          onAddToCart={vi.fn().mockResolvedValue(true)}
+          isCartAvailable={true}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('button', { name: 'Compare' })).not.toBeInTheDocument();
+
+    rerender(
+      <MemoryRouter>
+        <ProductCard
+          product={product()}
+          onAddToCart={vi.fn().mockResolvedValue(true)}
+          isCartAvailable={true}
+          comparisonControl={<button type="button">Compare</button>}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('button', { name: 'Compare' })).toBeVisible();
+  });
+
+  it('does not add an item when its comparison control is clicked', async () => {
+    const user = userEvent.setup();
+    const onAddToCart = vi.fn().mockResolvedValue(true);
+    render(
+      <MemoryRouter>
+        <ComparisonSelectionProvider
+          storage={{ getItem: () => null, setItem: () => undefined, removeItem: () => undefined }}
+        >
+          <ProductCard
+            product={product()}
+            onAddToCart={onAddToCart}
+            isCartAvailable={true}
+            comparisonControl={
+              <CompareProductButton productId="powdered-water-1" productName="Powdered Water" />
+            }
+          />
+        </ComparisonSelectionProvider>
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Compare Powdered Water' }));
+    expect(onAddToCart).not.toHaveBeenCalled();
   });
 });
