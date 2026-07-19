@@ -52,7 +52,7 @@ Avoid visible platform complexity:
 
 - no seller marketplace as main concept
 - no warehouse or logistics product requiring explanation
-- no live trading or financial-market dependency
+- no external financial-market or production trading dependency
 - no microservice topology exposed to users
 - optional admin tooling stays secondary and absent from normal journey
 
@@ -184,6 +184,14 @@ Status: delivery order for remaining work. `partial` = implemented subset; `futu
    - special requests: manual review, bespoke scope, additional fee, quote acceptance before checkout
    - fulfilment: price-linked multi-week to multi-year wait; cancellation, refund, approval, and delivery rules
    - seed examples: powder -> fireplace; Victorian townhouse; fresh air; working time machine; original moonlight from specified night
+11. Live trading and auctions: future
+   - local simulated real-time powder trading and timed auctions; bids, offers, matching, settlement, cancellation, and immutable event history
+   - concurrency: atomic bid validation, optimistic conflicts, deterministic clocks, reconnect recovery, and duplicate-event handling
+   - scope: no real money, external exchange, market data, broker, or production trading dependency
+12. Geography configs: future
+   - region profiles: USA, Europe, China; configurable catalog, stock, currency, trading hours, time zones, language, formatting, and policy text
+   - behavior: region-aware availability, auction windows, order validation, seeded scenarios, and deterministic time-zone boundaries
+   - architecture: shared domain core -> explicit region config -> localized API and UI behavior
 
 ## Agentic AI and QA Surface
 
