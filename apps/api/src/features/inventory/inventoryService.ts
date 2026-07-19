@@ -32,7 +32,7 @@ export interface InventoryService {
     quantity: number;
     receivedByUserId: number;
     occurredAt: string;
-  }): InventoryReceiptResult;
+  }): InventoryReceiptResult & { replayed: boolean };
   cancelOrderInventory(input: { orderId: number; occurredAt: string }): readonly InventoryReceiptAllocation[];
 }
 
@@ -189,7 +189,7 @@ export function createInventoryService(dependencies: { repository: InventoryRepo
         if (existing.requestFingerprint !== fingerprint) {
           throw new InventoryError('IDEMPOTENCY_KEY_REUSED', 'Receipt idempotency key has different payload.');
         }
-        return JSON.parse(existing.responseJson) as InventoryReceiptResult;
+        return { ...(JSON.parse(existing.responseJson) as InventoryReceiptResult), replayed: true };
       }
       const receiptId = repository.insertReceipt({
         idempotencyKey,
@@ -213,7 +213,7 @@ export function createInventoryService(dependencies: { repository: InventoryRepo
         allocations,
       };
       repository.setReceiptResponse(receiptId, JSON.stringify(result));
-      return result;
+      return { ...result, replayed: false };
     },
     cancelOrderInventory({ orderId, occurredAt }) {
       const allocations = repository.listOrderAllocations(orderId);

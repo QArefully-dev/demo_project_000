@@ -92,7 +92,12 @@ void test('commit creates exactly one ordinary allocation and receipt replay has
     idempotencyKey: 'receipt', productId: 49, quantity: 3, receivedByUserId: 3,
     occurredAt: '2026-07-19T12:03:00.000Z',
   }))();
-  assert.deepEqual(replay, first);
+  assert.equal(first.replayed, false);
+  assert.equal(replay.replayed, true);
+  assert.deepEqual(
+    { ...replay, replayed: false },
+    first,
+  );
   assert.equal((db.prepare('SELECT stock_count FROM products WHERE id = 49').get() as { stock_count: number }).stock_count, 0);
   assert.equal((db.prepare('SELECT COUNT(*) AS count FROM inventory_stock_movements').get() as { count: number }).count, 2);
 });
