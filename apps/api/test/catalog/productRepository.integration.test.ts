@@ -305,10 +305,79 @@ void test('catalog SQL builder only emits allowlisted identifiers', () => {
     spec: ['texture:fine'],
     sort: 'name_asc',
   });
-  const predicate = buildCatalogPredicate(normalized);
+  const predicate = buildCatalogPredicate(normalized, '2026-07-19T12:00:00.000Z');
   assert.match(predicate.where, /EXISTS \(SELECT 1 FROM product_tags/);
   assert.match(predicate.where, /EXISTS \(SELECT 1 FROM product_specifications/);
   assert.deepEqual(predicate.params, ['plant-based', 'texture', 'fine']);
   assert.equal(catalogOrderBy(normalized.sort), 'ORDER BY p.name COLLATE NOCASE ASC, p.id ASC');
   assert.throws(() => normalizeCatalogQuery({ spec: ['not-real:any'] }), CatalogQueryError);
+});
+
+void test('reservation-aware availability filters count and paginate against one instant', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-catalog-availability-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+  const products = createProductRepository(db);
+  const now = '2026-07-19T12:00:00.000Z';
+  const future = '2026-07-19T12:01:00.000Z';
+  const expired = '2026-07-19T11:59:59.000Z';
+  db.prepare(
+    `UPDATE products
+     SET stock_count = CASE id WHEN 1 THEN 1 WHEN 2 THEN 0 WHEN 3 THEN 1 ELSE stock_count END,
+         backorderable = CASE id WHEN 2 THEN 1 ELSE 0 END,
+         backorder_lead_days = CASE id WHEN 2 THEN 14 ELSE NULL END
+     WHERE id IN (1, 2, 3)`,
+  ).run();
+  const payment = db.prepare(
+    `INSERT INTO payments
+      (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand)
+     VALUES (?, ?, 'prepared', 1, '4242', 'Visa')`,
+  );
+  const reservation = db.prepare(
+    `INSERT INTO inventory_reservations
+      (payment_idempotency_key, product_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
+     VALUES (?, ?, 'product', 1, 0, ?, ?)`,
+  );
+  payment.run('catalog-live', 'catalog-live');
+  reservation.run('catalog-live', 1, future, now);
+  payment.run('catalog-expired', 'catalog-expired');
+  reservation.run('catalog-expired', 3, expired, now);
+
+  const available = products.list({ availability: 'available', pageSize: 48 }, now);
+  const backorder = products.list({ availability: 'backorder', pageSize: 48 }, now);
+  const unavailable = products.list({ availability: 'out_of_stock', pageSize: 48 }, now);
+  assert.equal(
+    available.items.some((product) => product.id === 1),
+    false,
+  );
+  assert.equal(
+    available.items.some((product) => product.id === 3),
+    true,
+  );
+  assert.deepEqual(
+    backorder.items.map((product) => product.id),
+    [2],
+  );
+  assert.equal(
+    unavailable.items.some((product) => product.id === 1),
+    true,
+  );
+  assert.equal(
+    unavailable.items.some((product) => product.id === 2),
+    false,
+  );
+
+  const full = products.list({ availability: 'out_of_stock', pageSize: 48 }, now);
+  const pages = [1, 2, 3, 4, 5].flatMap(
+    (page) => products.list({ availability: 'out_of_stock', page, pageSize: 2 }, now).items,
+  );
+  assert.equal(full.total, full.items.length);
+  assert.deepEqual(
+    pages.map((product) => product.id),
+    full.items.map((product) => product.id),
+  );
 });

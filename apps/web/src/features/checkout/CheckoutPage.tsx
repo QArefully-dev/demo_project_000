@@ -119,6 +119,34 @@ export function CheckoutPage() {
           </div>
         </div>
       )}
+      {flow.mixConflict?.code === 'INSUFFICIENT_STOCK' && (
+        <div
+          role="alert"
+          className="mb-6 space-y-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
+        >
+          <p>One or more items are no longer available in the requested quantity.</p>
+          <p className="text-muted-foreground">
+            Your cart has not been changed. Refresh it, then review quantities before retrying.
+          </p>
+          <Button type="button" variant="outline" size="sm" onClick={() => void retryCart()}>
+            Refresh cart
+          </Button>
+        </div>
+      )}
+      {flow.mixConflict?.code === 'RESERVATION_EXPIRED' && (
+        <div
+          role="alert"
+          className="mb-6 space-y-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
+        >
+          <p>Your checkout reservation expired before payment could complete.</p>
+          <p className="text-muted-foreground">
+            Your cart has not been changed. Refresh it before starting a new payment attempt.
+          </p>
+          <Button type="button" variant="outline" size="sm" onClick={() => void retryCart()}>
+            Refresh cart
+          </Button>
+        </div>
+      )}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardContent className="pt-6">

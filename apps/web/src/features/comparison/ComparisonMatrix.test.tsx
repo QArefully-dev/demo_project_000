@@ -18,6 +18,9 @@ function product(id: string, name: string, specs: Product['specificationGroups']
     mixable: false,
     createdAt: '2026-01-01T00:00:00.000Z',
     available: true,
+    availability: 'in_stock',
+    backorderable: false,
+    backorderLeadDays: null,
     tags: [],
     specificationGroups: specs,
   };

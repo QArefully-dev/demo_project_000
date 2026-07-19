@@ -4,6 +4,7 @@ import { toProductContract } from '../../mappers/product.js';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import { getCart } from '../cart/cartService.js';
 import type { CartRepository } from '../cart/cartRepository.js';
+import type { InventoryService } from '../inventory/inventoryService.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
 import type { PowderMixRepository } from '../powderizer/powderMixRepository.js';
@@ -15,6 +16,12 @@ export interface BundleServiceDependencies {
   mixes: PowderMixRepository;
   unitOfWork: UnitOfWork;
   audit: AuditWriter;
+  availability?: BundleAvailabilityDependencies;
+}
+
+export interface BundleAvailabilityDependencies {
+  inventory: Pick<InventoryService, 'availableToSell'>;
+  clock: { now(): Date };
 }
 
 export type BundleUnavailable = {
@@ -60,6 +67,38 @@ export function toCuratedBundle(bundle: BundleRow): CuratedBundle {
   };
 }
 
+function withAvailableToSell(
+  bundles: readonly BundleRow[],
+  availability: BundleAvailabilityDependencies | undefined,
+): BundleRow[] {
+  if (!availability) return [...bundles];
+  const productIds = [
+    ...new Set(
+      bundles.flatMap((bundle) => bundle.components.map((component) => component.productId)),
+    ),
+  ];
+  const availabilityByProduct = new Map(
+    availability.inventory
+      .availableToSell(productIds, availability.clock.now().toISOString())
+      .map((product) => [product.productId, product]),
+  );
+  return bundles.map((bundle) => ({
+    ...bundle,
+    components: bundle.components.map((component) => ({
+      ...component,
+      product: component.product
+        ? {
+            ...component.product,
+            available_to_sell: availabilityByProduct.get(component.productId)?.availableToSell ?? 0,
+            backorderable: availabilityByProduct.get(component.productId)?.backorderable ? 1 : 0,
+            backorder_lead_days:
+              availabilityByProduct.get(component.productId)?.backorderLeadDays ?? null,
+          }
+        : undefined,
+    })),
+  }));
+}
+
 export function collectUnavailableComponentIds(
   cartId: string,
   components: readonly BundleComponentRow[],
@@ -73,8 +112,9 @@ export function collectUnavailableComponentIds(
       product.active !== 1 ||
       !Number.isSafeInteger(component.quantity) ||
       component.quantity <= 0 ||
-      product.stock_count <
-        carts.lineQuantity(cartId, String(component.productId)) + component.quantity
+      ((product.available_to_sell ?? product.stock_count) <
+        carts.lineQuantity(cartId, String(component.productId)) + component.quantity &&
+        product.backorderable !== 1)
     ) {
       unavailable.add(String(component.productId));
     }
@@ -110,15 +150,28 @@ function assertPersistedShape(bundle: BundleRow): void {
 export function createBundleService(dependencies: BundleServiceDependencies): BundleService {
   return {
     list(productId) {
-      return dependencies.bundles.list(productId).filter(isVisible).map(toCuratedBundle);
+      return withAvailableToSell(dependencies.bundles.list(productId), dependencies.availability)
+        .filter(isVisible)
+        .map(toCuratedBundle);
     },
     addToCart(cartId, bundleId, context) {
       requireAuditContext(context);
       return dependencies.unitOfWork.run(() => {
         if (!dependencies.carts.exists(cartId)) return 'CART_NOT_FOUND';
-        if (dependencies.carts.isReserved(cartId)) return 'CART_RESERVED';
+        if (
+          dependencies.carts.isReserved(
+            cartId,
+            dependencies.availability?.clock.now().toISOString(),
+          )
+        ) {
+          return 'CART_RESERVED';
+        }
 
-        const bundle = dependencies.bundles.findById(bundleId);
+        const storedBundle = dependencies.bundles.findById(bundleId);
+        const bundle = withAvailableToSell(
+          storedBundle ? [storedBundle] : [],
+          dependencies.availability,
+        )[0];
         if (!bundle || bundle.active !== 1) return 'BUNDLE_NOT_FOUND';
         assertPersistedShape(bundle);
 
@@ -145,7 +198,10 @@ export function createBundleService(dependencies: BundleServiceDependencies): Bu
           quantity: bundle.components.reduce((total, component) => total + component.quantity, 0),
           context,
         });
-        return getCart(dependencies.carts, cartId, dependencies.mixes) ?? 'CART_NOT_FOUND';
+        return (
+          getCart(dependencies.carts, cartId, dependencies.mixes, dependencies.availability) ??
+          'CART_NOT_FOUND'
+        );
       });
     },
   };

@@ -99,6 +99,15 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
             productIds: result.productIds,
           });
           return;
+        case 'RESERVATION_EXPIRED':
+          reply.code(409).send({
+            error: 'RESERVATION_EXPIRED',
+            reservationExpiresAt: result.reservationExpiresAt,
+          });
+          return;
+        case 'INSUFFICIENT_STOCK':
+          reply.code(409).send({ error: 'INSUFFICIENT_STOCK', productIds: result.productIds });
+          return;
         case 'IDEMPOTENT_IN_PROGRESS':
           sendConflict(reply, 'Payment is already being processed');
           return;

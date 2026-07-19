@@ -323,6 +323,11 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
     (db.prepare('SELECT name FROM products WHERE id = 99').get() as { name: string }).name,
     'Local',
   );
+  assert.equal(
+    (db.prepare('SELECT stock_count FROM products WHERE id = 99').get() as { stock_count: number })
+      .stock_count,
+    1,
+  );
   assert.deepEqual(db.prepare('SELECT tag_key FROM product_tags WHERE product_id = 99').all(), [
     { tag_key: 'local-tag' },
   ]);
@@ -416,9 +421,9 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
      VALUES ('seed-reset-payment', 'seed-reset-fingerprint', 'pending', 1000, '4242', 'Visa')`,
   ).run();
   db.prepare(
-    `INSERT INTO powder_mix_stock_reservations
-      (payment_idempotency_key, product_id, bag_equivalents)
-     VALUES ('seed-reset-payment', 1, 1)`,
+    `INSERT INTO inventory_reservations
+      (payment_idempotency_key, product_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
+     VALUES ('seed-reset-payment', 1, 'powder_mix', 1, 0, NULL, '2026-07-19T12:00:00.000Z')`,
   ).run();
   db.prepare(
     `INSERT INTO orders
@@ -492,7 +497,7 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   for (const [table, expectedCount] of [
     ['powder_mixes', 0],
     ['powder_mix_components', 0],
-    ['powder_mix_stock_reservations', 0],
+    ['inventory_reservations', 0],
     ['order_access_grants', 0],
     ['order_lifecycle_events', 19],
     ['order_shipment_items', 6],

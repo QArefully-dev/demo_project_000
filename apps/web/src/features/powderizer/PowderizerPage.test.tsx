@@ -20,6 +20,9 @@ const cartId = '01234567-89ab-4def-8123-456789abcdee';
 const productMetadata = {
   createdAt: '2026-07-14T00:00:00.000Z',
   available: true,
+  availability: 'in_stock' as const,
+  backorderable: false,
+  backorderLeadDays: null,
   tags: [],
   specificationGroups: [],
 };

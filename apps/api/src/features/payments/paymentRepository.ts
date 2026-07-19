@@ -30,6 +30,7 @@ export interface PaymentRecord {
   gatewayReference: string | null;
   failureReason: string | null;
   responseJson: string | null;
+  reservationExpiresAt: string | null;
   createdAt: string;
   updatedAt: string | null;
 }
@@ -45,6 +46,7 @@ interface PaymentRow {
   gateway_reference: string | null;
   failure_reason: string | null;
   response_json: string | null;
+  reservation_expires_at: string | null;
   created_at: string;
   updated_at: string | null;
 }
@@ -115,13 +117,14 @@ function toRecord(row: PaymentRow): PaymentRecord {
     gatewayReference: row.gateway_reference,
     failureReason: row.failure_reason,
     responseJson: row.response_json,
+    reservationExpiresAt: row.reservation_expires_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
 
 const paymentColumns = `id, idempotency_key, request_fingerprint, status, order_id, cart_id,
-  quote_json, gateway_reference, failure_reason, response_json, created_at, updated_at`;
+  quote_json, gateway_reference, failure_reason, response_json, reservation_expires_at, created_at, updated_at`;
 
 export interface PaymentRepository {
   reservePreGateway(params: {
@@ -135,6 +138,7 @@ export interface PaymentRepository {
     cartId: string;
     quote: PersistedCheckoutQuote;
     updatedAt: string;
+    reservationExpiresAt: string;
   }): boolean;
   load(idempotencyKey: string): PaymentRecord | undefined;
   transition(params: {
@@ -200,10 +204,16 @@ export function createPaymentRepository(db: Database.Database): PaymentRepositor
       return (
         db
           .prepare(
-            `UPDATE payments SET cart_id = ?, quote_json = ?, updated_at = ?
+            `UPDATE payments SET cart_id = ?, quote_json = ?, reservation_expires_at = ?, updated_at = ?
              WHERE idempotency_key = ? AND status = 'prepared'`,
           )
-          .run(params.cartId, quoteJson, params.updatedAt, params.idempotencyKey).changes > 0
+          .run(
+            params.cartId,
+            quoteJson,
+            params.reservationExpiresAt,
+            params.updatedAt,
+            params.idempotencyKey,
+          ).changes > 0
       );
     },
     load,
@@ -217,7 +227,9 @@ export function createPaymentRepository(db: Database.Database): PaymentRepositor
             `UPDATE payments
              SET status = ?, order_id = COALESCE(?, order_id), amount_cents = COALESCE(?, amount_cents),
                  failure_reason = ?, gateway_reference = COALESCE(?, gateway_reference),
-                 response_json = COALESCE(?, response_json), updated_at = ?
+                 response_json = COALESCE(?, response_json),
+                 reservation_expires_at = CASE WHEN ? = 'authorized_pending_finalize' THEN NULL ELSE reservation_expires_at END,
+                 updated_at = ?
              WHERE idempotency_key = ? AND status = ?`,
           )
           .run(
@@ -227,6 +239,7 @@ export function createPaymentRepository(db: Database.Database): PaymentRepositor
             params.failureReason ?? null,
             params.gatewayReference ?? null,
             params.responseJson ?? null,
+            params.nextStatus,
             params.updatedAt,
             params.idempotencyKey,
             params.expectedStatus,

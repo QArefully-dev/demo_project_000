@@ -51,6 +51,16 @@ export function CartLineItem({
         <p className="text-xs text-muted-foreground">
           {formatMoney(item.product.priceCents)} per bag
         </p>
+        {item.product.availability === 'backorder' && (
+          <p className="text-xs font-medium text-amber-700">
+            Available to backorder. Checkout confirms availability.
+          </p>
+        )}
+        {item.product.availability === 'out_of_stock' && (
+          <p className="text-xs font-medium text-destructive">
+            Currently out of stock. Checkout confirms availability.
+          </p>
+        )}
         <div className="flex items-center gap-2 mt-1">
           <Button
             variant="outline"

@@ -137,15 +137,17 @@ export function seedDatabase(db: Database.Database): void {
   const seed = db.transaction(() => {
     const upsertProduct = db.prepare(`
       INSERT INTO products
-        (id, name, description, price_cents, category, stock_count, image_set_id, slug, compare_at_price_cents, sales_count, mixable, mix_unit_grams, active, created_at)
+        (id, name, description, price_cents, category, stock_count, backorderable, backorder_lead_days, image_set_id, slug, compare_at_price_cents, sales_count, mixable, mix_unit_grams, active, created_at)
       VALUES
-        (@id, @name, @description, @price_cents, @category, @stock_count, @image_set_id, @slug, @compare_at_price_cents, @sales_count, @mixable, @mix_unit_grams, @active, @created_at)
+        (@id, @name, @description, @price_cents, @category, @stock_count, @backorderable, @backorder_lead_days, @image_set_id, @slug, @compare_at_price_cents, @sales_count, @mixable, @mix_unit_grams, @active, @created_at)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         description = excluded.description,
         price_cents = excluded.price_cents,
         category = excluded.category,
         stock_count = excluded.stock_count,
+        backorderable = excluded.backorderable,
+        backorder_lead_days = excluded.backorder_lead_days,
         image_set_id = excluded.image_set_id,
         slug = excluded.slug,
         compare_at_price_cents = excluded.compare_at_price_cents,
@@ -200,6 +202,8 @@ export function seedDatabase(db: Database.Database): void {
         ...product,
         mixable: product.mixable ? 1 : 0,
         mix_unit_grams: product.mixUnitGrams,
+        backorderable: product.backorderable ? 1 : 0,
+        backorder_lead_days: product.backorderLeadDays,
         active: product.active ? 1 : 0,
       });
       for (const tag of product.tags) {

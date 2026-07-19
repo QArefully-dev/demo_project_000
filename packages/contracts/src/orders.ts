@@ -68,6 +68,14 @@ export type TrackingEventCode = Static<typeof TrackingEventCode>;
 export const OrderLineKind = Type.Union([Type.Literal('product'), Type.Literal('powder_mix')]);
 export type OrderLineKind = Static<typeof OrderLineKind>;
 
+export const OrderInventoryStatus = Type.Union([
+  Type.Literal('allocated'),
+  Type.Literal('partially_backordered'),
+  Type.Literal('backordered'),
+  Type.Literal('cancelled'),
+]);
+export type OrderInventoryStatus = Static<typeof OrderInventoryStatus>;
+
 export const OrderLineItem = Type.Object(
   {
     lineId: PositiveIntegerString,
@@ -76,6 +84,9 @@ export const OrderLineItem = Type.Object(
     unitPriceCents: MoneyCents,
     quantity: Type.Integer({ minimum: 1 }),
     lineTotalCents: MoneyCents,
+    inventoryStatus: OrderInventoryStatus,
+    allocatedQuantity: Type.Integer({ minimum: 0 }),
+    backorderedQuantity: Type.Integer({ minimum: 0 }),
   },
   { additionalProperties: false },
 );
@@ -134,6 +145,7 @@ export const OrderSummary = Type.Object(
     version: NonNegativeVersion,
     totalCents: MoneyCents,
     totalItems: Type.Integer({ minimum: 0 }),
+    hasBackorder: Type.Boolean(),
     createdAt: UtcIsoInstant,
   },
   { additionalProperties: false },

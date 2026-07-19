@@ -61,6 +61,10 @@
     "./reviews": {
       "types": "./dist/reviews.d.ts",
       "import": "./dist/reviews.js"
+    },
+    "./inventory": {
+      "types": "./dist/inventory.d.ts",
+      "import": "./dist/inventory.js"
     }
   },
   "dependencies": {

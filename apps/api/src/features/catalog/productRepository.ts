@@ -6,7 +6,7 @@ import type {
   ProductSpecificationGroup,
   ProductTag,
 } from '@shop/contracts/products';
-import { buildCatalogPredicate, catalogOrderBy } from './catalogSql.js';
+import { availableToSellSql, buildCatalogPredicate, catalogOrderBy } from './catalogSql.js';
 import { normalizeCatalogQuery } from './catalogQuery.js';
 
 export interface ProductRow {
@@ -16,6 +16,10 @@ export interface ProductRow {
   price_cents: number;
   category: string;
   stock_count: number;
+  /** Customer-read projection only. Raw `stock_count` remains internal on-hand stock. */
+  available_to_sell?: number;
+  backorderable?: number;
+  backorder_lead_days?: number | null;
   image_set_id: string | null;
   slug: string;
   compare_at_price_cents: number | null;
@@ -40,18 +44,18 @@ export interface ProductList {
 }
 
 export interface ProductRepository {
-  list(query: ProductQuery): ProductList;
+  list(query: ProductQuery, now?: string): ProductList;
   listFilterOptions(): ProductFilterOptionsResponse;
   /** Internal lookup for checkout, order history, and persisted mix components. */
   findById(id: number): ProductRow | undefined;
   /** Customer discovery lookup. Inactive products must remain invisible. */
-  findActiveById(id: number): CustomerProductRow | undefined;
+  findActiveById(id: number, now?: string): CustomerProductRow | undefined;
   listCategories(): string[];
-  listBestsellers(limit?: number): CustomerProductRow[];
+  listBestsellers(limit?: number, now?: string): CustomerProductRow[];
   /** Explicit comparison lookup; includes active and inactive products only. */
-  listByIds(ids: readonly number[]): CustomerProductRow[];
+  listByIds(ids: readonly number[], now?: string): CustomerProductRow[];
   /** Active customer reads for deterministic similarity scoring. */
-  listActiveCandidatesExcluding(sourceId: number): CustomerProductRow[];
+  listActiveCandidatesExcluding(sourceId: number, now?: string): CustomerProductRow[];
   listEligibleMixProducts(): ProductRow[];
   /** Active-only component selection for new Powderizer quotes and mixes. */
   listActiveMixProducts(productIds: readonly number[]): ProductRow[];
@@ -60,6 +64,8 @@ export interface ProductRepository {
 }
 
 export function createProductRepository(db: Database.Database): ProductRepository {
+  const currentTime = (now?: string): string => now ?? new Date().toISOString();
+  const customerColumns = `p.*, ${availableToSellSql} AS available_to_sell`;
   const hydrateCustomerRows = (rows: readonly ProductRow[]): CustomerProductRow[] => {
     if (rows.length === 0) return [];
     const productIds = [...new Set(rows.map((row) => row.id))];
@@ -134,9 +140,10 @@ export function createProductRepository(db: Database.Database): ProductRepositor
   };
 
   return {
-    list(query) {
+    list(query, now) {
+      const at = currentTime(now);
       const normalized = normalizeCatalogQuery(query);
-      const predicate = buildCatalogPredicate(normalized);
+      const predicate = buildCatalogPredicate(normalized, at);
       const total = (
         db
           .prepare(`SELECT COUNT(*) AS count FROM products p ${predicate.where}`)
@@ -146,9 +153,10 @@ export function createProductRepository(db: Database.Database): ProductRepositor
       ).count;
       const items = db
         .prepare(
-          `SELECT p.* FROM products p ${predicate.where} ${catalogOrderBy(normalized.sort)} LIMIT ? OFFSET ?`,
+          `SELECT ${customerColumns} FROM products p ${predicate.where} ${catalogOrderBy(normalized.sort)} LIMIT ? OFFSET ?`,
         )
         .all(
+          at,
           ...predicate.params,
           normalized.pageSize,
           (normalized.page - 1) * normalized.pageSize,
@@ -222,9 +230,10 @@ export function createProductRepository(db: Database.Database): ProductRepositor
     findById(id) {
       return db.prepare('SELECT * FROM products WHERE id = ?').get(id) as ProductRow | undefined;
     },
-    findActiveById(id) {
-      const row = db.prepare('SELECT * FROM products WHERE id = ? AND active = 1').get(id) as
-        ProductRow | undefined;
+    findActiveById(id, now) {
+      const row = db
+        .prepare(`SELECT ${customerColumns} FROM products p WHERE p.id = ? AND p.active = 1`)
+        .get(currentTime(now), id) as ProductRow | undefined;
       return row ? hydrateCustomerRows([row])[0] : undefined;
     },
     listCategories() {
@@ -236,26 +245,31 @@ export function createProductRepository(db: Database.Database): ProductRepositor
         }[]
       ).map((row) => row.category);
     },
-    listBestsellers(limit = 8) {
+    listBestsellers(limit = 8, now) {
       const rows = db
         .prepare(
-          'SELECT * FROM products WHERE active = 1 AND sales_count >= 250 ORDER BY sales_count DESC, id ASC LIMIT ?',
+          `SELECT ${customerColumns} FROM products p
+           WHERE p.active = 1 AND p.sales_count >= 250
+           ORDER BY p.sales_count DESC, p.id ASC LIMIT ?`,
         )
-        .all(limit) as ProductRow[];
+        .all(currentTime(now), limit) as ProductRow[];
       return hydrateCustomerRows(rows);
     },
-    listByIds(ids) {
+    listByIds(ids, now) {
       if (ids.length === 0) return [];
       const placeholders = ids.map(() => '?').join(', ');
       const rows = db
-        .prepare(`SELECT * FROM products WHERE id IN (${placeholders})`)
-        .all(...ids) as ProductRow[];
+        .prepare(`SELECT ${customerColumns} FROM products p WHERE p.id IN (${placeholders})`)
+        .all(currentTime(now), ...ids) as ProductRow[];
       return hydrateCustomerRows(rows);
     },
-    listActiveCandidatesExcluding(sourceId) {
+    listActiveCandidatesExcluding(sourceId, now) {
       const rows = db
-        .prepare('SELECT * FROM products WHERE active = 1 AND id != ? ORDER BY id ASC')
-        .all(sourceId) as ProductRow[];
+        .prepare(
+          `SELECT ${customerColumns} FROM products p
+                  WHERE p.active = 1 AND p.id != ? ORDER BY p.id ASC`,
+        )
+        .all(currentTime(now), sourceId) as ProductRow[];
       return hydrateCustomerRows(rows);
     },
     listEligibleMixProducts() {

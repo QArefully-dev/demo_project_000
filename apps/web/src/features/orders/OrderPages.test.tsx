@@ -29,6 +29,9 @@ const detail: OrderDetailResponse = {
       unitPriceCents: 1000,
       quantity: 1,
       lineTotalCents: 1000,
+      inventoryStatus: 'partially_backordered',
+      allocatedQuantity: 1,
+      backorderedQuantity: 0,
     },
   ],
   mixItems: [
@@ -92,6 +95,7 @@ const list: OrderListResponse = {
       version: 2,
       totalCents: 2200,
       totalItems: 2,
+      hasBackorder: false,
       createdAt: detail.createdAt,
     },
   ],
@@ -187,9 +191,34 @@ describe('customer order UI', () => {
     expect(screen.getByText('Cancelled')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Order #12 was cancelled. Simulated fulfilment has stopped; no refund was issued.',
+        'Order #12 was cancelled. Simulated fulfilment has stopped; unshipped allocated stock was released and no refund was issued.',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('shows order allocation state without an estimated delivery date', async () => {
+    vi.mocked(getOrder).mockResolvedValue({
+      ...detail,
+      items: [
+        {
+          ...detail.items[0]!,
+          inventoryStatus: 'partially_backordered',
+          allocatedQuantity: 1,
+          backorderedQuantity: 2,
+          quantity: 3,
+        },
+      ],
+    });
+    render(
+      <MemoryRouter initialEntries={['/orders/12']}>
+        <Routes>
+          <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('1 allocated; 2 awaiting stock')).toBeInTheDocument();
+    expect(screen.queryByText(/estimated|days/i)).not.toBeInTheDocument();
   });
 
   it('refreshes rather than claiming cancellation when server reports stale state', async () => {

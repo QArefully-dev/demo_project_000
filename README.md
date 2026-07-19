@@ -107,7 +107,7 @@ Alice has 3 pre-seeded favourite products.
 
 Signed-in customers can browse `/orders` and open their own `/orders/:orderId` detail pages. Bob cannot access Alice's orders. A guest checkout confirmation is available only through its short-lived, exact-order browser cookie; there is no guest history or guest cancellation.
 
-Order state, tracking references, and delivery events are local simulation data. They do not represent carrier service, dispatch, delivery, stock reservation, or notifications. An owner can cancel only while an order is `processing` or `packed` and no shipment has left; cancellation stops simulated fulfilment only. It does not refund, alter payment, totals, promo use, or purchased snapshots.
+Order state, tracking references, delivery events, and inventory are local simulation data. Checkout holds local stock in a 15-minute reservation while payment is processed, then consumes only the reserved quantity after simulated authorization. Eligible products may show as available to backorder when local stock is exhausted; an administrator's local stock receipt fulfills waiting quantities FIFO. None of this represents carrier service, supplier inventory, dispatch, delivery, or notifications. An owner can cancel only while an order is `processing` or `packed` and no shipment has left; cancellation returns unshipped ordinary local stock to inventory and does not refund, alter payment, totals, promo use, or purchased snapshots.
 
 ### Admin Lifecycle API (Local Simulation)
 
@@ -157,6 +157,23 @@ Content-Type: application/json
 ```
 
 Shipment transitions are `packed -> shipped -> delivered` or `packed -> shipped -> delivery_failed`. Payloads use server-owned timestamps; changing an idempotency key payload or sending a stale version returns a conflict.
+
+### Admin Inventory Receipt API (Local Simulation)
+
+There is no inventory UI. Sign in as `admin@example.com`, retain the session cookie, and record a local stock receipt with a fresh UUID `idempotencyKey`. The command immediately allocates the oldest eligible backorders first, then leaves any remainder as local stock.
+
+```http
+POST /api/admin/inventory/receipts
+Content-Type: application/json
+
+{
+  "productId": "49",
+  "quantity": 5,
+  "idempotencyKey": "00000000-0000-4000-8000-000000000204"
+}
+```
+
+Replaying the exact receipt key returns its original result; changing its product or quantity returns a conflict. This is a local-demo stock command only, not a supplier, warehouse, or fulfilment integration.
 
 ### Promo Codes
 

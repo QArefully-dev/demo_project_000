@@ -33,6 +33,9 @@ const product = (overrides: Partial<Product> = {}): Product => ({
   },
   category: 'Impossible',
   stock: 10,
+  availability: 'in_stock',
+  backorderable: false,
+  backorderLeadDays: null,
   slug: 'powdered-water',
   salesCount: 10,
   ...overrides,
@@ -109,12 +112,20 @@ describe('ProductCard', () => {
   });
 
   it('disables purchase for unavailable stock and labels low stock', () => {
-    renderCard({ stock: 0 });
+    renderCard({ stock: 0, availability: 'out_of_stock' });
     expect(screen.getByText('Out of stock')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Unavailable' })).toBeDisabled();
 
     renderCard({ id: 'low-stock', stock: 2 });
     expect(screen.getByText('Only 2 left')).toBeInTheDocument();
+  });
+
+  it('keeps backorderable products purchasable without promising a delivery date', () => {
+    renderCard({ stock: 0, availability: 'backorder', backorderable: true, backorderLeadDays: 14 });
+
+    expect(screen.getByText('Available to backorder')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add powder' })).toBeEnabled();
+    expect(screen.queryByText(/14 days/i)).not.toBeInTheDocument();
   });
 
   it('exposes external pending and failed add-to-cart states', async () => {

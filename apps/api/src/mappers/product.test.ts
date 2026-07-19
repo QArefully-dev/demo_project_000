@@ -58,3 +58,30 @@ void test('raw internal rows remain valid with empty metadata and UTC normalizat
     '2025-01-01T12:00:00.000Z',
   );
 });
+
+void test('reservation-aware projection never exposes on-hand stock as customer availability', () => {
+  const product = toProductContract({
+    ...canonicalRow,
+    stock_count: 9,
+    available_to_sell: 0,
+    backorderable: 1,
+    backorder_lead_days: 14,
+  });
+
+  assert.equal(product.stock, 0);
+  assert.equal(product.availability, 'backorder');
+  assert.equal(product.backorderable, true);
+  assert.equal(product.backorderLeadDays, 14);
+  assert.equal(product.available, true);
+
+  const unavailable = toProductContract({
+    ...canonicalRow,
+    stock_count: 9,
+    available_to_sell: 0,
+    backorderable: 0,
+    backorder_lead_days: null,
+  });
+  assert.equal(unavailable.stock, 0);
+  assert.equal(unavailable.availability, 'out_of_stock');
+  assert.equal(unavailable.available, false);
+});

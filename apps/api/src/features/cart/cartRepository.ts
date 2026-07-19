@@ -18,7 +18,8 @@ export interface CartRepository {
   removeLine(cartId: string, productId: string): boolean;
   reserve(cartId: string, paymentIdempotencyKey: string, createdAt: string): boolean;
   releaseReservation(paymentIdempotencyKey: string): boolean;
-  isReserved(cartId: string): boolean;
+  /** Expired prepared checkout locks do not block cart mutation. */
+  isReserved(cartId: string, now?: string): boolean;
   touch(cartId: string): void;
   remove(cartId: string): void;
 }
@@ -104,9 +105,21 @@ export function createCartRepository(db: Database.Database): CartRepository {
           .run(paymentIdempotencyKey).changes > 0
       );
     },
-    isReserved(cartId) {
+    isReserved(cartId, now) {
       return (
-        db.prepare('SELECT 1 FROM cart_reservations WHERE cart_id = ?').get(cartId) !== undefined
+        db
+          .prepare(
+            `SELECT 1
+             FROM cart_reservations cr
+             LEFT JOIN payments p ON p.idempotency_key = cr.payment_idempotency_key
+             WHERE cr.cart_id = ?
+               AND NOT (
+                 p.status = 'prepared'
+                 AND p.reservation_expires_at IS NOT NULL
+                 AND p.reservation_expires_at <= ?
+               )`,
+          )
+          .get(cartId, now ?? new Date().toISOString()) !== undefined
       );
     },
     touch(cartId) {

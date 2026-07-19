@@ -1,11 +1,30 @@
 import { useCallback } from 'react';
 import { ApiError } from '@/api/client';
 import { pay } from '@/api/payments';
-import type { CardField, CheckoutEvent, CheckoutState, MixCheckoutConflict } from './checkoutState';
+import {
+  createIdempotencyKey,
+  type CardField,
+  type CheckoutConflict,
+  type CheckoutEvent,
+  type CheckoutState,
+} from './checkoutState';
 
-function mixConflict(error: unknown): MixCheckoutConflict | null {
+function checkoutConflict(error: unknown): CheckoutConflict | null {
   if (!(error instanceof ApiError) || error.status !== 409 || !error.response) return null;
   const response = error.response as Record<string, unknown>;
+  if (
+    response.error === 'RESERVATION_EXPIRED' &&
+    typeof response.reservationExpiresAt === 'string'
+  ) {
+    return { code: 'RESERVATION_EXPIRED', reservationExpiresAt: response.reservationExpiresAt };
+  }
+  if (
+    response.error === 'INSUFFICIENT_STOCK' &&
+    Array.isArray(response.productIds) &&
+    response.productIds.every((id) => typeof id === 'string')
+  ) {
+    return { code: 'INSUFFICIENT_STOCK', productIds: response.productIds };
+  }
   if (
     response.code === 'MIX_REQUOTE_REQUIRED' &&
     Array.isArray(response.mixes) &&
@@ -88,9 +107,9 @@ export function usePaymentSubmission({
       clearCart();
       replaceWithOrder(order.id);
     } catch (error) {
-      const conflict = mixConflict(error);
+      const conflict = checkoutConflict(error);
       if (conflict) {
-        dispatch({ type: 'mix-conflict', conflict });
+        dispatch({ type: 'mix-conflict', conflict, idempotencyKey: createIdempotencyKey() });
         return;
       }
       dispatch({

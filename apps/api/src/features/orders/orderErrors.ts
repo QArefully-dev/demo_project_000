@@ -7,6 +7,7 @@ export const ORDER_ERROR_CODES = [
   'STALE_VERSION',
   'IDEMPOTENCY_CONFLICT',
   'TRACKING_NOT_ALLOWED',
+  'OUTSTANDING_BACKORDER',
 ] as const;
 
 export type OrderErrorCode = (typeof ORDER_ERROR_CODES)[number];
@@ -20,6 +21,7 @@ const messages: Record<OrderErrorCode, string> = {
   STALE_VERSION: 'Order has changed',
   IDEMPOTENCY_CONFLICT: 'Idempotency key conflicts with a different request',
   TRACKING_NOT_ALLOWED: 'Tracking events require a shipped shipment',
+  OUTSTANDING_BACKORDER: 'Order has outstanding backordered items',
 };
 
 export class OrderDomainError extends Error {

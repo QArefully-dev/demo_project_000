@@ -35,6 +35,7 @@ const expectedVersions = [
   '012',
   '013',
   '014',
+  '015',
 ];
 
 function migrationVersions(db: Database.Database): string[] {
@@ -253,14 +254,25 @@ void test('migrations create a fresh schema, record every version, and remain id
       .get(),
     { name: 'powder_mixes' },
   );
-  assert.deepEqual(
+  assert.equal(
     db
       .prepare(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'powder_mix_stock_reservations'",
       )
       .get(),
-    { name: 'powder_mix_stock_reservations' },
+    undefined,
   );
+  for (const table of [
+    'inventory_reservations',
+    'order_inventory_allocations',
+    'inventory_receipts',
+    'inventory_stock_movements',
+  ]) {
+    assert.deepEqual(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table),
+      { name: table },
+    );
+  }
   assert.ok(
     (db.prepare('PRAGMA table_info(payments)').all() as { name: string }[]).some(
       (column) => column.name === 'quote_json',
@@ -361,7 +373,15 @@ void test('migrations upgrade the legacy schema without losing known data', (t) 
   const legacyRow = db.prepare('SELECT * FROM products WHERE id = 99').get() as ProductRow;
   const legacyProduct = toProductContract(legacyRow);
   assert.equal(legacyProduct.createdAt, '2024-12-31T23:59:59.000Z');
-  assert.equal(Value.Check(Product, legacyProduct), true);
+  assert.equal(
+    Value.Check(Product, {
+      ...legacyProduct,
+      availability: 'in_stock',
+      backorderable: false,
+      backorderLeadDays: null,
+    }),
+    true,
+  );
   assert.deepEqual(
     db
       .prepare('SELECT code, kind, redemption_count FROM promo_codes WHERE code = ?')
@@ -402,6 +422,92 @@ void test('migrations upgrade the legacy schema without losing known data', (t) 
   );
 });
 
+void test('inventory migration copies legacy mix reservations into unified lease rows', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-inventory-upgrade-'));
+  const db = new Database(join(directory, 'shop.db'));
+  db.pragma('foreign_keys = ON');
+  t.after(() => {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  migrateDatabase(
+    db,
+    migrations.filter((migration) => migration.version !== '015'),
+  );
+  db.prepare(
+    `INSERT INTO products (id, name, description, price_cents, category, stock_count)
+     VALUES (99, 'Legacy mix product', 'Preserve reservation', 100, 'Legacy', 3)`,
+  ).run();
+  db.prepare(
+    `INSERT INTO payments
+      (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand,
+       created_at, updated_at)
+     VALUES ('legacy-prepared', 'safe', 'prepared', 100, '4242', 'Visa',
+       '2026-07-19T12:00:00.000Z', '2026-07-19T12:05:00.000Z')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO powder_mix_stock_reservations
+      (payment_idempotency_key, product_id, bag_equivalents)
+     VALUES ('legacy-prepared', 99, 2)`,
+  ).run();
+  db.prepare(
+    `INSERT INTO payments
+      (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand,
+       created_at, updated_at)
+     VALUES ('legacy-terminal', 'safe-terminal', 'succeeded', 100, '4242', 'Visa',
+       '2026-07-19T12:00:00.000Z', '2026-07-19T12:05:00.000Z')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO powder_mix_stock_reservations
+      (payment_idempotency_key, product_id, bag_equivalents)
+     VALUES ('legacy-terminal', 99, 1)`,
+  ).run();
+
+  migrateDatabase(db);
+
+  assert.equal(
+    db
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'powder_mix_stock_reservations'",
+      )
+      .get(),
+    undefined,
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT payment_idempotency_key, product_id, demand_kind, reserved_quantity,
+                backordered_quantity, expires_at
+         FROM inventory_reservations`,
+      )
+      .get(),
+    {
+      payment_idempotency_key: 'legacy-prepared',
+      product_id: 99,
+      demand_kind: 'powder_mix',
+      reserved_quantity: 2,
+      backordered_quantity: 0,
+      expires_at: '2026-07-19T12:20:00.000Z',
+    },
+  );
+  assert.equal(
+    db
+      .prepare(
+        `SELECT 1 FROM inventory_reservations
+         WHERE payment_idempotency_key = 'legacy-terminal'`,
+      )
+      .get(),
+    undefined,
+  );
+  assert.deepEqual(
+    db
+      .prepare('SELECT reservation_expires_at FROM payments WHERE idempotency_key = ?')
+      .get('legacy-prepared'),
+    { reservation_expires_at: '2026-07-19T12:20:00.000Z' },
+  );
+});
+
 void test('lifecycle migration preserves pre-existing order lines and mix snapshots', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-lifecycle-upgrade-'));
   const db = new Database(join(directory, 'shop.db'));
@@ -413,7 +519,7 @@ void test('lifecycle migration preserves pre-existing order lines and mix snapsh
 
   migrateDatabase(
     db,
-    migrations.filter((migration) => migration.version !== '014'),
+    migrations.filter((migration) => migration.version !== '014' && migration.version !== '015'),
   );
   db.prepare(
     `INSERT INTO orders
@@ -426,6 +532,10 @@ void test('lifecycle migration preserves pre-existing order lines and mix snapsh
       .pluck()
       .get(),
   );
+  db.prepare(
+    `INSERT INTO products (id, name, description, price_cents, category, stock_count)
+     VALUES (77, 'Snapshot product', 'Snapshot product', 2500, 'Snapshot', 1)`,
+  ).run();
   db.prepare(
     `INSERT INTO order_line_items
       (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents)

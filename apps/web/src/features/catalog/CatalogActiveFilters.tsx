@@ -89,7 +89,13 @@ export function CatalogActiveFilters({
       )}
       {availability && (
         <FilterChip
-          label={availability === 'available' ? 'In stock' : 'Out of stock'}
+          label={
+            availability === 'available'
+              ? 'In stock'
+              : availability === 'backorder'
+                ? 'Backorder available'
+                : 'Out of stock'
+          }
           onClick={() => onAvailabilityChange(undefined)}
         />
       )}

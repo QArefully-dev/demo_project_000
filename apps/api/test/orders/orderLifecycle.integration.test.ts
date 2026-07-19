@@ -7,6 +7,8 @@ import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
+import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
+import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
 import { createOrderAccessService } from '../../src/features/orders/orderAccessService.js';
 import { createOrderRepository } from '../../src/features/orders/orderRepository.js';
 import { createOrderService } from '../../src/features/orders/orderService.js';
@@ -44,6 +46,14 @@ void test('order lifecycle repository creates initial immutable event', (t) => {
   const detail = repository.findDetailById(orderId);
   assert.equal(detail?.status, 'processing');
   assert.equal(detail?.version, 0);
+  assert.deepEqual(
+    detail?.items[0] && {
+      inventoryStatus: detail.items[0].inventoryStatus,
+      allocatedQuantity: detail.items[0].allocatedQuantity,
+      backorderedQuantity: detail.items[0].backorderedQuantity,
+    },
+    { inventoryStatus: 'allocated', allocatedQuantity: 1, backorderedQuantity: 0 },
+  );
   assert.match(detail?.items[0]?.lineId ?? '', /^[1-9]\d*$/);
   assert.deepEqual(
     detail?.events.map((event) => event.type),
@@ -71,6 +81,7 @@ void test('lifecycle commands are idempotent, versioned, audited, and transactio
     unitOfWork: createUnitOfWork(db),
     clock,
     audit: createAuditWriter({ repository: createAuditRepository(db), clock }),
+    inventory: createInventoryService({ repository: createInventoryRepository(db) }),
   });
   const create = (userId: number | null = 1) =>
     repository.create({
@@ -132,6 +143,30 @@ void test('lifecycle commands are idempotent, versioned, audited, and transactio
       }),
     { name: 'OrderDomainError', code: 'IDEMPOTENCY_CONFLICT' },
   );
+  const backorderedOrderId = create();
+  const backorderedLineId = Number(repository.findDetailById(backorderedOrderId)?.items[0]?.lineId);
+  db.prepare(
+    `INSERT INTO order_inventory_allocations
+      (order_line_item_id, product_id, allocated_quantity, backordered_quantity, cancelled_quantity,
+       stock_debited_quantity, created_at, updated_at)
+     VALUES (?, 1, 0, 1, 0, 0, ?, ?)`,
+  ).run(backorderedLineId, '2026-07-19T12:00:00.000Z', '2026-07-19T12:00:00.000Z');
+  assert.throws(
+    () =>
+      service.pack({
+        orderId: backorderedOrderId,
+        version: 0,
+        idempotencyKey: 'backorder-pack-key',
+        context,
+        shipments: [
+          { lines: [{ lineKind: 'product', lineId: String(backorderedLineId), quantity: 1 }] },
+        ],
+      }),
+    { name: 'OrderDomainError', code: 'OUTSTANDING_BACKORDER' },
+  );
+  db.prepare('DELETE FROM order_inventory_allocations WHERE order_line_item_id = ?').run(
+    backorderedLineId,
+  );
   const shipmentId = packed.shipments[0]?.id;
   if (!shipmentId) throw new Error('Expected shipment');
   const shipped = service.transitionShipment({
@@ -184,6 +219,48 @@ void test('lifecycle commands are idempotent, versioned, audited, and transactio
   assert.deepEqual(
     cancelled.events.map((event) => event.type),
     ['order_created', 'order_cancelled'],
+  );
+
+  const restoredOrderId = create();
+  const restoredLineId = Number(repository.findDetailById(restoredOrderId)?.items[0]?.lineId);
+  db.prepare(
+    `INSERT INTO order_inventory_allocations
+      (order_line_item_id, product_id, allocated_quantity, backordered_quantity, cancelled_quantity,
+       stock_debited_quantity, created_at, updated_at)
+     VALUES (?, 1, 1, 0, 0, 1, ?, ?)`,
+  ).run(restoredLineId, '2026-07-19T12:00:00.000Z', '2026-07-19T12:00:00.000Z');
+  const stockBeforeRestore = (
+    db.prepare('SELECT stock_count FROM products WHERE id = 1').get() as {
+      stock_count: number;
+    }
+  ).stock_count;
+  assert.equal(
+    service.cancel({
+      orderId: restoredOrderId,
+      version: 0,
+      idempotencyKey: 'restore-cancel-key',
+      context,
+    }).status,
+    'cancelled',
+  );
+  assert.equal(
+    (db.prepare('SELECT stock_count FROM products WHERE id = 1').get() as { stock_count: number })
+      .stock_count,
+    stockBeforeRestore + 1,
+  );
+  assert.equal(
+    service.cancel({
+      orderId: restoredOrderId,
+      version: 0,
+      idempotencyKey: 'restore-cancel-key',
+      context,
+    }).status,
+    'cancelled',
+  );
+  assert.equal(
+    (db.prepare('SELECT stock_count FROM products WHERE id = 1').get() as { stock_count: number })
+      .stock_count,
+    stockBeforeRestore + 1,
   );
 
   const rollbackOrderId = create();

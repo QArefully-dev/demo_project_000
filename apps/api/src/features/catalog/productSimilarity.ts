@@ -76,7 +76,7 @@ export function scoreProductSimilarity(
   const specifications = Math.min(matchingSpecificationCount(source, candidate) * 5, 20);
   const priceDifferenceCents = Math.abs(candidate.price_cents - source.price_cents);
   const price = priceScore(priceDifferenceCents, source.price_cents);
-  const availability = candidate.stock_count > 0 ? 5 : 0;
+  const availability = (candidate.available_to_sell ?? candidate.stock_count) > 0 ? 5 : 0;
   if (category === 0 && tags === 0 && specifications === 0 && price === 0) return undefined;
 
   return {

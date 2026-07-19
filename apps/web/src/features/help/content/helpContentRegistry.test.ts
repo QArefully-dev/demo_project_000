@@ -98,4 +98,13 @@ describe('helpContentRegistry', () => {
     );
     expect(faqBlock.entries.every((entry) => entry.question.trim() !== '')).toBe(true);
   });
+
+  it('describes local inventory without promising fulfilment', () => {
+    const packSizes = getHelpArticle('help', 'pack-sizes');
+    expect(packSizes).toBeDefined();
+    expect(JSON.stringify(packSizes)).toContain('local stock');
+    expect(JSON.stringify(packSizes)).toContain('backorder');
+    expect(JSON.stringify(packSizes)).toContain('not supplier inventory');
+    expect(JSON.stringify(getHelpArticle('help', 'shipping'))).toContain('not a delivery promise');
+  });
 });

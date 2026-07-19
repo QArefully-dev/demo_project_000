@@ -7,7 +7,7 @@ import type Database from 'better-sqlite3';
  * remain as historical facts even when referenced mutable rows are removed.
  * Does NOT drop tables — schema is preserved.
  *
- * Reset order: mix stock reservations -> checkout reservations -> payments ->
+ * Reset order: inventory movements -> receipts -> inventory allocations -> reservations -> payments ->
  *   promo redemptions -> reviews -> favourites -> reset tokens -> sessions -> mailbox ->
  *   mix components -> powder mixes -> order access grants -> lifecycle events ->
  *   shipment allocations -> shipments -> order mix snapshots -> order line items ->
@@ -20,7 +20,12 @@ import type Database from 'better-sqlite3';
 export function resetDatabase(db: Database.Database): void {
   const reset = db.transaction(() => {
     db.exec(`
-      DELETE FROM powder_mix_stock_reservations;
+      DROP TRIGGER IF EXISTS inventory_stock_movements_no_delete;
+      DROP TRIGGER IF EXISTS inventory_stock_movements_no_update;
+      DELETE FROM inventory_stock_movements;
+      DELETE FROM inventory_receipts;
+      DELETE FROM order_inventory_allocations;
+      DELETE FROM inventory_reservations;
       DELETE FROM cart_reservations;
       DELETE FROM promo_reservations;
       DELETE FROM payments;
@@ -49,6 +54,12 @@ export function resetDatabase(db: Database.Database): void {
       DELETE FROM products;
       DELETE FROM catalog_tags;
       DELETE FROM users;
+      CREATE TRIGGER inventory_stock_movements_no_update
+      BEFORE UPDATE ON inventory_stock_movements
+      BEGIN SELECT RAISE(ABORT, 'inventory_stock_movements are immutable'); END;
+      CREATE TRIGGER inventory_stock_movements_no_delete
+      BEFORE DELETE ON inventory_stock_movements
+      BEGIN SELECT RAISE(ABORT, 'inventory_stock_movements are immutable'); END;
     `);
   });
 

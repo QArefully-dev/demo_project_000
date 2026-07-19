@@ -17,6 +17,8 @@ import { createCart, getCart } from '../../src/features/cart/cartService.js';
 import { createProductRepository } from '../../src/features/catalog/productRepository.js';
 import { createPowderMixRepository } from '../../src/features/powderizer/powderMixRepository.js';
 import { createPowderizerService } from '../../src/features/powderizer/powderizerService.js';
+import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
+import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
 
 function createFixture(t: test.TestContext, audit?: AuditWriter) {
   const directory = mkdtempSync(join(tmpdir(), 'shop-curated-bundles-'));
@@ -66,6 +68,52 @@ void test('lists visible bundles with current component prices and deterministic
   assert.deepEqual(
     service.list('29').map((bundle) => bundle.key),
     ['outdoor-kit'],
+  );
+});
+
+void test('bundle reads and cart eligibility use available-to-sell, with backorder opt-in permitted', (t) => {
+  const { db, carts, mixes } = createFixture(t);
+  const now = new Date('2026-07-19T12:00:00.000Z');
+  const inventory = createInventoryService({ repository: createInventoryRepository(db) });
+  const service = createBundleService({
+    bundles: createBundleRepository(db),
+    carts,
+    mixes,
+    unitOfWork: createUnitOfWork(db),
+    audit: createAuditWriter({
+      repository: createAuditRepository(db),
+      clock: { now: () => now },
+    }),
+    availability: { inventory, clock: { now: () => now } },
+  });
+  db.prepare('UPDATE products SET stock_count = 1 WHERE id = 1').run();
+  db.prepare(
+    `INSERT INTO payments
+      (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand)
+     VALUES ('bundle-availability', 'bundle-availability', 'prepared', 1, '4242', 'Visa')`,
+  ).run();
+  db.prepare(
+    `INSERT INTO inventory_reservations
+      (payment_idempotency_key, product_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
+     VALUES ('bundle-availability', 1, 'product', 1, 0, '2026-07-19T12:01:00.000Z', ?)`,
+  ).run(now.toISOString());
+  const starter = service.list().find((bundle) => bundle.id === '1');
+  assert.equal(
+    starter?.components.find((component) => component.product.id === '1')?.product.stock,
+    0,
+  );
+  const rejected = service.addToCart(createCart(carts).cartId, '1', context);
+  if (typeof rejected === 'string' || !('error' in rejected))
+    throw new Error('Expected unavailable bundle');
+  assert.equal(rejected.error, 'BUNDLE_UNAVAILABLE');
+
+  db.prepare('UPDATE products SET backorderable = 1, backorder_lead_days = 14 WHERE id = 1').run();
+  const accepted = service.addToCart(createCart(carts).cartId, '1', context);
+  assert.equal(typeof accepted, 'object');
+  if (typeof accepted === 'string' || !('items' in accepted)) throw new Error('Expected cart');
+  assert.equal(
+    accepted.items.find((item) => item.productId === '1')?.product.availability,
+    'backorder',
   );
 });
 

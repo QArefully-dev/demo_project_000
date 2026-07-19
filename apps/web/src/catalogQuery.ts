@@ -93,7 +93,9 @@ export function parseCatalogQuery(searchParams: URLSearchParams): ProductQuery {
       : undefined;
   const availabilityCandidate = searchParams.get('availability');
   const availability =
-    availabilityCandidate === 'available' || availabilityCandidate === 'out_of_stock'
+    availabilityCandidate === 'available' ||
+    availabilityCandidate === 'backorder' ||
+    availabilityCandidate === 'out_of_stock'
       ? availabilityCandidate
       : undefined;
   const page = parseBoundedInteger(searchParams.get('page'), 1, 10_000) ?? 1;

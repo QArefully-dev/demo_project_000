@@ -25,7 +25,9 @@ export function ProductPurchasePanel({
   onAddToCart,
   onRetryCart,
 }: ProductPurchasePanelProps) {
-  const inStock = product.stock > 0;
+  const inStock = product.availability === 'in_stock';
+  const backorder = product.availability === 'backorder';
+  const purchasable = inStock || backorder;
   const isOnSale =
     product.compareAtPriceCents != null && product.compareAtPriceCents > product.priceCents;
   const savings = isOnSale ? product.compareAtPriceCents! - product.priceCents : 0;
@@ -95,12 +97,25 @@ export function ProductPurchasePanel({
       </ul>
 
       <div className="mt-6 rounded-xl bg-surface-soft p-4">
-        <p className={inStock ? 'font-semibold text-success' : 'font-semibold text-destructive'}>
-          {inStock ? 'In stock' : 'Out of stock'}
+        <p
+          className={
+            inStock
+              ? 'font-semibold text-success'
+              : backorder
+                ? 'font-semibold text-amber-700'
+                : 'font-semibold text-destructive'
+          }
+        >
+          {inStock ? 'In stock' : backorder ? 'Available to backorder' : 'Out of stock'}
         </p>
         {inStock && (
           <p className="mt-1 text-sm text-muted-foreground">
             {product.stock === 1 ? '1 item available' : `${product.stock} items available`}
+          </p>
+        )}
+        {backorder && (
+          <p className="mt-1 text-sm text-muted-foreground">
+            This item can be ordered when stock is replenished. Checkout confirms availability.
           </p>
         )}
       </div>
@@ -109,14 +124,14 @@ export function ProductPurchasePanel({
         <Button
           size="lg"
           className="h-12 flex-1 text-base"
-          disabled={!isCartAvailable || !inStock || isAdding}
+          disabled={!isCartAvailable || !purchasable || isAdding}
           onClick={() => void onAddToCart()}
         >
           {!isCartAvailable
             ? 'Cart unavailable'
             : isAdding
               ? 'Adding…'
-              : inStock
+              : purchasable
                 ? 'Add powder'
                 : 'Unavailable'}
         </Button>

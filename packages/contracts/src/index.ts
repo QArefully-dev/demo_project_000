@@ -12,3 +12,4 @@ export * from './powderizer.js';
 export * from './audit.js';
 export * from './bundles.js';
 export * from './reviews.js';
+export * from './inventory.js';
