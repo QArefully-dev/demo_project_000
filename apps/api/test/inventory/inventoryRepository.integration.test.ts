@@ -1,0 +1,154 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import test from 'node:test';
+import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
+import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
+import { InventoryError } from '../../src/features/inventory/inventoryTypes.js';
+
+function fixture(t: test.TestContext) {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-inventory-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+  return { db, inventory: createInventoryService({ repository: createInventoryRepository(db) }) };
+}
+
+function insertPayment(db: ReturnType<typeof openDatabase>, key: string): void {
+  db.prepare(
+    `INSERT INTO payments
+      (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand, created_at, updated_at)
+     VALUES (?, 'fingerprint', 'prepared', 100, '4242', 'visa', ?, ?)`,
+  ).run(key, '2026-07-19T12:00:00.000Z', '2026-07-19T12:00:00.000Z');
+}
+
+function insertOrderLine(db: ReturnType<typeof openDatabase>, productId: number, quantity: number): {
+  orderId: number; lineId: number;
+} {
+  const orderId = Number(db.prepare(
+    `INSERT INTO orders
+      (customer_name, customer_email, shipping_address, subtotal_cents, discount_cents, total_cents, created_at)
+     VALUES ('Inventory', 'inventory@example.test', '1 Stock Road', 100, 0, 100, '2026-07-19T12:00:00.000Z')`,
+  ).run().lastInsertRowid);
+  const lineId = Number(db.prepare(
+    `INSERT INTO order_line_items
+      (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents)
+     VALUES (?, ?, 'Inventory product', 100, ?, ?)`,
+  ).run(orderId, productId, quantity, quantity * 100).lastInsertRowid);
+  return { orderId, lineId };
+}
+
+void test('prepared expiry boundary releases final unit and a second connection can reserve it', (t) => {
+  const { db, inventory } = fixture(t);
+  db.prepare('UPDATE products SET stock_count = 1, backorderable = 0, backorder_lead_days = NULL WHERE id = 1').run();
+  insertPayment(db, 'first');
+  db.transaction(() => inventory.reserveCheckout({
+    paymentIdempotencyKey: 'first',
+    demands: [{ productId: 1, quantity: 1, demandKind: 'product' }],
+    now: '2026-07-19T12:00:00.000Z',
+    expiresAt: '2026-07-19T12:15:00.000Z',
+  }))();
+  assert.equal(inventory.availableToSell([1], '2026-07-19T12:10:00.000Z')[0]?.availableToSell, 0);
+  assert.deepEqual(inventory.expirePrepared('2026-07-19T12:15:00.000Z'), ['first']);
+  insertPayment(db, 'second');
+  assert.doesNotThrow(() => db.transaction(() => inventory.reserveCheckout({
+    paymentIdempotencyKey: 'second',
+    demands: [{ productId: 1, quantity: 1, demandKind: 'product' }],
+    now: '2026-07-19T12:15:00.000Z',
+    expiresAt: '2026-07-19T12:30:00.000Z',
+  }))());
+});
+
+void test('commit creates exactly one ordinary allocation and receipt replay has no duplicate stock delta', (t) => {
+  const { db, inventory } = fixture(t);
+  db.prepare('UPDATE products SET stock_count = 0, backorderable = 1, backorder_lead_days = 14 WHERE id = 49').run();
+  insertPayment(db, 'backorder');
+  const order = insertOrderLine(db, 49, 3);
+  db.transaction(() => {
+    const split = inventory.reserveCheckout({
+      paymentIdempotencyKey: 'backorder',
+      demands: [{ productId: 49, quantity: 3, demandKind: 'product' }],
+      now: '2026-07-19T12:00:00.000Z', expiresAt: '2026-07-19T12:15:00.000Z',
+    });
+    assert.equal(split[0]?.backorderedQuantity, 3);
+    inventory.authorizeReservation('backorder');
+    inventory.commitReservation({
+      paymentIdempotencyKey: 'backorder', orderId: order.orderId,
+      ordinaryLines: [{ orderLineItemId: order.lineId, productId: 49, quantity: 3 }],
+      occurredAt: '2026-07-19T12:01:00.000Z',
+    });
+  })();
+  assert.equal((db.prepare('SELECT COUNT(*) AS count FROM order_inventory_allocations WHERE order_line_item_id = ?').get(order.lineId) as { count: number }).count, 1);
+  const first = db.transaction(() => inventory.receiveStock({
+    idempotencyKey: 'receipt', productId: 49, quantity: 3, receivedByUserId: 3,
+    occurredAt: '2026-07-19T12:02:00.000Z',
+  }))();
+  const replay = db.transaction(() => inventory.receiveStock({
+    idempotencyKey: 'receipt', productId: 49, quantity: 3, receivedByUserId: 3,
+    occurredAt: '2026-07-19T12:03:00.000Z',
+  }))();
+  assert.deepEqual(replay, first);
+  assert.equal((db.prepare('SELECT stock_count FROM products WHERE id = 49').get() as { stock_count: number }).stock_count, 0);
+  assert.equal((db.prepare('SELECT COUNT(*) AS count FROM inventory_stock_movements').get() as { count: number }).count, 2);
+});
+
+void test('outer rollback removes partial reservation and rejects corrupted commit without stock movement', (t) => {
+  const { db, inventory } = fixture(t);
+  db.prepare('UPDATE products SET stock_count = 1, backorderable = 0, backorder_lead_days = NULL WHERE id = 1').run();
+  insertPayment(db, 'rollback');
+  assert.throws(() => db.transaction(() => {
+    inventory.reserveCheckout({
+      paymentIdempotencyKey: 'rollback', demands: [{ productId: 1, quantity: 1, demandKind: 'product' }],
+      now: '2026-07-19T12:00:00.000Z', expiresAt: '2026-07-19T12:15:00.000Z',
+    });
+    throw new Error('force rollback');
+  })(), /force rollback/);
+  assert.equal((db.prepare('SELECT COUNT(*) AS count FROM inventory_reservations WHERE payment_idempotency_key = ?').get('rollback') as { count: number }).count, 0);
+  assert.throws(() => db.transaction(() => inventory.commitReservation({
+    paymentIdempotencyKey: 'rollback', orderId: 1, ordinaryLines: [], occurredAt: '2026-07-19T12:01:00.000Z',
+  }))(), (error: unknown) => error instanceof InventoryError && error.code === 'RESERVATION_EXPIRED');
+  assert.equal((db.prepare('SELECT COUNT(*) AS count FROM inventory_stock_movements').get() as { count: number }).count, 0);
+});
+
+void test('cancellation restores debited stock into oldest remaining backorder', (t) => {
+  const { db, inventory } = fixture(t);
+  db.prepare('UPDATE products SET stock_count = 1, backorderable = 1, backorder_lead_days = 14 WHERE id = 49').run();
+  const first = insertOrderLine(db, 49, 1);
+  insertPayment(db, 'first-order');
+  db.transaction(() => {
+    inventory.reserveCheckout({
+      paymentIdempotencyKey: 'first-order', demands: [{ productId: 49, quantity: 1, demandKind: 'product' }],
+      now: '2026-07-19T12:00:00.000Z', expiresAt: '2026-07-19T12:15:00.000Z',
+    });
+    inventory.authorizeReservation('first-order');
+    inventory.commitReservation({
+      paymentIdempotencyKey: 'first-order', orderId: first.orderId,
+      ordinaryLines: [{ orderLineItemId: first.lineId, productId: 49, quantity: 1 }], occurredAt: '2026-07-19T12:01:00.000Z',
+    });
+  })();
+  const second = insertOrderLine(db, 49, 1);
+  insertPayment(db, 'second-order');
+  db.transaction(() => {
+    inventory.reserveCheckout({
+      paymentIdempotencyKey: 'second-order', demands: [{ productId: 49, quantity: 1, demandKind: 'product' }],
+      now: '2026-07-19T12:02:00.000Z', expiresAt: '2026-07-19T12:17:00.000Z',
+    });
+    inventory.authorizeReservation('second-order');
+    inventory.commitReservation({
+      paymentIdempotencyKey: 'second-order', orderId: second.orderId,
+      ordinaryLines: [{ orderLineItemId: second.lineId, productId: 49, quantity: 1 }], occurredAt: '2026-07-19T12:03:00.000Z',
+    });
+    const allocations = inventory.cancelOrderInventory({ orderId: first.orderId, occurredAt: '2026-07-19T12:04:00.000Z' });
+    assert.deepEqual(allocations, [{ orderId: second.orderId, orderLineItemId: second.lineId, quantity: 1 }]);
+  })();
+  assert.deepEqual(
+    db.prepare('SELECT allocated_quantity, backordered_quantity FROM order_inventory_allocations WHERE order_line_item_id = ?').get(second.lineId),
+    { allocated_quantity: 1, backordered_quantity: 0 },
+  );
+  assert.equal((db.prepare('SELECT stock_count FROM products WHERE id = 49').get() as { stock_count: number }).stock_count, 0);
+});
