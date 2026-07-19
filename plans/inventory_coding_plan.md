@@ -2,7 +2,23 @@
 
 Status: proposed
 Source: `plans/demo_project_high_level_plan.md` -> `Future Expansion Order` -> `2. Inventory: partial`
-Repository baseline: branch `powder_expansion_2`, commit `3b786e9`, inspected 2026-07-19; user-owned order-lifecycle changes present and must settle before runtime `G0`
+Repository baseline: source checkout `C:\Users\iwano\Desktop\repos\demo_project_000`, branch `powder_expansion_2`, commit `27a7d560bed202a0de7923c966a04466ed0f70b2`, inspected 2026-07-19; runtime records current named branch and `HEAD` again before implementation
+
+## Runtime Worktree
+
+- source: planning checkout = `C:\Users\iwano\Desktop\repos\demo_project_000`; runtime records absolute path, named branch, and `HEAD`
+- preflight: detached `HEAD` -> stop for branch selection
+- preflight: relevant uncommitted or untracked source changes absent from branch `HEAD` -> stop for commit or explicit baseline choice; never copy, stash, discard, or import changes automatically
+- create: one unique implementation branch plus one dedicated worktree from recorded source branch `HEAD`
+- command: `git worktree add -b codex/inventory-<run-id> <absolute-worktree-path> <source-branch>`
+- path: choose unused absolute sibling path; record resolved path before `G0`
+- verify: worktree branch = implementation branch; worktree `HEAD` = recorded source revision
+- execution root: every implementation edit, generated write, worker test, reviewer inspection, fix, convergence step, and final verification runs inside shared worktree
+- assignment: every worker and reviewer receives absolute worktree path, implementation branch, and base revision; repository-relative paths resolve under worktree root
+- source policy: source checkout read-only after worktree creation except saved plan and run-scoped temp state
+- parallel policy: all packets share one worktree with disjoint ownership; no packet-specific worktrees
+- integration: no automatic merge, rebase, cherry-pick, copy-back, worktree deletion, or implementation-branch deletion
+- completion reply: report retained absolute worktree path, implementation branch, source branch, and base revision; state user owns merge and cleanup
 
 ## Objective
 
@@ -66,7 +82,8 @@ Completion boundary: customer catalog, cart, checkout, confirmation, and order d
 - gap: abandoned `prepared` intent can lock cart, promo capacity, and mix stock forever
 - gap: no persisted allocation, backorder, receipt, or stock-movement facts
 - gap: shipment packing can allocate quantity whose ordinary stock was never secured
-- constraint: current dirty worktree contains order-lifecycle implementation, migration `014`, order contracts, routes, web pages, seed scenarios, and tests; inventory work starts only after exact accepted baseline recorded
+- constraint: commit `27a7d560bed202a0de7923c966a04466ed0f70b2` contains accepted order-lifecycle implementation, migration `014`, order contracts, routes, web pages, seed scenarios, tests, plan, and updated orchestration skill
+- constraint: runtime source checkout may advance; worktree preflight records and validates exact named-branch `HEAD` before inventory writes
 - constraint: SQLite remains sole authority; transaction owner must cover payment, reservation, stock, order, backorder, audit, and cancellation invariants
 - reuse: `createUnitOfWork()` -> atomic service workflows
 - reuse: payment and order request fingerprints -> receipt idempotency
@@ -101,7 +118,8 @@ Completion boundary: customer catalog, cart, checkout, confirmation, and order d
 - decision: cart does not reserve stock; cart display marks backorder eligibility but checkout remains final authority
 - decision: all stock mutations emit append-only inventory movement facts; direct product updates remain limited to inventory repository and seed/reset
 - decision: inventory receipt, reservation expiry, checkout commit, and cancellation restoration add allowlisted audit facts without customer data
-- assumption requiring `G0` validation: accepted order-lifecycle change set keeps cancellation limited to pre-shipment states and complete shipment planning
+- decision: runtime implementation, review, fixes, tests, and convergence use one shared dedicated worktree; source checkout receives no implementation writes
+- baseline invariant requiring `G0` validation: accepted order-lifecycle change set keeps cancellation limited to pre-shipment states and complete shipment planning
 - assumption requiring `G0` validation: migration `015` remains next free version after accepted `014`
 - assumption requiring `G0` validation: `Moon Rock` remains canonical product `49`; set `backorderable=true`, `backorderLeadDays=14`
 
@@ -209,9 +227,10 @@ Completion boundary: customer catalog, cart, checkout, confirmation, and order d
 
 ## Execution Graph
 
-`G0 -> F1 -> P1 -> R1 -> G1 -> {P2 || P3 || P4 || P5} -> {R2 || R3 || R4 || R5} -> G2 -> C1 -> R6 -> G3`
+`W0 -> G0 -> F1 -> P1 -> R1 -> G1 -> {P2 || P3 || P4 || P5} -> {R2 || R3 || R4 || R5} -> G2 -> C1 -> R6 -> G3`
 
-- `G0`: accept exact order-lifecycle baseline; confirm migration `015`, selected seed product, defaults, clean ownership, and no conflicting user edits
+- `W0`: record source identity; reject detached or relevant dirty baseline; create and verify unique implementation branch/worktree; persist identity
+- `G0`: inside worktree, accept exact order-lifecycle baseline; confirm migration `015`, selected seed product, defaults, clean ownership, and base revision match
 - `G1`: accept schema/contracts plus inventory core interfaces; record contract build and focused repository evidence
 - `G2`: accept all consumer packets and reviews; close required findings; freeze shared interfaces
 - `G3`: final composition, docs, seed/reset, smoke, full verify, and manual journey gate
@@ -429,6 +448,7 @@ Completion boundary: customer catalog, cart, checkout, confirmation, and order d
 
 ## Ownership and Collision Rules
 
+- all listed ownership paths resolve relative to recorded worktree root; source-checkout copies remain read-only
 - `packages/contracts/**`: `F1` only; consumers read after accepted build
 - `packages/catalog/**`: `F1` only
 - migration version `015`, migration index, reset, seed: `F1` only; no later migration created in this run
@@ -445,11 +465,12 @@ Completion boundary: customer catalog, cart, checkout, confirmation, and order d
 
 ## Harness Role Binding
 
-- Codex only: launch globally configured `worker` agent for worker packets, fixes, and worker-owned verification; launch globally configured `reviewer` agent for review assignments. Resolve model, reasoning effort, and developer instructions from global Codex settings. Never name or override those values in plan or assignment.
+- Codex only: launch globally configured `worker` agent for worker packets, fixes, and worker-owned verification inside shared worktree; launch globally configured `reviewer` agent for review assignments inside shared worktree. Resolve model, reasoning effort, and developer instructions from global Codex settings. Never name or override those values in plan or assignment.
 - non-Codex harnesses: ignore Codex binding. Use harness-native role or subagent configuration while preserving worker and reviewer responsibilities and communication contracts.
 
 ## Test Execution Schedule
 
+- working directory: recorded absolute worktree path for every command; never source checkout
 - `T1`: after `F1` -> owner `F1` -> contracts/catalog builds, contract suite, migration/seed integration; evidence `EV-F1-CONTRACTS`, `EV-F1-DB`
 - `T2`: after `P1` -> owner `P1` -> inventory rule and SQLite repository tests; evidence `EV-P1-INVENTORY`
 - `T3`: after `P2` -> owner `P2` -> focused catalog/cart/bundle tests; evidence `EV-P2-READS`
@@ -479,28 +500,37 @@ Completion boundary: customer catalog, cart, checkout, confirmation, and order d
 - worker return: `worker_report_v1`
 - reviewer return: `reviewer_report_v1`
 - recovery snapshot: `orchestrator_run_state_v1`
+- worktree context: every `worker_assignment_v1` and `reviewer_assignment_v1` includes exact `worktree.path`, `worktree.branch`, and `worktree.base_revision`
+- path resolution: assignment `owns`, `reads`, artifact references, and commands resolve from `worktree.path`
 - templates: `.claude/skills/write-orchestrator-coding-plan/templates/communication/*.json`
 - record shapes: `.claude/skills/write-orchestrator-coding-plan/references/communication-record-shapes.md`
-- runtime state: platform temp root `/orchestrator/[run_id]/state.json`; atomic replacement; no repository runtime reports
+- runtime state: platform temp root `/orchestrator/[run_id]/state.json`; atomic replacement; populate canonical `source_checkout` and `worktree` objects before packet launch; no repository runtime reports
 - finding flow: stable reviewer finding ID -> originating worker fix directive -> smallest post-fix evidence -> orchestrator closure; no reviewer loop
 
 ## Orchestrator Run Order
 
 1. End planning context after saving this file.
-2. Start fresh runtime orchestrator; load `CLAUDE.md`, this plan, canonical contracts, current checkpoint.
-3. Validate `G0`: inspect status/diff, accept exact order-lifecycle baseline, reserve migration `015`, confirm defaults.
-4. Assign `F1`; accept contract/schema handoff and evidence.
-5. Assign `P1`; accept inventory interfaces and evidence; assign inspect-only `R1`; close findings; validate `G1`.
-6. Launch `P2`, `P3`, `P4`; launch `P5` when capacity opens. Send only packet reads, accepted interfaces, invariants, and relevant evidence.
-7. Accept worker reports; update checkpoint/evidence. Launch `R2|R3|R4|R5` as targets become exact and slots permit.
-8. Route each required finding once to responsible worker; record fix change set and targeted evidence; validate `G2`.
-9. Assign `C1`; integrate composition/docs, run manual scenarios and `npm run smoke` once.
-10. Assign `R6` exact integrated target; route required findings once; invalidate only affected evidence.
-11. `C1` runs smallest fix checks, then `npm run verify` once. Validate `G3`; mark complete.
+2. Start fresh runtime orchestrator; load source-checkout `CLAUDE.md`, this plan, canonical contracts, current checkpoint.
+3. Record source checkout absolute path, current branch, and `HEAD`; require named branch.
+4. Inspect source status for relevant uncommitted/untracked inputs absent from `HEAD`; stop for user commit or baseline choice when found.
+5. Create unique `codex/inventory-<run-id>` branch and dedicated absolute worktree from recorded source branch `HEAD`.
+6. Verify worktree branch/base; persist canonical `source_checkout` and `worktree` checkpoint objects; switch execution root to worktree.
+7. Load worktree repository instructions. Validate `G0`: accept exact order-lifecycle baseline, reserve migration `015`, confirm defaults and worktree base.
+8. Assign `F1` with worktree context; accept contract/schema handoff and evidence.
+9. Assign `P1` with worktree context; accept inventory interfaces and evidence; assign inspect-only `R1` inside worktree; close findings; validate `G1`.
+10. Launch `P2`, `P3`, `P4` inside shared worktree; launch `P5` when capacity opens. Send packet reads, accepted interfaces, invariants, relevant evidence, and worktree identity only.
+11. Accept worker reports; update checkpoint/evidence. Launch `R2|R3|R4|R5` inside worktree as targets become exact and slots permit.
+12. Route each required finding once to responsible worktree worker; record fix change set and targeted evidence; validate `G2`.
+13. Assign `C1` inside worktree; integrate composition/docs, run manual scenarios and `npm run smoke` once.
+14. Assign `R6` inside worktree against exact integrated target; route required findings once; invalidate only affected evidence.
+15. `C1` runs smallest fix checks, then `npm run verify` once inside worktree. Validate `G3`; mark complete.
+16. Leave implementation branch and worktree intact. Report absolute worktree path, implementation branch, source branch, and base revision; state user owns merge and cleanup.
 
 ## Risks and Open Questions
 
-- risk: current order-lifecycle work changes during inventory run -> mitigation: freeze exact `G0` base; invalidate order/migration packets on drift
+- risk: source branch advances or contains relevant uncommitted input before runtime -> mitigation: `W0` records named-branch `HEAD`, blocks dirty input, and creates immutable implementation base
+- risk: worktree path or branch collides with existing repository worktrees -> mitigation: run-scoped unique suffix plus `git worktree list` and branch existence check before create
+- risk: implementation command runs from source checkout -> mitigation: assignment worktree object, command working-directory rule, and pre-command root verification
 - risk: raw stock and reserved stock diverge across catalog/cart/checkout -> mitigation: one availability reader/SQL helper; cross-surface integration assertion
 - risk: late gateway success follows lease expiry -> mitigation: mandatory payment compare-and-set plus inventory authorization lock; no transition means no finalization
 - risk: old authorized quote lacks allocation metadata -> mitigation: strict version dispatch; only v4 writes inventory allocation; legacy replay compatibility tests
@@ -529,3 +559,5 @@ Completion boundary: customer catalog, cart, checkout, confirmation, and order d
 - reset and seed remain deterministic; canonical `Moon Rock` demonstrates backorder flow
 - help and README describe simulated inventory truthfully
 - all focused evidence current; `npm run smoke` and final `npm run verify` pass
+- one dedicated implementation worktree contains every implementation/review/fix/verification change; source checkout receives no implementation writes
+- completion reply reports retained absolute worktree path, implementation branch, source branch, and base revision; user owns merge and cleanup
