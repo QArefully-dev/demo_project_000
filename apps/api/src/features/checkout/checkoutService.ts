@@ -134,6 +134,7 @@ function prepare(
         params.auditContext,
         dependencies,
       );
+    const validPromo = promo?.valid ? promo.promoCode : undefined;
     const mixPreparation = prepareMixes(params.cartId, dependencies);
     if ('error' in mixPreparation)
       return failPreparation(
@@ -153,9 +154,9 @@ function prepare(
       );
     }
     if (
-      promo?.code &&
+      validPromo &&
       !dependencies.promos.reserve({
-        code: promo.code,
+        code: validPromo.code,
         userId: params.userId,
         paymentIdempotencyKey: params.idempotencyKey,
         createdAt,
@@ -205,7 +206,7 @@ function prepare(
     const quote = createCheckoutQuote({
       cart: preparedCart,
       checkout: params,
-      promo: promo?.promoCode,
+      promo: validPromo,
       createdAt,
       inventoryAllocations,
     });
@@ -308,22 +309,38 @@ export function createCheckoutService(dependencies: CheckoutDependencies): Check
           params.auditContext,
           dependencies,
         );
-      const authorized = dependencies.unitOfWork.run(() => {
-        const transitioned = dependencies.payments.transition({
+      const authorization = dependencies.unitOfWork.run(() => {
+        const now = dependencies.clock.now().toISOString();
+        const payment = dependencies.payments.load(params.idempotencyKey);
+        if (!payment || payment.status !== 'prepared') return { authorized: false } as const;
+        if (payment.reservationExpiresAt !== null && payment.reservationExpiresAt <= now) {
+          return {
+            authorized: false,
+            expired: terminalizePreparedExpiry(params.idempotencyKey, payment.reservationExpiresAt, now, dependencies),
+          } as const;
+        }
+        try {
+          dependencies.inventory.authorizeReservation(params.idempotencyKey, now);
+        } catch (error) {
+          if (!(error instanceof InventoryError) || error.code !== 'RESERVATION_EXPIRED') throw error;
+          return {
+            authorized: false,
+            expired: terminalizePreparedExpiry(params.idempotencyKey, payment.reservationExpiresAt ?? now, now, dependencies),
+          } as const;
+        }
+        if (!dependencies.payments.transition({
           idempotencyKey: params.idempotencyKey,
           expectedStatus: 'prepared',
           nextStatus: 'authorized_pending_finalize',
           gatewayReference: gatewayResult.reference,
-          updatedAt: dependencies.clock.now().toISOString(),
-        });
-        if (!transitioned) return false;
-        dependencies.inventory.authorizeReservation(
-          params.idempotencyKey,
-          dependencies.clock.now().toISOString(),
-        );
-        return true;
+          updatedAt: now,
+        })) {
+          throw new Error('Checkout intent state changed during authorization');
+        }
+        return { authorized: true } as const;
       });
-      if (!authorized) {
+      if (authorization.expired) return authorization.expired;
+      if (!authorization.authorized) {
         return replay(
           dependencies.payments.load(params.idempotencyKey)!,
           createSafeFingerprint(params, card),
@@ -341,23 +358,41 @@ function expirePreparedReservations(dependencies: CheckoutDependencies): void {
     for (const idempotencyKey of dependencies.inventory.expirePrepared(now)) {
       const payment = dependencies.payments.load(idempotencyKey);
       if (!payment || payment.status !== 'prepared') continue;
-      const result: CheckoutResult = {
-        success: false,
-        error: 'RESERVATION_EXPIRED',
-        reservationExpiresAt: payment.reservationExpiresAt ?? now,
-      };
-      dependencies.payments.transition({
+      terminalizePreparedExpiry(
         idempotencyKey,
-        expectedStatus: 'prepared',
-        nextStatus: 'failed_pre_gateway',
-        failureReason: result.error,
-        responseJson: JSON.stringify(result),
-        updatedAt: now,
-      });
-      dependencies.carts.releaseReservation(idempotencyKey);
-      dependencies.promos.releaseReservation(idempotencyKey);
+        payment.reservationExpiresAt ?? now,
+        now,
+        dependencies,
+      );
     }
   });
+}
+
+function terminalizePreparedExpiry(
+  idempotencyKey: string,
+  reservationExpiresAt: string,
+  now: string,
+  dependencies: CheckoutDependencies,
+): CheckoutResult {
+  const result: CheckoutResult = {
+    success: false,
+    error: 'RESERVATION_EXPIRED',
+    reservationExpiresAt,
+  };
+  if (!dependencies.payments.transition({
+    idempotencyKey,
+    expectedStatus: 'prepared',
+    nextStatus: 'failed_pre_gateway',
+    failureReason: result.error,
+    responseJson: JSON.stringify(result),
+    updatedAt: now,
+  })) {
+    throw new Error('Checkout intent state changed during reservation expiry');
+  }
+  dependencies.carts.releaseReservation(idempotencyKey);
+  dependencies.promos.releaseReservation(idempotencyKey);
+  dependencies.inventory.releaseReservation(idempotencyKey);
+  return result;
 }
 
 function resumeFinalization(

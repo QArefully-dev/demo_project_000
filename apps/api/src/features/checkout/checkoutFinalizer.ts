@@ -30,15 +30,15 @@ export function finalizeAuthorizedCheckout(
     });
     const order = dependencies.orders.findById(orderId);
     if (!order) throw new Error('Created order could not be hydrated');
-    if (quote.version === 4) {
+    if (quote.version === 4 || (quote.version !== 1 && quote.mixLines.length > 0)) {
       dependencies.inventory.commitReservation({
         paymentIdempotencyKey: idempotencyKey,
         orderId,
-        ordinaryLines: order.items.map((line) => ({
+        ordinaryLines: quote.version === 4 ? order.items.map((line) => ({
           orderLineItemId: Number(line.lineId),
           productId: Number(line.productId),
           quantity: line.quantity,
-        })),
+        })) : [],
         occurredAt: createdAt,
       });
     }

@@ -23,6 +23,16 @@ import { createAuditWriter } from '../../src/features/audit/auditService.js';
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
 
+function deferredGateway() {
+  let resolve!: (result: { status: 'success'; reference?: string }) => void;
+  return {
+    gateway: {
+      process: () => new Promise<{ status: 'success'; reference?: string }>((done) => { resolve = done; }),
+    },
+    resolve: (result: { status: 'success'; reference?: string }) => resolve(result),
+  };
+}
+
 void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', async (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-mix-checkout-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
@@ -158,6 +168,101 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
   const replay = await checkout.process(params);
   assert.equal(replay.success, true);
   assert.equal(products.findById(1)?.stock_count, (beforeStock ?? 0) - 1);
+});
+
+void test('finalizes migrated authorized v2 and v3 mix quotes through unified inventory once', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-migrated-mix-checkout-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+  const carts = createCartRepository(db);
+  const products = createProductRepository(db);
+  const mixes = createPowderMixRepository(db);
+  const powderizer = createPowderizerService({
+    unitOfWork: createUnitOfWork(db),
+    carts,
+    products,
+    mixes,
+  });
+  for (const version of [2, 3] as const) {
+    const cartId = crypto.randomUUID();
+    carts.create(cartId);
+    const mixId = powderizer.create(cartId, {
+      components: [
+        { productId: '1', percentage: 50 },
+        { productId: '27', percentage: 50 },
+      ],
+      bagSizeGrams: 500,
+      fineness: 'fine',
+      bagColourScheme: 'deep-space',
+    });
+    if (typeof mixId !== 'string') throw new Error('Expected mix ID');
+    const deferred = deferredGateway();
+    const checkout = createCheckoutService({
+      unitOfWork: createUnitOfWork(db),
+      carts,
+      products,
+      mixes,
+      promos: createPromoRepository(db),
+      payments: createPaymentRepository(db),
+      orders: createOrderRepository(db),
+      mailbox: createMailboxRepository(db),
+      gateway: deferred.gateway,
+      clock: { now: () => new Date('2026-07-14T10:00:00.000Z') },
+      audit: createAuditWriter({
+        repository: createAuditRepository(db),
+        clock: { now: () => new Date('2026-07-14T10:00:00.000Z') },
+      }),
+      inventory: createInventoryService({ repository: createInventoryRepository(db) }),
+    });
+    const params: CheckoutParams = {
+      cartId,
+      customerName: 'Migrated mix',
+      customerEmail: `migrated-${version}@example.test`,
+      shippingAddress: '1 Test Street',
+      cardNumber: '4242 4242 4242 4242',
+      cardExpiry: '12/99',
+      cardCvc: '123',
+      idempotencyKey: crypto.randomUUID(),
+      userId: null,
+      auditContext: { actor: { type: 'anonymous', userId: null }, requestId: crypto.randomUUID() },
+    };
+    const beforeStock = products.findById(1)?.stock_count;
+    const pending = checkout.process(params);
+    const payment = db.prepare('SELECT quote_json FROM payments WHERE idempotency_key = ?')
+      .get(params.idempotencyKey) as { quote_json: string };
+    const quote = JSON.parse(payment.quote_json) as Record<string, unknown> & { mixLines: Array<Record<string, unknown>> };
+    quote.version = version;
+    delete quote.inventoryAllocations;
+    if (version === 2) {
+      quote.mixLines = quote.mixLines.map(({ bagColourScheme, usageLabel, ...line }) => ({
+        ...line,
+        snapshotVersion: 1,
+      }));
+    }
+    db.prepare('UPDATE payments SET quote_json = ? WHERE idempotency_key = ?')
+      .run(JSON.stringify(quote), params.idempotencyKey);
+    deferred.resolve({ status: 'success', reference: `migrated-${version}` });
+    const result = await pending;
+    assert.equal(result.success, true);
+    assert.equal(products.findById(1)?.stock_count, (beforeStock ?? 0) - 1);
+    assert.equal(
+      (db.prepare('SELECT COUNT(*) AS count FROM inventory_reservations WHERE payment_idempotency_key = ?')
+        .get(params.idempotencyKey) as { count: number }).count,
+      0,
+    );
+    assert.equal(
+      (db.prepare("SELECT COUNT(*) AS count FROM inventory_stock_movements WHERE payment_idempotency_key = ? AND movement_type = 'checkout_consumed'")
+        .get(params.idempotencyKey) as { count: number }).count,
+      2,
+    );
+    const replay = await checkout.process(params);
+    assert.deepEqual(replay, result);
+    assert.equal(products.findById(1)?.stock_count, (beforeStock ?? 0) - 1);
+  }
 });
 
 void test('mix price and stock conflicts block gateway before reservation', async (t) => {
