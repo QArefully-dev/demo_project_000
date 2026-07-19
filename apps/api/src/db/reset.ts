@@ -10,7 +10,8 @@ import type Database from 'better-sqlite3';
  * Reset order: mix stock reservations -> checkout reservations -> payments ->
  *   promo redemptions -> favourites -> reset tokens -> sessions -> mailbox ->
  *   mix components -> powder mixes -> order mix snapshots -> order line items ->
- *   orders -> cart line items -> carts -> promo codes -> product metadata ->
+ *   orders -> cart line items -> carts -> promo codes -> bundle components ->
+ *   bundles -> product metadata ->
  *   products -> catalog tags -> users. `audit_events` is deliberately omitted.
  *
  * @param db The SQLite database instance.
@@ -35,6 +36,8 @@ export function resetDatabase(db: Database.Database): void {
       DELETE FROM cart_line_items;
       DELETE FROM carts;
       DELETE FROM promo_codes;
+      DELETE FROM curated_bundle_components;
+      DELETE FROM curated_bundles;
       DELETE FROM product_tags;
       DELETE FROM product_specifications;
       DELETE FROM products;

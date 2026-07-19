@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { CATALOG_PRODUCTS, catalogProductSpecifications } from '@shop/catalog';
+import { CATALOG_PRODUCTS, CURATED_BUNDLES, catalogProductSpecifications } from '@shop/catalog';
 import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
 
 void test('seed preserves local state; reset restores canonical data', (t) => {
@@ -19,6 +19,43 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM products').get() as { count: number }).count,
     50,
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        'SELECT id, key, name, description, active, sort_order FROM curated_bundles ORDER BY sort_order',
+      )
+      .all(),
+    CURATED_BUNDLES.map((bundle) => ({
+      id: bundle.id,
+      key: bundle.key,
+      name: bundle.name,
+      description: bundle.description,
+      active: 1,
+      sort_order: bundle.sortOrder,
+    })),
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT bundle_id, product_id, quantity, sort_order
+         FROM curated_bundle_components ORDER BY bundle_id, sort_order`,
+      )
+      .all(),
+    CURATED_BUNDLES.flatMap((bundle) =>
+      bundle.components.map((component) => ({
+        bundle_id: bundle.id,
+        product_id: component.productId,
+        quantity: component.quantity,
+        sort_order: component.sortOrder,
+      })),
+    ),
+  );
+  assert.equal(
+    (db.prepare('PRAGMA table_info(curated_bundle_components)').all() as { name: string }[]).some(
+      (column) => column.name === 'price_cents',
+    ),
+    false,
   );
   assert.deepEqual(db.prepare('SELECT active, created_at FROM products WHERE id = ?').get(1), {
     active: CATALOG_PRODUCTS.find((product) => product.id === 1)?.active ? 1 : 0,
@@ -117,10 +154,44 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   db.prepare(
     "UPDATE products SET name = 'Old Campfire', mixable = 0, mix_unit_grams = NULL WHERE id = 27",
   ).run();
+  db.prepare(
+    `INSERT INTO curated_bundles (id, key, name, description, active, sort_order)
+     VALUES (99, 'local-bundle', 'Local bundle', 'Local bundle definition', 1, 99)`,
+  ).run();
+  db.prepare(
+    `INSERT INTO curated_bundle_components (bundle_id, product_id, quantity, sort_order)
+     VALUES (99, 1, 2, 1)`,
+  ).run();
+  db.prepare("UPDATE curated_bundles SET name = 'Broken starter' WHERE id = 1").run();
+  db.prepare('DELETE FROM curated_bundle_components WHERE bundle_id = 1').run();
   seedDatabase(db);
   assert.deepEqual(
     db.prepare('SELECT name, mixable, mix_unit_grams FROM products WHERE id = 27').get(),
     { name: 'Campfire', mixable: 1, mix_unit_grams: 200 },
+  );
+  assert.deepEqual(db.prepare('SELECT key, name FROM curated_bundles WHERE id = 1').get(), {
+    key: 'powder-starter-set',
+    name: 'Starter Set',
+  });
+  assert.equal(
+    (
+      db
+        .prepare('SELECT COUNT(*) AS count FROM curated_bundle_components WHERE bundle_id = 1')
+        .get() as { count: number }
+    ).count,
+    3,
+  );
+  assert.deepEqual(db.prepare('SELECT key, name FROM curated_bundles WHERE id = 99').get(), {
+    key: 'local-bundle',
+    name: 'Local bundle',
+  });
+  assert.deepEqual(
+    db
+      .prepare(
+        'SELECT product_id, quantity, sort_order FROM curated_bundle_components WHERE bundle_id = 99',
+      )
+      .all(),
+    [{ product_id: 1, quantity: 2, sort_order: 1 }],
   );
 
   db.prepare("INSERT INTO carts (id) VALUES ('seed-reset-cart')").run();
@@ -156,6 +227,19 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   resetDatabase(db);
   seedDatabase(db);
   assert.equal(db.prepare('SELECT name FROM products WHERE id = 99').get(), undefined);
+  assert.equal(db.prepare('SELECT id FROM curated_bundles WHERE id = 99').get(), undefined);
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM curated_bundles').get() as { count: number }).count,
+    CURATED_BUNDLES.length,
+  );
+  assert.equal(
+    (
+      db.prepare('SELECT COUNT(*) AS count FROM curated_bundle_components').get() as {
+        count: number;
+      }
+    ).count,
+    CURATED_BUNDLES.reduce((count, bundle) => count + bundle.components.length, 0),
+  );
   assert.deepEqual(
     db.prepare('SELECT id, slug FROM products WHERE id BETWEEN 1 AND 50 ORDER BY id').all(),
     CATALOG_PRODUCTS.map(({ id, slug }) => ({ id, slug })).sort(

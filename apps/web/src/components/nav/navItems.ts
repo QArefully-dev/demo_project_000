@@ -35,9 +35,17 @@ export const powderizerItem: NavItem = {
   className: 'powderizer-nav-link',
 };
 
+export const bundlesItem: NavItem = {
+  key: 'bundles',
+  label: 'Bundles',
+  icon: 'Package',
+  enabled: true,
+};
+
 export const navItems: Record<string, NavItem> = {
   search: searchItem,
   account: accountItem,
   wishlist: wishlistItem,
   powderizer: powderizerItem,
+  bundles: bundlesItem,
 };

@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 import type { Cart } from '@shop/contracts/cart';
 import * as api from '../api/cart';
+import * as bundlesApi from '../api/bundles';
 import * as powderizerApi from '../api/powderizer';
 import { ApiError, isMissingCartError } from '../api/client';
 import { clearCartId, getCartId } from '../lib/cartStorage';
 import { createCartClient } from './cartClient';
 
-export type CartAction = 'add' | 'update' | 'remove' | 'mix-update' | 'mix-remove' | 'mix-requote';
+export type CartAction =
+  'add' | 'bundle-add' | 'update' | 'remove' | 'mix-update' | 'mix-remove' | 'mix-requote';
 
 type CartStatus = 'initializing' | 'ready' | 'refreshing' | 'error';
 
@@ -195,6 +197,16 @@ export function useCart() {
       runCartAction('add', productId, (cartId) => api.addToCart(cartId, productId), true),
     [runCartAction],
   );
+  const addBundle = useCallback(
+    (bundleId: string) =>
+      runCartAction(
+        'bundle-add',
+        `bundle:${bundleId}`,
+        (cartId) => bundlesApi.addBundleToCart(cartId, bundleId),
+        true,
+      ),
+    [runCartAction],
+  );
   const updateQuantity = useCallback(
     (productId: string, quantity: number) =>
       runCartAction(
@@ -268,6 +280,7 @@ export function useCart() {
     pendingActions: state.pendingActions,
     isActionPending,
     addItem,
+    addBundle,
     updateQuantity,
     removeItem,
     updateMixQuantity,

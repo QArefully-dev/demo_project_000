@@ -41,6 +41,14 @@ describe('CategoryNav', () => {
     expect(screen.getByRole('link', { name: 'Deals' })).not.toHaveClass('powderizer-nav-link');
   });
 
+  it('links to bundles and marks its dedicated page as current', () => {
+    renderNav('/bundles');
+
+    const bundles = screen.getByRole('link', { name: 'Bundles' });
+    expect(bundles).toHaveAttribute('href', '/bundles');
+    expect(bundles).toHaveAttribute('aria-current', 'page');
+  });
+
   it('freezes the iridescent animation for reduced motion', () => {
     const styles = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8');
 
