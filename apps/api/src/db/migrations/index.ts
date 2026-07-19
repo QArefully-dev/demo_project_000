@@ -11,6 +11,7 @@ import { powderizerExpansionMigration } from './009_powderizer_expansion.js';
 import { catalogMetadataMigration } from './010_catalog_metadata.js';
 import { auditEventsMigration } from './011_audit_events.js';
 import { curatedBundlesMigration } from './012_curated_bundles.js';
+import { customerReviewsMigration } from './013_customer_reviews.js';
 
 export const migrations: readonly Migration[] = [
   initialMigration,
@@ -25,4 +26,5 @@ export const migrations: readonly Migration[] = [
   catalogMetadataMigration,
   auditEventsMigration,
   curatedBundlesMigration,
+  customerReviewsMigration,
 ];

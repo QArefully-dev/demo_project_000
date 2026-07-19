@@ -112,6 +112,46 @@ void test('measures serialized metadata in UTF-8 bytes', () => {
   );
 });
 
+void test('builds body-free, scalar-only review audit metadata', () => {
+  const created = buildAuditEvent({
+    action: 'review.created',
+    context: userContext,
+    reviewId: 91,
+    productId: 12,
+    rating: 5,
+    body: 'Sensitive review body that must never enter audit metadata.',
+    authorEmail: 'customer@example.test',
+  } as AuditEventInput);
+  const hidden = buildAuditEvent({
+    action: 'review.hidden',
+    context: { actor: { type: 'user', userId: 1 }, requestId: 'admin-request' },
+    reviewId: 91,
+    productId: 12,
+    bodyExcerpt: 'not retained',
+  } as AuditEventInput);
+
+  assert.equal(created.entityType, 'review');
+  assert.equal(created.entityId, '91');
+  assert.deepEqual(created.metadata, { productId: 12, rating: 5 });
+  assert.equal(created.metadataJson.includes('Sensitive review body'), false);
+  assert.equal(created.metadataJson.includes('customer@example.test'), false);
+  assert.deepEqual(hidden.metadata, { productId: 12 });
+  assert.equal(hidden.metadataJson.includes('bodyExcerpt'), false);
+});
+
+void test('rejects invalid review audit scalars', () => {
+  for (const input of [
+    { action: 'review.created', reviewId: 0, productId: 12, rating: 5 },
+    { action: 'review.updated', reviewId: 91, productId: 0, rating: 5 },
+    { action: 'review.created', reviewId: 91, productId: 12, rating: 6 },
+    { action: 'review.updated', reviewId: 91, productId: 12, rating: 1.5 },
+  ]) {
+    expectEventError(() =>
+      buildAuditEvent({ context: userContext, ...input } as unknown as AuditEventInput),
+    );
+  }
+});
+
 void test('normalizes UTC dates and pagination defaults', () => {
   assert.deepEqual(
     normalizeAuditEventQuery({ occurredFrom: '2026-02-03', occurredTo: '2026-02-04' }),
@@ -122,6 +162,15 @@ void test('normalizes UTC dates and pagination defaults', () => {
       pageSize: 50,
     },
   );
+});
+
+void test('accepts review audit actions and entity type filters', () => {
+  assert.deepEqual(normalizeAuditEventQuery({ action: 'review.restored', entityType: 'review' }), {
+    action: 'review.restored',
+    entityType: 'review',
+    page: 1,
+    pageSize: 50,
+  });
 });
 
 void test('rejects malformed, inverted, and out-of-bounds audit query values', () => {

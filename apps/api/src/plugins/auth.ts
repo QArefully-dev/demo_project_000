@@ -73,6 +73,23 @@ export function requireAdmin(sessions: SessionService) {
   };
 }
 
+/** Require a valid session whose user has the customer role. */
+export function requireCustomer(sessions: SessionService) {
+  return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const user = getAuthenticatedUser(sessions, request);
+    if (!user) {
+      sendUnauthorized(reply);
+      return;
+    }
+    if (user.role !== 'customer') {
+      sendForbidden(reply);
+      return;
+    }
+    request.authenticatedUser = user;
+    request.sessionToken = request.cookies?.sid ?? null;
+  };
+}
+
 /** Attach request-local authentication state. */
 export function authPlugin(sessions: SessionService) {
   return (app: FastifyInstance, _opts: unknown, done: () => void): void => {

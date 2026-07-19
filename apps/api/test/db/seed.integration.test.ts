@@ -223,6 +223,10 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
     `INSERT INTO order_powder_mix_items (order_id, snapshot_json)
      VALUES (last_insert_rowid(), '{"version":1}')`,
   ).run();
+  db.prepare(
+    `INSERT INTO reviews (product_id, user_id, rating, body)
+     VALUES (1, 1, 5, '12345678901234567890')`,
+  ).run();
 
   resetDatabase(db);
   seedDatabase(db);
@@ -268,5 +272,9 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM audit_events').get() as { count: number }).count,
     1,
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM reviews').get() as { count: number }).count,
+    0,
   );
 });

@@ -63,6 +63,9 @@ import { PowderMixDomainError } from './features/powderizer/powderizerTypes.js';
 import auditRoutes from './routes/audit.js';
 import { createBundleRepository } from './features/bundles/bundleRepository.js';
 import { createBundleService, type BundleService } from './features/bundles/bundleService.js';
+import reviewsRoutes from './routes/reviews.js';
+import { createReviewRepository } from './features/reviews/reviewRepository.js';
+import { createReviewService, type ReviewService } from './features/reviews/reviewService.js';
 
 export interface AppDependencies {
   db: Database.Database;
@@ -85,6 +88,7 @@ export interface AppServices {
   favourites: FavouritesService;
   powderizer: PowderizerService;
   bundles: BundleService;
+  reviews: ReviewService;
 }
 
 export type AppContext = { services: AppServices };
@@ -155,6 +159,12 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       unitOfWork,
       audit,
     }),
+    reviews: createReviewService({
+      repository: createReviewRepository(dependencies.db),
+      unitOfWork,
+      audit,
+      clock,
+    }),
     audit: createAuditReadService(auditRepository),
   };
 }
@@ -206,6 +216,7 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(powderizerRoutes, context);
   await app.register(bundleRoutes, context);
   await app.register(auditRoutes, context);
+  await app.register(reviewsRoutes, context);
 
   return app;
 }

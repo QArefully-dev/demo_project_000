@@ -57,6 +57,10 @@
     "./bundles": {
       "types": "./dist/bundles.d.ts",
       "import": "./dist/bundles.js"
+    },
+    "./reviews": {
+      "types": "./dist/reviews.d.ts",
+      "import": "./dist/reviews.js"
     }
   },
   "dependencies": {

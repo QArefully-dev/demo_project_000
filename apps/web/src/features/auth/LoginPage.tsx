@@ -1,12 +1,14 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/AuthContext';
 import { Button } from '@/components/ui/button';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { ApiError } from '@/api/client';
+import { resolveLoginReturnPath } from './loginReturnPath';
 
 export function LoginPage() {
   const { login } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState('');
@@ -26,7 +28,7 @@ export function LoginPage() {
     setSubmitting(true);
     try {
       await login(email, password);
-      navigate('/', { replace: true });
+      navigate(resolveLoginReturnPath(location.state), { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.response?.error ?? 'Login failed');
