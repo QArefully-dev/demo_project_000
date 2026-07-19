@@ -65,7 +65,7 @@ Avoid visible platform complexity:
 - shared contracts: TypeBox
 - launch: `npm ci` -> `npm run dev`
 - external services: none
-- implemented commerce: auth, catalog, cart, inventory, promotions, checkout, simulated payment, orders, favourites, account, dev mailbox
+- implemented commerce: auth, catalog, cart, inventory, promotions, checkout, simulated payment, orders, returns and refunds, favourites, account, dev mailbox
 - implemented catalog depth: typed specifications and tags, advanced filters and stable sorts, comparison, similar products, curated bundles, customer reviews with helpfulness and abuse reporting
 - implemented customer journey: composed product detail, comparison entry points, help and policy center, Powderizer custom mixes and history
 - implemented integrity: ordered migrations, append-only audit ledger, sanitized admin audit reads
@@ -159,8 +159,13 @@ Status: delivery order for remaining work. `partial` = implemented subset; `futu
 2. Inventory: completed
    - implementation record: `plans/inventory_coding_plan.md`
    - delivered: unified ordinary-product and Powderizer component availability authority; checkout-time 15-minute reservations; atomic authorization and consumption; concurrent oversell protection; expiry release; product-line allocation records; opted-in backorders; idempotent admin stock receipts with FIFO backorder allocation; cancellation stock restoration for unshipped ordinary lines; customer availability and backorder presentation
-3. Returns and refunds: future
-   - remaining: return windows, partial quantities, refund rules, stock restoration
+3. Returns and refunds: completed
+   - implementation record: `plans/old/returns_and_refunds_coding_plan.md`
+   - delivered: authenticated owner requests for delivered ordinary-product quantities within a 30-day UTC window; partial quantities across shipments; reason and bounded optional note; customer order-detail eligibility, history, and resilient request panel
+   - delivered: admin API queue and guarded `requested -> approved -> received -> refunded` or `requested -> rejected` workflow with optimistic versions and idempotency keys
+   - delivered: deterministic integer refund proration from immutable original line totals and order discounts; immutable refund facts and simulated local gateway references; original orders, payments, and promotion redemptions unchanged
+   - delivered: atomic receipt-time stock restoration, immutable return/inventory/audit ledgers, and existing FIFO backorder allocation; deterministic reset and seed scenarios
+   - scope limits: no Powderizer returns, exchanges, real payment reversal, customer withdrawal, or admin web UI
 4. Checkout depth: future
    - foundation: validated contact, shipping address, server quote, idempotent simulated payment
    - remaining: saved addresses, billing address, delivery methods, estimates, gift options
