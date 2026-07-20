@@ -13,6 +13,7 @@ import {
   PowderMixOrderItemSnapshotV1,
   PowderMixOrderItemSnapshotV2,
 } from './powderizer.js';
+import { DeliveryClass, DeliveryMode } from './delivery.js';
 
 const UtcIsoInstant = Type.String({
   minLength: 24,
@@ -76,6 +77,24 @@ export const OrderInventoryStatus = Type.Union([
 ]);
 export type OrderInventoryStatus = Static<typeof OrderInventoryStatus>;
 
+export const OrderLineVariantSnapshot = Type.Object(
+  {
+    variantId: Type.Integer({ minimum: 1 }),
+    sku: Type.String({ minLength: 1, maxLength: 64 }),
+    label: Type.String({ minLength: 1, maxLength: 160 }),
+    unitPriceCents: MoneyCents,
+    weightGrams: Type.Integer({ minimum: 1 }),
+    consumptionClassification: Type.Union([
+      Type.Literal('food'),
+      Type.Literal('non-food'),
+      Type.Literal('caution'),
+    ]),
+    deliveryClass: DeliveryClass,
+  },
+  { additionalProperties: false },
+);
+export type OrderLineVariantSnapshot = Static<typeof OrderLineVariantSnapshot>;
+
 export const OrderLineItem = Type.Object(
   {
     lineId: PositiveIntegerString,
@@ -87,6 +106,7 @@ export const OrderLineItem = Type.Object(
     inventoryStatus: OrderInventoryStatus,
     allocatedQuantity: Type.Integer({ minimum: 0 }),
     backorderedQuantity: Type.Integer({ minimum: 0 }),
+    variantSnapshot: Type.Optional(OrderLineVariantSnapshot),
   },
   { additionalProperties: false },
 );
@@ -133,6 +153,9 @@ export const Order = Type.Object(
     totalCents: MoneyCents,
     promoApplied: Type.Union([Type.String(), Type.Null()]),
     createdAt: UtcIsoInstant,
+    deliveryMode: Type.Optional(DeliveryMode),
+    deliveryChargeCents: Type.Optional(Type.Integer({ minimum: 0 })),
+    deliveryWeightGrams: Type.Optional(Type.Integer({ minimum: 0 })),
   },
   { additionalProperties: false },
 );

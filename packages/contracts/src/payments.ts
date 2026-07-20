@@ -15,6 +15,7 @@ import {
   PowderMixOrderItemSnapshotV1,
   PowderMixOrderItemSnapshotV2,
 } from './powderizer.js';
+import { DeliveryClass, DeliverySummary } from './delivery.js';
 
 export const PaymentBody = Type.Object({
   cartId: Uuid,
@@ -145,17 +146,60 @@ export const PersistedCheckoutQuoteV4 = Type.Object(
 );
 export type PersistedCheckoutQuoteV4 = Static<typeof PersistedCheckoutQuoteV4>;
 
+const PersistedCheckoutVariantLine = Type.Object(
+  {
+    productId: PositiveIntegerString,
+    variantId: Type.Integer({ minimum: 1 }),
+    productName: Type.String(),
+    variantLabel: Type.String({ minLength: 1, maxLength: 160 }),
+    unitPriceCents: MoneyCents,
+    weightGrams: Type.Integer({ minimum: 1 }),
+    deliveryClass: DeliveryClass,
+    quantity: Type.Integer({ minimum: 1 }),
+    lineTotalCents: MoneyCents,
+  },
+  { additionalProperties: false },
+);
+
+const PersistedCheckoutMixLine = Type.Object(
+  {
+    mixId: Uuid,
+    unitPriceCents: MoneyCents,
+    quantity: Type.Integer({ minimum: 1 }),
+    lineTotalCents: MoneyCents,
+    deliveryClass: DeliveryClass,
+    weightGrams: Type.Integer({ minimum: 1 }),
+  },
+  { additionalProperties: false },
+);
+
+/** Variant-aware checkout quote. Includes delivery summary and variant-scoped lines. */
+export const PersistedCheckoutQuoteV5 = Type.Object(
+  {
+    version: Type.Literal(5),
+    ...PersistedCheckoutQuoteFields,
+    mixLines: Type.Array(PersistedCheckoutMixLine),
+    variantLines: Type.Array(PersistedCheckoutVariantLine),
+    deliverySummary: DeliverySummary,
+    inventoryAllocations: Type.Array(PersistedInventoryAllocation),
+  },
+  { additionalProperties: false },
+);
+export type PersistedCheckoutQuoteV5 = Static<typeof PersistedCheckoutQuoteV5>;
+
 export const PersistedCheckoutQuote = Type.Union([
   PersistedCheckoutQuoteV1,
   PersistedCheckoutQuoteV2,
   PersistedCheckoutQuoteV3,
   PersistedCheckoutQuoteV4,
+  PersistedCheckoutQuoteV5,
 ]);
 export type PersistedCheckoutQuote = Static<typeof PersistedCheckoutQuote>;
-export const CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION = 4;
+export const CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION = 5;
 
-/** Strict storage-boundary parser. Readers accept v1, v2, and v3; writers use v3. */
+/** Strict storage-boundary parser. Readers accept v1-v5; writers use v5. */
 export function parsePersistedCheckoutQuote(value: unknown): PersistedCheckoutQuote {
+  if (Value.Check(PersistedCheckoutQuoteV5, value)) return value;
   if (Value.Check(PersistedCheckoutQuoteV4, value)) return value;
   if (Value.Check(PersistedCheckoutQuoteV3, value)) return value;
   if (Value.Check(PersistedCheckoutQuoteV2, value)) return value;

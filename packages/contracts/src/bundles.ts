@@ -10,9 +10,23 @@ const BundleKey = Type.String({
 const BundleName = Type.String({ minLength: 1, maxLength: 160 });
 const BundleDescription = Type.String({ minLength: 1, maxLength: 500 });
 
+export const BundleVariantDetail = Type.Object(
+  {
+    variantId: Type.Integer({ minimum: 1 }),
+    sku: Type.String({ minLength: 1, maxLength: 64 }),
+    label: Type.String({ minLength: 1, maxLength: 160 }),
+    weightGrams: Type.Integer({ minimum: 1 }),
+    priceCents: MoneyCents,
+  },
+  { additionalProperties: false },
+);
+export type BundleVariantDetail = Static<typeof BundleVariantDetail>;
+
 export const CuratedBundleComponent = Type.Object(
   {
     product: Product,
+    variantId: Type.Optional(Type.Integer({ minimum: 1 })),
+    variantDetail: Type.Optional(BundleVariantDetail),
     quantity: Type.Integer({ minimum: 1 }),
     lineTotalCents: MoneyCents,
   },

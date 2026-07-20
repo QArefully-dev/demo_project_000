@@ -1,5 +1,6 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { MoneyCents, PositiveIntegerString } from './common.js';
+import { DeliveryClass } from './delivery.js';
 
 const NormalizedCatalogKey = Type.String({
   minLength: 1,
@@ -224,3 +225,173 @@ export const ProductDetailResponse = Product;
 export type ProductDetailResponse = Static<typeof ProductDetailResponse>;
 
 export const ProductIdParam = Type.Object({ id: PositiveIntegerString });
+
+export const ConsumptionClassification = Type.Union([
+  Type.Literal('food'),
+  Type.Literal('non-food'),
+  Type.Literal('caution'),
+]);
+export type ConsumptionClassification = Static<typeof ConsumptionClassification>;
+
+export const MixingGroup = Type.String({
+  minLength: 1,
+  maxLength: 64,
+});
+export type MixingGroup = Static<typeof MixingGroup>;
+
+export const BaseProductFacts = Type.Object(
+  {
+    texture: Type.String({ minLength: 1, maxLength: 200 }),
+    colour: Type.String({ minLength: 1, maxLength: 200 }),
+    source: Type.String({ minLength: 1, maxLength: 500 }),
+    intendedUse: Type.String({ minLength: 1, maxLength: 500 }),
+    storage: Type.String({ minLength: 1, maxLength: 500 }),
+    consumptionClassification: ConsumptionClassification,
+  },
+  { additionalProperties: false },
+);
+export type BaseProductFacts = Static<typeof BaseProductFacts>;
+
+export const EdibleFacts = Type.Object(
+  {
+    ...BaseProductFacts.properties,
+    ingredients: Type.Array(Type.String({ minLength: 1, maxLength: 200 }), {
+      minItems: 1,
+      maxItems: 50,
+    }),
+    allergens: Type.Array(Type.String({ minLength: 1, maxLength: 200 }), { maxItems: 20 }),
+    nutrition: Type.Record(Type.String(), Type.String()),
+    servingSize: Type.String({ minLength: 1, maxLength: 100 }),
+    dietaryAttributes: Type.Array(Type.String({ minLength: 1, maxLength: 100 }), { maxItems: 20 }),
+  },
+  { additionalProperties: false },
+);
+export type EdibleFacts = Static<typeof EdibleFacts>;
+
+export const SportsFacts = Type.Object(
+  {
+    ...EdibleFacts.properties,
+    flavour: Type.String({ minLength: 1, maxLength: 200 }),
+    servings: Type.Integer({ minimum: 1 }),
+    proteinPerServing: Type.Number({ minimum: 0 }),
+    carbsPerServing: Type.Number({ minimum: 0 }),
+  },
+  { additionalProperties: false },
+);
+export type SportsFacts = Static<typeof SportsFacts>;
+
+export const GardenFacts = Type.Object(
+  {
+    ...BaseProductFacts.properties,
+    npk: Type.String({ minLength: 1, maxLength: 50 }),
+    coverage: Type.String({ minLength: 1, maxLength: 200 }),
+    application: Type.String({ minLength: 1, maxLength: 500 }),
+    handling: Type.String({ minLength: 1, maxLength: 500 }),
+  },
+  { additionalProperties: false },
+);
+export type GardenFacts = Static<typeof GardenFacts>;
+
+export const CleaningFacts = Type.Object(
+  {
+    ...BaseProductFacts.properties,
+    surfaces: Type.Array(Type.String({ minLength: 1, maxLength: 200 }), {
+      minItems: 1,
+      maxItems: 20,
+    }),
+    dosage: Type.String({ minLength: 1, maxLength: 200 }),
+    hazardStatement: Type.String({ minLength: 1, maxLength: 500 }),
+    handling: Type.String({ minLength: 1, maxLength: 500 }),
+  },
+  { additionalProperties: false },
+);
+export type CleaningFacts = Static<typeof CleaningFacts>;
+
+export const TradeFacts = Type.Object(
+  {
+    ...BaseProductFacts.properties,
+    composition: Type.String({ minLength: 1, maxLength: 500 }),
+    waterRatio: Type.String({ minLength: 1, maxLength: 100 }),
+    coverage: Type.String({ minLength: 1, maxLength: 200 }),
+    settingTime: Type.String({ minLength: 1, maxLength: 100 }),
+    ppe: Type.Array(Type.String({ minLength: 1, maxLength: 200 }), { maxItems: 10 }),
+  },
+  { additionalProperties: false },
+);
+export type TradeFacts = Static<typeof TradeFacts>;
+
+export const TheatricalFacts = Type.Object(
+  {
+    ...BaseProductFacts.properties,
+    approvedApplication: Type.String({ minLength: 1, maxLength: 500 }),
+    cleanup: Type.String({ minLength: 1, maxLength: 500 }),
+    colourProfile: Type.String({ minLength: 1, maxLength: 200 }),
+    particleAppearance: Type.String({ minLength: 1, maxLength: 500 }),
+    ppe: Type.Array(Type.String({ minLength: 1, maxLength: 200 }), { maxItems: 10 }),
+  },
+  { additionalProperties: false },
+);
+export type TheatricalFacts = Static<typeof TheatricalFacts>;
+
+export const CategoryFacts = Type.Union([
+  SportsFacts,
+  GardenFacts,
+  CleaningFacts,
+  TradeFacts,
+  TheatricalFacts,
+  EdibleFacts,
+  BaseProductFacts,
+]);
+export type CategoryFacts = Static<typeof CategoryFacts>;
+
+export const CatalogVariant = Type.Object(
+  {
+    variantId: Type.Integer({ minimum: 1 }),
+    productId: Type.Integer({ minimum: 1 }),
+    sku: Type.String({ minLength: 1, maxLength: 64 }),
+    label: Type.String({ minLength: 1, maxLength: 160 }),
+    weightGrams: Type.Integer({ minimum: 1 }),
+    priceCents: MoneyCents,
+    compareAtPriceCents: Type.Optional(MoneyCents),
+    stockCount: Type.Integer({ minimum: 0 }),
+    backorderable: Type.Boolean(),
+    backorderLeadDays: Type.Union([Type.Integer({ minimum: 1, maximum: 365 }), Type.Null()]),
+    deliveryClass: DeliveryClass,
+    active: Type.Boolean(),
+    sortOrder: Type.Integer({ minimum: 1 }),
+  },
+  { additionalProperties: false },
+);
+export type CatalogVariant = Static<typeof CatalogVariant>;
+
+export const PriceRange = Type.Object(
+  {
+    min: MoneyCents,
+    max: MoneyCents,
+  },
+  { additionalProperties: false },
+);
+export type PriceRange = Static<typeof PriceRange>;
+
+export const BaseAvailability = Type.Union([
+  Type.Literal('in_stock'),
+  Type.Literal('low_stock'),
+  Type.Literal('out_of_stock'),
+  Type.Literal('backorder'),
+]);
+export type BaseAvailability = Static<typeof BaseAvailability>;
+
+export const ProductWithVariants = Type.Object(
+  {
+    ...Product.properties,
+    variants: Type.Array(CatalogVariant, { minItems: 1 }),
+    defaultVariantId: Type.Integer({ minimum: 1 }),
+    categoryFacts: CategoryFacts,
+    consumptionClassification: ConsumptionClassification,
+    mixingGroup: Type.Union([MixingGroup, Type.Null()]),
+    priceRange: PriceRange,
+    baseAvailability: BaseAvailability,
+  },
+  { additionalProperties: false },
+);
+export type ProductWithVariants = Static<typeof ProductWithVariants>;
