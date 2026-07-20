@@ -37,6 +37,16 @@ export interface PowderMixProduct {
   mixable: boolean;
   mixUnitGrams: number | null;
   consumptionWarning?: 'Not for consumption' | null;
+  mixingGroup: string | null;
+  blendSourceVariantId: number | null;
+  detailsJson: string | null;
+}
+
+export interface CombinedPowderMixFacts {
+  ingredients: string[];
+  allergens: string[];
+  intendedUse: string[];
+  safety: string[];
 }
 
 export interface PowderMixComponent {
@@ -67,6 +77,7 @@ export interface PowderMixQuote extends PowderMixPrice {
   config: NormalizedPowderMixConfig;
   allocations: readonly PowderMixAllocation[];
   usageLabel: 'Consumable powder' | 'Not for consumption';
+  combinedFacts: CombinedPowderMixFacts;
 }
 
 export interface PowderMixStockLine {

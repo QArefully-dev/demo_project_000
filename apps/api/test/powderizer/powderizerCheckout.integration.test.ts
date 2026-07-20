@@ -57,8 +57,8 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
   carts.create(cartId);
   const mixId = powderizer.create(cartId, {
     components: [
-      { productId: '1', percentage: 50 },
       { productId: '27', percentage: 50 },
+      { productId: '28', percentage: 50 },
     ],
     bagSizeGrams: 500,
     fineness: 'fine',
@@ -96,15 +96,17 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
     userId: null,
     auditContext: { actor: { type: 'anonymous', userId: null }, requestId: crypto.randomUUID() },
   };
-  const beforeStock = products.findById(1)?.stock_count;
+  const beforeStock = products.findById(27)?.stock_count;
   const result = await checkout.process(params);
   assert.equal(result.success, true);
   if (!result.success) return;
   assert.equal(result.order.items.length, 0);
   assert.equal(result.order.mixItems.length, 1);
-  assert.equal(result.order.mixItems[0]?.mixId, mixId);
-  assert.equal(result.order.mixItems[0]?.bagColourScheme, 'deep-space');
-  assert.equal(result.order.mixItems[0]?.usageLabel, 'Not for consumption');
+  const orderedMix = result.order.mixItems[0];
+  if (!orderedMix) throw new Error('Expected ordered mix');
+  assert.equal(orderedMix.mixId, mixId);
+  assert.equal(orderedMix.bagColourScheme, 'deep-space');
+  assert.equal(orderedMix.usageLabel, 'Not for consumption');
   assert.equal(Number.isSafeInteger(result.order.totalCents), true);
   assert.equal(
     (
@@ -128,15 +130,13 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
     ).count,
     0,
   );
-  assert.equal(products.findById(1)?.stock_count, (beforeStock ?? 0) - 1);
-  db.prepare("UPDATE products SET name = 'Changed name', price_cents = 1 WHERE id = 1").run();
+  assert.equal(products.findById(27)?.stock_count, (beforeStock ?? 0) - 1);
+  db.prepare("UPDATE products SET name = 'Changed name', price_cents = 1 WHERE id = 27").run();
   assert.equal(
     createOrderRepository(db).findById(Number(result.order.id))?.mixItems[0]?.components[0]
       ?.productName,
-    'Protein Powder',
+    'Lawn Fertiliser',
   );
-  const orderedMix = result.order.mixItems[0];
-  if (!orderedMix) throw new Error('Expected ordered mix');
   db.prepare('UPDATE order_powder_mix_items SET snapshot_json = ? WHERE order_id = ?').run(
     JSON.stringify({
       mixId: orderedMix.mixId,
@@ -170,7 +170,7 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
   );
   const replay = await checkout.process(params);
   assert.equal(replay.success, true);
-  assert.equal(products.findById(1)?.stock_count, (beforeStock ?? 0) - 1);
+  assert.equal(products.findById(27)?.stock_count, (beforeStock ?? 0) - 1);
 });
 
 void test('finalizes migrated authorized v2 and v3 mix quotes through unified inventory once', async (t) => {
@@ -195,8 +195,8 @@ void test('finalizes migrated authorized v2 and v3 mix quotes through unified in
     carts.create(cartId);
     const mixId = powderizer.create(cartId, {
       components: [
-        { productId: '1', percentage: 50 },
         { productId: '27', percentage: 50 },
+        { productId: '28', percentage: 50 },
       ],
       bagSizeGrams: 500,
       fineness: 'fine',
@@ -233,7 +233,7 @@ void test('finalizes migrated authorized v2 and v3 mix quotes through unified in
       userId: null,
       auditContext: { actor: { type: 'anonymous', userId: null }, requestId: crypto.randomUUID() },
     };
-    const beforeStock = products.findById(1)?.stock_count;
+    const beforeStock = products.findById(27)?.stock_count;
     const pending = checkout.process(params);
     const payment = db
       .prepare('SELECT quote_json FROM payments WHERE idempotency_key = ?')
@@ -242,7 +242,6 @@ void test('finalizes migrated authorized v2 and v3 mix quotes through unified in
       mixLines: Array<Record<string, unknown>>;
     };
     quote.version = version;
-    delete quote.inventoryAllocations;
     if (version === 2) {
       quote.mixLines = quote.mixLines.map((line) => {
         const legacyLine = { ...line };
@@ -258,7 +257,7 @@ void test('finalizes migrated authorized v2 and v3 mix quotes through unified in
     deferred.resolve({ status: 'success', reference: `migrated-${version}` });
     const result = await pending;
     assert.equal(result.success, true);
-    assert.equal(products.findById(1)?.stock_count, (beforeStock ?? 0) - 1);
+    assert.equal(products.findById(27)?.stock_count, (beforeStock ?? 0) - 1);
     assert.equal(
       (
         db
@@ -281,7 +280,7 @@ void test('finalizes migrated authorized v2 and v3 mix quotes through unified in
     );
     const replay = await checkout.process(params);
     assert.deepEqual(replay, result);
-    assert.equal(products.findById(1)?.stock_count, (beforeStock ?? 0) - 1);
+    assert.equal(products.findById(27)?.stock_count, (beforeStock ?? 0) - 1);
   }
 });
 

@@ -24,6 +24,9 @@ function toMixProduct(
     mixable: row.mixable === 1,
     mixUnitGrams: row.mix_unit_grams ?? null,
     consumptionWarning: isNonFood ? 'Not for consumption' : null,
+    mixingGroup: row.mixing_group ?? null,
+    blendSourceVariantId: row.blend_source_variant_id ?? null,
+    detailsJson: row.details_json ?? null,
   };
 }
 

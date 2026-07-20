@@ -4,22 +4,105 @@ import {
   allocatePowderMixGrams,
   calculatePowderMixStockRequirements,
   createPowderMixQuoteKey,
+  deriveCombinedPowderMixFacts,
   derivePowderMixUsageLabel,
   normalizePowderMixBagColourScheme,
   normalizePowderMixConfig,
   normalizePowderMixLabel,
   parsePowderMixPriceVersion,
   quotePowderMix,
+  validateMixingGroupCompat,
 } from './powderMixRules.js';
 import { PowderMixDomainError, type PowderMixProduct } from './powderizerTypes.js';
 
 const products: readonly PowderMixProduct[] = [
-  { id: 2, name: 'Cocoa', priceCents: 699, mixable: true, mixUnitGrams: 250 },
-  { id: 3, name: 'Protein', priceCents: 1_299, mixable: true, mixUnitGrams: 500 },
-  { id: 5, name: 'Matcha', priceCents: 899, mixable: true, mixUnitGrams: 100 },
-  { id: 7, name: 'Oat', priceCents: 499, mixable: true, mixUnitGrams: 1000 },
-  { id: 11, name: 'Spice', priceCents: 399, mixable: true, mixUnitGrams: 200 },
-  { id: 99, name: 'Bleach', priceCents: 599, mixable: false, mixUnitGrams: null },
+  {
+    id: 2,
+    name: 'Cocoa',
+    priceCents: 699,
+    mixable: true,
+    mixUnitGrams: 250,
+    mixingGroup: 'food-grade',
+    blendSourceVariantId: null,
+    detailsJson: JSON.stringify({
+      ingredients: ['Cocoa'],
+      intendedUse: 'Baking and beverages',
+      consumptionClassification: 'food',
+    }),
+  },
+  {
+    id: 3,
+    name: 'Protein',
+    priceCents: 1_299,
+    mixable: true,
+    mixUnitGrams: 500,
+    mixingGroup: 'food-grade',
+    blendSourceVariantId: null,
+    detailsJson: JSON.stringify({
+      ingredients: ['Whey protein'],
+      allergens: ['Milk'],
+      intendedUse: 'Post-workout nutrition',
+      consumptionClassification: 'food',
+    }),
+  },
+  {
+    id: 5,
+    name: 'Matcha',
+    priceCents: 899,
+    mixable: true,
+    mixUnitGrams: 100,
+    mixingGroup: 'food-grade',
+    blendSourceVariantId: null,
+    detailsJson: JSON.stringify({
+      ingredients: ['Green tea powder'],
+      intendedUse: 'Tea and flavouring',
+      consumptionClassification: 'food',
+    }),
+  },
+  {
+    id: 7,
+    name: 'Oat',
+    priceCents: 499,
+    mixable: true,
+    mixUnitGrams: 1000,
+    mixingGroup: 'food-grade',
+    blendSourceVariantId: null,
+    detailsJson: JSON.stringify({
+      ingredients: ['Oat flour'],
+      allergens: ['Gluten'],
+      intendedUse: 'Baking and thickening',
+      consumptionClassification: 'food',
+    }),
+  },
+  {
+    id: 11,
+    name: 'Spice',
+    priceCents: 399,
+    mixable: true,
+    mixUnitGrams: 200,
+    mixingGroup: 'food-grade',
+    blendSourceVariantId: null,
+    detailsJson: JSON.stringify({
+      ingredients: ['Spice blend'],
+      intendedUse: 'Seasoning',
+      consumptionClassification: 'food',
+    }),
+  },
+  {
+    id: 99,
+    name: 'Bleach',
+    priceCents: 599,
+    mixable: false,
+    mixUnitGrams: null,
+    mixingGroup: null,
+    blendSourceVariantId: null,
+    detailsJson: JSON.stringify({
+      hazardStatement: 'Corrosive',
+      handling: 'Wear gloves',
+      intendedUse: 'Surface disinfectant',
+      consumptionClassification: 'non-food',
+    }),
+  },
 ];
 
 const validInput = {
@@ -266,5 +349,247 @@ void test('aggregates quantity-aware bag equivalent stock across mix lines', () 
       { productId: 2, bagEquivalents: 3 },
       { productId: 3, bagEquivalents: 3 },
     ],
+  );
+});
+
+void test('rejects cross-group components at quote time', () => {
+  const foodProducts: readonly PowderMixProduct[] = [
+    {
+      id: 1,
+      name: 'Flour',
+      priceCents: 295,
+      mixable: true,
+      mixUnitGrams: 1000,
+      mixingGroup: 'food-grade',
+      blendSourceVariantId: null,
+      detailsJson: null,
+    },
+    {
+      id: 2,
+      name: 'Sugar',
+      priceCents: 199,
+      mixable: true,
+      mixUnitGrams: 500,
+      mixingGroup: 'food-grade',
+      blendSourceVariantId: null,
+      detailsJson: null,
+    },
+  ];
+  const cleaningProducts: readonly PowderMixProduct[] = [
+    {
+      id: 30,
+      name: 'Cleaner',
+      priceCents: 499,
+      mixable: true,
+      mixUnitGrams: 500,
+      mixingGroup: 'cleaning',
+      blendSourceVariantId: null,
+      detailsJson: null,
+    },
+    {
+      id: 31,
+      name: 'Scrub',
+      priceCents: 399,
+      mixable: true,
+      mixUnitGrams: 500,
+      mixingGroup: 'cleaning',
+      blendSourceVariantId: null,
+      detailsJson: null,
+    },
+  ];
+
+  expectCode('MIX_COMPONENT_INELIGIBLE', () =>
+    normalizePowderMixConfig(
+      {
+        components: [
+          { productId: '1', percentage: 50 },
+          { productId: '30', percentage: 50 },
+        ],
+        bagSizeGrams: 500,
+        fineness: 'standard',
+      },
+      [...foodProducts, ...cleaningProducts],
+    ),
+  );
+});
+
+void test('rejects null-group components', () => {
+  const mixedProducts: readonly PowderMixProduct[] = [
+    {
+      id: 1,
+      name: 'Flour',
+      priceCents: 295,
+      mixable: true,
+      mixUnitGrams: 1000,
+      mixingGroup: 'food-grade',
+      blendSourceVariantId: null,
+      detailsJson: null,
+    },
+    {
+      id: 99,
+      name: 'Orphan',
+      priceCents: 100,
+      mixable: true,
+      mixUnitGrams: 500,
+      mixingGroup: null,
+      blendSourceVariantId: null,
+      detailsJson: null,
+    },
+  ];
+
+  expectCode('MIX_COMPONENT_INELIGIBLE', () =>
+    normalizePowderMixConfig(
+      {
+        components: [
+          { productId: '1', percentage: 50 },
+          { productId: '99', percentage: 50 },
+        ],
+        bagSizeGrams: 500,
+        fineness: 'standard',
+      },
+      mixedProducts,
+    ),
+  );
+});
+
+void test('validateMixingGroupCompat rejects null, cross-group, and unknown groups', () => {
+  validateMixingGroupCompat([
+    {
+      id: 1,
+      name: 'A',
+      priceCents: 100,
+      mixable: true,
+      mixUnitGrams: 500,
+      mixingGroup: 'food-grade',
+      blendSourceVariantId: null,
+      detailsJson: null,
+    },
+    {
+      id: 2,
+      name: 'B',
+      priceCents: 100,
+      mixable: true,
+      mixUnitGrams: 500,
+      mixingGroup: 'food-grade',
+      blendSourceVariantId: null,
+      detailsJson: null,
+    },
+  ]);
+
+  assert.throws(
+    () =>
+      validateMixingGroupCompat([
+        {
+          id: 1,
+          name: 'A',
+          priceCents: 100,
+          mixable: true,
+          mixUnitGrams: 500,
+          mixingGroup: null,
+          blendSourceVariantId: null,
+          detailsJson: null,
+        },
+        {
+          id: 2,
+          name: 'B',
+          priceCents: 100,
+          mixable: true,
+          mixUnitGrams: 500,
+          mixingGroup: 'food-grade',
+          blendSourceVariantId: null,
+          detailsJson: null,
+        },
+      ]),
+    (error: unknown) =>
+      error instanceof PowderMixDomainError && error.code === 'MIX_COMPONENT_INELIGIBLE',
+  );
+
+  assert.throws(
+    () =>
+      validateMixingGroupCompat([
+        {
+          id: 1,
+          name: 'A',
+          priceCents: 100,
+          mixable: true,
+          mixUnitGrams: 500,
+          mixingGroup: 'food-grade',
+          blendSourceVariantId: null,
+          detailsJson: null,
+        },
+        {
+          id: 2,
+          name: 'B',
+          priceCents: 100,
+          mixable: true,
+          mixUnitGrams: 500,
+          mixingGroup: 'cleaning',
+          blendSourceVariantId: null,
+          detailsJson: null,
+        },
+      ]),
+    (error: unknown) =>
+      error instanceof PowderMixDomainError && error.code === 'MIX_COMPONENT_INELIGIBLE',
+  );
+});
+
+void test('derives combined facts from details_json across all components', () => {
+  const combined = deriveCombinedPowderMixFacts(products);
+  assert.deepEqual(combined.ingredients, [
+    'Cocoa',
+    'Green tea powder',
+    'Oat flour',
+    'Spice blend',
+    'Whey protein',
+  ]);
+  assert.deepEqual(combined.allergens, ['Gluten', 'Milk']);
+  assert.ok(combined.intendedUse.length >= 4);
+  assert.equal(combined.safety.length, 2);
+
+  const emptyFacts = deriveCombinedPowderMixFacts([products[0]!]);
+  assert.deepEqual(emptyFacts.ingredients, ['Cocoa']);
+  assert.deepEqual(emptyFacts.allergens, []);
+});
+
+void test('quotePowderMix includes combined facts and group validation', () => {
+  const quote = quotePowderMix(validInput, products);
+  assert.deepEqual(quote.combinedFacts.ingredients, ['Cocoa', 'Whey protein']);
+  assert.deepEqual(quote.combinedFacts.allergens, ['Milk']);
+  assert.ok(quote.combinedFacts.intendedUse.length >= 1);
+});
+
+void test('rejects cross-group quote via full quotePowderMix path', () => {
+  const foodProduct: PowderMixProduct = {
+    id: 2,
+    name: 'Cocoa',
+    priceCents: 699,
+    mixable: true,
+    mixUnitGrams: 250,
+    mixingGroup: 'food-grade',
+    blendSourceVariantId: null,
+    detailsJson: null,
+  };
+  const cleaningProduct: PowderMixProduct = {
+    id: 30,
+    name: 'Cleaner',
+    priceCents: 499,
+    mixable: true,
+    mixUnitGrams: 500,
+    mixingGroup: 'cleaning',
+    blendSourceVariantId: null,
+    detailsJson: null,
+  };
+  expectCode('MIX_COMPONENT_INELIGIBLE', () =>
+    quotePowderMix(
+      {
+        components: [
+          { productId: '2', percentage: 50 },
+          { productId: '30', percentage: 50 },
+        ],
+        bagSizeGrams: 500,
+        fineness: 'standard',
+      },
+      [foodProduct, cleaningProduct],
+    ),
   );
 });
