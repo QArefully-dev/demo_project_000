@@ -9,6 +9,7 @@ import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
 import type { PowderMixRepository } from '../powderizer/powderMixRepository.js';
 import type { BundleComponentRow, BundleRepository, BundleRow } from './bundleRepository.js';
+import type { VariantRow } from '../catalog/productRepository.js';
 
 export interface BundleServiceDependencies {
   bundles: BundleRepository;
@@ -26,7 +27,7 @@ export interface BundleAvailabilityDependencies {
 
 export type BundleUnavailable = {
   error: 'BUNDLE_UNAVAILABLE';
-  productIds: string[];
+  variantIds: string[];
 };
 
 export type BundleMutationResult =
@@ -45,15 +46,32 @@ function isVisible(bundle: BundleRow): boolean {
   );
 }
 
+function variantToDetail(variant: VariantRow) {
+  return {
+    variantId: variant.id,
+    sku: variant.sku,
+    label: variant.label,
+    weightGrams: variant.weight_grams,
+    priceCents: variant.price_cents,
+  };
+}
+
 /** Current persisted prices remain source of truth; no bundle price is stored. */
-export function toCuratedBundle(bundle: BundleRow): CuratedBundle {
+export function toCuratedBundle(
+  bundle: BundleRow,
+  variantMap: Map<number, VariantRow>,
+): CuratedBundle {
   if (!isVisible(bundle)) throw new Error('Cannot map a hidden curated bundle');
   const components = bundle.components.map((component) => {
     if (!component.product) throw new Error('Curated bundle component product is missing');
+    const variant = component.variantId != null ? variantMap.get(component.variantId) : undefined;
+    const priceCents = variant?.price_cents ?? component.product.price_cents;
     return {
       product: toProductContract(component.product),
+      ...(component.variantId != null ? { variantId: component.variantId } : {}),
+      ...(variant ? { variantDetail: variantToDetail(variant) } : {}),
       quantity: component.quantity,
-      lineTotalCents: component.product.price_cents * component.quantity,
+      lineTotalCents: priceCents * component.quantity,
     };
   });
   return {
@@ -72,51 +90,66 @@ function withAvailableToSell(
   availability: BundleAvailabilityDependencies | undefined,
 ): BundleRow[] {
   if (!availability) return [...bundles];
-  const productIds = [
+  const variantIds = [
     ...new Set(
-      bundles.flatMap((bundle) => bundle.components.map((component) => component.productId)),
+      bundles.flatMap((bundle) =>
+        bundle.components.filter((c) => c.variantId != null).map((c) => c.variantId!),
+      ),
     ),
   ];
-  const availabilityByProduct = new Map(
-    availability.inventory
-      .availableToSell(productIds, availability.clock.now().toISOString())
-      .map((product) => [product.productId, product]),
+  const availabilityByVariant = new Map(
+    variantIds.length > 0
+      ? availability.inventory
+          .availableToSell(variantIds, availability.clock.now().toISOString())
+          .map((v) => [v.variantId, v])
+      : [],
   );
   return bundles.map((bundle) => ({
     ...bundle,
-    components: bundle.components.map((component) => ({
-      ...component,
-      product: component.product
-        ? {
-            ...component.product,
-            available_to_sell: availabilityByProduct.get(component.productId)?.availableToSell ?? 0,
-            backorderable: availabilityByProduct.get(component.productId)?.backorderable ? 1 : 0,
-            backorder_lead_days:
-              availabilityByProduct.get(component.productId)?.backorderLeadDays ?? null,
-          }
-        : undefined,
-    })),
+    components: bundle.components.map((component) => {
+      const avail =
+        component.variantId != null ? availabilityByVariant.get(component.variantId) : undefined;
+      return {
+        ...component,
+        product: component.product
+          ? {
+              ...component.product,
+              available_to_sell: avail?.availableToSell ?? component.product.stock_count,
+              backorderable: avail?.backorderable ? 1 : 0,
+              backorder_lead_days: avail?.backorderLeadDays ?? null,
+            }
+          : undefined,
+      };
+    }),
   }));
 }
 
-export function collectUnavailableComponentIds(
+export function collectUnavailableComponentVariantIds(
   cartId: string,
   components: readonly BundleComponentRow[],
   carts: CartRepository,
 ): string[] {
   const unavailable = new Set<string>();
   for (const component of components) {
-    const product = component.product;
+    if (component.variantId == null) {
+      unavailable.add(String(component.productId));
+      continue;
+    }
+    const variant = carts.getVariant(component.variantId);
+    const availableToSell = component.product?.available_to_sell ?? variant?.stock_count ?? 0;
+    const isBackorderable = variant?.backorderable === 1;
     if (
-      !product ||
-      product.active !== 1 ||
+      !variant ||
+      variant.active !== 1 ||
+      !component.product ||
+      component.product.active !== 1 ||
       !Number.isSafeInteger(component.quantity) ||
       component.quantity <= 0 ||
-      ((product.available_to_sell ?? product.stock_count) <
-        carts.lineQuantity(cartId, String(component.productId)) + component.quantity &&
-        product.backorderable !== 1)
+      (availableToSell <
+        carts.lineQuantity(cartId, String(component.variantId)) + component.quantity &&
+        !isBackorderable)
     ) {
-      unavailable.add(String(component.productId));
+      unavailable.add(String(component.variantId));
     }
   }
   return [...unavailable].sort((left, right) => Number(left) - Number(right));
@@ -130,7 +163,7 @@ function assertPersistedShape(bundle: BundleRow): void {
   if (bundle.components.length < 2) {
     throw new Error('Curated bundle integrity error: expected at least two components');
   }
-  const productIds = new Set<number>();
+  const variantIds = new Set<number>();
   for (const component of bundle.components) {
     if (
       !component.product ||
@@ -139,10 +172,13 @@ function assertPersistedShape(bundle: BundleRow): void {
     ) {
       throw new Error('Curated bundle integrity error: invalid component');
     }
-    if (productIds.has(component.productId)) {
-      throw new Error('Curated bundle integrity error: duplicate component');
+    if (component.variantId == null) {
+      throw new Error('Curated bundle integrity error: component missing variant');
     }
-    productIds.add(component.productId);
+    if (variantIds.has(component.variantId)) {
+      throw new Error('Curated bundle integrity error: duplicate variant');
+    }
+    variantIds.add(component.variantId);
   }
 }
 
@@ -150,9 +186,23 @@ function assertPersistedShape(bundle: BundleRow): void {
 export function createBundleService(dependencies: BundleServiceDependencies): BundleService {
   return {
     list(productId) {
-      return withAvailableToSell(dependencies.bundles.list(productId), dependencies.availability)
-        .filter(isVisible)
-        .map(toCuratedBundle);
+      const bundles = withAvailableToSell(
+        dependencies.bundles.list(productId),
+        dependencies.availability,
+      );
+      const variantIds = [
+        ...new Set(
+          bundles.flatMap((b) =>
+            b.components.filter((c) => c.variantId != null).map((c) => c.variantId!),
+          ),
+        ),
+      ];
+      const variantMap = new Map<number, VariantRow>();
+      for (const vId of variantIds) {
+        const variant = dependencies.carts.getVariant(vId);
+        if (variant) variantMap.set(vId, variant);
+      }
+      return bundles.filter(isVisible).map((b) => toCuratedBundle(b, variantMap));
     },
     addToCart(cartId, bundleId, context) {
       requireAuditContext(context);
@@ -175,17 +225,20 @@ export function createBundleService(dependencies: BundleServiceDependencies): Bu
         if (!bundle || bundle.active !== 1) return 'BUNDLE_NOT_FOUND';
         assertPersistedShape(bundle);
 
-        const unavailable = collectUnavailableComponentIds(
+        const unavailable = collectUnavailableComponentVariantIds(
           cartId,
           bundle.components,
           dependencies.carts,
         );
-        if (unavailable.length > 0) return { error: 'BUNDLE_UNAVAILABLE', productIds: unavailable };
+        if (unavailable.length > 0) return { error: 'BUNDLE_UNAVAILABLE', variantIds: unavailable };
 
         for (const component of bundle.components) {
+          if (component.variantId == null) {
+            throw new Error('Curated bundle integrity error: component missing variant');
+          }
           dependencies.carts.addLineQuantity(
             cartId,
-            String(component.productId),
+            String(component.variantId),
             component.quantity,
           );
         }

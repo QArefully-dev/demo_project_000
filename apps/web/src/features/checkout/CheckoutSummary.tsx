@@ -20,6 +20,14 @@ interface CheckoutSummaryProps {
   onRemovePromo: () => void;
 }
 
+function cartItemKey(item: { productId: string; variantSnap?: { variantId: number } }): string {
+  return `${item.productId}:${item.variantSnap?.variantId ?? 'no-variant'}`;
+}
+
+function deliveryModeLabel(mode: string): string {
+  return mode === 'freight' ? 'Freight' : 'Parcel';
+}
+
 export function CheckoutSummary({
   cart,
   promoCode,
@@ -33,6 +41,8 @@ export function CheckoutSummary({
   onApplyPromo,
   onRemovePromo,
 }: CheckoutSummaryProps) {
+  const deliveryPreview = cart.deliveryPreview;
+
   return (
     <Card>
       <CardHeader>
@@ -41,11 +51,20 @@ export function CheckoutSummary({
       <CardContent className="space-y-4">
         <div className="space-y-2">
           {cart.items.map((item) => (
-            <div key={item.productId} className="flex items-center justify-between text-sm">
-              <span>
-                {item.product.name} <span className="text-muted-foreground">× {item.quantity}</span>
+            <div key={cartItemKey(item)} className="flex items-center justify-between text-sm">
+              <span className="min-w-0">
+                {item.product.name}{' '}
+                {item.variantSnap && (
+                  <span className="text-muted-foreground">&mdash; {item.variantSnap.label}</span>
+                )}{' '}
+                <span className="text-muted-foreground">× {item.quantity}</span>
+                {item.variantSnap && (
+                  <span className="block text-xs text-muted-foreground">
+                    SKU: {item.variantSnap.sku} · {item.variantSnap.weightGrams}g
+                  </span>
+                )}
               </span>
-              <span>{formatMoney(item.lineTotalCents)}</span>
+              <span className="shrink-0">{formatMoney(item.lineTotalCents)}</span>
             </div>
           ))}
           {cart.mixItems.map((item) => {
@@ -73,14 +92,14 @@ export function CheckoutSummary({
                     </span>
                   </span>
                 </div>
-                <span>{formatMoney(item.lineTotalCents)}</span>
+                <span className="shrink-0">{formatMoney(item.lineTotalCents)}</span>
               </div>
             );
           })}
         </div>
         <Separator />
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">Subtotal</span>
+          <span className="text-muted-foreground">Merchandise subtotal</span>
           <span>{formatMoney(cart.subtotalCents)}</span>
         </div>
         <PromoCodeForm
@@ -95,8 +114,21 @@ export function CheckoutSummary({
         />
         {discountCents > 0 && (
           <div className="flex items-center justify-between text-sm text-green-700">
-            <span>Discount</span>
+            <span>Discount{appliedPromo ? ` (${appliedPromo})` : ''}</span>
             <span>−{formatMoney(discountCents)}</span>
+          </div>
+        )}
+        {deliveryPreview && (
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>
+              {deliveryModeLabel(deliveryPreview.mode)} delivery
+              {deliveryPreview.mode !== 'freight' && ' · Free'}
+            </span>
+            <span>
+              {deliveryPreview.chargeCents === 0
+                ? '$0.00'
+                : formatMoney(deliveryPreview.chargeCents)}
+            </span>
           </div>
         )}
         <Separator />

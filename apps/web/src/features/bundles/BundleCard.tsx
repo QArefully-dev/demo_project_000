@@ -37,17 +37,22 @@ export function BundleCard({
       <p className="mt-2 text-sm text-muted-foreground">{bundle.description}</p>
       <ul className="mt-4 space-y-2" aria-label={`${bundle.name} components`}>
         {bundle.components.map((component) => (
-          <li
-            key={component.product.id}
-            className="flex items-center justify-between gap-4 text-sm"
-          >
-            <Link
-              to={`/products/${component.product.id}`}
-              className="font-medium underline-offset-4 hover:underline"
-            >
-              {component.product.name}
-            </Link>
-            <span className="shrink-0 text-muted-foreground">×{component.quantity}</span>
+          <li key={component.product.id} className="text-sm">
+            <div className="flex items-center justify-between gap-4">
+              <Link
+                to={`/products/${component.product.id}`}
+                className="font-medium underline-offset-4 hover:underline"
+              >
+                {component.product.name}
+              </Link>
+              <span className="shrink-0 text-muted-foreground">×{component.quantity}</span>
+            </div>
+            {component.variantDetail && (
+              <p className="text-xs text-muted-foreground">
+                {component.variantDetail.label} · SKU: {component.variantDetail.sku} ·{' '}
+                {component.variantDetail.weightGrams}g
+              </p>
+            )}
           </li>
         ))}
       </ul>

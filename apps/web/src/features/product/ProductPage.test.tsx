@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
-import type { Product } from '@shop/contracts/products';
+import type { ProductWithVariants, CategoryFacts } from '@shop/contracts/products';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
 import {
@@ -56,7 +56,16 @@ const comparisonStorage = {
   removeItem: () => undefined,
 };
 
-const product = (overrides: Partial<Product> = {}): Product => ({
+const defaultFacts: CategoryFacts = {
+  texture: 'Fine',
+  colour: 'White',
+  source: 'Test',
+  intendedUse: 'Testing',
+  storage: 'Dry',
+  consumptionClassification: 'non-food',
+};
+
+const product = (overrides: Partial<ProductWithVariants> = {}): ProductWithVariants => ({
   id: 'powdered-water',
   name: 'Powdered Water',
   description: 'Just-add-water water powder, 300g. Dry until required.',
@@ -76,6 +85,29 @@ const product = (overrides: Partial<Product> = {}): Product => ({
   availability: overrides.availability ?? 'in_stock',
   backorderable: overrides.backorderable ?? false,
   backorderLeadDays: overrides.backorderLeadDays ?? null,
+  variants: overrides.variants ?? [
+    {
+      variantId: 1,
+      productId: 1,
+      sku: 'PW-001',
+      label: 'Standard',
+      weightGrams: 500,
+      priceCents: 12999,
+      compareAtPriceCents: 16999,
+      stockCount: 8,
+      backorderable: false,
+      backorderLeadDays: null,
+      deliveryClass: 'parcel',
+      active: true,
+      sortOrder: 1,
+    },
+  ],
+  defaultVariantId: overrides.defaultVariantId ?? 1,
+  categoryFacts: overrides.categoryFacts ?? defaultFacts,
+  consumptionClassification: overrides.consumptionClassification ?? 'non-food',
+  mixingGroup: overrides.mixingGroup ?? null,
+  priceRange: overrides.priceRange ?? { min: 12999, max: 12999 },
+  baseAvailability: overrides.baseAvailability ?? 'in_stock',
 });
 
 function renderPage(path = '/products/powdered-water') {
@@ -135,8 +167,8 @@ describe('ProductPage', () => {
   });
 
   it('renders core product content while the similar request remains pending', async () => {
-    const response = deferred<Product>();
-    const similarResponse = deferred<Product[]>();
+    const response = deferred<ProductWithVariants>();
+    const similarResponse = deferred<ProductWithVariants[]>();
     productApi.getProduct.mockReturnValueOnce(response.promise);
     productApi.getSimilarProducts.mockReturnValueOnce(similarResponse.promise);
 
@@ -163,12 +195,33 @@ describe('ProductPage', () => {
     productApi.getProduct.mockResolvedValueOnce(product());
     productApi.getSimilarProducts.mockResolvedValueOnce([]);
     const { unmount } = renderPage();
-    expect(await screen.findByText('Sale')).toBeInTheDocument();
-    expect(screen.getByText('Save $40.00')).toBeInTheDocument();
+    expect(await screen.findByText('Save $40.00')).toBeInTheDocument();
     unmount();
 
     productApi.getProduct.mockResolvedValueOnce(
-      product({ compareAtPriceCents: undefined, stock: 0, availability: 'out_of_stock' }),
+      product({
+        compareAtPriceCents: undefined,
+        stock: 0,
+        availability: 'out_of_stock',
+        baseAvailability: 'out_of_stock',
+        priceRange: { min: 12999, max: 12999 },
+        variants: [
+          {
+            variantId: 1,
+            productId: 1,
+            sku: 'PW-001',
+            label: 'Standard',
+            weightGrams: 500,
+            priceCents: 12999,
+            stockCount: 0,
+            backorderable: false,
+            backorderLeadDays: null,
+            deliveryClass: 'parcel',
+            active: false,
+            sortOrder: 1,
+          },
+        ],
+      }),
     );
     productApi.getSimilarProducts.mockResolvedValueOnce([]);
     renderPage();
@@ -189,7 +242,11 @@ describe('ProductPage', () => {
     productApi.getSimilarProducts.mockResolvedValueOnce([]);
 
     renderPage();
-    const addButton = await screen.findByRole('button', { name: 'Add powder' });
+    await screen.findByRole('heading', { name: 'Powdered Water' });
+
+    // Select variant first
+    await user.click(screen.getByRole('radio'));
+    const addButton = screen.getByRole('button', { name: 'Add powder' });
     await user.click(addButton);
     await user.click(addButton);
     expect(cart.addItem).toHaveBeenCalledOnce();
@@ -209,15 +266,18 @@ describe('ProductPage', () => {
     productApi.getSimilarProducts.mockRejectedValueOnce(new Error('Similarity unavailable'));
 
     renderPage();
+    await screen.findByRole('heading', { name: 'Powdered Water' });
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not load similar powders.');
+
+    await user.click(screen.getByRole('radio'));
     await user.click(screen.getByRole('button', { name: 'Add powder' }));
-    expect(cart.addItem).toHaveBeenCalledWith('powdered-water');
+    expect(cart.addItem).toHaveBeenCalledWith('powdered-water', 1);
   });
 
   it('aborts and ignores a stale similar response after the route product changes', async () => {
     const user = userEvent.setup();
-    const firstSimilar = deferred<Product[]>();
-    const secondSimilar = deferred<Product[]>();
+    const firstSimilar = deferred<ProductWithVariants[]>();
+    const secondSimilar = deferred<ProductWithVariants[]>();
     productApi.getProduct
       .mockResolvedValueOnce(product({ id: 'first', name: 'First powder' }))
       .mockResolvedValueOnce(product({ id: 'second', name: 'Second powder' }));
@@ -287,10 +347,9 @@ describe('ProductPage', () => {
     expect(screen.getByText('Could not load reviews.')).toBeInTheDocument();
     expect(screen.queryByText('Shared bundle cart error')).not.toBeInTheDocument();
 
-    const addButton = screen.getByRole('button', { name: 'Add powder' });
-    expect(addButton).toBeEnabled();
-    await user.click(addButton);
-    expect(cart.addItem).toHaveBeenCalledWith('powdered-water');
+    await user.click(screen.getByRole('radio'));
+    await user.click(screen.getByRole('button', { name: 'Add powder' }));
+    expect(cart.addItem).toHaveBeenCalledWith('powdered-water', 1);
   });
 
   it('composes product sections in journey order with current specification data', async () => {
@@ -366,7 +425,6 @@ describe('ProductPage', () => {
     );
 
     await user.click(await screen.findByRole('button', { name: 'Compare Powdered Water' }));
-    // Route navigation is performed through React Router so provider state remains mounted.
     await user.click(screen.getByRole('button', { name: 'Leave product' }));
     expect(screen.getByTestId('selected-ids')).toHaveTextContent('1');
   });

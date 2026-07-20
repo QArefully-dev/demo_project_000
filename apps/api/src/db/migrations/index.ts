@@ -16,6 +16,7 @@ import { orderLifecycleMigration } from './014_order_lifecycle.js';
 import { inventoryMigration } from './015_inventory.js';
 import { reviewDepthMigration } from './016_review_depth.js';
 import { returnsRefundsMigration } from './017_returns_refunds.js';
+import { groundedCatalogVariantsMigration } from './018_grounded_catalog_variants.js';
 
 export const migrations: readonly Migration[] = [
   initialMigration,
@@ -35,4 +36,5 @@ export const migrations: readonly Migration[] = [
   inventoryMigration,
   reviewDepthMigration,
   returnsRefundsMigration,
+  groundedCatalogVariantsMigration,
 ];

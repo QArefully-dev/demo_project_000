@@ -193,8 +193,13 @@ export function useCart() {
   );
 
   const addItem = useCallback(
-    (productId: string) =>
-      runCartAction('add', productId, (cartId) => api.addToCart(cartId, productId), true),
+    (productId: string, variantId?: number) =>
+      runCartAction(
+        'add',
+        productId,
+        (cartId) => api.addToCart(cartId, productId, variantId),
+        true,
+      ),
     [runCartAction],
   );
   const addBundle = useCallback(

@@ -34,10 +34,11 @@ export function useCheckoutFlow() {
 
   const appliedPromo = selectAppliedPromo(state, quoteKey);
   const discountCents = selectDiscountCents(state, quoteKey);
+  const deliveryChargeCents = cart?.deliveryPreview?.chargeCents ?? 0;
   const totalCents =
     appliedPromo && state.promoTotalCents !== null
       ? state.promoTotalCents
-      : (cart?.subtotalCents ?? 0);
+      : (cart?.subtotalCents ?? 0) - discountCents + deliveryChargeCents;
   const applyPromo = usePromoQuote({
     cartId,
     cartPresent: Boolean(cart),

@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { HomePage } from './features/home/HomePage';
@@ -25,6 +25,11 @@ import { OrderHistoryPage } from './features/orders/OrderHistoryPage';
 import { OrderDetailPage } from './features/orders/OrderDetailPage';
 import { AdminRoute } from './components/AdminRoute';
 import { AdminReviewModerationPage } from './features/admin/reviews';
+
+function PowderizerRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/custom-powder${location.search}`} replace />;
+}
 
 export default function App() {
   return (
@@ -84,7 +89,8 @@ export default function App() {
         />
         <Route path="/mailbox" element={<MailboxPage />} />
         <Route path="/bag-designs" element={<BagDesignsPage />} />
-        <Route path="/powderizer" element={<PowderizerPage />} />
+        <Route path="/custom-powder" element={<PowderizerPage />} />
+        <Route path="/powderizer" element={<PowderizerRedirect />} />
         <Route path="/help" element={<HelpIndexPage />} />
         <Route path="/help/:slug" element={<HelpArticlePage group="help" />} />
         <Route path="/policies/:slug" element={<HelpArticlePage group="policy" />} />

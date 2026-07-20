@@ -91,11 +91,22 @@ Mark work parallel only when all conditions hold:
 
 Keep work sequential when lanes share migration state, contract definitions, central registration, transaction boundary, package export, route registry, seed authority, or page composition. Alternative: assign single owner for shared surface, finish prerequisite, then fan out consumers.
 
+Treat review placement as dependency design, not final ceremony:
+
+- Default: one inspect-only reviewer assignment per implementation packet. Launch review after worker report and focused evidence, before any dependent worker consumes packet output.
+- High-risk producer packets always require immediate review gate: contracts, schemas, migrations, auth/security, money, inventory, persistence, transactions, compatibility, shared state, public API, package exports, route registration.
+- Parallel lanes -> review each settled lane concurrently when ownership and targets remain disjoint. Fan-in waits for every lane review to pass or close findings through worker fix plus targeted evidence.
+- Convergence/integration packet receives separate review after composition. Earlier packet reviews do not cover new integration behavior.
+- Group reviews only for low-risk packets when plan states concrete reason, exact targets remain independently identifiable, and no consumer or convergence work starts before grouped review gate.
+- Never defer review solely to reduce reviewer count or wait for final integration. Late review that allows defects to propagate into dependent work is invalid graph design.
+- Graph each review and finding gate explicitly: `P1 -> R1 -> GR1 -> P2`, not hidden prose.
+
 Use convergence task after parallel lanes. Convergence owner handles shared composition, cross-lane tests, final verification, and conflict resolution. Do not assign multiple agents same file unless tasks are explicitly sequential.
 
 Plan for orchestrator, not generic team:
 
-- create bounded work packets suitable for one subagent
+- create bounded work packets suitable for one subagent session; see Packet Sizing
+- never bundle full feature into one packet; decompose along layer boundaries and chain through gates
 - project minimum context needed for packet execution
 - give each packet stable ID, dependencies, owned paths, steps, invariants, verification, handoff
 - state which packets launch together and which wait
@@ -222,6 +233,8 @@ Schedule tests at deliberate points:
 
 Reviewer default: inspect exact assigned change set, invariants, contracts, and supplied relevant evidence without writes or test runs. Reviewer runs command only when assignment names command or evidence is missing/stale and verdict cannot finish through inspection. Never rerun full suite for review confidence alone.
 
+Review gate passes only after `verdict=pass`, or after every requested finding closes through worker fix plus targeted verification. Downstream dependency launch waits for gate. Do not require reviewer return after fix unless review target or acceptance criteria changed materially; completion/convergence review covers integrated result.
+
 Issue flow: `stable reviewer finding ID -> worker-targeted fix directive with finding ID -> worker targeted verification -> orchestrator records closure change set/evidence -> next task`. Reviewer-targeted `fix` corrects report or protocol only. Do not send implementation fix back to originating reviewer. Final convergence or completion gate catches remaining regression; avoid reviewer-worker-reviewer loops.
 
 Fix worker selection:
@@ -287,10 +300,12 @@ Repository baseline: `[commit/branch if useful, otherwise inspection date]`
 
 ## Execution Graph
 
-`G0 -> {P1 || P2} -> G1 -> S1 -> G2`
+`G0 -> {P1 -> R1 -> GR1 || P2 -> R2 -> GR2} -> G1 -> S1 -> R3 -> GR3 -> G2`
 
 - `G0`: [launch prerequisite]
-- `G1`: [fan-in acceptance gate]
+- `GR1`, `GR2`: [packet review gates; pass or findings closed through worker fix + targeted evidence]
+- `G1`: [reviewed fan-in acceptance gate]
+- `GR3`: [convergence review gate]
 - `G2`: [completion gate]
 
 ## Work Packets
@@ -311,6 +326,7 @@ Repository baseline: `[commit/branch if useful, otherwise inspection date]`
 - test duty: [none, reuse evidence ID, or run exact command at packet completion]
 - verification: [non-test checks plus expected evidence]
 - handoff: [artifacts/interfaces downstream packets receive]
+- review: `[review assignment]` -> [review gate blocking downstream consumer or fan-in]
 
 ### S1: [Bounded outcome]
 
@@ -327,12 +343,16 @@ Repository baseline: `[commit/branch if useful, otherwise inspection date]`
 - test duty: [shared integration commands run once after fan-in]
 - verification: [non-test checks plus expected evidence]
 - handoff: [completion evidence]
+- review: `[review assignment]` -> [convergence review gate blocking completion]
 
 ## Review Assignments
 
 ### R1: Review `[implementation packet]`
 
 - target: `[implementation packet]` -> `[exact base/head revision or change set]`
+- timing: [immediately after target settles; before named consumers or gate]
+- blocks: `[dependent packets or gate]`
+- consolidation reason: [none, or concrete low-risk justification naming every exact target]
 - reads: `[path]` -> `[symbols]` -> [review-specific purpose]
 - acceptance: [conditions to assess]
 - invariants: [behavior, contract, security, compatibility rules]
@@ -342,6 +362,8 @@ Repository baseline: `[commit/branch if useful, otherwise inspection date]`
 - test policy: assess supplied relevant evidence; run only assigned command or when stale/missing evidence blocks verdict
 - relevant evidence: `[evidence IDs]` -> [target coverage and change set]
 - return: `reviewer_report_v1` with exact target, verdict, stable finding IDs, evidence assessment
+
+Repeat review assignment for every implementation packet by default. State explicit low-risk consolidation reason when one review covers multiple exact targets.
 
 ## Ownership and Collision Rules
 
@@ -388,11 +410,11 @@ Repository baseline: `[commit/branch if useful, otherwise inspection date]`
 5. Switch runtime execution root to worktree; load applicable repository instructions from worktree.
 6. Validate `G0`; project role-minimum context plus worktree context into assignments.
 7. Launch fresh/minimal worker contexts for `P1 || P2` inside worktree.
-8. Accept reports; update checkpoint and evidence ledger; do not duplicate valid runs.
-9. Launch inspect-only reviewers inside worktree with exact change sets and relevant evidence; validate `G1`.
-10. Route stable finding IDs through worker-targeted fix directives once; close after fix plus targeted evidence without reviewer return.
-11. Launch `S1` inside worktree; run fan-in tests once.
-12. Validate `G2`; run final suite once inside worktree after all fixes settle.
+8. Accept each report; update checkpoint/evidence; launch packet reviewer against exact settled change set before downstream consumption.
+9. Route stable findings through worker fix directives; close after targeted evidence. Validate each packet review gate.
+10. Validate reviewed fan-in `G1`; only then launch `S1` and run fan-in tests once.
+11. Review `S1` as separate integration target; close findings through worker fix plus targeted evidence.
+12. Validate convergence review gate and `G2`; run final suite once after fixes settle.
 13. Leave implementation branch and worktree intact. Reply with absolute worktree path, implementation branch, source branch, and base revision. State user owns merge.
 
 ## Risks and Open Questions
@@ -426,7 +448,30 @@ Each worker packet must describe edits precisely enough for worker to start with
 
 Do not prescribe line-level code when repository pattern permits multiple valid implementations. Do not use vague tasks such as "update backend," "add tests," or "wire frontend."
 
-Keep packet size coherent. Split packet when it spans unrelated ownership or cannot be verified independently. Merge tiny packets when coordination cost exceeds parallel benefit.
+## Packet Sizing
+
+Target medium packet: one subagent completes it in single session without context exhaustion. Packet is unit of work, not whole feature.
+
+Sizing signals, not hard limits. Use planner judgment against actual repository shape:
+
+- one vertical behavior, or one coherent layer slice of one behavior
+- roughly 10-13 owned source files as loose upper feel, plus colocated tests
+- acceptance stated once, verifiable by focused command set
+- reads and change steps bounded by what one worker can hold without rediscovery
+
+Split packet when any holds:
+
+- spans unrelated ownership, or more than one subsystem boundary (schema + service + route + UI in one packet)
+- acceptance needs multiple unrelated verification commands
+- worker must rediscover scope mid-session to proceed
+- migration plus consumers bundled -> migration/schema owner separate from consumer packets
+- contract change plus consumers bundled -> producer packet first, consumers after review gate
+
+Preferred split axes: layer boundary (schema -> domain/persistence -> contracts -> routes -> client/UI), then behavior, then read/write path.
+
+Merge when coordination cost exceeds benefit: parts touch same file set, neither is independently verifiable, combined size stays reasonable for one session.
+
+Splitting increases packet count; that is acceptable. Do not compress scope into fewer large packets to shorten graph. Prefer more medium packets chained through gates over few heavy packets. Each split packet still needs own acceptance, verification, handoff, and review placement.
 
 Each reviewer assignment must name exact review target and include scoped reads, acceptance criteria, invariants, risk focus, non-goals, inspect-only policy, test policy, and relevant evidence. Reviewer receives no implementation steps, write ownership, worker report dump, or unrelated ledger state.
 
@@ -438,9 +483,15 @@ Before saving plan, confirm:
 - repository claims evidence-backed
 - existing vs proposed paths unambiguous
 - graph has no unstated dependency
+- every implementation packet has immediate review assignment, or explicit low-risk consolidation reason
+- every packet `review:` field maps to review assignment whose `timing` and `blocks` prevent downstream consumption
+- every high-risk producer review passes or closes findings before dependent packet launch
+- parallel fan-in waits for all lane review gates; convergence output receives separate review
 - every parallel lane has disjoint write ownership
 - every shared surface has single owner and merge point
 - every packet has verification and handoff
+- every packet fits medium sizing target; no packet spans multiple subsystem boundaries or needs multiple unrelated verification commands
+- schema/migration and contract producers separated from their consumers
 - worker packets include focused path/symbol/purpose reads, acceptance criteria, non-goals, resolved upstream inputs, and relevant evidence only
 - reviewer packets include exact change set, scoped reads, acceptance criteria, invariants, risk focus, inspect-only write policy, test policy, and relevant evidence only
 - every test command has one owner, execution point, reuse rule, invalidation rule

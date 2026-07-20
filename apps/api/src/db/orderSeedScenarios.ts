@@ -270,7 +270,13 @@ const SCENARIOS: readonly Scenario[] = [
 function product(productId: number) {
   const item = CATALOG_PRODUCTS.find((candidate) => candidate.id === productId);
   if (!item) throw new Error(`Missing canonical product ${productId} for order seed scenario`);
-  return item;
+  const defaultVariant =
+    item.variants.find((v) => v.sortOrder === 1 && v.active) ?? item.variants[0];
+  return {
+    ...item,
+    price_cents: defaultVariant?.priceCents ?? 0,
+    variant: defaultVariant,
+  };
 }
 
 /** Inserts immutable local-demo order fixtures once. Existing fixture state is never rewritten. */
@@ -278,15 +284,19 @@ export function seedOrderScenarios(db: Database.Database): void {
   const findUser = db.prepare('SELECT id, display_name, email FROM users WHERE email = ?');
   const insertOrder = db.prepare(`
     INSERT OR IGNORE INTO orders
-      (customer_name, customer_email, shipping_address, subtotal_cents, discount_cents, total_cents, created_at, user_id, lifecycle_status, version, demo_seed_key)
-    VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+      (customer_name, customer_email, shipping_address, subtotal_cents, discount_cents, total_cents, delivery_mode, delivery_charge_cents, delivery_weight_grams, created_at, user_id, lifecycle_status, version, demo_seed_key)
+    VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const findOrder = db.prepare('SELECT id FROM orders WHERE demo_seed_key = ?');
   const insertProductLine = db.prepare(`
     INSERT INTO order_line_items
-      (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents)
-    VALUES (?, ?, ?, ?, ?, ?)
+      (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents,
+       variant_id, sku, variant_label, weight_grams, consumption_classification, delivery_class)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
+  const findVariantByProduct = db.prepare(
+    'SELECT id, sku, label, weight_grams, delivery_class FROM product_variants WHERE product_id = ? AND sort_order = 1 AND active = 1 LIMIT 1',
+  );
   const insertMixLine = db.prepare(
     'INSERT INTO order_powder_mix_items (order_id, snapshot_json) VALUES (?, ?)',
   );
@@ -323,12 +333,25 @@ export function seedOrderScenarios(db: Database.Database): void {
     const subtotalCents =
       productLines.reduce((sum, line) => sum + line.product.price_cents * line.quantity, 0) +
       (scenario.mixItems ?? []).reduce((sum, mix) => sum + mix.lineTotalCents, 0);
+
+    // Delivery: all seeded orders use parcel
+    const deliveryMode = 'parcel';
+    const deliveryChargeCents = 0;
+    const deliveryWeightGrams = productLines.reduce(
+      (sum, line) => sum + (line.product.variant?.weightGrams ?? 1000) * line.quantity,
+      0,
+    );
+    const totalCents = subtotalCents + deliveryChargeCents;
+
     const result = insertOrder.run(
       user.display_name,
       user.email,
       `1 ${scenario.key.replaceAll('-', ' ')} way, Demo City`,
       subtotalCents,
-      subtotalCents,
+      totalCents,
+      deliveryMode,
+      deliveryChargeCents,
+      deliveryWeightGrams,
       scenario.createdAt,
       user.id,
       scenario.status,
@@ -338,8 +361,14 @@ export function seedOrderScenarios(db: Database.Database): void {
     if (result.changes === 0) continue;
 
     const orderId = Number((findOrder.get(scenario.key) as { id: number }).id);
-    const productLineIds = productLines.map((line) =>
-      Number(
+    const productLineIds = productLines.map((line) => {
+      const variant = findVariantByProduct.get(line.product.id) as
+        | { id: number; sku: string; label: string; weight_grams: number; delivery_class: string }
+        | undefined;
+      const consumptionClassification =
+        CATALOG_PRODUCTS.find((p) => p.id === line.product.id)?.consumptionClassification ??
+        'non-food';
+      return Number(
         insertProductLine.run(
           orderId,
           line.product.id,
@@ -347,9 +376,15 @@ export function seedOrderScenarios(db: Database.Database): void {
           line.product.price_cents,
           line.quantity,
           line.product.price_cents * line.quantity,
+          variant?.id ?? null,
+          variant?.sku ?? null,
+          variant?.label ?? null,
+          variant?.weight_grams ?? null,
+          consumptionClassification,
+          variant?.delivery_class ?? 'parcel',
         ).lastInsertRowid,
-      ),
-    );
+      );
+    });
     const mixLineIds = (scenario.mixItems ?? []).map((mix) =>
       Number(insertMixLine.run(orderId, JSON.stringify(mix)).lastInsertRowid),
     );

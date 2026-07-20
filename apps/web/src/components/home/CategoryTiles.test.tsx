@@ -5,11 +5,18 @@ import { describe, expect, it, vi } from 'vitest';
 import { CategoryTiles } from './CategoryTiles';
 
 describe('CategoryTiles', () => {
-  it('keeps four category links with representative artwork', () => {
+  it('keeps six category links with representative artwork', () => {
     render(
       <MemoryRouter>
         <CategoryTiles
-          categories={['Pantry Staples', 'Performance', 'Drinks', 'Household', 'Outdoors']}
+          categories={[
+            'Sports Nutrition',
+            'Baking & Pantry',
+            'Drinks',
+            'Household & Cleaning',
+            'Garden & Outdoors',
+            'Trade & Creative Materials',
+          ]}
           isLoading={false}
           error={null}
           onRetry={vi.fn()}
@@ -18,12 +25,14 @@ describe('CategoryTiles', () => {
     );
 
     const links = screen.getAllByRole('link');
-    expect(links).toHaveLength(4);
+    expect(links).toHaveLength(6);
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
-      '/catalog?category=Pantry%20Staples',
-      '/catalog?category=Performance',
+      '/catalog?category=Sports%20Nutrition',
+      '/catalog?category=Baking%20%26%20Pantry',
       '/catalog?category=Drinks',
-      '/catalog?category=Household',
+      '/catalog?category=Household%20%26%20Cleaning',
+      '/catalog?category=Garden%20%26%20Outdoors',
+      '/catalog?category=Trade%20%26%20Creative%20Materials',
     ]);
 
     for (const link of links) {

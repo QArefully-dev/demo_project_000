@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import type { PowderMixQuote } from '@shop/contracts/powderizer';
-import { selectGoodFor } from './powderizerCopy';
 import {
   builderQuoteKey,
   initialPowderizerState,
@@ -208,7 +207,7 @@ describe('powderizerReducer', () => {
     );
   });
 
-  it('uses lexical IDs for canonical quote and Good for identities', () => {
+  it('uses lexical IDs for canonical quote identity', () => {
     const config = {
       ...initialPowderizerState().config,
       components: [
@@ -218,7 +217,6 @@ describe('powderizerReducer', () => {
     };
     const reordered = { ...config, components: [...config.components].reverse() };
     expect(builderQuoteKey(reordered)).toBe(builderQuoteKey(config));
-    expect(selectGoodFor(reordered)).toBe(selectGoodFor(config));
   });
 
   it('clears a quote error and creates a distinct retry request', () => {

@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import type { Static } from '@sinclair/typebox';
 import type { PowderizerConfigResponse } from '@shop/contracts/powderizer';
+import { IncompatibleGroupError } from '@shop/contracts/customPowder';
+import { Value } from '@sinclair/typebox/value';
 import { ApiError } from '@/api/client';
 import {
-  createPowderMix,
-  getPowderizerConfig,
-  quotePowderMix,
-  updatePowderMix,
-} from '@/api/powderizer';
+  getCustomPowderConfig,
+  quoteCustomPowderMix,
+  createCustomPowderMix,
+  updateCustomPowderMix,
+} from '@/api/customPowder';
 import { useCartContext } from '@/hooks/CartContext';
 import {
   builderQuoteKey,
@@ -26,13 +29,21 @@ function messageFor(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+function extractIncompatibleGroupError(
+  error: unknown,
+): Static<typeof IncompatibleGroupError> | null {
+  if (!(error instanceof ApiError) || !error.response) return null;
+  if (Value.Check(IncompatibleGroupError, error.response)) return error.response;
+  return null;
+}
+
 export type PowderizerController = ReturnType<typeof usePowderizerController>;
 export type PowderizerSubmitSuccessHandler = (config: BuilderConfig) => void | Promise<void>;
 export type UsePowderizerControllerOptions = {
   onSubmitSuccess?: PowderizerSubmitSuccessHandler;
 };
 
-/** Browser entropy adapter. Pure generation helpers receive this as an injected dependency. */
+/** Browser entropy adapter. Only used by legacy fallback components. */
 export function cryptoRandom(): number {
   const values = new Uint32Array(1);
   globalThis.crypto.getRandomValues(values);
@@ -49,6 +60,9 @@ export function usePowderizerController({ onSubmitSuccess }: UsePowderizerContro
     error: string | null;
   }>({ data: null, error: null });
   const [configLoadError, setConfigLoadError] = useState<string | null>(null);
+  const [incompatibleGroupError, setIncompatibleGroupError] = useState<Static<
+    typeof IncompatibleGroupError
+  > | null>(null);
   const hydratedEditRef = useRef<string | null>(null);
   const quoteRequestRef = useRef(0);
   const editMixId = searchParams.get('edit');
@@ -57,7 +71,7 @@ export function usePowderizerController({ onSubmitSuccess }: UsePowderizerContro
 
   useEffect(() => {
     const controller = new AbortController();
-    void getPowderizerConfig(controller.signal)
+    void getCustomPowderConfig(controller.signal)
       .then((data) => setRemote({ data, error: null }))
       .catch((error: unknown) => {
         if (!controller.signal.aborted)
@@ -87,16 +101,19 @@ export function usePowderizerController({ onSubmitSuccess }: UsePowderizerContro
     const requestId = ++quoteRequestRef.current;
     const timer = window.setTimeout(() => {
       dispatch({ type: 'quote-started', key: quoteKey, requestId });
-      void quotePowderMix(toPowderMixConfigInput(state.config), controller.signal)
+      void quoteCustomPowderMix(toPowderMixConfigInput(state.config), controller.signal)
         .then((quote) => dispatch({ type: 'quote-succeeded', key: quoteKey, requestId, quote }))
         .catch((error: unknown) => {
-          if (!controller.signal.aborted)
+          if (!controller.signal.aborted) {
+            const incompatible = extractIncompatibleGroupError(error);
+            if (incompatible) setIncompatibleGroupError(incompatible);
             dispatch({
               type: 'quote-failed',
               key: quoteKey,
               requestId,
               error: messageFor(error, 'Unable to calculate this mix.'),
             });
+          }
         });
     }, 250);
     return () => {
@@ -133,8 +150,8 @@ export function usePowderizerController({ onSubmitSuccess }: UsePowderizerContro
     try {
       const submittedConfig = normalizeBuilderConfig(state.config);
       const body = toPowderMixConfigInput(submittedConfig);
-      if (state.editMixId) await updatePowderMix(cartId, state.editMixId, body);
-      else await createPowderMix(cartId, body);
+      if (state.editMixId) await updateCustomPowderMix(cartId, state.editMixId, body);
+      else await createCustomPowderMix(cartId, body);
       try {
         await onSubmitSuccess?.(submittedConfig);
       } catch {
@@ -144,6 +161,8 @@ export function usePowderizerController({ onSubmitSuccess }: UsePowderizerContro
       dispatch({ type: 'mutation-finished' });
       navigate('/cart');
     } catch (error) {
+      const incompatible = extractIncompatibleGroupError(error);
+      if (incompatible) setIncompatibleGroupError(incompatible);
       dispatch({ type: 'mutation-failed', error: messageFor(error, 'Unable to save this mix.') });
     }
   }, [canSubmit, cartId, navigate, onSubmitSuccess, refreshCart, state.config, state.editMixId]);
@@ -155,6 +174,7 @@ export function usePowderizerController({ onSubmitSuccess }: UsePowderizerContro
     remoteError: remote.error,
     configLoadError,
     validationError,
+    incompatibleGroupError,
     hasCurrentQuote,
     canSubmit,
     replaceConfig,

@@ -15,11 +15,11 @@ describe('HeroSection', () => {
       'href',
       '/catalog',
     );
-    expect(screen.getByRole('button', { name: /browse impossible powders/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /custom blends/i })).toHaveAttribute(
       'href',
-      '/catalog?category=Impossible',
+      '/custom-powder',
     );
-    expect(screen.getByRole('heading', { name: /we will powder anything/i })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'Powdered Water powder bag' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /powders for food/i })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Protein Powder powder bag' })).toBeInTheDocument();
   });
 });

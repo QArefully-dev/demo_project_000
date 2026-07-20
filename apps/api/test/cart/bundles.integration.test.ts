@@ -8,7 +8,10 @@ import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter, type AuditWriter } from '../../src/features/audit/auditService.js';
 import { createBundleRepository } from '../../src/features/bundles/bundleRepository.js';
-import { createBundleService } from '../../src/features/bundles/bundleService.js';
+import {
+  createBundleService,
+  type BundleUnavailable,
+} from '../../src/features/bundles/bundleService.js';
 import {
   createCartRepository,
   type CartRepository,
@@ -19,6 +22,16 @@ import { createPowderMixRepository } from '../../src/features/powderizer/powderM
 import { createPowderizerService } from '../../src/features/powderizer/powderizerService.js';
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
+
+function defaultVariantId(db: ReturnType<typeof openDatabase>, productId: number): string {
+  const row = db
+    .prepare(
+      'SELECT id FROM product_variants WHERE product_id = ? AND sort_order = 1 AND active = 1 LIMIT 1',
+    )
+    .get(productId) as { id: number } | undefined;
+  if (!row) throw new Error(`No default variant for product ${productId}`);
+  return String(row.id);
+}
 
 function createFixture(t: test.TestContext, audit?: AuditWriter) {
   const directory = mkdtempSync(join(tmpdir(), 'shop-curated-bundles-'));
@@ -52,22 +65,32 @@ void test('lists visible bundles with current component prices and deterministic
   const bundles = service.list();
   assert.deepEqual(
     bundles.map((bundle) => bundle.key),
-    ['powder-starter-set', 'pantry-set', 'outdoor-kit', 'questionable-assortment'],
+    [
+      'protein-starter-pack',
+      'baking-essentials',
+      'garden-care-kit',
+      'cleaning-supplies-bundle',
+      'casting-workshop-kit',
+      'drinks-sampler',
+    ],
   );
   const starter = bundles[0];
   assert.ok(starter);
-  db.prepare('UPDATE products SET price_cents = 4321, stock_count = 0 WHERE id = 1').run();
+  const variant8 = defaultVariantId(db, 8);
+  db.prepare('UPDATE product_variants SET price_cents = 4321, stock_count = 0 WHERE id = ?').run(
+    variant8,
+  );
   const refreshed = service.list().find((bundle) => bundle.id === starter.id);
   assert.equal(refreshed?.components[0]?.lineTotalCents, 4321);
   assert.equal(refreshed?.available, false);
-  db.prepare('UPDATE products SET active = 0 WHERE id = 2').run();
+  db.prepare('UPDATE products SET active = 0 WHERE id = 9').run();
   assert.equal(
     service.list().some((bundle) => bundle.id === starter.id),
     false,
   );
   assert.deepEqual(
-    service.list('29').map((bundle) => bundle.key),
-    ['outdoor-kit'],
+    service.list('28').map((bundle) => bundle.key),
+    ['garden-care-kit'],
   );
 });
 
@@ -86,7 +109,8 @@ void test('bundle reads and cart eligibility use available-to-sell, with backord
     }),
     availability: { inventory, clock: { now: () => now } },
   });
-  db.prepare('UPDATE products SET stock_count = 1 WHERE id = 1').run();
+  const variant8 = defaultVariantId(db, 8);
+  db.prepare('UPDATE product_variants SET stock_count = 1 WHERE id = ?').run(variant8);
   db.prepare(
     `INSERT INTO payments
       (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand)
@@ -94,12 +118,12 @@ void test('bundle reads and cart eligibility use available-to-sell, with backord
   ).run();
   db.prepare(
     `INSERT INTO inventory_reservations
-      (payment_idempotency_key, product_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
-     VALUES ('bundle-availability', 1, 'product', 1, 0, '2026-07-19T12:01:00.000Z', ?)`,
-  ).run(now.toISOString());
+      (payment_idempotency_key, variant_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
+     VALUES ('bundle-availability', ?, 'product', 1, 0, '2026-07-19T12:01:00.000Z', ?)`,
+  ).run(variant8, now.toISOString());
   const starter = service.list().find((bundle) => bundle.id === '1');
   assert.equal(
-    starter?.components.find((component) => component.product.id === '1')?.product.stock,
+    starter?.components.find((component) => component.product.id === '8')?.product.stock,
     0,
   );
   const rejected = service.addToCart(createCart(carts).cartId, '1', context);
@@ -107,12 +131,14 @@ void test('bundle reads and cart eligibility use available-to-sell, with backord
     throw new Error('Expected unavailable bundle');
   assert.equal(rejected.error, 'BUNDLE_UNAVAILABLE');
 
-  db.prepare('UPDATE products SET backorderable = 1, backorder_lead_days = 14 WHERE id = 1').run();
+  db.prepare(
+    'UPDATE product_variants SET backorderable = 1, backorder_lead_days = 14 WHERE id = ?',
+  ).run(variant8);
   const accepted = service.addToCart(createCart(carts).cartId, '1', context);
   assert.equal(typeof accepted, 'object');
   if (typeof accepted === 'string' || !('items' in accepted)) throw new Error('Expected cart');
   assert.equal(
-    accepted.items.find((item) => item.productId === '1')?.product.availability,
+    accepted.items.find((item) => item.productId === '8')?.product.availability,
     'backorder',
   );
 });
@@ -126,9 +152,9 @@ void test('adds a bundle as ordinary cart lines, increments repeats, and writes 
   assert.deepEqual(
     first.items.map((item) => [item.productId, item.quantity]),
     [
-      ['1', 1],
-      ['2', 1],
-      ['3', 1],
+      ['8', 1],
+      ['9', 1],
+      ['13', 1],
     ],
   );
   assert.deepEqual(first.mixItems, []);
@@ -137,9 +163,9 @@ void test('adds a bundle as ordinary cart lines, increments repeats, and writes 
   assert.deepEqual(
     getCart(carts, cartId, mixes)?.items.map((item) => [item.productId, item.quantity]),
     [
-      ['1', 2],
-      ['2', 2],
-      ['3', 2],
+      ['8', 2],
+      ['9', 2],
+      ['13', 2],
     ],
   );
   const events = db
@@ -182,21 +208,30 @@ void test('bundle add preserves existing Powderizer mix items', (t) => {
   assert.equal(result.mixItems[0]?.mixId, mixId);
   assert.deepEqual(
     result.items.map((item) => item.productId),
-    ['1', '2', '3'],
+    ['8', '9', '13'],
   );
 });
 
 void test('rejects every unavailable component without touching ordinary cart lines or audit', (t) => {
   const { db, carts, service } = createFixture(t);
+  const variant8 = defaultVariantId(db, 8);
+  const variant13 = defaultVariantId(db, 13);
   const { cartId } = createCart(carts);
-  carts.addLineQuantity(cartId, '1', 2);
-  db.prepare('UPDATE products SET stock_count = 2 WHERE id = 1').run();
-  db.prepare('UPDATE products SET active = 0 WHERE id = 3').run();
+  carts.addLineQuantity(cartId, variant8, 2);
+  db.prepare('UPDATE product_variants SET stock_count = 2 WHERE id = ?').run(variant8);
+  db.prepare('UPDATE product_variants SET active = 0 WHERE id = ?').run(variant13);
   const result = service.addToCart(cartId, '1', context);
-  assert.deepEqual(result, { error: 'BUNDLE_UNAVAILABLE', productIds: ['1', '3'] });
-  assert.equal(carts.lineQuantity(cartId, '1'), 2);
-  assert.equal(carts.lineQuantity(cartId, '2'), 0);
-  assert.equal(carts.lineQuantity(cartId, '3'), 0);
+  assert.equal(typeof result, 'object');
+  if (typeof result === 'string' || !('error' in result))
+    throw new Error('Expected unavailable bundle');
+  const sortedVariantIds = (result).variantIds.sort(
+    (a, b) => Number(a) - Number(b),
+  );
+  const expected = [variant8, variant13].map(String).sort((a, b) => Number(a) - Number(b));
+  assert.deepEqual(sortedVariantIds, expected);
+  assert.equal(carts.lineQuantity(cartId, variant8), 2);
+  assert.equal(carts.lineQuantity(cartId, defaultVariantId(db, 9)), 0);
+  assert.equal(carts.lineQuantity(cartId, variant13), 0);
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM audit_events').get() as { count: number }).count,
     0,
@@ -211,7 +246,7 @@ void test('rolls back all component writes and cart touch when audit append fail
   };
   const { carts, service } = createFixture(t, failingAudit);
   const { cartId } = createCart(carts);
-  const before = (carts as unknown as { listLines: (id: string) => unknown[] }).listLines(cartId);
+  const before = getCart(carts, cartId)?.items;
   assert.deepEqual(before, []);
   assert.throws(() => service.addToCart(cartId, '1', context), /audit unavailable/);
   assert.deepEqual(getCart(carts, cartId)?.items, []);
@@ -223,10 +258,10 @@ void test('rolls back prior component writes when a later component write fails'
   let writes = 0;
   const failingCarts: CartRepository = {
     ...carts,
-    addLineQuantity(id, productId, quantity) {
+    addLineQuantity(id, variantId, quantity) {
       writes += 1;
       if (writes === 2) throw new Error('component write failed');
-      carts.addLineQuantity(id, productId, quantity);
+      carts.addLineQuantity(id, variantId, quantity);
     },
   };
   const service = createBundleService({

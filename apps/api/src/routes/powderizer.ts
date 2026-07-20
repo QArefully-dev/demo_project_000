@@ -1,5 +1,5 @@
 import { Type, type Static } from '@sinclair/typebox';
-import { FastifyInstance, type FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { Cart } from '@shop/contracts/cart';
 import { ErrorResponse } from '@shop/contracts/common';
@@ -11,10 +11,10 @@ import {
   PowderizerValidationErrorResponse,
   UpdatePowderMixQuantityBody,
 } from '@shop/contracts/powderizer';
-import type { AppContext } from '../app.js';
+import { PowderMixDomainError } from '../features/powderizer/powderizerTypes.js';
+import type { AppContext, AppServices } from '../app.js';
 
 const CartIdParam = Type.Object({ cartId: Type.String({ format: 'uuid' }) });
-/** Allows domain validation to own field semantics while rejecting derived client fields. */
 const UnvalidatedPowderMixBody = Type.Object(
   {
     components: Type.Optional(Type.Unknown()),
@@ -47,31 +47,146 @@ function isCartMutationError(result: string): result is 'CART_NOT_FOUND' | 'CART
   return result === 'CART_NOT_FOUND' || result === 'CART_RESERVED';
 }
 
-/** HTTP entry points for stateless quotes and cart-scoped Powderizer mutations. */
-export default function powderizerRoutes(app: FastifyInstance, { services }: AppContext): void {
+function sendGroupMismatch(reply: FastifyReply, error: PowderMixDomainError): void {
+  reply.code(400).send({
+    error: 'MIXING_GROUP_MISMATCH',
+    conflictingProductIds: (error.conflictingProductIds ?? []).map(String),
+    groupInfo: (error.groupInfo ?? []).map((g) => ({
+      productId: String(g.productId),
+      mixingGroup: g.mixingGroup,
+    })),
+  });
+}
+
+function returnCart(carts: AppServices['carts'], cartId: string) {
+  return carts.get(cartId);
+}
+
+export function handleConfig({ powderizer }: AppServices) {
+  return () => powderizer.config();
+}
+
+export function handleQuote({ powderizer }: AppServices) {
+  return (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      return powderizer.quote(request.body as never);
+    } catch (error: unknown) {
+      if (error instanceof PowderMixDomainError && error.code === 'MIXING_GROUP_MISMATCH') {
+        sendGroupMismatch(reply, error);
+        return;
+      }
+      throw error;
+    }
+  };
+}
+
+export function handleCreate({ powderizer, carts }: AppServices) {
+  return (request: FastifyRequest<{ Params: { cartId: string } }>, reply: FastifyReply) => {
+    try {
+      const result = powderizer.create(request.params.cartId, request.body as never);
+      if (isCartMutationError(result)) {
+        sendMutationError(reply, result);
+        return;
+      }
+      return returnCart(carts, request.params.cartId);
+    } catch (error: unknown) {
+      if (error instanceof PowderMixDomainError && error.code === 'MIXING_GROUP_MISMATCH') {
+        sendGroupMismatch(reply, error);
+        return;
+      }
+      throw error;
+    }
+  };
+}
+
+export function handleUpdate({ powderizer, carts }: AppServices) {
+  return (
+    request: FastifyRequest<{ Params: { cartId: string; mixId: string } }>,
+    reply: FastifyReply,
+  ) => {
+    try {
+      const result = powderizer.update(
+        request.params.cartId,
+        request.params.mixId,
+        request.body as never,
+      );
+      if (result) {
+        sendMutationError(reply, result);
+        return;
+      }
+      return returnCart(carts, request.params.cartId);
+    } catch (error: unknown) {
+      if (error instanceof PowderMixDomainError && error.code === 'MIXING_GROUP_MISMATCH') {
+        sendGroupMismatch(reply, error);
+        return;
+      }
+      throw error;
+    }
+  };
+}
+
+export function handleUpdateQuantity({ powderizer, carts }: AppServices) {
+  return (
+    request: FastifyRequest<{
+      Params: { cartId: string; mixId: string };
+      Body: { quantity: number };
+    }>,
+    reply: FastifyReply,
+  ) => {
+    const result = powderizer.updateQuantity(
+      request.params.cartId,
+      request.params.mixId,
+      request.body.quantity,
+    );
+    if (result) {
+      sendMutationError(reply, result);
+      return;
+    }
+    return returnCart(carts, request.params.cartId);
+  };
+}
+
+export function handleRequote({ powderizer, carts }: AppServices) {
+  return (
+    request: FastifyRequest<{ Params: { cartId: string; mixId: string } }>,
+    reply: FastifyReply,
+  ) => {
+    try {
+      const result = powderizer.requote(request.params.cartId, request.params.mixId);
+      if (result) {
+        sendMutationError(reply, result);
+        return;
+      }
+      return returnCart(carts, request.params.cartId);
+    } catch (error: unknown) {
+      if (error instanceof PowderMixDomainError && error.code === 'MIXING_GROUP_MISMATCH') {
+        sendGroupMismatch(reply, error);
+        return;
+      }
+      throw error;
+    }
+  };
+}
+
+export function handleRemove({ powderizer, carts }: AppServices) {
+  return (
+    request: FastifyRequest<{ Params: { cartId: string; mixId: string } }>,
+    reply: FastifyReply,
+  ) => {
+    const result = powderizer.remove(request.params.cartId, request.params.mixId);
+    if (result) {
+      sendMutationError(reply, result);
+      return;
+    }
+    return returnCart(carts, request.params.cartId);
+  };
+}
+
+export function registerCartMutations(app: FastifyInstance, services: AppServices): void {
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
-  const { powderizer, carts } = services;
-
-  const returnCart = (cartId: string) => carts.get(cartId);
-  typed.get(
-    '/api/powderizer/config',
-    { schema: { response: { 200: PowderizerConfigResponse } } },
-    () => powderizer.config(),
-  );
 
   typed.post(
-    '/api/powderizer/quote',
-    {
-      schema: {
-        body: UnvalidatedPowderMixBody,
-        response: { 200: PowderMixQuote, 400: PowderizerBadRequestResponse },
-      },
-    },
-    (request) => powderizer.quote(request.body as never),
-  );
-
-  typed.post(
-    '/api/cart/:cartId/mixes',
+    `/api/cart/:cartId/mixes`,
     {
       schema: {
         params: CartIdParam,
@@ -84,18 +199,11 @@ export default function powderizerRoutes(app: FastifyInstance, { services }: App
         },
       },
     },
-    (request, reply) => {
-      const result = powderizer.create(request.params.cartId, request.body as never);
-      if (isCartMutationError(result)) {
-        sendMutationError(reply, result);
-        return;
-      }
-      return returnCart(request.params.cartId);
-    },
+    handleCreate(services),
   );
 
   typed.patch(
-    '/api/cart/:cartId/mixes/:mixId',
+    `/api/cart/:cartId/mixes/:mixId`,
     {
       schema: {
         params: CartIdAndMixIdParam,
@@ -108,22 +216,11 @@ export default function powderizerRoutes(app: FastifyInstance, { services }: App
         },
       },
     },
-    (request, reply) => {
-      const result = powderizer.update(
-        request.params.cartId,
-        request.params.mixId,
-        request.body as never,
-      );
-      if (result) {
-        sendMutationError(reply, result);
-        return;
-      }
-      return returnCart(request.params.cartId);
-    },
+    handleUpdate(services),
   );
 
   typed.patch(
-    '/api/cart/:cartId/mixes/:mixId/quantity',
+    `/api/cart/:cartId/mixes/:mixId/quantity`,
     {
       schema: {
         params: CartIdAndMixIdParam,
@@ -135,22 +232,11 @@ export default function powderizerRoutes(app: FastifyInstance, { services }: App
         },
       },
     },
-    (request, reply) => {
-      const result = powderizer.updateQuantity(
-        request.params.cartId,
-        request.params.mixId,
-        request.body.quantity,
-      );
-      if (result) {
-        sendMutationError(reply, result);
-        return;
-      }
-      return returnCart(request.params.cartId);
-    },
+    handleUpdateQuantity(services),
   );
 
   typed.post(
-    '/api/cart/:cartId/mixes/:mixId/requote',
+    `/api/cart/:cartId/mixes/:mixId/requote`,
     {
       schema: {
         params: CartIdAndMixIdParam,
@@ -162,18 +248,11 @@ export default function powderizerRoutes(app: FastifyInstance, { services }: App
         },
       },
     },
-    (request, reply) => {
-      const result = powderizer.requote(request.params.cartId, request.params.mixId);
-      if (result) {
-        sendMutationError(reply, result);
-        return;
-      }
-      return returnCart(request.params.cartId);
-    },
+    handleRequote(services),
   );
 
   typed.delete(
-    '/api/cart/:cartId/mixes/:mixId',
+    `/api/cart/:cartId/mixes/:mixId`,
     {
       schema: {
         params: CartIdAndMixIdParam,
@@ -184,13 +263,38 @@ export default function powderizerRoutes(app: FastifyInstance, { services }: App
         },
       },
     },
-    (request, reply) => {
-      const result = powderizer.remove(request.params.cartId, request.params.mixId);
-      if (result) {
-        sendMutationError(reply, result);
-        return;
-      }
-      return returnCart(request.params.cartId);
-    },
+    handleRemove(services),
   );
+}
+
+/** Registers config + quote at the given base path. Cart mutations shared once via registerCartMutations. */
+export function registerPowderConfigAndQuote(
+  app: FastifyInstance,
+  services: AppServices,
+  basePath: string,
+): void {
+  const typed = app.withTypeProvider<TypeBoxTypeProvider>();
+
+  typed.get(
+    `${basePath}/config`,
+    { schema: { response: { 200: PowderizerConfigResponse } } },
+    handleConfig(services),
+  );
+
+  typed.post(
+    `${basePath}/quote`,
+    {
+      schema: {
+        body: UnvalidatedPowderMixBody,
+        response: { 200: PowderMixQuote, 400: PowderizerBadRequestResponse },
+      },
+    },
+    handleQuote(services),
+  );
+}
+
+/** Legacy compatibility — registers old /api/powderizer/ config+quote and shared cart mutations. */
+export default function powderizerRoutes(app: FastifyInstance, { services }: AppContext): void {
+  registerPowderConfigAndQuote(app, services, '/api/powderizer');
+  registerCartMutations(app, services);
 }

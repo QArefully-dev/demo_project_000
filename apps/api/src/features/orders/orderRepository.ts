@@ -5,6 +5,7 @@ import type {
   OrderDetailResponse,
   OrderLifecycleEvent,
   OrderLineItem,
+  OrderLineVariantSnapshot,
   OrderShipment,
   OrderStatus,
   OrderSummary,
@@ -27,6 +28,9 @@ interface OrderRow {
   version: number;
   cancelled_at: string | null;
   user_id: number | null;
+  delivery_mode: string | null;
+  delivery_charge_cents: number | null;
+  delivery_weight_grams: number | null;
 }
 interface ProductLineRow {
   id: number;
@@ -38,6 +42,12 @@ interface ProductLineRow {
   allocated_quantity?: number | null;
   backordered_quantity?: number | null;
   cancelled_quantity?: number | null;
+  variant_id?: number | null;
+  sku?: string | null;
+  variant_label?: string | null;
+  weight_grams?: number | null;
+  consumption_classification?: string | null;
+  delivery_class?: string | null;
 }
 interface MixLineRow {
   id: number;
@@ -164,6 +174,21 @@ function mapOrder(row: OrderRow, items: ProductLineRow[], mixes: MixLineRow[]): 
               : 'partially_backordered',
       allocatedQuantity: item.allocated_quantity ?? item.quantity,
       backorderedQuantity: item.backordered_quantity ?? 0,
+      variantSnapshot:
+        item.variant_id != null
+          ? {
+              variantId: item.variant_id,
+              sku: item.sku ?? '',
+              label: item.variant_label ?? item.product_name,
+              unitPriceCents: item.product_price_cents,
+              weightGrams: item.weight_grams ?? 1000,
+              consumptionClassification:
+                (item.consumption_classification as OrderLineVariantSnapshot['consumptionClassification']) ??
+                'non-food',
+              deliveryClass:
+                (item.delivery_class as OrderLineVariantSnapshot['deliveryClass']) ?? 'parcel',
+            }
+          : undefined,
     })),
     mixItems: mixes.map((mix) => ({
       ...parseMixSnapshot(mix.snapshot_json),
@@ -174,6 +199,9 @@ function mapOrder(row: OrderRow, items: ProductLineRow[], mixes: MixLineRow[]): 
     totalCents: row.total_cents,
     promoApplied: row.promo_code_applied,
     createdAt: row.created_at,
+    deliveryMode: (row.delivery_mode as Order['deliveryMode']) ?? undefined,
+    deliveryChargeCents: row.delivery_charge_cents ?? undefined,
+    deliveryWeightGrams: row.delivery_weight_grams ?? undefined,
   };
 }
 
@@ -202,14 +230,19 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
     db
       .prepare(
         `SELECT id, promo_code_applied, subtotal_cents, discount_cents, total_cents, created_at,
-            lifecycle_status, version, cancelled_at, user_id FROM orders WHERE id = ?`,
+            lifecycle_status, version, cancelled_at, user_id,
+            delivery_mode, delivery_charge_cents, delivery_weight_grams
+         FROM orders WHERE id = ?`,
       )
       .get(orderId) as OrderRow | undefined;
   const loadLines = (orderId: number) => ({
     items: db
       .prepare(
-        `SELECT line.id, line.product_id, line.product_name, line.product_price_cents, line.quantity, line.line_total_cents,
-          allocation.allocated_quantity, allocation.backordered_quantity, allocation.cancelled_quantity
+        `SELECT line.id, line.product_id, line.product_name, line.product_price_cents,
+           line.quantity, line.line_total_cents,
+           line.variant_id, line.sku, line.variant_label, line.weight_grams,
+           line.consumption_classification, line.delivery_class,
+           allocation.allocated_quantity, allocation.backordered_quantity, allocation.cancelled_quantity
          FROM order_line_items line
          LEFT JOIN order_inventory_allocations allocation ON allocation.order_line_item_id = line.id
          WHERE line.order_id = ? ORDER BY line.id ASC`,
@@ -288,8 +321,12 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
     create(params) {
       const result = db
         .prepare(
-          `INSERT INTO orders (customer_name, customer_email, shipping_address, promo_code_applied, subtotal_cents, discount_cents, total_cents, user_id, created_at, lifecycle_status, version)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0)`,
+          `INSERT INTO orders
+            (customer_name, customer_email, shipping_address, promo_code_applied,
+             subtotal_cents, discount_cents, total_cents,
+             delivery_mode, delivery_charge_cents, delivery_weight_grams,
+             user_id, created_at, lifecycle_status, version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0)`,
         )
         .run(
           params.customerName,
@@ -299,21 +336,33 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
           params.subtotalCents,
           params.discountCents,
           params.totalCents,
+          params.deliveryMode ?? 'parcel',
+          params.deliveryChargeCents ?? 0,
+          params.deliveryWeightGrams ?? 0,
           params.userId,
           params.createdAt,
         );
       const orderId = Number(result.lastInsertRowid);
       const addItem = db.prepare(
-        'INSERT INTO order_line_items (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents) VALUES (?, ?, ?, ?, ?, ?)',
+        `INSERT INTO order_line_items
+          (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents,
+           variant_id, sku, variant_label, weight_grams, consumption_classification, delivery_class)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       for (const item of params.items)
         addItem.run(
           orderId,
-          item.productId,
+          Number(item.productId),
           item.productName,
           item.unitPriceCents,
           item.quantity,
           item.lineTotalCents,
+          item.variantSnapshot?.variantId ?? null,
+          item.variantSnapshot?.sku ?? null,
+          item.variantSnapshot?.label ?? null,
+          item.variantSnapshot?.weightGrams ?? null,
+          item.variantSnapshot?.consumptionClassification ?? null,
+          item.variantSnapshot?.deliveryClass ?? null,
         );
       const addMix = db.prepare(
         'INSERT INTO order_powder_mix_items (order_id, snapshot_json) VALUES (?, ?)',

@@ -16,17 +16,28 @@ export type PowderMixDomainErrorCode =
   | 'MIX_BAG_COLOUR_INVALID'
   | 'MIX_LABEL_INVALID'
   | 'MIX_REQUOTE_REQUIRED'
-  | 'MIX_STOCK_UNAVAILABLE';
+  | 'MIX_STOCK_UNAVAILABLE'
+  | 'MIXING_GROUP_MISMATCH';
+
+export interface MixingGroupInfo {
+  productId: number;
+  mixingGroup: string | null;
+}
 
 export class PowderMixDomainError extends Error {
   readonly name = 'PowderMixDomainError';
+  readonly conflictingProductIds?: number[];
+  readonly groupInfo?: readonly MixingGroupInfo[];
 
   constructor(
     readonly code: PowderMixDomainErrorCode,
     message: string,
     readonly field?: string,
+    extra?: { conflictingProductIds?: number[]; groupInfo?: readonly MixingGroupInfo[] },
   ) {
     super(message);
+    this.conflictingProductIds = extra?.conflictingProductIds;
+    this.groupInfo = extra?.groupInfo;
   }
 }
 
@@ -37,6 +48,18 @@ export interface PowderMixProduct {
   mixable: boolean;
   mixUnitGrams: number | null;
   consumptionWarning?: 'Not for consumption' | null;
+  mixingGroup: string | null;
+  blendSourceVariantId: number | null;
+  detailsJson: string | null;
+  sourceVariantPriceCents: number | null;
+  sourceVariantMixUnitGrams: number | null;
+}
+
+export interface CombinedPowderMixFacts {
+  ingredients: string[];
+  allergens: string[];
+  intendedUse: string[];
+  safety: string[];
 }
 
 export interface PowderMixComponent {
@@ -67,6 +90,7 @@ export interface PowderMixQuote extends PowderMixPrice {
   config: NormalizedPowderMixConfig;
   allocations: readonly PowderMixAllocation[];
   usageLabel: 'Consumable powder' | 'Not for consumption';
+  combinedFacts: CombinedPowderMixFacts;
 }
 
 export interface PowderMixStockLine {

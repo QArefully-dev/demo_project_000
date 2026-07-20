@@ -23,6 +23,10 @@ function statusVariant(status: string): 'default' | 'secondary' | 'destructive' 
   return 'secondary';
 }
 
+function deliveryModeLabel(mode: string): string {
+  return mode === 'freight' ? 'Freight' : 'Parcel';
+}
+
 export function OrderDetailView({
   order,
   allowCancellation = false,
@@ -62,6 +66,12 @@ export function OrderDetailView({
                 <span className="min-w-0">
                   {item.productName}{' '}
                   <span className="text-muted-foreground">× {item.quantity}</span>
+                  {item.variantSnapshot && (
+                    <span className="block text-xs text-muted-foreground">
+                      {item.variantSnapshot.label} · SKU: {item.variantSnapshot.sku} ·{' '}
+                      {item.variantSnapshot.weightGrams}g
+                    </span>
+                  )}
                   {item.inventoryStatus === 'partially_backordered' && (
                     <span className="block text-xs font-medium text-amber-700">
                       {item.allocatedQuantity} allocated; {item.backorderedQuantity} awaiting stock
@@ -81,7 +91,7 @@ export function OrderDetailView({
                     </span>
                   )}
                 </span>
-                <span>{formatMoney(item.lineTotalCents)}</span>
+                <span className="shrink-0">{formatMoney(item.lineTotalCents)}</span>
               </div>
             ))}
             {order.mixItems.map((item) => {
@@ -115,22 +125,36 @@ export function OrderDetailView({
                       </span>
                     </span>
                   </div>
-                  <span>{formatMoney(item.lineTotalCents)}</span>
+                  <span className="shrink-0">{formatMoney(item.lineTotalCents)}</span>
                 </div>
               );
             })}
           </div>
           <Separator />
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Subtotal</span>
-            <span>{formatMoney(order.subtotalCents)}</span>
-          </div>
-          {order.discountCents > 0 && (
-            <div className="flex items-center justify-between text-sm text-green-700">
-              <span>Discount{order.promoApplied ? ` (${order.promoApplied})` : ''}</span>
-              <span>−{formatMoney(order.discountCents)}</span>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Merchandise subtotal</span>
+              <span>{formatMoney(order.subtotalCents)}</span>
             </div>
-          )}
+            {order.discountCents > 0 && (
+              <div className="flex items-center justify-between text-sm text-green-700">
+                <span>Discount{order.promoApplied ? ` (${order.promoApplied})` : ''}</span>
+                <span>−{formatMoney(order.discountCents)}</span>
+              </div>
+            )}
+            {order.deliveryMode && (
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span>{deliveryModeLabel(order.deliveryMode)} delivery</span>
+                <span>
+                  {order.deliveryChargeCents !== undefined && order.deliveryChargeCents === 0
+                    ? 'Free'
+                    : order.deliveryChargeCents !== undefined
+                      ? formatMoney(order.deliveryChargeCents)
+                      : ''}
+                </span>
+              </div>
+            )}
+          </div>
           <Separator />
           <div className="flex items-center justify-between text-lg font-bold">
             <span>Total</span>
@@ -163,6 +187,14 @@ export function OrderDetailView({
                   <p className="mt-2 text-sm">
                     Tracking reference:{' '}
                     <span className="font-medium">{shipment.trackingReference}</span>
+                  </p>
+                )}
+                {order.deliveryMode && (
+                  <p className="text-xs text-muted-foreground">
+                    {deliveryModeLabel(order.deliveryMode)} ·{' '}
+                    {order.deliveryWeightGrams !== undefined
+                      ? `${(order.deliveryWeightGrams / 1000).toFixed(1)}kg`
+                      : ''}
                   </p>
                 )}
                 <ul

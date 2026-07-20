@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { Product } from '@shop/contracts/products';
 import { getSimilarProducts } from '@/api/products';
+import type { VariantProductList } from '@/api/products';
 import { ProductCard } from '@/components/ProductCard';
 import { ProductGrid } from '@/components/ProductGrid';
 
@@ -9,7 +9,7 @@ interface SimilarProductsSectionProps {
   productId: string;
   isCartAvailable: boolean;
   isAdding: (productId: string) => boolean;
-  onAddToCart: (productId: string) => Promise<boolean>;
+  onAddToCart: (productId: string, variantId?: number) => Promise<boolean>;
 }
 
 function SimilarProductsHeading() {
@@ -20,17 +20,13 @@ function SimilarProductsHeading() {
   );
 }
 
-/**
- * An independently loaded shelf. Its network state deliberately never affects
- * the product detail or purchase controls above it.
- */
 export function SimilarProductsSection({
   productId,
   isCartAvailable,
   isAdding,
   onAddToCart,
 }: SimilarProductsSectionProps) {
-  const [products, setProducts] = useState<Product[] | null>(null);
+  const [products, setProducts] = useState<VariantProductList['items'] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
 

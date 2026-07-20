@@ -4,22 +4,22 @@ import { BagArtwork, type BagArtworkProps } from '@/components/BagArtwork';
 import { Button } from '@/components/ui/button';
 
 const tileArtwork: Readonly<Record<string, Omit<BagArtworkProps, 'ariaLabel' | 'className'>>> = {
-  'pantry staples': {
+  'sports nutrition': {
     name: 'Protein Powder',
-    category: 'Pantry Staples',
+    category: 'Sports Nutrition',
     quantity: '1kg',
-    batchCode: 'PAN-01',
+    batchCode: 'SN-01',
     mark: 'PRO',
     accent: '#78956c',
     powderAccent: '#d5dfbc',
     consumptionLabel: null,
   },
-  performance: {
-    name: 'Electrolyte Powder',
-    category: 'Performance',
-    quantity: '300g',
-    batchCode: 'PER-02',
-    mark: 'ELC',
+  'baking & pantry': {
+    name: 'Powdered Sugar',
+    category: 'Baking & Pantry',
+    quantity: '500g',
+    batchCode: 'BP-01',
+    mark: 'SUG',
     accent: '#e1a156',
     powderAccent: '#f2d8a6',
     consumptionLabel: null,
@@ -34,44 +34,34 @@ const tileArtwork: Readonly<Record<string, Omit<BagArtworkProps, 'ariaLabel' | '
     powderAccent: '#c7d486',
     consumptionLabel: null,
   },
-  household: {
+  'household & cleaning': {
     name: 'Laundry Powder',
-    category: 'Household',
+    category: 'Household & Cleaning',
     quantity: '500g',
-    batchCode: 'HOU-04',
+    batchCode: 'HC-04',
     mark: 'LND',
     accent: '#6c9cb3',
     powderAccent: '#c8e0eb',
     consumptionLabel: 'Not for consumption',
   },
-  outdoors: {
-    name: 'Powdered Campfire',
-    category: 'Outdoors',
-    quantity: '200g',
-    batchCode: 'OUT-05',
-    mark: 'FIR',
+  'garden & outdoors': {
+    name: 'Garden Lime',
+    category: 'Garden & Outdoors',
+    quantity: '2kg',
+    batchCode: 'GO-05',
+    mark: 'LIM',
     accent: '#c3774e',
     powderAccent: '#e7b78f',
     consumptionLabel: 'Not for consumption',
   },
-  questionable: {
-    name: 'Powdered House',
-    category: 'Questionable',
-    quantity: '1 unit',
-    batchCode: 'QUE-06',
-    mark: 'HSE',
+  'trade & creative materials': {
+    name: 'Cement Mix',
+    category: 'Trade & Creative Materials',
+    quantity: '25kg',
+    batchCode: 'TC-06',
+    mark: 'CEM',
     accent: '#8c7ba8',
     powderAccent: '#d0c3df',
-    consumptionLabel: 'Not for consumption',
-  },
-  impossible: {
-    name: 'Powdered Water',
-    category: 'Impossible',
-    quantity: 'Conceptual quantity',
-    batchCode: 'IMP-07',
-    mark: 'H2O',
-    accent: '#287fa6',
-    powderAccent: '#b9e2ee',
     consumptionLabel: 'Not for consumption',
   },
 };
@@ -88,18 +78,18 @@ export function CategoryTiles({ categories, isLoading, error, onRetry }: Categor
     <section aria-labelledby="category-heading">
       <p className="section-eyebrow">Choose your material</p>
       <h2 id="category-heading" className="section-heading mt-2">
-        Shop by powder type
+        Shop by category
       </h2>
       {error ? (
         <div role="status" className="mt-6 rounded-2xl border bg-surface-raised p-5 text-sm">
-          <p className="text-muted-foreground">Powder types are temporarily unavailable.</p>
+          <p className="text-muted-foreground">Categories are temporarily unavailable.</p>
           <Button variant="outline" size="sm" className="mt-3" onClick={onRetry}>
             Try again
           </Button>
         </div>
       ) : isLoading ? (
         <div
-          aria-label="Loading powder types"
+          aria-label="Loading categories"
           className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
         >
           {Array.from({ length: 4 }, (_, index) => (
@@ -108,7 +98,7 @@ export function CategoryTiles({ categories, isLoading, error, onRetry }: Categor
         </div>
       ) : categories.length === 0 ? null : (
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {categories.slice(0, 4).map((category) => {
+          {categories.slice(0, 6).map((category) => {
             const artwork = tileArtwork[category.toLowerCase()];
             return (
               <Link

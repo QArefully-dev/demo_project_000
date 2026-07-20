@@ -96,7 +96,7 @@ export function PowderMixCartLineItem({
           </Button>
           <Link
             className="text-xs text-primary underline-offset-4 hover:underline"
-            to={`/powderizer?edit=${item.mixId}`}
+            to={`/custom-powder?edit=${item.mixId}`}
           >
             Edit
           </Link>

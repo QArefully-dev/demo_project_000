@@ -64,7 +64,9 @@ Dependency direction: `packages/contracts` -> `apps/api` + `apps/web`; `packages
 
 ## Commands
 
-Prerequisite: Node 22.x; root `engines` range authoritative. Windows Node 22 path: `C:\Users\iwano\AppData\Local\Programs\nodejs-v22`. Before dependency install or broad gate: prepend path when needed (`$env:PATH='C:\Users\iwano\AppData\Local\Programs\nodejs-v22;' + $env:PATH`) -> `node --version` -> `v22.x`. Never report Node 22 unavailable while path exists. Stop on Node 23+ even when npm runs. Run commands from repository root unless stated otherwise.
+Prerequisite: Node 22.x; root `engines` range authoritative. Windows Node 22 path: `C:\Users\iwano\AppData\Local\nvm\v22.23.1` (nvm-managed; verified 2026-07-20 -> `node v22.23.1`, `npm 10.9.8`). Node is NOT on default `PATH`; prepend before any node/npm command: `$env:PATH='C:\Users\iwano\AppData\Local\nvm\v22.23.1;' + $env:PATH` -> `node --version` -> `v22.x`. Stop on Node 23+ even when npm runs (`C:\Users\iwano\AppData\Local\nvm\v24.18.0` exists — never select it). Run commands from repository root unless stated otherwise.
+
+Node-unavailable protocol: prepend path -> retry. Still unresolved -> locate install (`Get-ChildItem C:\Users\iwano\AppData\Local\nvm -Directory`) -> use `v22.*` entry. Report Node 22 unavailable only after both steps fail; state exact paths tried. Never silently skip an assigned test command — missing evidence is a blocker, not a pass.
 
 ### Toolchain and dependency health
 

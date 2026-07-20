@@ -71,13 +71,22 @@ interface ReturnServiceDeps {
   audit: AuditWriter;
   inventory: Pick<InventoryService, 'restoreReturnInventory'>;
   refundGateway: RefundGateway;
+  resolveVariantId: (orderLineItemId: number) => number | undefined;
 }
 
 // ── Factory ────────────────────────────────────────────────────────────
 
 export function createReturnService(deps: ReturnServiceDeps): ReturnService {
-  const { returnRepository, orderRepository, unitOfWork, clock, audit, inventory, refundGateway } =
-    deps;
+  const {
+    returnRepository,
+    orderRepository,
+    unitOfWork,
+    clock,
+    audit,
+    inventory,
+    refundGateway,
+    resolveVariantId,
+  } = deps;
 
   const run = <T>(work: () => T): T => unitOfWork.run(work);
 
@@ -311,8 +320,10 @@ export function createReturnService(deps: ReturnServiceDeps): ReturnService {
             (oi) => String(oi.lineId) === item.orderLineItemId,
           );
           if (!orderItem) throw new ReturnDomainError(ReturnErrorCode.RETURN_DATA_CORRUPT);
+          const variantId = resolveVariantId(Number(item.orderLineItemId));
+          if (variantId == null) throw new ReturnDomainError(ReturnErrorCode.RETURN_DATA_CORRUPT);
           return {
-            productId: Number(orderItem.productId),
+            variantId,
             orderLineItemId: Number(item.orderLineItemId),
             quantity: item.quantity,
           };
@@ -473,8 +484,9 @@ export function createReturnService(deps: ReturnServiceDeps): ReturnService {
           });
         }
 
-        // Cap: never exceed payment amount or order total
-        if (netRefundCents > payment.amountCents || netRefundCents > orderDetail.totalCents) {
+        // Cap: never exceed merchandise total (exclude delivery charge from refund cap)
+        const merchandiseTotal = orderDetail.subtotalCents - orderDetail.discountCents;
+        if (netRefundCents > merchandiseTotal) {
           throw new ReturnDomainError(ReturnErrorCode.PAYMENT_NOT_REFUNDABLE);
         }
 

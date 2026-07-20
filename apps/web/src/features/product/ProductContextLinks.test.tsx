@@ -7,6 +7,12 @@ import {
 } from '@/features/help/content/helpContentRegistry';
 import { ProductContextLinks } from './ProductContextLinks';
 
+const renderedFactLinks = [
+  productFactLinks.powderSafety,
+  productFactLinks.storage,
+  productFactLinks.packSizes,
+];
+
 function renderLinks(packagingQuantity?: string) {
   return render(
     <MemoryRouter>
@@ -36,10 +42,7 @@ describe('ProductContextLinks', () => {
   it('renders only canonical registry labels and paths', () => {
     renderLinks('250g');
 
-    for (const link of [
-      ...Object.values(productFactLinks),
-      ...Object.values(productCommerceLinks),
-    ]) {
+    for (const link of [...renderedFactLinks, ...Object.values(productCommerceLinks)]) {
       expect(screen.getByRole('link', { name: link.label })).toHaveAttribute('href', link.path);
     }
   });

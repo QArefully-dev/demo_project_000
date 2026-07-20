@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Product } from '@shop/contracts/products';
+import type { ProductWithVariants, CatalogVariant, CategoryFacts } from '@shop/contracts/products';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -16,7 +16,32 @@ vi.mock('@/components/WishlistButton', () => ({
   ),
 }));
 
-const product = (overrides: Partial<Product> = {}): Product => ({
+const defaultVariant: CatalogVariant = {
+  variantId: 1,
+  productId: 1,
+  sku: 'PW-001',
+  label: '300g Bag',
+  weightGrams: 300,
+  priceCents: 7999,
+  compareAtPriceCents: 9999,
+  stockCount: 10,
+  backorderable: false,
+  backorderLeadDays: null,
+  deliveryClass: 'parcel',
+  active: true,
+  sortOrder: 1,
+};
+
+const defaultFacts: CategoryFacts = {
+  texture: 'Fine',
+  colour: 'Clear',
+  source: 'Test source',
+  intendedUse: 'Testing',
+  storage: 'Cool dry place',
+  consumptionClassification: 'non-food',
+};
+
+const product = (overrides: Partial<ProductWithVariants> = {}): ProductWithVariants => ({
   id: 'powdered-water-1',
   name: 'Powdered Water',
   description: 'Just-add-water water powder, 300g. Dry until required.',
@@ -44,10 +69,17 @@ const product = (overrides: Partial<Product> = {}): Product => ({
   tags: overrides.tags ?? [],
   specificationGroups: overrides.specificationGroups ?? [],
   mixable: overrides.mixable ?? false,
+  variants: overrides.variants ?? [defaultVariant],
+  defaultVariantId: overrides.defaultVariantId ?? 1,
+  categoryFacts: overrides.categoryFacts ?? defaultFacts,
+  consumptionClassification: overrides.consumptionClassification ?? 'non-food',
+  mixingGroup: overrides.mixingGroup ?? null,
+  priceRange: overrides.priceRange ?? { min: 7999, max: 7999 },
+  baseAvailability: overrides.baseAvailability ?? 'in_stock',
 });
 
 function renderCard(
-  productOverrides: Partial<Product> = {},
+  productOverrides: Partial<ProductWithVariants> = {},
   props: Partial<React.ComponentProps<typeof ProductCard>> = {},
 ) {
   const onAddToCart = props.onAddToCart ?? vi.fn().mockResolvedValue(true);
@@ -83,7 +115,10 @@ describe('ProductCard', () => {
     rerender(
       <MemoryRouter>
         <ProductCard
-          product={product({ compareAtPriceCents: undefined })}
+          product={product({
+            compareAtPriceCents: undefined,
+            priceRange: { min: 7999, max: 7999 },
+          })}
           onAddToCart={vi.fn().mockResolvedValue(true)}
           isCartAvailable={true}
         />
@@ -112,16 +147,36 @@ describe('ProductCard', () => {
   });
 
   it('disables purchase for unavailable stock and labels low stock', () => {
-    renderCard({ stock: 0, availability: 'out_of_stock' });
+    renderCard({
+      stock: 0,
+      availability: 'out_of_stock',
+      baseAvailability: 'out_of_stock',
+      variants: [{ ...defaultVariant, stockCount: 0, active: true }],
+      priceRange: { min: 7999, max: 7999 },
+    });
     expect(screen.getByText('Out of stock')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Unavailable' })).toBeDisabled();
 
-    renderCard({ id: 'low-stock', stock: 2 });
+    renderCard({
+      id: 'low-stock',
+      stock: 2,
+      variants: [{ ...defaultVariant, stockCount: 2, productId: 0 }],
+      baseAvailability: 'low_stock',
+      priceRange: { min: 7999, max: 7999 },
+    });
     expect(screen.getByText('Only 2 left')).toBeInTheDocument();
   });
 
   it('keeps backorderable products purchasable without promising a delivery date', () => {
-    renderCard({ stock: 0, availability: 'backorder', backorderable: true, backorderLeadDays: 14 });
+    renderCard({
+      stock: 0,
+      availability: 'backorder',
+      backorderable: true,
+      backorderLeadDays: 14,
+      baseAvailability: 'backorder',
+      variants: [{ ...defaultVariant, stockCount: 0, backorderable: true, backorderLeadDays: 14 }],
+      priceRange: { min: 7999, max: 7999 },
+    });
 
     expect(screen.getByText('Available to backorder')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add powder' })).toBeEnabled();
@@ -134,7 +189,7 @@ describe('ProductCard', () => {
 
     await user.click(screen.getByRole('button', { name: 'Add powder' }));
 
-    expect(onAddToCart).toHaveBeenCalledWith('powdered-water-1');
+    expect(onAddToCart).toHaveBeenCalledWith('powdered-water-1', 1);
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Could not add this item. Try again.',
     );

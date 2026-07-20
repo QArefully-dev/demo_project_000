@@ -69,6 +69,14 @@
     "./returns": {
       "types": "./dist/returns.d.ts",
       "import": "./dist/returns.js"
+    },
+    "./delivery": {
+      "types": "./dist/delivery.d.ts",
+      "import": "./dist/delivery.js"
+    },
+    "./customPowder": {
+      "types": "./dist/customPowder.d.ts",
+      "import": "./dist/customPowder.js"
     }
   },
   "dependencies": {

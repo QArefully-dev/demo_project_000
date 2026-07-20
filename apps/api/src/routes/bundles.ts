@@ -79,7 +79,7 @@ export default function bundleRoutes(app: FastifyInstance, { services }: AppCont
         const body = {
           code: 'BUNDLE_UNAVAILABLE',
           error: 'One or more bundle components are unavailable',
-          productIds: result.productIds,
+          productIds: result.variantIds,
         };
         return reply.code(409).send(body);
       }

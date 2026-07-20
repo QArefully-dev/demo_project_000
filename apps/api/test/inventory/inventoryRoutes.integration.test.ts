@@ -24,6 +24,16 @@ async function login(app: Awaited<ReturnType<typeof buildApp>>, email: string): 
   return cookieValue(response);
 }
 
+function defaultVariantId(db: ReturnType<typeof openDatabase>, productId: number): number {
+  const row = db
+    .prepare(
+      'SELECT id FROM product_variants WHERE product_id = ? AND sort_order = 1 AND active = 1 LIMIT 1',
+    )
+    .get(productId) as { id: number } | undefined;
+  if (!row) throw new Error(`No default variant for product ${productId}`);
+  return row.id;
+}
+
 function createBackorder(
   repository: ReturnType<typeof createOrderRepository>,
   productId: string,
@@ -60,20 +70,40 @@ void test('admin receipt authenticates, replays, rejects changed keys, and fulfi
   const directory = mkdtempSync(join(tmpdir(), 'shop-inventory-routes-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
   seedDatabase(db);
+  const variant49 = defaultVariantId(db, 49);
   db.prepare(
-    'UPDATE products SET stock_count = 0, backorderable = 1, backorder_lead_days = 14 WHERE id = 49',
-  ).run();
+    'UPDATE product_variants SET stock_count = 0, backorderable = 1, backorder_lead_days = 14 WHERE id = ?',
+  ).run(variant49);
   const orders = createOrderRepository(db);
   const first = createBackorder(orders, '49', 2, '2026-07-19T12:00:00.000Z');
   const second = createBackorder(orders, '49', 2, '2026-07-19T12:01:00.000Z');
+  // Update order_line_items to include variant_id
+  db.prepare('UPDATE order_line_items SET variant_id = ? WHERE id = ?').run(
+    variant49,
+    first.lineId,
+  );
+  db.prepare('UPDATE order_line_items SET variant_id = ? WHERE id = ?').run(
+    variant49,
+    second.lineId,
+  );
   const addAllocation = db.prepare(
     `INSERT INTO order_inventory_allocations
-      (order_line_item_id, product_id, allocated_quantity, backordered_quantity, cancelled_quantity,
+      (order_line_item_id, variant_id, allocated_quantity, backordered_quantity, cancelled_quantity,
        stock_debited_quantity, created_at, updated_at)
-     VALUES (?, 49, 0, 2, 0, 0, ?, ?)`,
+     VALUES (?, ?, 0, 2, 0, 0, ?, ?)`,
   );
-  addAllocation.run(first.lineId, '2026-07-19T12:00:00.000Z', '2026-07-19T12:00:00.000Z');
-  addAllocation.run(second.lineId, '2026-07-19T12:01:00.000Z', '2026-07-19T12:01:00.000Z');
+  addAllocation.run(
+    first.lineId,
+    variant49,
+    '2026-07-19T12:00:00.000Z',
+    '2026-07-19T12:00:00.000Z',
+  );
+  addAllocation.run(
+    second.lineId,
+    variant49,
+    '2026-07-19T12:01:00.000Z',
+    '2026-07-19T12:01:00.000Z',
+  );
   const app = await buildApp({
     db,
     resetBaseUrl: 'http://web.test',
@@ -88,7 +118,7 @@ void test('admin receipt authenticates, replays, rejects changed keys, and fulfi
   const customerCookie = await login(app, 'alice@example.com');
   const adminCookie = await login(app, 'admin@example.com');
   const payload = {
-    productId: '49',
+    variantId: variant49,
     quantity: 3,
     idempotencyKey: '72e6c071-d2df-47d2-8d7f-bb878378e7ae',
   };
@@ -117,7 +147,7 @@ void test('admin receipt authenticates, replays, rejects changed keys, and fulfi
   assert.equal(created.statusCode, 201);
   assert.deepEqual(created.json(), {
     receiptId: '1',
-    productId: '49',
+    variantId: variant49,
     receivedQuantity: 3,
     allocatedQuantity: 3,
     remainingStock: 0,
@@ -152,8 +182,8 @@ void test('admin receipt authenticates, replays, rejects changed keys, and fulfi
         url: '/api/admin/inventory/receipts',
         headers: { cookie: adminCookie },
         payload: {
-          ...payload,
-          productId: '999999',
+          variantId: 999999,
+          quantity: 1,
           idempotencyKey: '9830252c-d848-4b9c-b7c3-3703a74ac6b5',
         },
       })

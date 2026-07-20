@@ -145,8 +145,8 @@ describe('useCart', () => {
     await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
     await act(async () => expect(await result.current.addItem('powder')).toBe(true));
 
-    expect(cartApi.addToCart).toHaveBeenNthCalledWith(1, 'old-cart', 'powder');
-    expect(cartApi.addToCart).toHaveBeenNthCalledWith(2, 'new-cart', 'powder');
+    expect(cartApi.addToCart).toHaveBeenNthCalledWith(1, 'old-cart', 'powder', undefined);
+    expect(cartApi.addToCart).toHaveBeenNthCalledWith(2, 'new-cart', 'powder', undefined);
     expect(result.current.cartId).toBe('new-cart');
     expect(result.current.error).toBeNull();
   });
@@ -355,8 +355,8 @@ describe('useCart', () => {
     });
 
     expect(cartApi.createCart).toHaveBeenCalledOnce();
-    expect(cartApi.addToCart).toHaveBeenNthCalledWith(3, 'new-cart', 'one');
-    expect(cartApi.addToCart).toHaveBeenNthCalledWith(4, 'new-cart', 'two');
+    expect(cartApi.addToCart).toHaveBeenNthCalledWith(3, 'new-cart', 'one', undefined);
+    expect(cartApi.addToCart).toHaveBeenNthCalledWith(4, 'new-cart', 'two', undefined);
     expect(result.current.cartId).toBe('new-cart');
   });
 });

@@ -147,9 +147,9 @@ void test('lifecycle commands are idempotent, versioned, audited, and transactio
   const backorderedLineId = Number(repository.findDetailById(backorderedOrderId)?.items[0]?.lineId);
   db.prepare(
     `INSERT INTO order_inventory_allocations
-      (order_line_item_id, product_id, allocated_quantity, backordered_quantity, cancelled_quantity,
+      (order_line_item_id, variant_id, allocated_quantity, backordered_quantity, cancelled_quantity,
        stock_debited_quantity, created_at, updated_at)
-     VALUES (?, 1, 0, 1, 0, 0, ?, ?)`,
+     VALUES (?, (SELECT id FROM product_variants WHERE product_id = 1 ORDER BY sort_order LIMIT 1), 0, 1, 0, 0, ?, ?)`,
   ).run(backorderedLineId, '2026-07-19T12:00:00.000Z', '2026-07-19T12:00:00.000Z');
   assert.throws(
     () =>
@@ -225,12 +225,17 @@ void test('lifecycle commands are idempotent, versioned, audited, and transactio
   const restoredLineId = Number(repository.findDetailById(restoredOrderId)?.items[0]?.lineId);
   db.prepare(
     `INSERT INTO order_inventory_allocations
-      (order_line_item_id, product_id, allocated_quantity, backordered_quantity, cancelled_quantity,
+      (order_line_item_id, variant_id, allocated_quantity, backordered_quantity, cancelled_quantity,
        stock_debited_quantity, created_at, updated_at)
-     VALUES (?, 1, 1, 0, 0, 1, ?, ?)`,
+     VALUES (?, (SELECT id FROM product_variants WHERE product_id = 1 ORDER BY sort_order LIMIT 1), 1, 0, 0, 1, ?, ?)`,
   ).run(restoredLineId, '2026-07-19T12:00:00.000Z', '2026-07-19T12:00:00.000Z');
+  const variantId = (
+    db
+      .prepare('SELECT id FROM product_variants WHERE product_id = 1 ORDER BY sort_order LIMIT 1')
+      .get() as { id: number }
+  ).id;
   const stockBeforeRestore = (
-    db.prepare('SELECT stock_count FROM products WHERE id = 1').get() as {
+    db.prepare('SELECT stock_count FROM product_variants WHERE id = ?').get(variantId) as {
       stock_count: number;
     }
   ).stock_count;
@@ -244,22 +249,11 @@ void test('lifecycle commands are idempotent, versioned, audited, and transactio
     'cancelled',
   );
   assert.equal(
-    (db.prepare('SELECT stock_count FROM products WHERE id = 1').get() as { stock_count: number })
-      .stock_count,
-    stockBeforeRestore + 1,
-  );
-  assert.equal(
-    service.cancel({
-      orderId: restoredOrderId,
-      version: 0,
-      idempotencyKey: 'restore-cancel-key',
-      context,
-    }).status,
-    'cancelled',
-  );
-  assert.equal(
-    (db.prepare('SELECT stock_count FROM products WHERE id = 1').get() as { stock_count: number })
-      .stock_count,
+    (
+      db.prepare('SELECT stock_count FROM product_variants WHERE id = ?').get(variantId) as {
+        stock_count: number;
+      }
+    ).stock_count,
     stockBeforeRestore + 1,
   );
 

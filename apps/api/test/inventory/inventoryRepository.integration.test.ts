@@ -8,6 +8,16 @@ import { createInventoryRepository } from '../../src/features/inventory/inventor
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
 import { InventoryError } from '../../src/features/inventory/inventoryTypes.js';
 
+function defaultVariantId(db: ReturnType<typeof openDatabase>, productId: number): number {
+  const row = db
+    .prepare(
+      'SELECT id FROM product_variants WHERE product_id = ? AND sort_order = 1 AND active = 1 LIMIT 1',
+    )
+    .get(productId) as { id: number } | undefined;
+  if (!row) throw new Error(`No default variant for product ${productId}`);
+  return row.id;
+}
+
 function fixture(t: test.TestContext) {
   const directory = mkdtempSync(join(tmpdir(), 'shop-inventory-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
@@ -29,12 +39,17 @@ function insertPayment(db: ReturnType<typeof openDatabase>, key: string): void {
 
 function insertOrderLine(
   db: ReturnType<typeof openDatabase>,
-  productId: number,
+  variantId: number,
   quantity: number,
 ): {
   orderId: number;
   lineId: number;
 } {
+  const productId = (
+    db.prepare('SELECT product_id FROM product_variants WHERE id = ?').get(variantId) as {
+      product_id: number;
+    }
+  ).product_id;
   const orderId = Number(
     db
       .prepare(
@@ -48,36 +63,40 @@ function insertOrderLine(
     db
       .prepare(
         `INSERT INTO order_line_items
-      (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents)
-     VALUES (?, ?, 'Inventory product', 100, ?, ?)`,
+      (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents, variant_id)
+     VALUES (?, ?, 'Inventory product', 100, ?, ?, ?)`,
       )
-      .run(orderId, productId, quantity, quantity * 100).lastInsertRowid,
+      .run(orderId, productId, quantity, quantity * 100, variantId).lastInsertRowid,
   );
   return { orderId, lineId };
 }
 
 void test('prepared expiry boundary releases final unit and a second connection can reserve it', (t) => {
   const { db, inventory } = fixture(t);
+  const variant1 = defaultVariantId(db, 1);
   db.prepare(
-    'UPDATE products SET stock_count = 1, backorderable = 0, backorder_lead_days = NULL WHERE id = 1',
-  ).run();
+    'UPDATE product_variants SET stock_count = 1, backorderable = 0, backorder_lead_days = NULL WHERE id = ?',
+  ).run(variant1);
   insertPayment(db, 'first');
   db.transaction(() =>
     inventory.reserveCheckout({
       paymentIdempotencyKey: 'first',
-      demands: [{ productId: 1, quantity: 1, demandKind: 'product' }],
+      demands: [{ variantId: variant1, quantity: 1, demandKind: 'product' }],
       now: '2026-07-19T12:00:00.000Z',
       expiresAt: '2026-07-19T12:15:00.000Z',
     }),
   )();
-  assert.equal(inventory.availableToSell([1], '2026-07-19T12:10:00.000Z')[0]?.availableToSell, 0);
+  assert.equal(
+    inventory.availableToSell([variant1], '2026-07-19T12:10:00.000Z')[0]?.availableToSell,
+    0,
+  );
   assert.deepEqual(inventory.expirePrepared('2026-07-19T12:15:00.000Z'), ['first']);
   insertPayment(db, 'second');
   assert.doesNotThrow(() =>
     db.transaction(() =>
       inventory.reserveCheckout({
         paymentIdempotencyKey: 'second',
-        demands: [{ productId: 1, quantity: 1, demandKind: 'product' }],
+        demands: [{ variantId: variant1, quantity: 1, demandKind: 'product' }],
         now: '2026-07-19T12:15:00.000Z',
         expiresAt: '2026-07-19T12:30:00.000Z',
       }),
@@ -87,15 +106,16 @@ void test('prepared expiry boundary releases final unit and a second connection 
 
 void test('commit creates exactly one ordinary allocation and receipt replay has no duplicate stock delta', (t) => {
   const { db, inventory } = fixture(t);
+  const variant49 = defaultVariantId(db, 49);
   db.prepare(
-    'UPDATE products SET stock_count = 0, backorderable = 1, backorder_lead_days = 14 WHERE id = 49',
-  ).run();
+    'UPDATE product_variants SET stock_count = 0, backorderable = 1, backorder_lead_days = 14 WHERE id = ?',
+  ).run(variant49);
   insertPayment(db, 'backorder');
-  const order = insertOrderLine(db, 49, 3);
+  const order = insertOrderLine(db, variant49, 3);
   db.transaction(() => {
     const split = inventory.reserveCheckout({
       paymentIdempotencyKey: 'backorder',
-      demands: [{ productId: 49, quantity: 3, demandKind: 'product' }],
+      demands: [{ variantId: variant49, quantity: 3, demandKind: 'product' }],
       now: '2026-07-19T12:00:00.000Z',
       expiresAt: '2026-07-19T12:15:00.000Z',
     });
@@ -104,7 +124,7 @@ void test('commit creates exactly one ordinary allocation and receipt replay has
     inventory.commitReservation({
       paymentIdempotencyKey: 'backorder',
       orderId: order.orderId,
-      ordinaryLines: [{ orderLineItemId: order.lineId, productId: 49, quantity: 3 }],
+      ordinaryLines: [{ orderLineItemId: order.lineId, variantId: variant49, quantity: 3 }],
       occurredAt: '2026-07-19T12:01:00.000Z',
     });
   })();
@@ -121,7 +141,7 @@ void test('commit creates exactly one ordinary allocation and receipt replay has
   const first = db.transaction(() =>
     inventory.receiveStock({
       idempotencyKey: 'receipt',
-      productId: 49,
+      variantId: variant49,
       quantity: 3,
       receivedByUserId: 3,
       occurredAt: '2026-07-19T12:02:00.000Z',
@@ -130,7 +150,7 @@ void test('commit creates exactly one ordinary allocation and receipt replay has
   const replay = db.transaction(() =>
     inventory.receiveStock({
       idempotencyKey: 'receipt',
-      productId: 49,
+      variantId: variant49,
       quantity: 3,
       receivedByUserId: 3,
       occurredAt: '2026-07-19T12:03:00.000Z',
@@ -140,8 +160,11 @@ void test('commit creates exactly one ordinary allocation and receipt replay has
   assert.equal(replay.replayed, true);
   assert.deepEqual({ ...replay, replayed: false }, first);
   assert.equal(
-    (db.prepare('SELECT stock_count FROM products WHERE id = 49').get() as { stock_count: number })
-      .stock_count,
+    (
+      db.prepare('SELECT stock_count FROM product_variants WHERE id = ?').get(variant49) as {
+        stock_count: number;
+      }
+    ).stock_count,
     0,
   );
   assert.equal(
@@ -156,16 +179,17 @@ void test('commit creates exactly one ordinary allocation and receipt replay has
 
 void test('outer rollback removes partial reservation and rejects corrupted commit without stock movement', (t) => {
   const { db, inventory } = fixture(t);
+  const variant1 = defaultVariantId(db, 1);
   db.prepare(
-    'UPDATE products SET stock_count = 1, backorderable = 0, backorder_lead_days = NULL WHERE id = 1',
-  ).run();
+    'UPDATE product_variants SET stock_count = 1, backorderable = 0, backorder_lead_days = NULL WHERE id = ?',
+  ).run(variant1);
   insertPayment(db, 'rollback');
   assert.throws(
     () =>
       db.transaction(() => {
         inventory.reserveCheckout({
           paymentIdempotencyKey: 'rollback',
-          demands: [{ productId: 1, quantity: 1, demandKind: 'product' }],
+          demands: [{ variantId: variant1, quantity: 1, demandKind: 'product' }],
           now: '2026-07-19T12:00:00.000Z',
           expiresAt: '2026-07-19T12:15:00.000Z',
         });
@@ -207,15 +231,16 @@ void test('outer rollback removes partial reservation and rejects corrupted comm
 
 void test('cancellation restores debited stock into oldest remaining backorder', (t) => {
   const { db, inventory } = fixture(t);
+  const variant49 = defaultVariantId(db, 49);
   db.prepare(
-    'UPDATE products SET stock_count = 1, backorderable = 1, backorder_lead_days = 14 WHERE id = 49',
-  ).run();
-  const first = insertOrderLine(db, 49, 1);
+    'UPDATE product_variants SET stock_count = 1, backorderable = 1, backorder_lead_days = 14 WHERE id = ?',
+  ).run(variant49);
+  const first = insertOrderLine(db, variant49, 1);
   insertPayment(db, 'first-order');
   db.transaction(() => {
     inventory.reserveCheckout({
       paymentIdempotencyKey: 'first-order',
-      demands: [{ productId: 49, quantity: 1, demandKind: 'product' }],
+      demands: [{ variantId: variant49, quantity: 1, demandKind: 'product' }],
       now: '2026-07-19T12:00:00.000Z',
       expiresAt: '2026-07-19T12:15:00.000Z',
     });
@@ -223,16 +248,16 @@ void test('cancellation restores debited stock into oldest remaining backorder',
     inventory.commitReservation({
       paymentIdempotencyKey: 'first-order',
       orderId: first.orderId,
-      ordinaryLines: [{ orderLineItemId: first.lineId, productId: 49, quantity: 1 }],
+      ordinaryLines: [{ orderLineItemId: first.lineId, variantId: variant49, quantity: 1 }],
       occurredAt: '2026-07-19T12:01:00.000Z',
     });
   })();
-  const second = insertOrderLine(db, 49, 1);
+  const second = insertOrderLine(db, variant49, 1);
   insertPayment(db, 'second-order');
   db.transaction(() => {
     inventory.reserveCheckout({
       paymentIdempotencyKey: 'second-order',
-      demands: [{ productId: 49, quantity: 1, demandKind: 'product' }],
+      demands: [{ variantId: variant49, quantity: 1, demandKind: 'product' }],
       now: '2026-07-19T12:02:00.000Z',
       expiresAt: '2026-07-19T12:17:00.000Z',
     });
@@ -240,7 +265,7 @@ void test('cancellation restores debited stock into oldest remaining backorder',
     inventory.commitReservation({
       paymentIdempotencyKey: 'second-order',
       orderId: second.orderId,
-      ordinaryLines: [{ orderLineItemId: second.lineId, productId: 49, quantity: 1 }],
+      ordinaryLines: [{ orderLineItemId: second.lineId, variantId: variant49, quantity: 1 }],
       occurredAt: '2026-07-19T12:03:00.000Z',
     });
     const allocations = inventory.cancelOrderInventory({
@@ -260,22 +285,26 @@ void test('cancellation restores debited stock into oldest remaining backorder',
     { allocated_quantity: 1, backordered_quantity: 0 },
   );
   assert.equal(
-    (db.prepare('SELECT stock_count FROM products WHERE id = 49').get() as { stock_count: number })
-      .stock_count,
+    (
+      db.prepare('SELECT stock_count FROM product_variants WHERE id = ?').get(variant49) as {
+        stock_count: number;
+      }
+    ).stock_count,
     0,
   );
 });
 
 void test('authorization at or after expiry cannot revive prepared reservation', (t) => {
   const { db, inventory } = fixture(t);
+  const variant1 = defaultVariantId(db, 1);
   db.prepare(
-    'UPDATE products SET stock_count = 1, backorderable = 0, backorder_lead_days = NULL WHERE id = 1',
-  ).run();
+    'UPDATE product_variants SET stock_count = 1, backorderable = 0, backorder_lead_days = NULL WHERE id = ?',
+  ).run(variant1);
   insertPayment(db, 'late-authorization');
   db.transaction(() =>
     inventory.reserveCheckout({
       paymentIdempotencyKey: 'late-authorization',
-      demands: [{ productId: 1, quantity: 1, demandKind: 'product' }],
+      demands: [{ variantId: variant1, quantity: 1, demandKind: 'product' }],
       now: '2026-07-19T12:00:00.000Z',
       expiresAt: '2026-07-19T12:15:00.000Z',
     }),
@@ -298,16 +327,17 @@ void test('authorization at or after expiry cannot revive prepared reservation',
 
 void test('receipt allocation becomes cancellable stock and reassigns FIFO', (t) => {
   const { db, inventory } = fixture(t);
+  const variant49 = defaultVariantId(db, 49);
   db.prepare(
-    'UPDATE products SET stock_count = 0, backorderable = 1, backorder_lead_days = 14 WHERE id = 49',
-  ).run();
+    'UPDATE product_variants SET stock_count = 0, backorderable = 1, backorder_lead_days = 14 WHERE id = ?',
+  ).run(variant49);
   const placeBackorder = (key: string, occurredAt: string) => {
-    const order = insertOrderLine(db, 49, 2);
+    const order = insertOrderLine(db, variant49, 2);
     insertPayment(db, key);
     db.transaction(() => {
       inventory.reserveCheckout({
         paymentIdempotencyKey: key,
-        demands: [{ productId: 49, quantity: 2, demandKind: 'product' }],
+        demands: [{ variantId: variant49, quantity: 2, demandKind: 'product' }],
         now: occurredAt,
         expiresAt: '2026-07-19T12:15:00.000Z',
       });
@@ -315,7 +345,7 @@ void test('receipt allocation becomes cancellable stock and reassigns FIFO', (t)
       inventory.commitReservation({
         paymentIdempotencyKey: key,
         orderId: order.orderId,
-        ordinaryLines: [{ orderLineItemId: order.lineId, productId: 49, quantity: 2 }],
+        ordinaryLines: [{ orderLineItemId: order.lineId, variantId: variant49, quantity: 2 }],
         occurredAt,
       });
     })();
@@ -326,7 +356,7 @@ void test('receipt allocation becomes cancellable stock and reassigns FIFO', (t)
   db.transaction(() =>
     inventory.receiveStock({
       idempotencyKey: 'receipt-cancel',
-      productId: 49,
+      variantId: variant49,
       quantity: 2,
       receivedByUserId: 3,
       occurredAt: '2026-07-19T12:02:00.000Z',
@@ -358,8 +388,11 @@ void test('receipt allocation becomes cancellable stock and reassigns FIFO', (t)
     { allocated_quantity: 2, backordered_quantity: 0, stock_debited_quantity: 2 },
   );
   assert.equal(
-    (db.prepare('SELECT stock_count FROM products WHERE id = 49').get() as { stock_count: number })
-      .stock_count,
+    (
+      db.prepare('SELECT stock_count FROM product_variants WHERE id = ?').get(variant49) as {
+        stock_count: number;
+      }
+    ).stock_count,
     0,
   );
 });

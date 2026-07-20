@@ -1,8 +1,8 @@
-import type { Cart } from '@shop/contracts/cart';
+import type { Cart, CartLineVariantSnap } from '@shop/contracts/cart';
 import type { PowderMixCartItem } from '@shop/contracts/powderizer';
 import { CATALOG_PRODUCTS } from '@shop/catalog';
 import { toProductContract } from '../../mappers/product.js';
-import type { CartRepository } from './cartRepository.js';
+import type { CartLineRow, CartRepository } from './cartRepository.js';
 import type { PowderMixRepository } from '../powderizer/powderMixRepository.js';
 import { derivePowderMixUsageLabel } from '../powderizer/powderMixRules.js';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
@@ -25,20 +25,20 @@ export interface CartService {
   get(cartId: string): Cart | undefined;
   add(
     cartId: string,
-    productId: string,
+    variantId: string,
     context?: AuditContext,
-  ): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_FOUND' | 'CART_RESERVED';
+  ): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_FOUND' | 'CART_RESERVED';
   update(
     cartId: string,
-    productId: string,
+    variantId: string,
     quantity: number,
     context?: AuditContext,
-  ): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_IN_CART' | 'CART_RESERVED';
+  ): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_IN_CART' | 'CART_RESERVED';
   remove(
     cartId: string,
-    productId: string,
+    variantId: string,
     context?: AuditContext,
-  ): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_IN_CART' | 'CART_RESERVED';
+  ): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_IN_CART' | 'CART_RESERVED';
 }
 
 export function createCartService(
@@ -62,30 +62,30 @@ export function createCartService(
         return result;
       }),
     get: (cartId) => getCart(repository, cartId, mixes, availabilityDependencies),
-    add: (cartId, productId, context) =>
+    add: (cartId, variantId, context) =>
       runCartMutation(auditDependencies, () => {
         requireAuditContext(auditDependencies, context);
-        const result = addItem(repository, cartId, productId, mixes, availabilityDependencies);
+        const result = addItem(repository, cartId, variantId, mixes, availabilityDependencies);
         if (context && auditDependencies && typeof result !== 'string') {
           auditDependencies.audit.append({
             action: 'cart.product_added',
             cartId,
-            productId: Number(productId),
+            productId: Number(variantId),
             quantity:
-              result.items.find((item) => item.productId === String(Number(productId)))?.quantity ??
-              1,
+              result.items.find((item) => item.variantSnap?.variantId === Number(variantId))
+                ?.quantity ?? 1,
             context,
           });
         }
         return result;
       }),
-    update: (cartId, productId, quantity, context) =>
+    update: (cartId, variantId, quantity, context) =>
       runCartMutation(auditDependencies, () => {
         requireAuditContext(auditDependencies, context);
         const result = updateItem(
           repository,
           cartId,
-          productId,
+          variantId,
           quantity,
           mixes,
           availabilityDependencies,
@@ -93,11 +93,16 @@ export function createCartService(
         if (context && auditDependencies && typeof result !== 'string') {
           auditDependencies.audit.append(
             quantity === 0
-              ? { action: 'cart.product_removed', cartId, productId: Number(productId), context }
+              ? {
+                  action: 'cart.product_removed',
+                  cartId,
+                  productId: Number(variantId),
+                  context,
+                }
               : {
                   action: 'cart.product_quantity_changed',
                   cartId,
-                  productId: Number(productId),
+                  productId: Number(variantId),
                   quantity,
                   context,
                 },
@@ -105,15 +110,15 @@ export function createCartService(
         }
         return result;
       }),
-    remove: (cartId, productId, context) =>
+    remove: (cartId, variantId, context) =>
       runCartMutation(auditDependencies, () => {
         requireAuditContext(auditDependencies, context);
-        const result = removeItem(repository, cartId, productId, mixes, availabilityDependencies);
+        const result = removeItem(repository, cartId, variantId, mixes, availabilityDependencies);
         if (context && auditDependencies && typeof result !== 'string') {
           auditDependencies.audit.append({
             action: 'cart.product_removed',
             cartId,
-            productId: Number(productId),
+            productId: Number(variantId),
             context,
           });
         }
@@ -159,12 +164,50 @@ function toPowderMixCartItem(
     quantity: row.quantity,
     lineTotalCents: row.quoted_unit_price_cents * row.quantity,
     usageLabel: derivePowderMixUsageLabel(
-      row.components.map((component) => ({
-        consumptionWarning:
-          CATALOG_PRODUCTS.find((product) => product.id === component.product_id)?.packaging
-            .consumptionLabel ?? null,
-      })),
+      row.components.map((component) => {
+        const canonicalProduct = CATALOG_PRODUCTS.find(
+          (product) => product.id === component.product_id,
+        );
+        const isNonFood = canonicalProduct?.baseFacts.consumptionClassification !== 'food';
+        return {
+          consumptionWarning: isNonFood ? ('Not for consumption' as const) : null,
+        };
+      }),
     ),
+  };
+}
+
+function cartLineRowToProductBase(row: CartLineRow) {
+  return {
+    id: row.product_id,
+    name: row.product_name,
+    description: row.product_description,
+    price_cents: row.price_cents,
+    category: row.product_category,
+    stock_count: 0,
+    image_set_id: row.product_image_set_id,
+    slug: row.product_slug,
+    compare_at_price_cents: row.product_compare_at_price_cents,
+    sales_count: row.product_sales_count,
+    mixable: row.product_mixable,
+    mix_unit_grams: row.product_mix_unit_grams,
+    active: row.product_active,
+    created_at: row.product_created_at,
+    consumption_classification: row.product_consumption_classification,
+    mixing_group: null,
+    details_json: null,
+    default_variant_id: row.product_default_variant_id,
+    blend_source_variant_id: row.product_blend_source_variant_id,
+  };
+}
+
+function toVariantSnap(row: CartLineRow): CartLineVariantSnap {
+  return {
+    variantId: row.variant_id,
+    sku: row.variant_sku,
+    label: row.variant_label,
+    weightGrams: row.variant_weight_grams,
+    deliveryClass: row.variant_delivery_class as CartLineVariantSnap['deliveryClass'],
   };
 }
 
@@ -176,24 +219,29 @@ export function getCart(
 ): Cart | undefined {
   if (!repository.exists(cartId)) return undefined;
   const rows = repository.listLines(cartId);
+  const variantIds = rows.map((row) => row.variant_id);
   const availability = availabilityDependencies?.inventory.availableToSell(
-    rows.map((row) => row.product_id),
+    variantIds,
     availabilityDependencies.clock.now().toISOString(),
   );
-  const availableByProduct = new Map(
-    availability?.map((product) => [product.productId, product.availableToSell]),
-  );
-  const items = rows.map((row) => ({
-    productId: String(row.product_id),
-    product: toProductContract({
-      ...row,
-      ...(availabilityDependencies
-        ? { available_to_sell: availableByProduct.get(row.product_id) ?? 0 }
-        : {}),
-    }),
-    quantity: row.quantity,
-    lineTotalCents: row.price_cents * row.quantity,
-  }));
+  const availableByVariant = new Map(availability?.map((v) => [v.variantId, v.availableToSell]));
+  const items = rows.map((row) => {
+    const productBase = cartLineRowToProductBase(row);
+    const available = availableByVariant.get(row.variant_id) ?? 0;
+    const variantBackorderable = row.variant_backorderable === 1;
+    return {
+      productId: String(row.product_id),
+      product: toProductContract({
+        ...productBase,
+        available_to_sell: available,
+        backorderable: variantBackorderable ? 1 : 0,
+        backorder_lead_days: row.variant_backorder_lead_days,
+      }),
+      variantSnap: toVariantSnap(row),
+      quantity: row.quantity,
+      lineTotalCents: row.price_cents * row.quantity,
+    };
+  });
   const mixItems = mixes?.listForCart(cartId).map(toPowderMixCartItem) ?? [];
   return {
     id: cartId,
@@ -207,15 +255,15 @@ export function getCart(
 export function addItem(
   repository: CartRepository,
   cartId: string,
-  productId: string,
+  variantId: string,
   mixes?: PowderMixRepository,
   availabilityDependencies?: CartAvailabilityDependencies,
-): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_FOUND' | 'CART_RESERVED' {
+): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_FOUND' | 'CART_RESERVED' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
   if (repository.isReserved(cartId, availabilityDependencies?.clock.now().toISOString()))
     return 'CART_RESERVED';
-  if (!repository.productExists(productId)) return 'PRODUCT_NOT_FOUND';
-  repository.addLine(cartId, productId);
+  if (!repository.variantExists(variantId)) return 'VARIANT_NOT_FOUND';
+  repository.addLine(cartId, variantId);
   repository.touch(cartId);
   return getCart(repository, cartId, mixes, availabilityDependencies) ?? 'CART_NOT_FOUND';
 }
@@ -223,19 +271,19 @@ export function addItem(
 export function updateItem(
   repository: CartRepository,
   cartId: string,
-  productId: string,
+  variantId: string,
   quantity: number,
   mixes?: PowderMixRepository,
   availabilityDependencies?: CartAvailabilityDependencies,
-): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_IN_CART' | 'CART_RESERVED' {
+): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_IN_CART' | 'CART_RESERVED' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
   if (repository.isReserved(cartId, availabilityDependencies?.clock.now().toISOString()))
     return 'CART_RESERVED';
   const changed =
     quantity === 0
-      ? repository.removeLine(cartId, productId)
-      : repository.updateLine(cartId, productId, quantity);
-  if (!changed) return 'PRODUCT_NOT_IN_CART';
+      ? repository.removeLine(cartId, variantId)
+      : repository.updateLine(cartId, variantId, quantity);
+  if (!changed) return 'VARIANT_NOT_IN_CART';
   repository.touch(cartId);
   return getCart(repository, cartId, mixes, availabilityDependencies) ?? 'CART_NOT_FOUND';
 }
@@ -243,14 +291,14 @@ export function updateItem(
 export function removeItem(
   repository: CartRepository,
   cartId: string,
-  productId: string,
-  mixes?: PowderMixRepository,
+  variantId: string,
+  mines?: PowderMixRepository,
   availabilityDependencies?: CartAvailabilityDependencies,
-): Cart | 'CART_NOT_FOUND' | 'PRODUCT_NOT_IN_CART' | 'CART_RESERVED' {
+): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_IN_CART' | 'CART_RESERVED' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
   if (repository.isReserved(cartId, availabilityDependencies?.clock.now().toISOString()))
     return 'CART_RESERVED';
-  if (!repository.removeLine(cartId, productId)) return 'PRODUCT_NOT_IN_CART';
+  if (!repository.removeLine(cartId, variantId)) return 'VARIANT_NOT_IN_CART';
   repository.touch(cartId);
-  return getCart(repository, cartId, mixes, availabilityDependencies) ?? 'CART_NOT_FOUND';
+  return getCart(repository, cartId, mines, availabilityDependencies) ?? 'CART_NOT_FOUND';
 }

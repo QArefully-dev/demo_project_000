@@ -16,55 +16,59 @@ export interface ResolvedDailyRecipe {
 
 export const DAILY_POWDER_MIX_RECIPES: readonly DailyRecipePreset[] = [
   {
-    name: 'Literal Housewarming',
+    name: 'Protein Shake Base',
     components: [
-      { slug: 'powdered-house', percentage: 50 },
-      { slug: 'powdered-campfire', percentage: 50 },
+      { slug: 'whey-protein-isolate', percentage: 50 },
+      { slug: 'collagen-peptides', percentage: 30 },
+      { slug: 'matcha-green-tea-powder', percentage: 20 },
     ],
   },
   {
-    name: 'Working From Anywhere',
+    name: 'Baking Essentials Mix',
     components: [
-      { slug: 'macbook-pro', percentage: 34 },
-      { slug: 'powdered-wifi', percentage: 33 },
-      { slug: 'plane', percentage: 33 },
+      { slug: 'all-purpose-flour', percentage: 40 },
+      { slug: 'powdered-sugar', percentage: 30 },
+      { slug: 'baking-powder', percentage: 30 },
     ],
   },
   {
-    name: 'Lunar Luxury',
+    name: 'All-Purpose Garden Feed',
     components: [
-      { slug: 'moon-rock', percentage: 50 },
-      { slug: 'diamond', percentage: 50 },
+      { slug: 'all-purpose-garden-fertilizer', percentage: 40 },
+      { slug: 'bone-meal', percentage: 30 },
+      { slug: 'kelp-meal', percentage: 30 },
     ],
   },
   {
-    name: 'Open Water',
+    name: 'Home Cleaning Kit',
     components: [
-      { slug: 'boat', percentage: 50 },
-      { slug: 'powdered-water', percentage: 50 },
+      { slug: 'laundry-detergent-powder', percentage: 50 },
+      { slug: 'all-purpose-cleaner-powder', percentage: 30 },
+      { slug: 'scouring-powder', percentage: 20 },
     ],
   },
   {
-    name: 'Heavy Landing',
+    name: 'Standard Concrete Mix',
     components: [
-      { slug: 'plane', percentage: 34 },
-      { slug: 'powdered-gravity', percentage: 33 },
-      { slug: 'moon-rock', percentage: 33 },
+      { slug: 'portland-cement', percentage: 50 },
+      { slug: 'silica-sand', percentage: 30 },
+      { slug: 'stone-dust', percentage: 20 },
     ],
   },
   {
-    name: 'Quiet Connection',
+    name: 'Hot Chocolate Blend',
     components: [
-      { slug: 'powdered-wifi', percentage: 50 },
-      { slug: 'powdered-silence', percentage: 50 },
+      { slug: 'cocoa-powder', percentage: 40 },
+      { slug: 'powdered-sugar', percentage: 40 },
+      { slug: 'vanilla-milkshake-powder', percentage: 20 },
     ],
   },
   {
-    name: 'Weekend Project',
+    name: 'Sports Recovery Mix',
     components: [
-      { slug: 'powdered-house', percentage: 34 },
-      { slug: 'powdered-weekend', percentage: 33 },
-      { slug: 'diamond', percentage: 33 },
+      { slug: 'recovery-blend', percentage: 40 },
+      { slug: 'bcaa-powder', percentage: 30 },
+      { slug: 'electrolyte-blend', percentage: 30 },
     ],
   },
 ];

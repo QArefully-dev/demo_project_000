@@ -5,15 +5,48 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { WishlistButton } from '@/components/WishlistButton';
 import { formatMoney } from '@/lib/formatMoney';
-import type { Product } from '@shop/contracts/products';
+import type { Product, ProductWithVariants } from '@shop/contracts/products';
 import { ProductMedia } from '@/components/ProductMedia';
 
+type ProductOrVariant = Product | ProductWithVariants;
+
+function hasVariants(p: ProductOrVariant): p is ProductWithVariants {
+  return 'variants' in p && Array.isArray(p.variants) && p.variants.length > 0;
+}
+
 interface ProductCardProps {
-  product: Product;
-  onAddToCart: (productId: string) => Promise<boolean>;
+  product: ProductOrVariant;
+  onAddToCart: (productId: string, variantId?: number) => Promise<boolean>;
   isCartAvailable: boolean;
   isAdding?: boolean;
   comparisonControl?: ReactNode;
+}
+
+function getPriceRange(product: ProductOrVariant): { min: number; max: number } {
+  if (hasVariants(product))
+    return product.priceRange ?? { min: product.priceCents, max: product.priceCents };
+  return { min: product.priceCents, max: product.priceCents };
+}
+
+function getBaseAvailability(product: ProductOrVariant): string {
+  if (hasVariants(product)) return product.baseAvailability ?? product.availability;
+  return product.availability;
+}
+
+function getIsOnSale(product: ProductOrVariant): boolean {
+  const priceMin = getPriceRange(product).min;
+  return product.compareAtPriceCents != null && product.compareAtPriceCents > priceMin;
+}
+
+function getTotalStock(product: ProductOrVariant): number {
+  if (hasVariants(product)) {
+    let total = 0;
+    for (const v of product.variants) {
+      if (v.active) total += v.stockCount;
+    }
+    return total;
+  }
+  return product.stock;
 }
 
 export function ProductCard({
@@ -24,23 +57,35 @@ export function ProductCard({
   comparisonControl,
 }: ProductCardProps) {
   const [actionError, setActionError] = useState<string | null>(null);
-  const inStock = product.availability === 'in_stock';
-  const backorder = product.availability === 'backorder';
-  const purchasable = inStock || backorder;
-  const isOnSale =
-    product.compareAtPriceCents != null && product.compareAtPriceCents > product.priceCents;
+  const baseAvail = getBaseAvailability(product);
+  const purchasable =
+    baseAvail === 'in_stock' || baseAvail === 'low_stock' || baseAvail === 'backorder';
+  const totalStock = getTotalStock(product);
+  const priceRange = getPriceRange(product);
+  const hasPriceRange = priceRange.min !== priceRange.max;
+  const isOnSale = getIsOnSale(product);
   const isBestseller = product.salesCount >= 250;
   const packSize = product.packaging?.quantity;
+  const isFood = hasVariants(product) && product.consumptionClassification === 'food';
+  const isNonFood = hasVariants(product) && product.consumptionClassification === 'non-food';
+  const isCaution = hasVariants(product) && product.consumptionClassification === 'caution';
+  const variantCount = hasVariants(product) ? product.variants.filter((v) => v.active).length : 0;
 
   useEffect(() => {
     setActionError(null);
   }, [product.id]);
 
+  const defaultVariantId = hasVariants(product) ? product.defaultVariantId : undefined;
+
   const handleAddToCart = async () => {
     setActionError(null);
-    const added = await onAddToCart(product.id);
+    const added = await onAddToCart(product.id, defaultVariantId);
     if (!added) setActionError('Could not add this item. Try again.');
   };
+
+  const priceLabel = hasPriceRange
+    ? `From ${formatMoney(priceRange.min)}`
+    : formatMoney(priceRange.min);
 
   return (
     <Card className="group flex h-full flex-col gap-0 overflow-hidden border-border/80 bg-surface-raised py-0 shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-lg">
@@ -64,6 +109,13 @@ export function ProductCard({
               Bestseller
             </Badge>
           )}
+          {isFood && <Badge className="bg-emerald-600 px-2.5 text-white">Food</Badge>}
+          {isNonFood && (
+            <Badge variant="secondary" className="px-2.5">
+              Not for consumption
+            </Badge>
+          )}
+          {isCaution && <Badge className="bg-amber-500 px-2.5 text-white">Caution</Badge>}
         </div>
         <div className="absolute top-2 right-2 rounded-full bg-background/90 shadow-sm backdrop-blur-sm">
           <WishlistButton productId={product.id} product={product} />
@@ -86,23 +138,28 @@ export function ProductCard({
           <div className="flex flex-wrap items-baseline gap-2">
             {isOnSale ? (
               <>
-                <span className="price-current text-sale">{formatMoney(product.priceCents)}</span>
+                <span className="price-current text-sale">{priceLabel}</span>
                 <span className="price-compare">{formatMoney(product.compareAtPriceCents!)}</span>
               </>
             ) : (
-              <span className="price-current">{formatMoney(product.priceCents)}</span>
+              <span className="price-current">{priceLabel}</span>
             )}
           </div>
+          {variantCount > 1 && (
+            <p className="mt-1 text-xs text-muted-foreground">{variantCount} options</p>
+          )}
         </div>
       </CardContent>
       <CardFooter className="border-t-0 bg-transparent p-4 pt-0 sm:px-5 sm:pb-5">
         <div className="w-full space-y-2">
-          {backorder && (
+          {baseAvail === 'backorder' && (
             <p className="text-xs font-medium text-amber-700">Available to backorder</p>
           )}
-          {!purchasable && <p className="text-xs font-medium text-destructive">Out of stock</p>}
-          {inStock && product.stock <= 5 && (
-            <p className="text-xs font-medium text-sale">Only {product.stock} left</p>
+          {baseAvail === 'out_of_stock' && (
+            <p className="text-xs font-medium text-destructive">Out of stock</p>
+          )}
+          {(baseAvail === 'low_stock' || baseAvail === 'in_stock') && totalStock <= 5 && (
+            <p className="text-xs font-medium text-sale">Only {totalStock} left</p>
           )}
           <Button
             className="w-full"

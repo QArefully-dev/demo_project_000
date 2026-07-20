@@ -15,15 +15,32 @@ type MixPreparation =
 function toMixProduct(
   row: NonNullable<ReturnType<CheckoutDependencies['products']['findById']>>,
 ): PowderMixProduct {
+  const canonicalProduct = CATALOG_PRODUCTS.find((product) => product.id === row.id);
+  const isNonFood = canonicalProduct?.baseFacts.consumptionClassification !== 'food';
   return {
     id: row.id,
     name: row.name,
     priceCents: row.price_cents,
     mixable: row.mixable === 1,
     mixUnitGrams: row.mix_unit_grams ?? null,
-    consumptionWarning:
-      CATALOG_PRODUCTS.find((product) => product.id === row.id)?.packaging.consumptionLabel ?? null,
+    consumptionWarning: isNonFood ? 'Not for consumption' : null,
+    mixingGroup: row.mixing_group ?? null,
+    blendSourceVariantId: row.blend_source_variant_id ?? null,
+    detailsJson: row.details_json ?? null,
+    sourceVariantPriceCents: null,
+    sourceVariantMixUnitGrams: null,
   };
+}
+
+function resolveSourceVariant(
+  product: PowderMixProduct,
+  findVariantById: CheckoutDependencies['products']['findVariantById'],
+): void {
+  if (product.blendSourceVariantId == null) return;
+  const variant = findVariantById(product.blendSourceVariantId);
+  if (!variant) return;
+  product.sourceVariantPriceCents = variant.price_cents;
+  product.sourceVariantMixUnitGrams = variant.weight_grams;
 }
 
 export function prepareMixes(cartId: string, dependencies: CheckoutDependencies): MixPreparation {
@@ -60,6 +77,7 @@ export function prepareMixes(cartId: string, dependencies: CheckoutDependencies)
     const products = (componentRows as Array<NonNullable<(typeof componentRows)[number]>>).map(
       toMixProduct,
     );
+    products.forEach((p) => resolveSourceVariant(p, dependencies.products.findVariantById));
     try {
       const quoted = quotePowderMix(
         {
@@ -133,6 +151,7 @@ export function prepareMixes(cartId: string, dependencies: CheckoutDependencies)
     .map((id) => dependencies.products.findById(id))
     .filter((product): product is NonNullable<typeof product> => product !== undefined)
     .map(toMixProduct);
+  products.forEach((p) => resolveSourceVariant(p, dependencies.products.findVariantById));
   let requirements: readonly PowderMixStockRequirement[];
   try {
     requirements = calculatePowderMixStockRequirements(stockLines, products);

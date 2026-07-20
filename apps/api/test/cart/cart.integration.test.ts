@@ -28,6 +28,16 @@ import { createAuditWriter, type AuditWriter } from '../../src/features/audit/au
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
 
+function defaultVariantId(db: ReturnType<typeof openDatabase>, productId: number): string {
+  const row = db
+    .prepare(
+      'SELECT id FROM product_variants WHERE product_id = ? AND sort_order = 1 AND active = 1 LIMIT 1',
+    )
+    .get(productId) as { id: number } | undefined;
+  if (!row) throw new Error(`No default variant for product ${productId}`);
+  return String(row.id);
+}
+
 void test('cart service coordinates cart repository and promo eligibility', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-cart-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
@@ -37,9 +47,10 @@ void test('cart service coordinates cart repository and promo eligibility', (t) 
     rmSync(directory, { recursive: true, force: true });
   });
   const carts = createCartRepository(db);
+  const variant1 = defaultVariantId(db, 1);
   const { cartId } = createCart(carts);
-  assert.equal(addItem(carts, cartId, '1').id, cartId);
-  assert.equal(updateItem(carts, cartId, '1', 2).totalItems, 2);
+  assert.equal(addItem(carts, cartId, variant1).id, cartId);
+  assert.equal(updateItem(carts, cartId, variant1, 2).totalItems, 2);
   assert.equal(
     validatePromo(
       { code: 'SAVE10', cartId, userId: null, now: new Date('2026-07-14T10:00:00.000Z') },
@@ -47,7 +58,7 @@ void test('cart service coordinates cart repository and promo eligibility', (t) 
     ).errorCode,
     'MIN_ITEMS',
   );
-  assert.equal(removeItem(carts, cartId, '1').totalItems, 0);
+  assert.equal(removeItem(carts, cartId, variant1).totalItems, 0);
   assert.deepEqual(getCart(carts, cartId)?.items, []);
   assert.deepEqual(getCart(carts, cartId)?.mixItems, []);
 });
@@ -61,10 +72,11 @@ void test('cart blocks new inactive selections but retains existing lines', (t) 
     rmSync(directory, { recursive: true, force: true });
   });
   const carts = createCartRepository(db);
+  const variant1 = defaultVariantId(db, 1);
   const { cartId } = createCart(carts);
-  assert.notEqual(addItem(carts, cartId, '1'), 'PRODUCT_NOT_FOUND');
-  db.prepare('UPDATE products SET active = 0 WHERE id = 1').run();
-  assert.equal(addItem(carts, cartId, '1'), 'PRODUCT_NOT_FOUND');
+  assert.notEqual(addItem(carts, cartId, variant1), 'VARIANT_NOT_FOUND');
+  db.prepare('UPDATE product_variants SET active = 0 WHERE id = ?').run(variant1);
+  assert.equal(addItem(carts, cartId, variant1), 'VARIANT_NOT_FOUND');
   assert.equal(getCart(carts, cartId)?.items[0]?.productId, '1');
 });
 
@@ -78,14 +90,17 @@ void test('cart reads batch available-to-sell and ignores only expired prepared 
   });
   const now = new Date('2026-07-19T12:00:00.000Z');
   const carts = createCartRepository(db);
+  const variant1 = defaultVariantId(db, 1);
+  const variant2 = defaultVariantId(db, 2);
+  const variant3 = defaultVariantId(db, 3);
   const inventory = createInventoryService({ repository: createInventoryRepository(db) });
   const service = createCartService(carts, undefined, undefined, {
     inventory,
     clock: { now: () => now },
   });
   const cartId = createCart(carts).cartId;
-  carts.addLine(cartId, '1');
-  db.prepare('UPDATE products SET stock_count = 1 WHERE id = 1').run();
+  carts.addLine(cartId, variant1);
+  db.prepare('UPDATE product_variants SET stock_count = 1 WHERE id = ?').run(variant1);
   db.prepare(
     `INSERT INTO payments
       (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand)
@@ -93,9 +108,9 @@ void test('cart reads batch available-to-sell and ignores only expired prepared 
   ).run();
   db.prepare(
     `INSERT INTO inventory_reservations
-      (payment_idempotency_key, product_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
-     VALUES ('cart-availability', 1, 'product', 1, 0, '2026-07-19T12:01:00.000Z', ?)`,
-  ).run(now.toISOString());
+      (payment_idempotency_key, variant_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
+     VALUES ('cart-availability', ?, 'product', 1, 0, '2026-07-19T12:01:00.000Z', ?)`,
+  ).run(variant1, now.toISOString());
   assert.equal(service.get(cartId)?.items[0]?.product.stock, 0);
   assert.equal(service.get(cartId)?.items[0]?.product.availability, 'out_of_stock');
 
@@ -106,7 +121,7 @@ void test('cart reads batch available-to-sell and ignores only expired prepared 
      VALUES (?, ?, 'prepared', 1, '4242', 'Visa', '2026-07-19T12:00:00.000Z')`,
   ).run(expiredKey, expiredKey);
   carts.reserve(cartId, expiredKey, now.toISOString());
-  assert.notEqual(service.add(cartId, '2'), 'CART_RESERVED');
+  assert.notEqual(service.add(cartId, variant2), 'CART_RESERVED');
 
   carts.releaseReservation(expiredKey);
   const authorizedKey = 'cart-authorized-lock';
@@ -116,7 +131,7 @@ void test('cart reads batch available-to-sell and ignores only expired prepared 
      VALUES (?, ?, 'authorized_pending_finalize', 1, '4242', 'Visa', '2026-07-19T11:00:00.000Z')`,
   ).run(authorizedKey, authorizedKey);
   carts.reserve(cartId, authorizedKey, now.toISOString());
-  assert.equal(service.add(cartId, '3'), 'CART_RESERVED');
+  assert.equal(service.add(cartId, variant3), 'CART_RESERVED');
 });
 
 void test('cart reads persisted mixes as first-class lines and promos count bag quantity', (t) => {
@@ -128,6 +143,7 @@ void test('cart reads persisted mixes as first-class lines and promos count bag 
     rmSync(directory, { recursive: true, force: true });
   });
   const carts = createCartRepository(db);
+  const variant3 = defaultVariantId(db, 3);
   const mixes = createPowderMixRepository(db);
   const powderizer = createPowderizerService({
     unitOfWork: createUnitOfWork(db),
@@ -149,7 +165,7 @@ void test('cart reads persisted mixes as first-class lines and promos count bag 
   assert.equal(typeof mixId, 'string');
   if (typeof mixId !== 'string') throw new Error('Expected mix ID');
   assert.equal(powderizer.updateQuantity(cartId, mixId, 5), undefined);
-  assert.equal(addItem(carts, cartId, '3').id, cartId);
+  assert.equal(addItem(carts, cartId, variant3).id, cartId);
 
   const cart = getCart(carts, cartId, mixes);
   assert.ok(cart);
@@ -158,21 +174,21 @@ void test('cart reads persisted mixes as first-class lines and promos count bag 
   assert.deepEqual(cart.mixItems[0], {
     mixId,
     components: [
-      { productId: '1', productName: 'Protein Powder', percentage: 50, allocatedGrams: 250 },
-      { productId: '2', productName: 'Powdered Oats', percentage: 50, allocatedGrams: 250 },
+      { productId: '1', productName: 'All-Purpose Flour', percentage: 50, allocatedGrams: 250 },
+      { productId: '2', productName: 'Powdered Sugar', percentage: 50, allocatedGrams: 250 },
     ],
     bagSizeGrams: 500,
     fineness: 'fine',
     bagColourScheme: 'ultraviolet-cyan',
     customLabel: 'Breakfast blend',
     priceVersion: 'powderizer-v1',
-    unitPriceCents: 1715,
+    unitPriceCents: 622,
     quantity: 5,
-    lineTotalCents: 8575,
+    lineTotalCents: 3110,
     usageLabel: 'Consumable powder',
   });
   assert.equal(cart.totalItems, 6);
-  assert.equal(cart.subtotalCents, 8575 + cart.items[0].lineTotalCents);
+  assert.equal(cart.subtotalCents, 3110 + cart.items[0].lineTotalCents);
   assert.equal(
     validatePromo(
       { code: 'SAVE10', cartId, userId: null, now: new Date('2026-07-14T10:00:00.000Z') },
@@ -225,7 +241,7 @@ void test('cart HTTP response preserves product lines and adds mixItems', async 
   const product = await app.inject({
     method: 'POST',
     url: `/api/cart/${cartId}/items`,
-    payload: { productId: '3' },
+    payload: { productId: '3', variantId: 6 },
   });
   assert.equal(product.statusCode, 200);
   assert.deepEqual(Value.Parse(Cart, product.json()).mixItems, []);
@@ -246,9 +262,9 @@ void test('cart HTTP response preserves product lines and adds mixItems', async 
   const cart = Value.Parse(Cart, createdMix.json());
   assert.equal(cart.items.length, 1);
   assert.equal(cart.mixItems.length, 1);
-  assert.equal(cart.mixItems[0].lineTotalCents, 1715);
+  assert.equal(cart.mixItems[0].lineTotalCents, 622);
   assert.equal(cart.totalItems, 2);
-  assert.equal(cart.subtotalCents, cart.items[0].lineTotalCents + 1715);
+  assert.equal(cart.subtotalCents, cart.items[0].lineTotalCents + 622);
 });
 
 void test('every mix mutation rejects a reserved cart', async (t) => {
@@ -341,6 +357,7 @@ void test('audited cart mutations emit one allowlisted event per committed chang
   });
 
   const carts = createCartRepository(db);
+  const variant1 = defaultVariantId(db, 1);
   const writer = createAuditWriter({
     repository: createAuditRepository(db),
     clock: { now: () => new Date('2026-07-18T12:00:00.000Z') },
@@ -353,10 +370,10 @@ void test('audited cart mutations emit one allowlisted event per committed chang
   const user = { actor: { type: 'user' as const, userId: 12 }, requestId: 'cart-b' };
 
   const { cartId } = service.create(anonymous);
-  assert.notEqual(service.add(cartId, '1', user), 'CART_NOT_FOUND');
-  assert.notEqual(service.update(cartId, '1', 3, user), 'CART_NOT_FOUND');
-  assert.notEqual(service.update(cartId, '1', 0, user), 'CART_NOT_FOUND');
-  assert.equal(service.update(cartId, '1', 2, user), 'PRODUCT_NOT_IN_CART');
+  assert.notEqual(service.add(cartId, variant1, user), 'CART_NOT_FOUND');
+  assert.notEqual(service.update(cartId, variant1, 3, user), 'CART_NOT_FOUND');
+  assert.notEqual(service.update(cartId, variant1, 0, user), 'CART_NOT_FOUND');
+  assert.equal(service.update(cartId, variant1, 2, user), 'VARIANT_NOT_IN_CART');
 
   const events = db
     .prepare(
@@ -395,7 +412,7 @@ void test('audited cart mutations emit one allowlisted event per committed chang
         actor_user_id: 12,
         entity_id: cartId,
         request_id: 'cart-b',
-        metadata_json: '{"productId":1,"quantity":1}',
+        metadata_json: JSON.stringify({ productId: Number(variant1), quantity: 1 }),
       },
       {
         action: 'cart.product_quantity_changed',
@@ -403,7 +420,7 @@ void test('audited cart mutations emit one allowlisted event per committed chang
         actor_user_id: 12,
         entity_id: cartId,
         request_id: 'cart-b',
-        metadata_json: '{"productId":1,"quantity":3}',
+        metadata_json: JSON.stringify({ productId: Number(variant1), quantity: 3 }),
       },
       {
         action: 'cart.product_removed',
@@ -411,7 +428,7 @@ void test('audited cart mutations emit one allowlisted event per committed chang
         actor_user_id: 12,
         entity_id: cartId,
         request_id: 'cart-b',
-        metadata_json: '{"productId":1}',
+        metadata_json: JSON.stringify({ productId: Number(variant1) }),
       },
     ],
   );
@@ -427,6 +444,7 @@ void test('cart audit failure rolls back mutation and cart touch transaction', (
   });
 
   const carts = createCartRepository(db);
+  const variant1 = defaultVariantId(db, 1);
   const failingAudit: AuditWriter = {
     append: () => {
       throw new Error('audit unavailable');
@@ -445,6 +463,6 @@ void test('cart audit failure rolls back mutation and cart touch transaction', (
   );
 
   const { cartId } = createCart(carts);
-  assert.throws(() => service.add(cartId, '1', context), /audit unavailable/);
+  assert.throws(() => service.add(cartId, variant1, context), /audit unavailable/);
   assert.deepEqual(getCart(carts, cartId)?.items, []);
 });

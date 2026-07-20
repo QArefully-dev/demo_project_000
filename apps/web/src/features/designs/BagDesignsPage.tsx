@@ -18,14 +18,14 @@ const designs: ReadonlyArray<{
 ];
 
 const artworkProps = {
-  name: 'Powdered Water',
-  category: 'Impossible',
-  quantity: 'Conceptual',
-  batchCode: 'IMP-07',
-  mark: 'H2O',
-  accent: '#287fa6',
-  powderAccent: '#b9e2ee',
-  consumptionLabel: 'Not for consumption',
+  name: 'Protein Powder',
+  category: 'Sports Nutrition',
+  quantity: '1kg',
+  batchCode: 'SN-01',
+  mark: 'PRO',
+  accent: '#78956c',
+  powderAccent: '#d5dfbc',
+  consumptionLabel: null,
 } as const;
 
 export function BagDesignsPage() {
@@ -67,7 +67,7 @@ export function BagDesignsPage() {
                 </div>
                 <button
                   type="button"
-                  aria-label="Add Powdered Water to wishlist"
+                  aria-label="Add Protein Powder to wishlist"
                   className="absolute top-2 right-2 flex size-9 items-center justify-center rounded-full bg-background/90 shadow-sm"
                 >
                   <Heart className="size-4" aria-hidden="true" />
@@ -75,18 +75,18 @@ export function BagDesignsPage() {
               </div>
               <CardContent className="flex flex-1 flex-col gap-2 p-4 pt-4 sm:p-5 sm:pt-4">
                 <p className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Powder type: Impossible
+                  Sports Nutrition
                 </p>
                 <h3 className="min-h-11 text-base font-semibold leading-[1.35] tracking-tight">
-                  Powdered Water
+                  Protein Powder
                 </h3>
-                <p className="text-xs text-muted-foreground">Pack: conceptual quantity</p>
+                <p className="text-xs text-muted-foreground">Pack: 1kg</p>
                 <div className="mt-auto pt-2">
-                  <span className="price-current">£19.95</span>
+                  <span className="price-current">$34.95</span>
                 </div>
               </CardContent>
               <CardFooter className="border-t-0 bg-transparent p-4 pt-0 sm:px-5 sm:pb-5">
-                <Button className="w-full">Add powder</Button>
+                <Button className="w-full">Add to cart</Button>
               </CardFooter>
             </Card>
           </article>

@@ -5,33 +5,33 @@ import { Button } from '@/components/ui/button';
 
 const heroBags = [
   {
-    name: 'Powdered Water',
-    category: 'Impossible',
-    quantity: 'Conceptual quantity',
-    batchCode: 'IMP-07',
-    mark: 'H2O',
-    accent: '#287fa6',
-    powderAccent: '#b9e2ee',
-    consumptionLabel: 'Not for consumption',
-  },
-  {
     name: 'Protein Powder',
-    category: 'Pantry Staples',
+    category: 'Sports Nutrition',
     quantity: '1kg',
-    batchCode: 'PAN-01',
+    batchCode: 'SN-01',
     mark: 'PRO',
     accent: '#78956c',
     powderAccent: '#d5dfbc',
     consumptionLabel: null,
   },
   {
-    name: 'Powdered Campfire',
-    category: 'Outdoors',
-    quantity: '200g',
-    batchCode: 'OUT-05',
-    mark: 'FIR',
-    accent: '#c3774e',
-    powderAccent: '#e7b78f',
+    name: 'Powdered Sugar',
+    category: 'Baking & Pantry',
+    quantity: '500g',
+    batchCode: 'BP-01',
+    mark: 'SUG',
+    accent: '#e1a156',
+    powderAccent: '#f2d8a6',
+    consumptionLabel: null,
+  },
+  {
+    name: 'Cement Mix',
+    category: 'Trade & Creative',
+    quantity: '25kg',
+    batchCode: 'TC-01',
+    mark: 'CEM',
+    accent: '#8c7ba8',
+    powderAccent: '#d0c3df',
     consumptionLabel: 'Not for consumption',
   },
 ];
@@ -44,11 +44,11 @@ export function HeroSection() {
           QArefully Powder Co. / Batch 001
         </p>
         <h1 className="max-w-2xl text-4xl font-semibold tracking-[-0.045em] sm:text-5xl lg:text-6xl">
-          We will powder anything.
+          Powders for food, performance, home and trade.
         </h1>
         <p className="mt-5 max-w-xl text-base leading-7 text-primary-foreground/78 sm:text-lg">
-          Credible powders through impossible powders, packed with measured confidence and no
-          unnecessary explanation.
+          Shop QArefully own-label powders with clear specifications, practical pack sizes and
+          dependable product information.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Button
@@ -63,9 +63,9 @@ export function HeroSection() {
             size="lg"
             nativeButton={false}
             className="border-primary-foreground/65 bg-transparent text-primary-foreground hover:bg-primary-foreground/10"
-            render={<Link to="/catalog?category=Impossible" />}
+            render={<Link to="/custom-powder" />}
           >
-            Browse impossible powders
+            Custom blends
           </Button>
         </div>
       </div>

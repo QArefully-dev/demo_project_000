@@ -1,10 +1,16 @@
 import { Link } from 'react-router-dom';
-import type { Product, ProductSpecification } from '@shop/contracts/products';
+import type { Product, ProductSpecification, PriceRange } from '@shop/contracts/products';
 import { ProductMedia } from '@/components/ProductMedia';
 import { formatMoney } from '@/lib/formatMoney';
 
+interface MatrixProduct extends Product {
+  priceRange?: PriceRange;
+  baseAvailability?: 'in_stock' | 'low_stock' | 'out_of_stock' | 'backorder';
+  variants?: unknown[];
+}
+
 interface ComparisonMatrixProps {
-  products: readonly Product[];
+  products: readonly MatrixProduct[];
   onRemove: (productId: string) => void;
 }
 
@@ -20,7 +26,7 @@ interface MatrixRow {
 
 const MISSING_VALUE = '__not_specified__';
 
-function buildRows(products: readonly Product[]): MatrixRow[] {
+function buildRows(products: readonly MatrixProduct[]): MatrixRow[] {
   const rows = new Map<
     string,
     Omit<MatrixRow, 'values' | 'differs'> & { values: (ProductSpecification | undefined)[] }
@@ -63,6 +69,24 @@ function buildRows(products: readonly Product[]): MatrixRow[] {
     );
 }
 
+function priceLabel(p: MatrixProduct): string {
+  if (p.priceRange) {
+    if (p.priceRange.min !== p.priceRange.max) {
+      return `From ${formatMoney(p.priceRange.min)}`;
+    }
+    return formatMoney(p.priceRange.min);
+  }
+  return formatMoney(p.priceCents);
+}
+
+function availabilityLabel(p: MatrixProduct): string {
+  const base = p.baseAvailability;
+  if (base === 'in_stock' || base === 'low_stock') return 'Available';
+  if (base === 'backorder') return 'Backorder';
+  if (base === 'out_of_stock') return 'Out of stock';
+  return p.available ? 'Available' : 'Out of stock';
+}
+
 export function ComparisonMatrix({ products, onRemove }: ComparisonMatrixProps) {
   const rows = buildRows(products);
 
@@ -93,7 +117,7 @@ export function ComparisonMatrix({ products, onRemove }: ComparisonMatrixProps) 
                   <dl className="space-y-1 text-xs text-muted-foreground">
                     <div>
                       <dt className="sr-only">Price</dt>
-                      <dd>{formatMoney(product.priceCents)}</dd>
+                      <dd>{priceLabel(product)}</dd>
                     </div>
                     <div>
                       <dt className="sr-only">Category</dt>
@@ -101,8 +125,14 @@ export function ComparisonMatrix({ products, onRemove }: ComparisonMatrixProps) 
                     </div>
                     <div>
                       <dt className="sr-only">Availability</dt>
-                      <dd>{product.available ? 'Available' : 'Out of stock'}</dd>
+                      <dd>{availabilityLabel(product)}</dd>
                     </div>
+                    {product.consumptionClassification && (
+                      <div>
+                        <dt className="sr-only">Classification</dt>
+                        <dd>{product.consumptionClassification}</dd>
+                      </div>
+                    )}
                   </dl>
                   <button
                     type="button"

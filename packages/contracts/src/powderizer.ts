@@ -303,3 +303,21 @@ export const PowderMixConflictResponse = Type.Union([
   PowderMixStockUnavailableConflictResponse,
 ]);
 export type PowderMixConflictResponse = Static<typeof PowderMixConflictResponse>;
+
+export const CustomPowderMix = PowderMixCartItem;
+export type CustomPowderMix = PowderMixCartItem;
+export const CustomPowderConfig = PowderizerConfigResponse;
+export type CustomPowderConfig = PowderizerConfigResponse;
+
+export const CustomPowderFeaturedBlend = Type.Object(
+  {
+    id: PositiveIntegerString,
+    name: Type.String({ minLength: 1, maxLength: 200 }),
+    description: Type.String({ minLength: 1, maxLength: 500 }),
+    config: NormalizedPowderMixConfig,
+    imageSetId: Type.String({ minLength: 1 }),
+    category: Type.String({ minLength: 1 }),
+  },
+  { additionalProperties: false },
+);
+export type CustomPowderFeaturedBlend = Static<typeof CustomPowderFeaturedBlend>;
