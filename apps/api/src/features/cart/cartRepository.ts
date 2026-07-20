@@ -66,7 +66,7 @@ export function createCartRepository(db: Database.Database): CartRepository {
         .prepare(
           `SELECT cli.variant_id, cli.quantity,
             p.id AS product_id, p.name AS product_name, p.description AS product_description,
-            p.price_cents, p.category AS product_category,
+            v.price_cents AS price_cents, p.category AS product_category,
             p.image_set_id AS product_image_set_id, p.slug AS product_slug,
             p.compare_at_price_cents AS product_compare_at_price_cents,
             p.sales_count AS product_sales_count,

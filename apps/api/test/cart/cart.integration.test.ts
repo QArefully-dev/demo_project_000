@@ -241,7 +241,7 @@ void test('cart HTTP response preserves product lines and adds mixItems', async 
   const product = await app.inject({
     method: 'POST',
     url: `/api/cart/${cartId}/items`,
-    payload: { productId: '3' },
+    payload: { productId: '3', variantId: 6 },
   });
   assert.equal(product.statusCode, 200);
   assert.deepEqual(Value.Parse(Cart, product.json()).mixItems, []);

@@ -77,16 +77,21 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
     },
     async (request, reply) => {
       const { productId, variantId } = request.body;
-      const resolvedVariantId =
-        variantId !== undefined
-          ? String(variantId)
-          : services.products
-              .listVariants(Number(productId))
-              .filter((v) => v.active === 1)
-              .reduce<string | null>(
-                (acc, v) => (acc === null ? String(v.id) : null),
-                null as string | null,
-              );
+      let resolvedVariantId: string | null | undefined;
+      if (variantId !== undefined) {
+        resolvedVariantId = String(variantId);
+      } else {
+        const active = services.products
+          .listVariants(Number(productId))
+          .filter((v) => v.active === 1);
+        if (active.length === 1) {
+          resolvedVariantId = String(active[0]!.id);
+        } else if (active.length === 0) {
+          resolvedVariantId = undefined;
+        } else {
+          resolvedVariantId = null;
+        }
+      }
 
       if (resolvedVariantId === null) {
         return reply.code(400).send({
@@ -130,13 +135,12 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
       const cartLine = cartData?.items.find((item) => item.productId === productId);
       const resolvedVariantId = cartLine?.variantSnap?.variantId
         ? String(cartLine.variantSnap.variantId)
-        : services.products
-            .listVariants(Number(productId))
-            .filter((v) => v.active === 1)
-            .reduce<string | null>(
-              (acc, v) => (acc === null ? String(v.id) : null),
-              null as string | null,
-            );
+        : (() => {
+            const active = services.products
+              .listVariants(Number(productId))
+              .filter((v) => v.active === 1);
+            return active.length === 1 ? String(active[0]!.id) : null;
+          })();
 
       if (resolvedVariantId === null || resolvedVariantId === undefined) {
         sendNotFound(reply, 'Variant in cart');
@@ -178,13 +182,12 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
       const cartLine = cartData?.items.find((item) => item.productId === productId);
       const resolvedVariantId = cartLine?.variantSnap?.variantId
         ? String(cartLine.variantSnap.variantId)
-        : services.products
-            .listVariants(Number(productId))
-            .filter((v) => v.active === 1)
-            .reduce<string | null>(
-              (acc, v) => (acc === null ? String(v.id) : null),
-              null as string | null,
-            );
+        : (() => {
+            const active = services.products
+              .listVariants(Number(productId))
+              .filter((v) => v.active === 1);
+            return active.length === 1 ? String(active[0]!.id) : null;
+          })();
 
       if (resolvedVariantId === null || resolvedVariantId === undefined) {
         sendNotFound(reply, 'Variant in cart');
