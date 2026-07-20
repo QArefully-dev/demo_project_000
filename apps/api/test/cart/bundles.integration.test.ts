@@ -224,7 +224,7 @@ void test('rejects every unavailable component without touching ordinary cart li
   assert.equal(typeof result, 'object');
   if (typeof result === 'string' || !('error' in result))
     throw new Error('Expected unavailable bundle');
-  const sortedVariantIds = (result as BundleUnavailable).variantIds.sort(
+  const sortedVariantIds = (result).variantIds.sort(
     (a, b) => Number(a) - Number(b),
   );
   const expected = [variant8, variant13].map(String).sort((a, b) => Number(a) - Number(b));

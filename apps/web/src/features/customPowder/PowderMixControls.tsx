@@ -54,8 +54,8 @@ export function PowderMixControls({
         />
         <MixOptions
           config={config}
-          bagSizes={bagSizes as (250 | 500 | 1000)[]}
-          finenessValues={finenessValues as ('coarse' | 'standard' | 'fine')[]}
+          bagSizes={bagSizes}
+          finenessValues={finenessValues}
           labelMaxGraphemes={labelMaxGraphemes}
           onBagSizeChange={onBagSizeChange}
           onFinenessChange={onFinenessChange}

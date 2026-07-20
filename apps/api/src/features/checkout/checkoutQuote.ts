@@ -31,7 +31,7 @@ export function createCheckoutQuote(params: {
       variantLabel: snap?.label ?? item.product.name,
       unitPriceCents: item.product.priceCents,
       weightGrams: snap?.weightGrams ?? 1000,
-      deliveryClass: (snap?.deliveryClass ?? 'parcel') as DeliveryClass,
+      deliveryClass: (snap?.deliveryClass ?? 'parcel'),
       quantity: item.quantity,
       lineTotalCents: item.lineTotalCents,
       consumptionClassification: item.product.consumptionClassification ?? 'non-food',
@@ -51,7 +51,7 @@ export function createCheckoutQuote(params: {
       unitPriceCents: item.unitPriceCents,
       quantity: item.quantity,
       lineTotalCents: item.lineTotalCents,
-      deliveryClass: 'parcel' as DeliveryClass,
+      deliveryClass: 'parcel',
       weightGrams: totalWeight,
     };
   });

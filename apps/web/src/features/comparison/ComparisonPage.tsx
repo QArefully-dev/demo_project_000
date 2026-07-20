@@ -59,7 +59,7 @@ export function ComparisonPage() {
         if (controller.signal.aborted || currentRequest !== requestNumber.current) return;
         const products = response.items.flatMap((item) => {
           if (item.status === 'available' && item.product) {
-            return [item.product as EnrichedProduct];
+            return [item.product];
           }
           return [];
         });

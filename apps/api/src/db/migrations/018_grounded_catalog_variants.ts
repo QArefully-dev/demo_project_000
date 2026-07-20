@@ -107,7 +107,7 @@ export const groundedCatalogVariantsMigration: Migration = {
           createdAt,
           createdAt,
         );
-        updateDefaultVariant.run(result.lastInsertRowid as number, product.id);
+        updateDefaultVariant.run(result.lastInsertRowid, product.id);
       }
 
       const missingDefault = (
