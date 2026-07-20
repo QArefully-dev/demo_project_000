@@ -7,7 +7,7 @@ import { CategoryNav } from './CategoryNav';
 
 vi.mock('@/hooks/useCategories', () => ({
   useCategories: () => ({
-    categories: ['Pantry Staples', 'Outdoors'],
+    categories: ['Sports Nutrition', 'Baking & Pantry'],
     isLoading: false,
     error: null,
   }),
@@ -22,20 +22,23 @@ function renderNav(path: string) {
 }
 
 describe('CategoryNav', () => {
-  it('keeps Powderizer current-page semantics with its dedicated treatment', () => {
-    renderNav('/powderizer');
+  it('keeps Custom Powder current-page semantics with its dedicated treatment', () => {
+    renderNav('/custom-powder');
 
-    const powderizer = screen.getByRole('link', { name: 'Powderizer' });
-    expect(powderizer).toHaveAttribute('aria-current', 'page');
-    expect(powderizer).toHaveClass('powderizer-nav-link');
-    expect(screen.getByRole('link', { name: 'All powders' })).not.toHaveAttribute('aria-current');
+    const customPowder = screen.getByRole('link', { name: 'Custom Powder' });
+    expect(customPowder).toHaveAttribute('aria-current', 'page');
+    expect(customPowder).toHaveClass('powderizer-nav-link');
+    expect(screen.getByRole('link', { name: 'All products' })).not.toHaveAttribute('aria-current');
   });
 
-  it('does not apply Powderizer treatment to category or deals links', () => {
-    renderNav('/catalog?category=Outdoors');
+  it('does not apply Custom Powder treatment to category or deals links', () => {
+    renderNav('/catalog?category=Baking+%26+Pantry');
 
-    expect(screen.getByRole('link', { name: 'Outdoors' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('link', { name: 'Pantry Staples' })).not.toHaveClass(
+    expect(screen.getByRole('link', { name: 'Baking & Pantry' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(screen.getByRole('link', { name: 'Sports Nutrition' })).not.toHaveClass(
       'powderizer-nav-link',
     );
     expect(screen.getByRole('link', { name: 'Deals' })).not.toHaveClass('powderizer-nav-link');

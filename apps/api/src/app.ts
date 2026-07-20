@@ -13,6 +13,7 @@ import favouritesRoutes from './routes/favourites.js';
 import paymentRoutes from './routes/payments.js';
 import mailboxRoutes from './routes/mailbox.js';
 import powderizerRoutes from './routes/powderizer.js';
+import customPowderRoutes from './routes/customPowder.js';
 import bundleRoutes from './routes/bundles.js';
 import { createAuthService, type AuthService, type Clock } from './features/auth/authService.js';
 import { createSessionRepository } from './features/auth/sessionRepository.js';
@@ -268,6 +269,7 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(paymentRoutes, context);
   await app.register(mailboxRoutes, context);
   await app.register(powderizerRoutes, context);
+  await app.register(customPowderRoutes, context);
   await app.register(bundleRoutes, context);
   await app.register(auditRoutes, context);
   await app.register(reviewsRoutes, context);

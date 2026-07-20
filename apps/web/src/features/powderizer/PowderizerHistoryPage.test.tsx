@@ -156,11 +156,11 @@ function quoteFrom(body: {
   };
 }
 
-function renderPage(initialEntry = '/powderizer') {
+function renderPage(initialEntry = '/custom-powder') {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
-        <Route path="/powderizer" element={<PowderizerPage />} />
+        <Route path="/custom-powder" element={<PowderizerPage />} />
         <Route path="/cart" element={<p>Cart destination</p>} />
       </Routes>
     </MemoryRouter>,
@@ -261,7 +261,7 @@ describe('Custom Powder history page', () => {
     const user = userEvent.setup();
     vi.mocked(useCartContext).mockReturnValue(cartContext(editingCart('Training')));
     vi.mocked(updateCustomPowderMix).mockResolvedValue(emptyCart);
-    renderPage(`/powderizer?edit=${mixId}`);
+    renderPage(`/custom-powder?edit=${mixId}`);
     await screen.findByText('Editing custom blend');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Update cart' })).toBeEnabled());
     await user.click(screen.getByRole('button', { name: 'Update cart' }));
@@ -299,7 +299,7 @@ describe('Custom Powder history page', () => {
       }),
     );
     vi.mocked(useCartContext).mockReturnValue(cartContext(editingCart('Editing label')));
-    renderPage(`/powderizer?edit=${mixId}`);
+    renderPage(`/custom-powder?edit=${mixId}`);
     await screen.findByText('Editing custom blend');
     await waitFor(() => expect(quoteCustomPowderMix).toHaveBeenCalled());
     const before = vi.mocked(quoteCustomPowderMix).mock.calls.length;

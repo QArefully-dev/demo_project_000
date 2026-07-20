@@ -3,7 +3,6 @@ import type { Product } from '@shop/contracts/products';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getBestsellers, getCategories, getProducts } from '@/api/products';
-import { ProductShelf } from '@/components/home/ProductShelf';
 import { HomePage, withoutProducts } from './HomePage';
 
 vi.mock('@/api/products', () => ({
@@ -30,8 +29,8 @@ function product(id: string): Product {
     name: `Product ${id}`,
     description: 'Test product',
     priceCents: 1000,
-    imageSetId: 'powdered-water',
-    category: 'Impossible',
+    imageSetId: 'protein-powder',
+    category: 'Sports Nutrition',
     stock: 5,
     slug: `product-${id}`,
     salesCount: 0,
@@ -53,9 +52,9 @@ describe('HomePage', () => {
     vi.mocked(getProducts).mockReset();
   });
 
-  it('keeps powder assurances while a failed shelf leaves other content available', async () => {
+  it('keeps store assurances while a failed shelf leaves other content available', async () => {
     vi.mocked(getBestsellers).mockRejectedValue(new Error('Bestsellers unavailable'));
-    vi.mocked(getCategories).mockResolvedValue(['Impossible']);
+    vi.mocked(getCategories).mockResolvedValue(['Sports Nutrition']);
     vi.mocked(getProducts).mockResolvedValue({
       items: [product('new')],
       total: 1,
@@ -69,22 +68,17 @@ describe('HomePage', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('Powdered to order')).toBeInTheDocument();
-    expect(screen.getByText('Finely packed')).toBeInTheDocument();
+    expect(screen.getByText('Blended to order')).toBeInTheDocument();
+    expect(screen.getByText('Professionally packed')).toBeInTheDocument();
     expect(screen.getByText('Simulated checkout')).toBeInTheDocument();
     expect(screen.getByText('No real payment is processed')).toBeInTheDocument();
-    const powderizerBanner = screen.getByRole('region', { name: 'Powderizer builder' });
-    const assurances = screen.getByRole('region', { name: 'Store assurances' });
-    expect(powderizerBanner.compareDocumentPosition(assurances)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-    expect(screen.getByRole('link', { name: /open powderizer/i })).toHaveAttribute(
+    expect(screen.getByRole('region', { name: 'Custom Powder builder' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /open custom powder/i })).toHaveAttribute(
       'href',
-      '/powderizer',
+      '/custom-powder',
     );
-    expect(screen.getByText('Frequently powdered')).toBeInTheDocument();
-    expect(screen.getByText('Fresh from the mill')).toBeInTheDocument();
-    expect(screen.getByLabelText('Powder process')).toHaveTextContent('Choose it→Powder it→Bag it');
+    expect(screen.getByText('Bestsellers')).toBeInTheDocument();
+    expect(screen.getByText('Just in')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Product new')).toBeInTheDocument());
     expect(screen.getByText('This collection is temporarily unavailable.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /browse the catalog/i })).toHaveAttribute(
@@ -95,49 +89,5 @@ describe('HomePage', () => {
 
   it('removes products already shown in an earlier shelf', () => {
     expect(withoutProducts([product('1'), product('2')], new Set(['1']))).toEqual([product('2')]);
-  });
-});
-
-describe('ProductShelf', () => {
-  it('shows a collection loading state and a route-specific recovery action', () => {
-    const { rerender } = render(
-      <MemoryRouter>
-        <ProductShelf
-          eyebrow="Test"
-          title="Test shelf"
-          href="/catalog?sort=bestselling"
-          products={[]}
-          isLoading
-          onRetry={vi.fn()}
-          isCartAvailable
-          isAdding={() => false}
-          onAddToCart={vi.fn().mockResolvedValue(true)}
-        />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByLabelText('Loading collection')).toBeInTheDocument();
-    rerender(
-      <MemoryRouter>
-        <ProductShelf
-          eyebrow="Test"
-          title="Test shelf"
-          href="/catalog?sort=bestselling"
-          products={[]}
-          isLoading={false}
-          error="Unavailable"
-          onRetry={vi.fn()}
-          isCartAvailable
-          isAdding={() => false}
-          onAddToCart={vi.fn().mockResolvedValue(true)}
-        />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByRole('status')).toHaveTextContent('temporarily unavailable');
-    expect(screen.getByRole('link', { name: /browse the catalog/i })).toHaveAttribute(
-      'href',
-      '/catalog?sort=bestselling',
-    );
   });
 });

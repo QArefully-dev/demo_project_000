@@ -15,9 +15,10 @@ const requiredPaths = [
   '/help/faq',
   '/help/shipping',
   '/help/returns',
+  '/help/pack-sizes',
+  '/help/custom-powder',
   '/help/powder-safety',
   '/help/storage',
-  '/help/pack-sizes',
   '/policies/privacy',
   '/policies/terms',
 ];

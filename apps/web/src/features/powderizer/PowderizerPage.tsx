@@ -187,7 +187,7 @@ export function PowderizerPage() {
         migrationNotice={history.migrationNotice}
         onUseAgain={(entry) => {
           dispatch({ type: 'history-config-loaded', config: entry.config });
-          navigate('/powderizer', { replace: true });
+          navigate('/custom-powder', { replace: true });
           window.requestAnimationFrame(() => builderRef.current?.focus());
         }}
         onRemove={history.remove}

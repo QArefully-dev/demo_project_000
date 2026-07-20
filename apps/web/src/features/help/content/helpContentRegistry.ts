@@ -1,8 +1,14 @@
 import { faqArticle } from './faqArticle';
 import { type HelpArticle, type HelpContentGroup } from './helpContentTypes';
 import { policyArticles as authoredPolicyArticles } from './policyArticles';
-import { powderSafetyArticle, storageArticle } from './powderGuidanceArticles';
-import { packSizesArticle, returnsArticle, shippingArticle } from './serviceArticles';
+import { storageArticle } from './powderGuidanceArticles';
+import {
+  shippingArticle,
+  returnsArticle,
+  packSizesArticle,
+  customPowderArticle,
+  safetyArticle,
+} from './serviceArticles';
 
 type ContentLink = Readonly<{
   label: string;
@@ -22,9 +28,10 @@ export const helpArticles = [
   faqArticle,
   shippingArticle,
   returnsArticle,
-  powderSafetyArticle,
-  storageArticle,
   packSizesArticle,
+  customPowderArticle,
+  safetyArticle,
+  storageArticle,
 ] as const satisfies readonly HelpArticle<'help'>[];
 
 export const policyArticles = authoredPolicyArticles;
@@ -36,9 +43,10 @@ export const helpContentRegistry = [
 
 /** Product-detail links derive labels and routes from canonical help and policy articles. */
 export const productFactLinks = {
-  powderSafety: toContentLink(powderSafetyArticle),
+  powderSafety: toContentLink(safetyArticle),
   storage: toContentLink(storageArticle),
   packSizes: toContentLink(packSizesArticle),
+  customPowder: toContentLink(customPowderArticle),
 } as const;
 
 export const productCommerceLinks = {

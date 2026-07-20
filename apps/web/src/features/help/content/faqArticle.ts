@@ -11,7 +11,7 @@ export const faqArticle = {
     {
       kind: 'paragraph',
       id: 'demo-context',
-      text: 'QArefully Powder Co. is a local QA demo. Its catalogue, checkout flow, and Powderizer are provided for testing and exploration.',
+      text: 'QArefully Powder Co. is a local QA demo with a credible powder catalogue, Custom Powder blend builder, and simulated commerce.',
     },
     {
       kind: 'faq',
@@ -24,7 +24,7 @@ export const faqArticle = {
           answerParagraphs: [
             {
               id: 'shop-purpose-answer',
-              text: 'No. This is a local QA demo with fictional catalogue content and simulated commerce.',
+              text: 'No. This is a local QA demo with catalogue content and simulated commerce. No real products are sold or shipped.',
             },
           ],
         },
@@ -69,12 +69,12 @@ export const faqArticle = {
           ],
         },
         {
-          id: 'powderizer-history',
-          question: 'Does Powderizer remember my mixes?',
+          id: 'custom-powder-history',
+          question: 'Does Custom Powder remember my mixes?',
           answerParagraphs: [
             {
-              id: 'powderizer-history-answer',
-              text: 'Powderizer can save a bounded history of mix configurations in this browser’s local storage. Clearing browser storage removes that local history.',
+              id: 'custom-powder-history-answer',
+              text: 'Custom Powder can save a bounded history of blend configurations in this browser\'s local storage. Clearing browser storage removes that local history.',
             },
           ],
         },

@@ -1,6 +1,6 @@
 # QArefully Powder Co.
 
-QArefully Powder Co. is a local, non-live powder shop built for QA education and repository-scale engineering exercises. Browse credible pantry powders, questionable household powders, and impossible powders; every customer journey runs without external services.
+QArefully Powder Co. is a local, non-live powder shop built for QA education and repository-scale engineering exercises. Browse credible sports nutrition, baking, drinks, household, garden, and trade powders. Every customer journey runs without external services.
 
 ## Prerequisites
 
@@ -78,12 +78,37 @@ Each checkout request includes an idempotency key. Retrying the same key with th
 
 ## Seeded Data
 
-- **50 products** across 7 powder categories: Pantry Staples, Performance, Drinks, Household, Outdoors, Questionable, and Impossible
+- **100 products** across 6 categories: Sports Nutrition, Baking & Pantry, Drinks, Household & Cleaning, Garden & Outdoors, Trade & Creative Materials
 - **14 sale products** with compare-at prices
 - **3 users** (credentials below)
 - **7 promo codes** (details below)
 
-The catalog moves from everyday powders to deliberate nonsense. Household, conceptual, and impossible products are clearly marked “Not for consumption.” `Powdered Water` is the featured bestseller.
+Every product represents a real-world powder or dry powdered mixture. Food-grade products (Sports Nutrition, Baking & Pantry, Drinks) show ingredients, allergens, nutrition information, and serving sizes. Non-food products (Household & Cleaning, Garden & Outdoors, Trade & Creative Materials) are clearly marked "Not for consumption" and include handling and PPE guidance.
+
+### Product Variants
+
+Each product is available in one or more purchasable variants. A variant combines a specific pack size with its own SKU, price, weight, stock, and backorder state:
+
+- Edible ranges: 200 g to 2 kg consumer packs
+- Household and Garden ranges: 500 g to 25 kg consumer and bulk packs
+- Trade and Creative Materials: up to 1 tonne (cement, sand, aggregates, absorbents)
+
+Variant examples: `Whey Protein Isolate — 1 kg (SKU: SN-WHEY-1000)`, `Cement Mix — 25 kg (SKU: TC-CEM-25000)`, `Laundry Powder — 500 g (SKU: HC-LND-500)`.
+
+### Delivery
+
+Most variants ship as standard parcel. Heavy variants or orders exceeding a combined weight threshold are classified as freight with a simulated freight charge applied at checkout. Cart and checkout display parcel or freight labels per item.
+
+### Custom Powder
+
+The Custom Powder feature (canonical route `/custom-powder`, legacy `/powderizer` redirect preserved) lets you blend compatible catalogue ingredients into a custom mix:
+
+- **Mixing groups**: Food-grade, Cleaning, Garden treatment, Cementitious materials, Casting materials, Pigments, Theatrical effects, Absorbents
+- **Compatibility**: products sharing a compatible mixing group can be blended; cross-category mixing is allowed when groups match (e.g. protein with matcha via Food-grade)
+- **Blend building**: select ingredients, assign percentages totalling 100%, choose bag size, fineness, colour scheme, and optional label
+- **Featured blend**: a starting configuration shown at the top of the page
+- **Safety**: server-derived usage label always applies; any non-food ingredient makes the entire blend "Not for consumption"
+- **Returns**: Custom Powder blends are excluded from the returns workflow
 
 ### User Credentials
 
@@ -99,11 +124,11 @@ Alice has 3 pre-seeded favourite products.
 
 `npm run reset` restores four local-demo order scenarios. Normal `npm run seed` inserts a missing scenario once and never overwrites a lifecycle change made afterwards.
 
-- Alice: `alice-processing` â€” eligible for simulated cancellation
-- Alice: `alice-packed` â€” eligible for simulated cancellation before shipment
-- Alice: `alice-split-shipped` â€” one delivered parcel and one in-transit parcel, including a Powderizer line
-- Alice: `alice-delivery-failed` â€” simulated delivery failure
-- Bob: `bob-delivered` â€” delivered parcel
+- Alice: `alice-processing` — eligible for simulated cancellation
+- Alice: `alice-packed` — eligible for simulated cancellation before shipment
+- Alice: `alice-split-shipped` — one delivered parcel and one in-transit parcel, including a Custom Powder line
+- Alice: `alice-delivery-failed` — simulated delivery failure
+- Bob: `bob-delivered` — delivered parcel
 
 Signed-in customers can browse `/orders` and open their own `/orders/:orderId` detail pages. Bob cannot access Alice's orders. A guest checkout confirmation is available only through its short-lived, exact-order browser cookie; there is no guest history or guest cancellation.
 
@@ -160,7 +185,7 @@ Shipment transitions are `packed -> shipped -> delivered` or `packed -> shipped 
 
 ### Admin Inventory Receipt API (Local Simulation)
 
-There is no inventory UI. Sign in as `admin@example.com`, retain the session cookie, and record a local stock receipt with a fresh UUID `idempotencyKey`. The command immediately allocates the oldest eligible backorders first, then leaves any remainder as local stock.
+There is no inventory UI. Sign in as `admin@example.com`, retain the session cookie, and record a local stock receipt with a fresh UUID `idempotencyKey`. Use a variant SKU, not a product ID:
 
 ```http
 POST /api/admin/inventory/receipts
@@ -177,7 +202,7 @@ Replaying the exact receipt key returns its original result; changing its produc
 
 ### Returns and Refunds (Local Simulation)
 
-Delivered ordinary products can be returned within a 30-day window measured from the exact delivery event time. Custom Powderizer mixes are excluded from returns. The workflow is:
+Delivered ordinary products can be returned within a 30-day window measured from the exact delivery event time. Custom Powder blends are excluded from returns. The workflow is:
 
 1. **Customer** opens a delivered order detail page, selects eligible quantities, chooses a reason, optionally adds a note, and submits the request.
 2. **Admin** approves or rejects the request, receives the returned items, and issues a simulated refund.
@@ -266,7 +291,7 @@ Visit [http://127.0.0.1:5173/mailbox](http://127.0.0.1:5173/mailbox) to inspect 
 npm run reset
 ```
 
-This clears all tables and re-seeds the database. Use this if data gets corrupted or you want a fresh start.
+This clears all tables and re-seeds the database. Use this if data gets corrupted or you want a fresh start. `npm run reset` drops the database file and rebuilds from migrations and seed data. All user-created data is lost. `npm run seed` is idempotent — it upserts canonical records and preserves non-seed rows.
 
 ## Troubleshooting
 

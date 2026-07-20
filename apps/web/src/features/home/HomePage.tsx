@@ -107,11 +107,11 @@ export function HomePage() {
         className="grid divide-y rounded-2xl border bg-surface-raised text-center shadow-sm sm:grid-cols-3 sm:divide-x sm:divide-y-0"
       >
         <p className="p-4 text-sm">
-          <strong className="block text-foreground">Powdered to order</strong>
+          <strong className="block text-foreground">Blended to order</strong>
           <span className="text-muted-foreground">Every bag receives a batch mark</span>
         </p>
         <p className="p-4 text-sm">
-          <strong className="block text-foreground">Finely packed</strong>
+          <strong className="block text-foreground">Professionally packed</strong>
           <span className="text-muted-foreground">Measured, sealed, and plainly labelled</span>
         </p>
         <p className="p-4 text-sm">
@@ -119,16 +119,6 @@ export function HomePage() {
           <span className="text-muted-foreground">No real payment is processed</span>
         </p>
       </section>
-      <ol
-        aria-label="Powder process"
-        className="powder-process flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-sm font-semibold uppercase tracking-[0.12em] text-muted-foreground"
-      >
-        <li>Choose it</li>
-        <li aria-hidden="true">→</li>
-        <li>Powder it</li>
-        <li aria-hidden="true">→</li>
-        <li>Bag it</li>
-      </ol>
       <CategoryTiles
         categories={categories}
         isLoading={isCategoriesLoading}
@@ -137,7 +127,7 @@ export function HomePage() {
       />
       <ProductShelf
         eyebrow="Most requested by name"
-        title="Frequently powdered"
+        title="Bestsellers"
         href="/catalog?sort=bestselling"
         products={bestsellers.products}
         isLoading={bestsellers.isLoading}
@@ -150,7 +140,7 @@ export function HomePage() {
       <PromoBanner />
       <ProductShelf
         eyebrow="Recent batches"
-        title="Fresh from the mill"
+        title="Just in"
         href="/catalog?sort=newest"
         products={newArrivals}
         isLoading={newest.isLoading}

@@ -169,9 +169,9 @@ function quoteFrom(body: {
 }
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/powderizer']}>
+    <MemoryRouter initialEntries={['/custom-powder']}>
       <Routes>
-        <Route path="/powderizer" element={<PowderizerPage />} />
+        <Route path="/custom-powder" element={<PowderizerPage />} />
         <Route path="/cart" element={<p>Cart destination</p>} />
       </Routes>
     </MemoryRouter>,
