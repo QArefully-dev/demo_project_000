@@ -2,45 +2,68 @@
 
 Status: current product direction.
 
+## Direction Change
+
+Repo originally built as B2C powder retail (`QArefully Powder Co.`, consumer browse -> bag -> checkout). Now shifting to B2B bulk-powder wholesale portal for trade buyers (shops, supermarkets) ordering by pallet, sugar -> cement, plus live trading/auctions on selected lots.
+
+Reason: original consumer-shop idea works but B2B bulk trade + live auctions is more grounded in real-world commerce -> better QA learning material. New surfaces (bulk pricing tiers, minimum order quantities, pallet/freight logistics, concurrent bidding, auction settlement) generate richer, more realistic agentic engineering + QA scenarios than single-unit retail.
+
+Pivot is additive, not rewrite. Reuse catalog/pricing/inventory/checkout/orders foundations. Reframe UI + rules toward trade buyer; retain production boundaries.
+
 ## Purpose
 
-Local QArefully Powder Co. codebase for course exercises and large-repository harness demos. Deployment remains non-live demo; code follows production defaults.
+Local bulk-powder wholesale codebase for course exercises and large-repository harness demos. Deployment remains non-live demo; code follows production defaults.
 
 Goals:
 
-- immediate recognition: professional powder shop with credible real-world catalogue
-- clear domain journey: browse -> bag -> checkout -> confirmation
+- immediate recognition: credible B2B wholesale portal with real-world bulk powder catalogue (sugar -> cement)
+- clear domain journey: browse -> quote/cart -> bulk checkout -> confirmation
+- live trading: real-time auctions/bidding on selected pallet lots
 - modern polished UI
 - deterministic local behavior
 - meaningful growth to 150k+ authored LOC
 - rich agentic engineering and QA tasks
-- additive growth; no rewrite of current storefront
+- additive growth; no rewrite of current storefront foundations
 - production-grade migrations, validation, authorization, transactions, error handling, and data integrity
 - simulated local integrations without production deployment obligations
 
 ## Product Direction
 
-QArefully Powder Co. sells food, performance, household, garden, and trade powders. Brand voice: professional, clear, restrained. Non-food products remain clearly marked `Not for consumption`.
+B2B wholesale portal selling bulk powders by pallet: food/pantry (sugar, flour), performance/sports nutrition, household/cleaning, garden, and trade/construction (cement, plaster, fillers). Buyers are trade accounts (independent shops, supermarkets) reselling stock. Brand voice: industrial, confident, unrestrained (locked in `plans/b2b_materials_exchange_rebrand_handoff.md`). Non-food products remain clearly marked `Not for consumption`.
 
 Core journey:
 
-`home -> catalog -> product detail -> cart -> checkout -> payment -> confirmation -> order history`
+`home -> catalog -> lot detail -> cart -> bulk checkout -> payment -> confirmation -> order history`
+
+No persisted quote object; cart-only (rebrand handoff decision).
+
+Live trading journey:
+
+`auction listings -> lot detail -> place bid -> real-time outbid/win -> settlement -> order`
 
 Extended familiar journeys:
 
 - search, filter, sort, paginate
-- select product variant (SKU, pack size, weight)
-- apply promotion or gift card
-- save address and payment preference metadata
+- select variant (SKU, pack/pallet size, weight, delivery class)
+- bulk pricing tiers + minimum order quantity per lot
+- apply promotion or trade discount
+- save trade delivery sites and payment preference metadata
 - track, cancel, or return order
 - write verified-purchase review
-- manage wishlist, profile, sessions, and notification preferences
+- manage watchlist, trade profile, sessions, and notification preferences
+
+Live trading scope:
+
+- selected lots offered via timed auction instead of (or alongside) fixed price
+- real-time bid submission, current-price/outbid state, reserve price, bid increments
+- concurrency-safe settlement -> highest valid bid at close converts to order
+- backend authoritative on bid validity, auction state, and close timing
 
 Avoid visible platform complexity:
 
-- no seller marketplace as main concept
-- no warehouse or logistics product requiring explanation
-- no external financial-market dependency
+- no open seller marketplace as main concept; catalog is operator-listed
+- keep logistics framing simple (pallet + freight), no standalone warehouse product
+- no external/live financial-market dependency; auctions are local simulated real-time
 - no microservice topology exposed to users
 - optional admin tooling stays secondary and absent from normal journey
 
@@ -75,7 +98,7 @@ Avoid visible platform complexity:
 - deterministic reset and seed
 - production code standards apply despite demo-only runtime
 - modern desktop UI at `1920x1080`, `1920x1200`, `3840x2160`
-- preserve course behavior: frontend five-item promo gate in `cartValidation.ts`; backend promotion rules; `SAVE10` remains 10% with five-item minimum
+- preserve course behavior: frontend five-item promo gate in `cartValidation.ts`; backend promotion rules; `SAVE10` remains 10% with five-item minimum (under pack-quantity ordering, "item" = one pack/pallet unit in the cart)
 
 ## Growth Strategy
 
@@ -121,29 +144,58 @@ Avoid empty scaffolding, copied framework internals, vendored projects, generate
 
 Status: delivery order for remaining work. `partial` = implemented subset; `future` = listed capability not delivered.
 
+Precursor: B2B rebrand pass (`plans/b2b_materials_exchange_rebrand_handoff.md` -> coding plan) precedes all items below. It lands brand/copy rebrand, pack/pallet unit model, `£/tonne` display, and the MOQ + qty-break tier engine; item 5's baseline shifts accordingly.
+
 1. Order history and lifecycle: completed
 2. Inventory: completed
 3. Returns and refunds: completed
 4. Checkout depth: future
-   - foundation: validated contact, shipping address, server quote, idempotent simulated payment
-   - remaining: saved addresses, billing address, delivery methods, estimates, gift options
+   - foundation: validated contact, delivery address, server-authoritative totals, idempotent simulated payment
+   - remaining: saved trade delivery sites, billing entity, freight lead-time windows and delivery slot booking, PO/reference number on order
+   - dropped (B2B pivot): gift options; parcel/express delivery-method choice (all lots pallet freight; `deliveryClass` enum retained but seeded `freight`)
 5. Pricing and promotions: partial
    - completed: percentage and fixed discounts, start/end scheduling, item/subtotal gates, global and per-user limits, reservation-safe redemption
-   - remaining: category offers, stacking, gift cards, loyalty points, sales presentation
+   - baseline shift: rebrand pass replaces flat variant price with MOQ + qty-break tiers; later work builds on that engine
+   - remaining: category offers, stacking, tier-boundary and MOQ edge-case depth, clearance/spot-priced lot presentation
+   - dropped (B2B pivot): gift cards, loyalty points
+   - rejected, do not re-add (handoff Out Of Scope): RFQ/persisted quotes, trade-account net-price tiering, login-to-see-price
 6. Review depth: completed
 7. Account depth: partial
    - completed: session creation, expiry, logout, password-change invalidation, profile read, password change
-   - remaining: addresses, session list and selective revocation, preferences, data export, account deletion
+   - remaining: trade delivery sites (address model), session list and selective revocation, preferences, data export, account deletion
+   - added (B2B): company accounts with multi-user roles (buyer, approver) and order-approval threshold workflow
 8. Async behavior: future
    - remaining: local job queue, notifications, retry policy, captured webhooks, failure injection
+   - added consumers (B2B): standing/repeat order scheduling; auction outbid and settlement notifications once 11 lands
 9. Secondary admin: partial
    - completed: review moderation API and UI; paginated, filtered, read-only audit API
    - remaining: product, order, refund, user, and feature-flag management
+   - added (B2B, after 11): lot and auction management
 10. Country localisation: future
     - region profiles: USA, Europe, China; configurable catalog, stock, currency, trading hours, time zones, language, formatting, and policy text
     - behavior: region-aware availability, order validation, seeded scenarios, and deterministic time-zone boundaries
     - architecture: shared domain core -> explicit region config -> localized API and UI behavior
     - scope: localisation-ready content and boundaries only in this baseline; translation and multi-currency belong to a dedicated future plan
+11. Live trading of bulk volumes: future
+    - separate dedicated plan; rebrand pass only labels the surface "coming next", builds nothing
+
+### Sequencing Guidelines
+
+Readiness favors `partial` items with self-contained remaining slices over greenfield `future` subsystems.
+
+Recommended order:
+
+1. Parallel: Account depth (7) and Secondary admin (9). Both extend existing subsystems (auth/session; moderation + audit API) with additive, mostly disjoint boundaries. Assign the shared user/session domain lane (account deletion, session revocation in 7 vs. user management in 9) to a single owner to avoid conflicting edits.
+2. Checkout depth (4). Highest product value; consumes the address model landed in 7. Do 7's address work first.
+3. Pricing and promotions (5). Riskiest money path (stacking, rounding). Run after checkout money path is settled.
+4. Then Async behavior (8), Country localisation (10), Live bulk trading (11).
+
+Parallelization rules:
+
+- Safe: 7 + 9 concurrently, with the shared user/session lane owned by one side only.
+- Sequential dependency: 7 (delivery-site/address model) -> 4 (saved delivery sites at checkout). Not parallel. Same for 7 (company accounts, approver roles) -> 4 if order-approval thresholds gate checkout.
+- Must not run in parallel: 4 and 5 both mutate the server-side total path (freight charge, tier discounts, MOQ validation, rounding); concurrent edits invite the boundary and rounding bugs flagged in the QA surface. Serialize them.
+- Defer 10 until 4 and 5 stabilize the money path; it touches currency, availability, and policy across nearly everything.
 
 ## Agentic AI and QA Surface
 

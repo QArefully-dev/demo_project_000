@@ -91,9 +91,11 @@ Mark work parallel only when all conditions hold:
 
 Keep work sequential when lanes share migration state, contract definitions, central registration, transaction boundary, package export, route registry, seed authority, or page composition. Alternative: assign single owner for shared surface, finish prerequisite, then fan out consumers.
 
+Every reviewer subagent runs `code-reviewer` skill (`.claude/skills/code-reviewer`) as its review method. Reviewer assignment must direct reviewer to invoke `code-reviewer` skill, scoped to assigned change set. `code-reviewer` sets severity gate (critical + high only) and verification-before-reporting duty; orchestrator supplies target, reads, invariants, risk focus, evidence; reviewer maps surviving findings into `reviewer_report_v1`. `code-reviewer` carries `disable-model-invocation`; reviewer invokes it explicitly by name through Skill tool.
+
 Treat review placement as dependency design, not final ceremony:
 
-- Default: one inspect-only reviewer assignment per implementation packet. Launch review after worker report and focused evidence, before any dependent worker consumes packet output.
+- Default: one inspect-only reviewer assignment per implementation packet. Reviewer follows `code-reviewer` skill. Launch review after worker report and focused evidence, before any dependent worker consumes packet output.
 - High-risk producer packets always require immediate review gate: contracts, schemas, migrations, auth/security, money, inventory, persistence, transactions, compatibility, shared state, public API, package exports, route registration.
 - Parallel lanes -> review each settled lane concurrently when ownership and targets remain disjoint. Fan-in waits for every lane review to pass or close findings through worker fix plus targeted evidence.
 - Convergence/integration packet receives separate review after composition. Earlier packet reviews do not cover new integration behavior.
@@ -349,6 +351,7 @@ Repository baseline: `[commit/branch if useful, otherwise inspection date]`
 
 ### R1: Review `[implementation packet]`
 
+- method: invoke `code-reviewer` skill; apply its severity gate (critical + high only) and verification-before-reporting duty; map surviving findings into `reviewer_report_v1`
 - target: `[implementation packet]` -> `[exact base/head revision or change set]`
 - timing: [immediately after target settles; before named consumers or gate]
 - blocks: `[dependent packets or gate]`
@@ -376,6 +379,7 @@ Repeat review assignment for every implementation packet by default. State expli
 
 - Codex only: launch globally configured `worker` agent for worker packets, fixes, and worker-owned verification; launch globally configured `reviewer` agent for review assignments. Resolve model, reasoning effort, and developer instructions from global Codex settings. Never name or override those values in plan or assignment.
 - non-Codex harnesses: ignore Codex binding. Use harness-native role or subagent configuration while preserving worker and reviewer responsibilities and communication contracts.
+- all harnesses: reviewer agent runs `code-reviewer` skill as review method. Assignment sets `review_skill=code-reviewer`; reviewer invokes it explicitly by name (skill carries `disable-model-invocation`).
 
 ## Test Execution Schedule
 
@@ -396,6 +400,7 @@ Repeat review assignment for every implementation packet by default. State expli
 - follow-up: `orchestrator_directive_v1`
 - worker return: `worker_report_v1`
 - reviewer return: `reviewer_report_v1`
+- reviewer method: `code-reviewer` skill; assignment carries `review_skill=code-reviewer`
 - recovery snapshot: `orchestrator_run_state_v1`
 - worktree context: every assignment includes absolute path, implementation branch, and base revision; every repository-relative path resolves under worktree root
 - templates: reference canonical `templates/communication/*.json`; embed once only when portability requires it
@@ -494,6 +499,7 @@ Before saving plan, confirm:
 - schema/migration and contract producers separated from their consumers
 - worker packets include focused path/symbol/purpose reads, acceptance criteria, non-goals, resolved upstream inputs, and relevant evidence only
 - reviewer packets include exact change set, scoped reads, acceptance criteria, invariants, risk focus, inspect-only write policy, test policy, and relevant evidence only
+- every reviewer assignment sets `review_skill=code-reviewer` and directs reviewer to invoke `code-reviewer` skill as review method
 - every test command has one owner, execution point, reuse rule, invalidation rule
 - new sessions reuse valid test evidence
 - reviewers avoid duplicate test runs

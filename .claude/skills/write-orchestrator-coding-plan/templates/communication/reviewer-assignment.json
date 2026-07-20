@@ -12,6 +12,7 @@
     "base_revision": "[source branch HEAD revision]"
   },
   "objective": "[bounded review outcome]",
+  "review_skill": "code-reviewer",
   "review_target": {
     "implementation_packet_id": "[worker packet-id]",
     "change_set": "[exact revision, diff, or change-set id]",

@@ -2,11 +2,14 @@
 
 ## Scope
 
-Local department-store codebase for QA education and repository-scale agent demos. Non-live runtime; production-grade boundaries.
+Local B2B bulk-powder wholesale codebase for QA education and repository-scale agent demos. Non-live runtime; production-grade boundaries.
 
-- Product: familiar webshop; browse -> cart -> checkout -> order
+- Product: wholesale ordering portal; trade buyers (shops, supermarkets) order powders by pallet, sugar -> cement. Browse -> quote/cart -> bulk checkout -> order
+- Live trading: real-time auctions/bidding on selected pallet lots
 - Runtime: deterministic, local-first, low setup
 - Engineering: realistic rules; strict validation, auth, migrations, transactions, errors
+
+Direction note: repo originally built as B2C powder retail (`QArefully Powder Co.`). Now pivoting to B2B bulk/wholesale pallet ordering + live trading. Reason: more grounded in real-world commerce -> richer, more realistic QA learning material (concurrency, bidding, bulk pricing, minimum-order rules). Pivot is additive; reuse catalog/domain foundations, do not rewrite storefront.
 
 ## Context
 
@@ -31,7 +34,8 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
 
 - Default: modular monolith. Split service only for named distributed-behavior demo.
 - Flow: frontend -> API contracts -> domain -> persistence.
-- Backend owns money, inventory, orders, payments, permissions. Money uses integer minor units.
+- Backend owns money, inventory, orders, payments, permissions, delivery classification/charge. Money uses integer minor units.
+- Purchasable identity is variant/SKU-scoped: base product owns merchandising/reviews/favourites/comparison; variant owns SKU, pack, price, stock, weight, delivery class. Cart/inventory/order lines key on variant; contracts retain productId for navigation.
 - Contracts own transport types/schemas; shared data owns canonical static catalog/content.
 - Web never imports API source. Packages/scripts never import app-private source.
 - Backend: thin routes -> workflow services -> repositories owning SQL/row types. One transport mapper per record type.
