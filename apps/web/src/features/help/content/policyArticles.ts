@@ -35,7 +35,7 @@ export const privacyArticle = defineHelpArticle({
       paragraphs: [
         {
           id: 'privacy-browser-storage-local-storage',
-          text: 'This browser can keep a cart identifier and a bounded Powderizer history in local storage so the demo can restore those features between visits.',
+          text: 'This browser can keep a cart identifier and a bounded Custom Powder history in local storage so the demo can restore those features between visits.',
         },
         {
           id: 'privacy-browser-storage-session-cookie',
@@ -54,7 +54,7 @@ export const privacyArticle = defineHelpArticle({
         },
         {
           id: 'privacy-clearing-data-database',
-          text: 'Likewise, resetting local database data does not promise to remove cart identifiers or Powderizer history already stored in a browser. Clear browser storage separately when needed.',
+          text: 'Likewise, resetting local database data does not promise to remove cart identifiers or Custom Powder blend history already stored in a browser. Clear browser storage separately when needed.',
         },
       ],
     },

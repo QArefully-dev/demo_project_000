@@ -185,14 +185,14 @@ Shipment transitions are `packed -> shipped -> delivered` or `packed -> shipped 
 
 ### Admin Inventory Receipt API (Local Simulation)
 
-There is no inventory UI. Sign in as `admin@example.com`, retain the session cookie, and record a local stock receipt with a fresh UUID `idempotencyKey`. Use a variant SKU, not a product ID:
+There is no inventory UI. Sign in as `admin@example.com`, retain the session cookie, and record a local stock receipt with a fresh UUID `idempotencyKey`. Use a variant ID, not a product ID or SKU:
 
 ```http
 POST /api/admin/inventory/receipts
 Content-Type: application/json
 
 {
-  "productId": "49",
+  "variantId": 1,
   "quantity": 5,
   "idempotencyKey": "00000000-0000-4000-8000-000000000204"
 }
