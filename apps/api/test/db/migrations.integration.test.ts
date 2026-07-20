@@ -1214,7 +1214,7 @@ void test('seed and reset operate on a migrated database', (t) => {
 
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM products').get() as { count: number }).count,
-    50,
+    100,
   );
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM curated_bundles').get() as { count: number }).count,
