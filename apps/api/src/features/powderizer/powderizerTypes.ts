@@ -40,6 +40,8 @@ export interface PowderMixProduct {
   mixingGroup: string | null;
   blendSourceVariantId: number | null;
   detailsJson: string | null;
+  sourceVariantPriceCents: number | null;
+  sourceVariantMixUnitGrams: number | null;
 }
 
 export interface CombinedPowderMixFacts {

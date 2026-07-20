@@ -329,11 +329,15 @@ export function calculatePowderMixPrice(
   }
   const ingredientChargeCents = allocations.reduce((total, allocation) => {
     const product = findProduct(products, allocation.productId);
-    if (!Number.isSafeInteger(product.priceCents) || product.priceCents < 0) {
+    const effectivePriceCents =
+      product.blendSourceVariantId != null && product.sourceVariantPriceCents != null
+        ? product.sourceVariantPriceCents
+        : product.priceCents;
+    if (!Number.isSafeInteger(effectivePriceCents) || effectivePriceCents < 0) {
       throw new Error(`Product ${product.id} has invalid persisted price.`);
     }
     const mixUnitGrams = product.mixUnitGrams as number;
-    return total + Math.ceil((product.priceCents * allocation.allocatedGrams) / mixUnitGrams);
+    return total + Math.ceil((effectivePriceCents * allocation.allocatedGrams) / mixUnitGrams);
   }, 0);
   const unitPriceCents =
     ingredientChargeCents + packagingFeeCents + POWDER_MIX_FINENESS_SURCHARGE_CENTS;
@@ -381,8 +385,11 @@ export function calculatePowderMixStockRequirements(
         throw new Error('Mix allocation must be a positive integer.');
       }
       const product = findProduct(products, allocation.productId);
-      const mixUnitGrams = product.mixUnitGrams as number;
-      const bags = Math.ceil((allocation.allocatedGrams * mix.quantity) / mixUnitGrams);
+      const effectiveMixUnitGrams =
+        product.blendSourceVariantId != null && product.sourceVariantMixUnitGrams != null
+          ? product.sourceVariantMixUnitGrams
+          : (product.mixUnitGrams as number);
+      const bags = Math.ceil((allocation.allocatedGrams * mix.quantity) / effectiveMixUnitGrams);
       totals.set(product.id, (totals.get(product.id) ?? 0) + bags);
     }
   }

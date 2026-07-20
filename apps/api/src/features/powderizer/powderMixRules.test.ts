@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   allocatePowderMixGrams,
+  calculatePowderMixPrice,
   calculatePowderMixStockRequirements,
   createPowderMixQuoteKey,
   deriveCombinedPowderMixFacts,
@@ -24,6 +25,8 @@ const products: readonly PowderMixProduct[] = [
     mixUnitGrams: 250,
     mixingGroup: 'food-grade',
     blendSourceVariantId: null,
+    sourceVariantPriceCents: null,
+    sourceVariantMixUnitGrams: null,
     detailsJson: JSON.stringify({
       ingredients: ['Cocoa'],
       intendedUse: 'Baking and beverages',
@@ -38,6 +41,8 @@ const products: readonly PowderMixProduct[] = [
     mixUnitGrams: 500,
     mixingGroup: 'food-grade',
     blendSourceVariantId: null,
+    sourceVariantPriceCents: null,
+    sourceVariantMixUnitGrams: null,
     detailsJson: JSON.stringify({
       ingredients: ['Whey protein'],
       allergens: ['Milk'],
@@ -53,6 +58,8 @@ const products: readonly PowderMixProduct[] = [
     mixUnitGrams: 100,
     mixingGroup: 'food-grade',
     blendSourceVariantId: null,
+    sourceVariantPriceCents: null,
+    sourceVariantMixUnitGrams: null,
     detailsJson: JSON.stringify({
       ingredients: ['Green tea powder'],
       intendedUse: 'Tea and flavouring',
@@ -67,6 +74,8 @@ const products: readonly PowderMixProduct[] = [
     mixUnitGrams: 1000,
     mixingGroup: 'food-grade',
     blendSourceVariantId: null,
+    sourceVariantPriceCents: null,
+    sourceVariantMixUnitGrams: null,
     detailsJson: JSON.stringify({
       ingredients: ['Oat flour'],
       allergens: ['Gluten'],
@@ -82,6 +91,8 @@ const products: readonly PowderMixProduct[] = [
     mixUnitGrams: 200,
     mixingGroup: 'food-grade',
     blendSourceVariantId: null,
+    sourceVariantPriceCents: null,
+    sourceVariantMixUnitGrams: null,
     detailsJson: JSON.stringify({
       ingredients: ['Spice blend'],
       intendedUse: 'Seasoning',
@@ -96,6 +107,8 @@ const products: readonly PowderMixProduct[] = [
     mixUnitGrams: null,
     mixingGroup: null,
     blendSourceVariantId: null,
+    sourceVariantPriceCents: null,
+    sourceVariantMixUnitGrams: null,
     detailsJson: JSON.stringify({
       hazardStatement: 'Corrosive',
       handling: 'Wear gloves',
@@ -362,6 +375,8 @@ void test('rejects cross-group components at quote time', () => {
       mixUnitGrams: 1000,
       mixingGroup: 'food-grade',
       blendSourceVariantId: null,
+      sourceVariantPriceCents: null,
+      sourceVariantMixUnitGrams: null,
       detailsJson: null,
     },
     {
@@ -372,6 +387,8 @@ void test('rejects cross-group components at quote time', () => {
       mixUnitGrams: 500,
       mixingGroup: 'food-grade',
       blendSourceVariantId: null,
+      sourceVariantPriceCents: null,
+      sourceVariantMixUnitGrams: null,
       detailsJson: null,
     },
   ];
@@ -384,6 +401,8 @@ void test('rejects cross-group components at quote time', () => {
       mixUnitGrams: 500,
       mixingGroup: 'cleaning',
       blendSourceVariantId: null,
+      sourceVariantPriceCents: null,
+      sourceVariantMixUnitGrams: null,
       detailsJson: null,
     },
     {
@@ -394,6 +413,8 @@ void test('rejects cross-group components at quote time', () => {
       mixUnitGrams: 500,
       mixingGroup: 'cleaning',
       blendSourceVariantId: null,
+      sourceVariantPriceCents: null,
+      sourceVariantMixUnitGrams: null,
       detailsJson: null,
     },
   ];
@@ -423,6 +444,8 @@ void test('rejects null-group components', () => {
       mixUnitGrams: 1000,
       mixingGroup: 'food-grade',
       blendSourceVariantId: null,
+      sourceVariantPriceCents: null,
+      sourceVariantMixUnitGrams: null,
       detailsJson: null,
     },
     {
@@ -433,6 +456,8 @@ void test('rejects null-group components', () => {
       mixUnitGrams: 500,
       mixingGroup: null,
       blendSourceVariantId: null,
+      sourceVariantPriceCents: null,
+      sourceVariantMixUnitGrams: null,
       detailsJson: null,
     },
   ];
@@ -462,6 +487,8 @@ void test('validateMixingGroupCompat rejects null, cross-group, and unknown grou
       mixUnitGrams: 500,
       mixingGroup: 'food-grade',
       blendSourceVariantId: null,
+      sourceVariantPriceCents: null,
+      sourceVariantMixUnitGrams: null,
       detailsJson: null,
     },
     {
@@ -472,6 +499,8 @@ void test('validateMixingGroupCompat rejects null, cross-group, and unknown grou
       mixUnitGrams: 500,
       mixingGroup: 'food-grade',
       blendSourceVariantId: null,
+      sourceVariantPriceCents: null,
+      sourceVariantMixUnitGrams: null,
       detailsJson: null,
     },
   ]);
@@ -486,8 +515,10 @@ void test('validateMixingGroupCompat rejects null, cross-group, and unknown grou
           mixable: true,
           mixUnitGrams: 500,
           mixingGroup: null,
-          blendSourceVariantId: null,
-          detailsJson: null,
+        blendSourceVariantId: null,
+        sourceVariantPriceCents: null,
+        sourceVariantMixUnitGrams: null,
+        detailsJson: null,
         },
         {
           id: 2,
@@ -496,8 +527,10 @@ void test('validateMixingGroupCompat rejects null, cross-group, and unknown grou
           mixable: true,
           mixUnitGrams: 500,
           mixingGroup: 'food-grade',
-          blendSourceVariantId: null,
-          detailsJson: null,
+        blendSourceVariantId: null,
+        sourceVariantPriceCents: null,
+        sourceVariantMixUnitGrams: null,
+        detailsJson: null,
         },
       ]),
     (error: unknown) =>
@@ -514,8 +547,10 @@ void test('validateMixingGroupCompat rejects null, cross-group, and unknown grou
           mixable: true,
           mixUnitGrams: 500,
           mixingGroup: 'food-grade',
-          blendSourceVariantId: null,
-          detailsJson: null,
+        blendSourceVariantId: null,
+        sourceVariantPriceCents: null,
+        sourceVariantMixUnitGrams: null,
+        detailsJson: null,
         },
         {
           id: 2,
@@ -524,8 +559,10 @@ void test('validateMixingGroupCompat rejects null, cross-group, and unknown grou
           mixable: true,
           mixUnitGrams: 500,
           mixingGroup: 'cleaning',
-          blendSourceVariantId: null,
-          detailsJson: null,
+        blendSourceVariantId: null,
+        sourceVariantPriceCents: null,
+        sourceVariantMixUnitGrams: null,
+        detailsJson: null,
         },
       ]),
     (error: unknown) =>
@@ -567,6 +604,8 @@ void test('rejects cross-group quote via full quotePowderMix path', () => {
     mixUnitGrams: 250,
     mixingGroup: 'food-grade',
     blendSourceVariantId: null,
+    sourceVariantPriceCents: null,
+    sourceVariantMixUnitGrams: null,
     detailsJson: null,
   };
   const cleaningProduct: PowderMixProduct = {
@@ -577,6 +616,8 @@ void test('rejects cross-group quote via full quotePowderMix path', () => {
     mixUnitGrams: 500,
     mixingGroup: 'cleaning',
     blendSourceVariantId: null,
+    sourceVariantPriceCents: null,
+    sourceVariantMixUnitGrams: null,
     detailsJson: null,
   };
   expectCode('MIX_COMPONENT_INELIGIBLE', () =>
@@ -592,4 +633,114 @@ void test('rejects cross-group quote via full quotePowderMix path', () => {
       [foodProduct, cleaningProduct],
     ),
   );
+});
+
+void test('variant-driven pricing uses sourceVariantPriceCents when blendSourceVariantId is set', () => {
+  const cocoaWithVariant: PowderMixProduct = {
+    ...products[0]!,
+    blendSourceVariantId: 99,
+    sourceVariantPriceCents: 1_500,
+    sourceVariantMixUnitGrams: 250,
+  };
+  const proteinRegular: PowderMixProduct = { ...products[1]! };
+  const variantProducts: readonly PowderMixProduct[] = [cocoaWithVariant, proteinRegular];
+
+  const allocations: Parameters<typeof calculatePowderMixPrice>[0] = [
+    { productId: 2, percentage: 50, allocatedGrams: 250 },
+    { productId: 3, percentage: 50, allocatedGrams: 250 },
+  ];
+  const price = calculatePowderMixPrice(allocations, variantProducts, 500);
+  assert.equal(price.unitPriceCents, 2_550);
+});
+
+void test('variant-driven stock uses sourceVariantMixUnitGrams when blendSourceVariantId is set', () => {
+  const cocoaWithVariant: PowderMixProduct = {
+    ...products[0]!,
+    blendSourceVariantId: 99,
+    sourceVariantPriceCents: 699,
+    sourceVariantMixUnitGrams: 100,
+  };
+  const proteinRegular: PowderMixProduct = { ...products[1]! };
+  const variantProducts: readonly PowderMixProduct[] = [cocoaWithVariant, proteinRegular];
+
+  const allocations: Parameters<typeof calculatePowderMixStockRequirements>[0] = [
+    {
+      allocations: [
+        { productId: 2, allocatedGrams: 250 },
+        { productId: 3, allocatedGrams: 250 },
+      ],
+      quantity: 2,
+    },
+  ];
+  const reqs = calculatePowderMixStockRequirements(allocations, variantProducts);
+  assert.deepEqual(reqs, [
+    { productId: 2, bagEquivalents: 5 },
+    { productId: 3, bagEquivalents: 1 },
+  ]);
+});
+
+void test('falls back to product fields when blendSourceVariantId is null', () => {
+  const cocoaNoVariant: PowderMixProduct = {
+    ...products[0]!,
+    blendSourceVariantId: null,
+    sourceVariantPriceCents: 999,
+    sourceVariantMixUnitGrams: 123,
+  };
+  const proteinRegular: PowderMixProduct = { ...products[1]! };
+  const noVariantProducts: readonly PowderMixProduct[] = [cocoaNoVariant, proteinRegular];
+
+  const allocations: Parameters<typeof calculatePowderMixPrice>[0] = [
+    { productId: 2, percentage: 50, allocatedGrams: 250 },
+    { productId: 3, percentage: 50, allocatedGrams: 250 },
+  ];
+  const price = calculatePowderMixPrice(allocations, noVariantProducts, 500);
+  assert.equal(price.unitPriceCents, 1_749);
+
+  const stockAllocations: Parameters<typeof calculatePowderMixStockRequirements>[0] = [
+    {
+      allocations: [
+        { productId: 2, allocatedGrams: 250 },
+        { productId: 3, allocatedGrams: 250 },
+      ],
+      quantity: 2,
+    },
+  ];
+  const reqs = calculatePowderMixStockRequirements(stockAllocations, noVariantProducts);
+  assert.deepEqual(reqs, [
+    { productId: 2, bagEquivalents: 2 },
+    { productId: 3, bagEquivalents: 1 },
+  ]);
+});
+
+void test('falls back to product fields when variant data is null despite blendSourceVariantId set', () => {
+  const cocoaNullVariant: PowderMixProduct = {
+    ...products[0]!,
+    blendSourceVariantId: 99,
+    sourceVariantPriceCents: null,
+    sourceVariantMixUnitGrams: null,
+  };
+  const proteinRegular: PowderMixProduct = { ...products[1]! };
+  const nullVariantProducts: readonly PowderMixProduct[] = [cocoaNullVariant, proteinRegular];
+
+  const allocations: Parameters<typeof calculatePowderMixPrice>[0] = [
+    { productId: 2, percentage: 50, allocatedGrams: 250 },
+    { productId: 3, percentage: 50, allocatedGrams: 250 },
+  ];
+  const price = calculatePowderMixPrice(allocations, nullVariantProducts, 500);
+  assert.equal(price.unitPriceCents, 1_749);
+
+  const stockAllocations: Parameters<typeof calculatePowderMixStockRequirements>[0] = [
+    {
+      allocations: [
+        { productId: 2, allocatedGrams: 250 },
+        { productId: 3, allocatedGrams: 250 },
+      ],
+      quantity: 2,
+    },
+  ];
+  const reqs = calculatePowderMixStockRequirements(stockAllocations, nullVariantProducts);
+  assert.deepEqual(reqs, [
+    { productId: 2, bagEquivalents: 2 },
+    { productId: 3, bagEquivalents: 1 },
+  ]);
 });

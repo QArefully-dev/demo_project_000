@@ -1,3 +1,4 @@
+// Route module ready for S1 registration in app.ts.
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../app.js';
 import { registerPowderConfigAndQuote, registerCartMutations } from './powderizer.js';

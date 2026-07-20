@@ -63,6 +63,8 @@ function toMixProduct(row: ProductRow): PowderMixProduct {
     mixingGroup: row.mixing_group ?? null,
     blendSourceVariantId: row.blend_source_variant_id ?? null,
     detailsJson: row.details_json ?? null,
+    sourceVariantPriceCents: null,
+    sourceVariantMixUnitGrams: null,
   };
 }
 
@@ -115,6 +117,15 @@ export function createPowderizerService(dependencies: {
         'Mix component is not eligible.',
         'components',
       );
+    }
+    for (const product of products) {
+      if (product.blendSourceVariantId != null) {
+        const variant = dependencies.products.findVariantById(product.blendSourceVariantId);
+        if (variant) {
+          product.sourceVariantPriceCents = variant.price_cents;
+          product.sourceVariantMixUnitGrams = variant.weight_grams;
+        }
+      }
     }
     return products;
   };
