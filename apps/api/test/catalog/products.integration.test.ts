@@ -4,18 +4,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
-  Product,
-  type ProductDetailResponse,
-  type ProductFilterOptionsResponse,
+  ProductWithVariants,
   type ProductListPaginatedResponse,
+  type ProductFilterOptionsResponse,
   SimilarProductsResponse,
 } from '@shop/contracts/products';
+import type { ProductWithVariants as ProductWithVariantsType } from '@shop/contracts/products';
 import { Value } from '@sinclair/typebox/value';
 import { buildApp } from '../../src/app.js';
 import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
 
-void test('product API exposes canonical packaging without raster image transport', async (t) => {
-  const tempDir = mkdtempSync(join(tmpdir(), 'shop-product-contract-'));
+void test('product detail returns variants and persisted facts without packaging', async (t) => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'shop-product-variants-'));
   const db = openDatabase({ path: join(tempDir, 'shop.db') });
   resetDatabase(db);
   seedDatabase(db);
@@ -30,17 +30,19 @@ void test('product API exposes canonical packaging without raster image transpor
   const response = await app.inject({ method: 'GET', url: '/api/products/1' });
   assert.equal(response.statusCode, 200);
 
-  const product: {
-    images?: unknown;
-    packaging?: { quantity: string; consumptionLabel: string | null };
-    createdAt?: string;
-    available?: boolean;
-    tags?: { key: string; label: string }[];
-    specificationGroups?: unknown[];
-  } = response.json();
-  assert.equal(product.images, undefined);
-  assert.equal(product.packaging?.quantity, '900g');
-  assert.equal(product.packaging?.consumptionLabel, null);
+  const product = response.json<ProductWithVariantsType>();
+  assert.equal(Value.Check(ProductWithVariants, product), true);
+  assert.equal('packaging' in product, false);
+  assert.equal('images' in product, false);
+  assert.ok(product.variants.length >= 1);
+  assert.ok(product.defaultVariantId > 0);
+  assert.ok(typeof product.categoryFacts === 'object');
+  assert.ok(['food', 'non-food', 'caution'].includes(product.consumptionClassification));
+  assert.ok(product.priceRange.min > 0);
+  assert.ok(product.priceRange.max >= product.priceRange.min);
+  assert.ok(
+    ['in_stock', 'low_stock', 'out_of_stock', 'backorder'].includes(product.baseAvailability),
+  );
   assert.match(product.createdAt ?? '', /^2025-\d{2}-\d{2}T00:00:00\.000Z$/);
   assert.equal(product.available, true);
   assert.ok((product.tags?.length ?? 0) > 0);
@@ -71,7 +73,7 @@ void test('customer catalog endpoints exclude inactive products', async (t) => {
   const list = await app.inject({ method: 'GET', url: '/api/products?pageSize=48' });
   assert.equal(list.statusCode, 200);
   const body = list.json<ProductListPaginatedResponse>();
-  assert.equal(body.total, 49);
+  assert.equal(body.total, 99);
   assert.equal(
     body.items.some((product) => product.id === '1'),
     false,
@@ -151,9 +153,9 @@ void test('product API normalizes legacy SQLite creation timestamps for the tran
 
   const response = await app.inject({ method: 'GET', url: '/api/products/1' });
   assert.equal(response.statusCode, 200);
-  const product = response.json<ProductDetailResponse>();
+  const product = response.json<ProductWithVariantsType>();
   assert.equal(product.createdAt, '2024-12-31T23:59:59.000Z');
-  assert.equal(Value.Check(Product, product), true);
+  assert.equal(Value.Check(ProductWithVariants, product), true);
 });
 
 void test('catalog query validation reports deterministic 400 responses and exposes active filter options', async (t) => {
@@ -170,10 +172,9 @@ void test('catalog query validation reports deterministic 400 responses and expo
 
   const options = await app.inject({ method: 'GET', url: '/api/products/filter-options' });
   assert.equal(options.statusCode, 200);
-  assert.equal(
-    Value.Check(Product, (await app.inject({ method: 'GET', url: '/api/products/2' })).json()),
-    true,
-  );
+  const detail = await app.inject({ method: 'GET', url: '/api/products/2' });
+  assert.equal(detail.statusCode, 200);
+  assert.equal(Value.Check(ProductWithVariants, detail.json()), true);
   const optionBody = options.json<ProductFilterOptionsResponse>();
   assert.ok(optionBody.tags.length > 0);
   assert.ok(optionBody.specificationGroups.length > 0);

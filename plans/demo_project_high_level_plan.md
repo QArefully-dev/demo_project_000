@@ -8,7 +8,7 @@ Local QArefully Powder Co. codebase for course exercises and large-repository ha
 
 Goals:
 
-- immediate recognition: powder shop with credible-to-impossible catalog progression
+- immediate recognition: professional powder shop with credible real-world catalogue
 - clear domain journey: browse -> bag -> checkout -> confirmation
 - modern polished UI
 - deterministic local behavior
@@ -20,39 +20,27 @@ Goals:
 
 ## Product Direction
 
-QArefully Powder Co. sells powders, from pantry staples through fictional conceptual goods. Brand voice: dry, confident, precise, mildly absurd. Household, conceptual, and impossible goods remain clearly marked `Not for consumption`.
+QArefully Powder Co. sells food, performance, household, garden, and trade powders. Brand voice: professional, clear, restrained. Non-food products remain clearly marked `Not for consumption`.
 
 Core journey:
 
-`home -> powder catalog -> powder detail -> cart -> checkout -> payment -> confirmation -> order history`
+`home -> catalog -> product detail -> cart -> checkout -> payment -> confirmation -> order history`
 
 Extended familiar journeys:
 
 - search, filter, sort, paginate
-- select product options when an additive catalog slice introduces them
+- select product variant (SKU, pack size, weight)
 - apply promotion or gift card
 - save address and payment preference metadata
 - track, cancel, or return order
 - write verified-purchase review
 - manage wishlist, profile, sessions, and notification preferences
 
-## Reverse Process
-
-Powder -> original object. Customer selects eligible powder, uploads or chooses object specification, accepts quote, waits for controlled reconstruction.
-
-- price: `reverse price = corresponding powdering-process price * 10,000`; integer minor units; no discounts, promotions, gift cards, or loyalty redemption
-- special request: manual review, custom scope, extra compliance and reconstruction fee; quote required before checkout
-- positioning: deliberately prohibitive; ordinary objects expensive, impossible or conceptual objects exceptionally expensive
-- lead time: long and price-linked; quote shows multi-week to multi-year estimated completion window, reconstruction stages, and status updates
-- examples: powder -> fireplace; powder -> Victorian townhouse; powder -> fresh air; powder -> working time machine; powder -> original moonlight from specific night
-- safety: clearly fictional demo service; impossible/conceptual requests remain `Not for consumption`; approval, cancellation, refund, and delivery rules defined in future vertical slice
-- scope: high-level product direction only; no reverse-process implementation, catalog eligibility matrix, or pricing engine yet
-
 Avoid visible platform complexity:
 
 - no seller marketplace as main concept
 - no warehouse or logistics product requiring explanation
-- no external financial-market or production trading dependency
+- no external financial-market dependency
 - no microservice topology exposed to users
 - optional admin tooling stays secondary and absent from normal journey
 
@@ -66,12 +54,13 @@ Avoid visible platform complexity:
 - launch: `npm ci` -> `npm run dev`
 - external services: none
 - implemented commerce: auth, catalog, cart, inventory, promotions, checkout, simulated payment, orders, returns and refunds, favourites, account, dev mailbox
-- implemented catalog depth: typed specifications and tags, advanced filters and stable sorts, comparison, similar products, curated bundles, customer reviews with helpfulness and abuse reporting
-- implemented customer journey: composed product detail, comparison entry points, help and policy center, Powderizer custom mixes and history
+- implemented catalog depth: 100 products across 6 credible categories, typed specifications and tags, advanced filters and stable sorts, product variants with SKU/price/weight/stock, comparison, similar products, curated bundles, customer reviews with helpfulness and abuse reporting
+- implemented customer journey: composed product detail, comparison entry points, help and policy center, Custom Powder blend builder and history
+- implemented delivery: parcel and freight classification, simulated freight charge at checkout
 - implemented integrity: ordered migrations, append-only audit ledger, sanitized admin audit reads
-- seed: 50 deterministic powder products across 7 categories, plus users, promotions, favourites, catalog metadata, curated bundles, and inventory/backorder scenarios
+- seed: 100 deterministic powder products across 6 categories (Sports Nutrition 20, Baking & Pantry 20, Drinks 15, Household & Cleaning 15, Garden & Outdoors 15, Trade & Creative Materials 15), plus users, promotions, favourites, catalog metadata, curated bundles, and inventory/backorder scenarios
 - tests: focused unit, contract, route, SQLite integration, React integration, and accessibility coverage; broad E2E coverage reserved for course
-- completed expansion record: `plans/powder_shop_catalog_expansion_plan.md`
+- completed expansion records: `plans/powder_shop_catalog_expansion_plan.md`, `plans/inventory_coding_plan.md`, `plans/old/returns_and_refunds_coding_plan.md`, `plans/old/order_history_and_lifecycle_coding_plan.md`, `plans/old/review_depth_coding_plan.md`
 
 ## Hard Constraints
 
@@ -128,44 +117,13 @@ Build vertical slices:
 
 Avoid empty scaffolding, copied framework internals, vendored projects, generated-code padding, duplicate abstractions.
 
-## Completed Catalog Expansion
-
-Implementation record: `plans/powder_shop_catalog_expansion_plan.md`.
-
-Delivered:
-
-- structured powder specifications, normalized tags, advanced filtering, stable sorting
-- anonymous ordered comparison with catalog and product-detail entry points
-- deterministic similar products
-- curated bundles with current-price totals and atomic cart addition
-- authenticated customer reviews, verified-purchase evidence, moderation, rating summaries
-- append-only audit ledger across auth, cart, order, payment, bundle, review mutations
-- typed help and policy center with product-context links
-- resilient product-detail composition; secondary section failure preserves core purchase flow
-
-Preserved:
-
-- QArefully Powder Co. identity, safety messaging, deterministic local runtime
-- backend authority for price, stock, purchase evidence, review ownership, audit records
-- Powderizer contracts, pricing, stock rules, snapshots, history compatibility
-
 ## Future Expansion Order
 
 Status: delivery order for remaining work. `partial` = implemented subset; `future` = listed capability not delivered.
 
 1. Order history and lifecycle: completed
-   - foundation: order creation, immutable product and Powderizer snapshots, direct order-detail read
-   - remaining: customer order list; processing -> packed -> shipped -> delivered; cancellation, split shipment, delivery failure, tracking events
 2. Inventory: completed
-   - implementation record: `plans/inventory_coding_plan.md`
-   - delivered: unified ordinary-product and Powderizer component availability authority; checkout-time 15-minute reservations; atomic authorization and consumption; concurrent oversell protection; expiry release; product-line allocation records; opted-in backorders; idempotent admin stock receipts with FIFO backorder allocation; cancellation stock restoration for unshipped ordinary lines; customer availability and backorder presentation
 3. Returns and refunds: completed
-   - implementation record: `plans/old/returns_and_refunds_coding_plan.md`
-   - delivered: authenticated owner requests for delivered ordinary-product quantities within a 30-day UTC window; partial quantities across shipments; reason and bounded optional note; customer order-detail eligibility, history, and resilient request panel
-   - delivered: admin API queue and guarded `requested -> approved -> received -> refunded` or `requested -> rejected` workflow with optimistic versions and idempotency keys
-   - delivered: deterministic integer refund proration from immutable original line totals and order discounts; immutable refund facts and simulated local gateway references; original orders, payments, and promotion redemptions unchanged
-   - delivered: atomic receipt-time stock restoration, immutable return/inventory/audit ledgers, and existing FIFO backorder allocation; deterministic reset and seed scenarios
-   - scope limits: no Powderizer returns, exchanges, real payment reversal, customer withdrawal, or admin web UI
 4. Checkout depth: future
    - foundation: validated contact, shipping address, server quote, idempotent simulated payment
    - remaining: saved addresses, billing address, delivery methods, estimates, gift options
@@ -173,8 +131,6 @@ Status: delivery order for remaining work. `partial` = implemented subset; `futu
    - completed: percentage and fixed discounts, start/end scheduling, item/subtotal gates, global and per-user limits, reservation-safe redemption
    - remaining: category offers, stacking, gift cards, loyalty points, sales presentation
 6. Review depth: completed
-   - implementation record: `plans/review_depth_coding_plan.md`
-   - delivered: persisted, trigger-maintained published rating aggregates; customer helpful-vote toggles and abuse reports with withdrawal and caps; public helpful sorting and viewer engagement state; role-gated reported and hidden moderation queues; atomic hide/action and dismiss decisions; deterministic review moderation seed scenarios; customer and admin accessibility coverage
 7. Account depth: partial
    - completed: session creation, expiry, logout, password-change invalidation, profile read, password change
    - remaining: addresses, session list and selective revocation, preferences, data export, account deletion
@@ -183,20 +139,11 @@ Status: delivery order for remaining work. `partial` = implemented subset; `futu
 9. Secondary admin: partial
    - completed: review moderation API and UI; paginated, filtered, read-only audit API
    - remaining: product, order, refund, user, and feature-flag management
-10. Reverse Process: future
-   - powder -> original object reconstruction; eligible-powder selection, object specification, controlled reconstruction order, staged status updates
-   - pricing: corresponding powdering-process price * 10,000; integer minor units; no discount, promotion, gift-card, or loyalty redemption
-   - special requests: manual review, bespoke scope, additional fee, quote acceptance before checkout
-   - fulfilment: price-linked multi-week to multi-year wait; cancellation, refund, approval, and delivery rules
-   - seed examples: powder -> fireplace; Victorian townhouse; fresh air; working time machine; original moonlight from specified night
-11. Live trading and auctions: future
-   - local simulated real-time powder trading and timed auctions; bids, offers, matching, settlement, cancellation, and immutable event history
-   - concurrency: atomic bid validation, optimistic conflicts, deterministic clocks, reconnect recovery, and duplicate-event handling
-   - scope: no real money, external exchange, market data, broker, or production trading dependency
-12. Geography configs: future
-   - region profiles: USA, Europe, China; configurable catalog, stock, currency, trading hours, time zones, language, formatting, and policy text
-   - behavior: region-aware availability, auction windows, order validation, seeded scenarios, and deterministic time-zone boundaries
-   - architecture: shared domain core -> explicit region config -> localized API and UI behavior
+10. Country localisation: future
+    - region profiles: USA, Europe, China; configurable catalog, stock, currency, trading hours, time zones, language, formatting, and policy text
+    - behavior: region-aware availability, order validation, seeded scenarios, and deterministic time-zone boundaries
+    - architecture: shared domain core -> explicit region config -> localized API and UI behavior
+    - scope: localisation-ready content and boundaries only in this baseline; translation and multi-currency belong to a dedicated future plan
 
 ## Agentic AI and QA Surface
 
@@ -289,7 +236,7 @@ Rule: database product does not imply unique committed image.
 
 Use deterministic powder-bag artwork generated from checked-in catalog visual tokens:
 
-- 45 stable image-set IDs, one per canonical powder product
+- image-set IDs, one per canonical powder product
 - thumbnail, card, and detail WebP renditions generated locally
 - product variants may share the parent bag art when appearance does not change
 - no source photos, remote CDN, or private asset inputs
@@ -306,15 +253,6 @@ Catalog artwork uses standing bags with a readable product label, category color
 Data relation:
 
 `product -> imageSetId -> shared image paths`
-
-Example:
-
-```ts
-{
-  name: "Powdered Water",
-  imageSetId: "powdered-water"
-}
-```
 
 Fallback: unknown or corrupt image records receive deterministic local SVG; normal catalog records use manifest-backed WebP.
 

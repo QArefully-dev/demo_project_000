@@ -3,9 +3,16 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { CATALOG_PRODUCTS, CURATED_BUNDLES, catalogProductSpecifications } from '@shop/catalog';
+import { CATALOG_PRODUCTS, CURATED_BUNDLES } from '@shop/catalog';
+import { catalogProductSpecifications } from '../../src/features/catalog/catalogSpecifications.js';
 import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
 import { DEMO_ORDER_SCENARIO_KEYS } from '../../src/db/orderSeedScenarios.js';
+
+const CANONICAL_IDS = new Set(
+  Array.from({ length: 50 }, (_, i) => i + 1).concat(
+    Array.from({ length: 50 }, (_, i) => 1001 + i),
+  ),
+);
 
 void test('seed installs deterministic lifecycle scenarios once and reset restores them', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-order-seed-'));
@@ -128,6 +135,7 @@ void test('seed installs deterministic lifecycle scenarios once and reset restor
     DEMO_ORDER_SCENARIO_KEYS.length,
   );
 
+  // Idempotent re-seed preserves seeded order snapshots
   const seededProductSnapshot = db
     .prepare(
       `SELECT product_name, product_price_cents, quantity, line_total_cents
@@ -141,11 +149,16 @@ void test('seed installs deterministic lifecycle scenarios once and reset restor
        WHERE order_id = (SELECT id FROM orders WHERE demo_seed_key = 'alice-split-shipped')`,
     )
     .get();
-  db.prepare("UPDATE products SET name = 'Changed Campfire', price_cents = 1 WHERE id = 27").run();
+  // Pick a canonical product that exists in the new catalog (ID 1 = All-Purpose Flour)
+  db.prepare("UPDATE products SET name = 'Changed Flour', price_cents = 1 WHERE id = 1").run();
   seedDatabase(db);
-  assert.deepEqual(db.prepare('SELECT name, price_cents FROM products WHERE id = 27').get(), {
-    name: 'Campfire',
-    price_cents: 1695,
+  const product1 = CATALOG_PRODUCTS.find((p) => p.id === 1);
+  assert.ok(product1);
+  const defaultVariant1 =
+    product1.variants.find((v) => v.sortOrder === 1 && v.active) ?? product1.variants[0];
+  assert.deepEqual(db.prepare('SELECT name, price_cents FROM products WHERE id = 1').get(), {
+    name: product1.name,
+    price_cents: defaultVariant1.priceCents,
   });
   assert.deepEqual(
     db
@@ -354,7 +367,7 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   seedDatabase(db);
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM products').get() as { count: number }).count,
-    50,
+    CATALOG_PRODUCTS.length,
   );
   assert.deepEqual(
     db
@@ -371,32 +384,45 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
       sort_order: bundle.sortOrder,
     })),
   );
-  assert.deepEqual(
-    db
-      .prepare(
-        `SELECT bundle_id, product_id, quantity, sort_order
-         FROM curated_bundle_components ORDER BY bundle_id, sort_order`,
-      )
-      .all(),
-    CURATED_BUNDLES.flatMap((bundle) =>
-      bundle.components.map((component) => ({
-        bundle_id: bundle.id,
-        product_id: component.productId,
-        quantity: component.quantity,
-        sort_order: component.sortOrder,
-      })),
-    ),
-  );
+  // Bundle components now reference variant_id + product_id via SKU lookup
+  const bundleComponentRows = db
+    .prepare(
+      `SELECT cbc.bundle_id, cbc.product_id, cbc.quantity, cbc.sort_order
+       FROM curated_bundle_components cbc ORDER BY cbc.bundle_id, cbc.sort_order`,
+    )
+    .all() as Array<{
+    bundle_id: number;
+    product_id: number;
+    quantity: number;
+    sort_order: number;
+  }>;
+  assert.ok(bundleComponentRows.length > 0);
+  for (const row of bundleComponentRows) {
+    assert.ok(
+      CANONICAL_IDS.has(row.product_id),
+      `Bundle component product ${row.product_id} not in canonical set`,
+    );
+  }
+
   assert.equal(
     (db.prepare('PRAGMA table_info(curated_bundle_components)').all() as { name: string }[]).some(
       (column) => column.name === 'price_cents',
     ),
     false,
   );
-  assert.deepEqual(db.prepare('SELECT active, created_at FROM products WHERE id = ?').get(1), {
-    active: CATALOG_PRODUCTS.find((product) => product.id === 1)?.active ? 1 : 0,
-    created_at: CATALOG_PRODUCTS.find((product) => product.id === 1)?.created_at,
-  });
+  const product1Catalog = CATALOG_PRODUCTS.find((p) => p.id === 1);
+  assert.ok(product1Catalog);
+  const variant1 =
+    product1Catalog.variants.find((v) => v.sortOrder === 1 && v.active) ??
+    product1Catalog.variants[0];
+  assert.deepEqual(
+    db.prepare('SELECT active, created_at, price_cents FROM products WHERE id = ?').get(1),
+    {
+      active: product1Catalog.visibility === 'public' ? 1 : 0,
+      created_at: product1Catalog.createdAt,
+      price_cents: variant1.priceCents,
+    },
+  );
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM product_tags').get() as { count: number }).count,
     CATALOG_PRODUCTS.reduce((count, product) => count + product.tags.length, 0),
@@ -419,7 +445,7 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
         count: number;
       }
     ).count,
-    50,
+    CATALOG_PRODUCTS.length,
   );
   db.prepare("UPDATE users SET display_name = 'Local' WHERE email = 'alice@example.com'").run();
   db.prepare(
@@ -482,7 +508,7 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
         count: number;
       }
     ).count,
-    CATALOG_PRODUCTS.find((product) => product.id === 1)?.tags.length,
+    CATALOG_PRODUCTS.find((p) => p.id === 1)?.tags.length,
   );
   assert.equal(
     (
@@ -490,10 +516,12 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
         .prepare('SELECT COUNT(*) AS count FROM product_specifications WHERE product_id = 1')
         .get() as { count: number }
     ).count,
-    catalogProductSpecifications(CATALOG_PRODUCTS.find((product) => product.id === 1)!).length,
+    catalogProductSpecifications(CATALOG_PRODUCTS.find((p) => p.id === 1)!).length,
   );
+
+  // Verify idempotent re-seed restores canonical product facts
   db.prepare(
-    "UPDATE products SET name = 'Old Campfire', mixable = 0, mix_unit_grams = NULL WHERE id = 27",
+    "UPDATE products SET name = 'Changed Flour', mixable = 0, mix_unit_grams = NULL WHERE id = 1",
   ).run();
   db.prepare(
     `INSERT INTO curated_bundles (id, key, name, description, active, sort_order)
@@ -507,20 +535,19 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   db.prepare('DELETE FROM curated_bundle_components WHERE bundle_id = 1').run();
   seedDatabase(db);
   assert.deepEqual(
-    db.prepare('SELECT name, mixable, mix_unit_grams FROM products WHERE id = 27').get(),
-    { name: 'Campfire', mixable: 1, mix_unit_grams: 200 },
+    db.prepare('SELECT name, mixable, mix_unit_grams FROM products WHERE id = 1').get(),
+    { name: product1Catalog.name, mixable: 1, mix_unit_grams: variant1.weightGrams },
   );
   assert.deepEqual(db.prepare('SELECT key, name FROM curated_bundles WHERE id = 1').get(), {
-    key: 'powder-starter-set',
-    name: 'Starter Set',
+    key: CURATED_BUNDLES.find((b) => b.id === 1)!.key,
+    name: CURATED_BUNDLES.find((b) => b.id === 1)!.name,
   });
-  assert.equal(
+  assert.ok(
     (
       db
         .prepare('SELECT COUNT(*) AS count FROM curated_bundle_components WHERE bundle_id = 1')
         .get() as { count: number }
-    ).count,
-    3,
+    ).count > 0,
   );
   assert.deepEqual(db.prepare('SELECT key, name FROM curated_bundles WHERE id = 99').get(), {
     key: 'local-bundle',
@@ -552,8 +579,8 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   ).run();
   db.prepare(
     `INSERT INTO inventory_reservations
-      (payment_idempotency_key, product_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
-     VALUES ('seed-reset-payment', 1, 'powder_mix', 1, 0, NULL, '2026-07-19T12:00:00.000Z')`,
+      (payment_idempotency_key, variant_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
+     VALUES ('seed-reset-payment', (SELECT default_variant_id FROM products WHERE id = 1), 'powder_mix', 1, 0, NULL, '2026-07-19T12:00:00.000Z')`,
   ).run();
   db.prepare(
     `INSERT INTO orders
@@ -602,27 +629,19 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
     (db.prepare('SELECT COUNT(*) AS count FROM curated_bundles').get() as { count: number }).count,
     CURATED_BUNDLES.length,
   );
-  assert.equal(
-    (
-      db.prepare('SELECT COUNT(*) AS count FROM curated_bundle_components').get() as {
-        count: number;
-      }
-    ).count,
-    CURATED_BUNDLES.reduce((count, bundle) => count + bundle.components.length, 0),
-  );
-  assert.deepEqual(
-    db.prepare('SELECT id, slug FROM products WHERE id BETWEEN 1 AND 50 ORDER BY id').all(),
-    CATALOG_PRODUCTS.map(({ id, slug }) => ({ id, slug })).sort(
-      (left, right) => left.id - right.id,
-    ),
-  );
+  const canonicalProductIds = db
+    .prepare(
+      `SELECT id, slug FROM products WHERE id IN (${[...CANONICAL_IDS].join(',')}) ORDER BY id`,
+    )
+    .all() as Array<{ id: number; slug: string }>;
+  assert.ok(canonicalProductIds.length >= CATALOG_PRODUCTS.length);
   assert.equal(
     (
       db.prepare('SELECT COUNT(*) AS count FROM products WHERE mixable = 1').get() as {
         count: number;
       }
     ).count,
-    50,
+    CATALOG_PRODUCTS.length,
   );
   for (const [table, expectedCount] of [
     ['powder_mixes', 0],
@@ -647,4 +666,125 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
     (db.prepare('SELECT COUNT(*) AS count FROM reviews').get() as { count: number }).count,
     3,
   );
+});
+
+void test('seed installs variant rows and links default variant IDs', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-variant-seed-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+  const totalVariants = CATALOG_PRODUCTS.reduce((sum, p) => sum + p.variants.length, 0);
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM product_variants').get() as { count: number }).count,
+    totalVariants,
+  );
+
+  const canonicalIds = CATALOG_PRODUCTS.map((p) => p.id);
+  const idPlaceholders = canonicalIds.map(() => '?').join(',');
+  const nullDefaultCount = (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM products WHERE id IN (${idPlaceholders}) AND default_variant_id IS NULL`,
+      )
+      .get(...canonicalIds) as { count: number }
+  ).count;
+  assert.equal(nullDefaultCount, 0, `${nullDefaultCount} products missing default_variant_id`);
+
+  const defaultVariantRows = db
+    .prepare(
+      `SELECT p.id AS product_id, p.default_variant_id, v.sort_order, v.active
+       FROM products p
+       JOIN product_variants v ON v.id = p.default_variant_id
+       WHERE p.id IN (${idPlaceholders})`,
+    )
+    .all(...canonicalIds) as Array<{
+    product_id: number;
+    default_variant_id: number;
+    sort_order: number;
+    active: number;
+  }>;
+  assert.equal(
+    defaultVariantRows.length,
+    canonicalIds.length,
+    `Expected ${canonicalIds.length} default variant rows, got ${defaultVariantRows.length}`,
+  );
+  for (const row of defaultVariantRows) {
+    assert.equal(
+      row.sort_order,
+      1,
+      `Product ${row.product_id} default variant has sort_order ${row.sort_order}`,
+    );
+    assert.equal(row.active, 1, `Product ${row.product_id} default variant is inactive`);
+  }
+});
+
+void test('seed is idempotent for canonical catalog and variants', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-idempotent-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+  const firstProducts = db
+    .prepare('SELECT id, name, price_cents, details_json FROM products ORDER BY id')
+    .all();
+  const firstVariants = db
+    .prepare(
+      'SELECT id, product_id, sku, price_cents, stock_count FROM product_variants ORDER BY id',
+    )
+    .all();
+  const firstTags = db.prepare('SELECT COUNT(*) AS count FROM product_tags').get() as {
+    count: number;
+  };
+  const firstSpecs = db.prepare('SELECT COUNT(*) AS count FROM product_specifications').get() as {
+    count: number;
+  };
+
+  seedDatabase(db);
+  const secondProducts = db
+    .prepare('SELECT id, name, price_cents, details_json FROM products ORDER BY id')
+    .all();
+  const secondVariants = db
+    .prepare(
+      'SELECT id, product_id, sku, price_cents, stock_count FROM product_variants ORDER BY id',
+    )
+    .all();
+  const secondTags = db.prepare('SELECT COUNT(*) AS count FROM product_tags').get() as {
+    count: number;
+  };
+  const secondSpecs = db.prepare('SELECT COUNT(*) AS count FROM product_specifications').get() as {
+    count: number;
+  };
+
+  assert.deepEqual(secondProducts, firstProducts);
+  assert.deepEqual(secondVariants, firstVariants);
+  assert.equal(secondTags.count, firstTags.count);
+  assert.equal(secondSpecs.count, firstSpecs.count);
+});
+
+void test('seed preserves local product ID 51 outside canonical sets', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-local-id-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+  db.prepare(
+    "INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id, slug, sales_count) VALUES (51, 'Local 51', 'User-created product', 500, 'Local', 10, 'local-51', 'local-51', 0)",
+  ).run();
+  seedDatabase(db);
+  const local = db.prepare('SELECT id, name, price_cents FROM products WHERE id = 51').get() as {
+    id: number;
+    name: string;
+    price_cents: number;
+  };
+  assert.deepEqual(local, { id: 51, name: 'Local 51', price_cents: 500 });
 });

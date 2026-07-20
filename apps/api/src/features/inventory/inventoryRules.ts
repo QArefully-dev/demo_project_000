@@ -11,15 +11,15 @@ function positiveInteger(value: number, label: string): void {
   }
 }
 
-/** Aggregates duplicate input into stable product/kind order. */
+/** Aggregates duplicate input into stable variant/kind order. */
 export function aggregateInventoryDemand(
   demands: readonly InventoryDemand[],
 ): readonly InventoryDemand[] {
   const totals = new Map<string, InventoryDemand>();
   for (const demand of demands) {
-    positiveInteger(demand.productId, 'Product ID');
+    positiveInteger(demand.variantId, 'Variant ID');
     positiveInteger(demand.quantity, 'Inventory quantity');
-    const key = `${demand.productId}:${demand.demandKind}`;
+    const key = `${demand.variantId}:${demand.demandKind}`;
     const existing = totals.get(key);
     totals.set(
       key,
@@ -28,7 +28,7 @@ export function aggregateInventoryDemand(
   }
   return [...totals.values()].sort(
     (left, right) =>
-      left.productId - right.productId || left.demandKind.localeCompare(right.demandKind),
+      left.variantId - right.variantId || left.demandKind.localeCompare(right.demandKind),
   );
 }
 
@@ -38,44 +38,44 @@ export function isPreparedReservationExpired(expiresAt: string, now: string): bo
 }
 
 /**
- * Applies hard Powderizer and non-backorderable demand first. Product demand may only
- * backorder after every hard demand for its product has been protected.
+ * Applies hard Powderizer and non-backorderable demand first. Variant demand may only
+ * backorder after every hard demand for its variant has been protected.
  */
 export function splitInventoryReservation(
   demands: readonly InventoryDemand[],
   products: readonly InventoryProduct[],
 ): readonly InventoryReservationAllocation[] {
   const normalized = aggregateInventoryDemand(demands);
-  const productById = new Map(products.map((product) => [product.productId, product]));
-  const byProduct = new Map<number, InventoryDemand[]>();
+  const productByVariantId = new Map(products.map((product) => [product.variantId, product]));
+  const byVariant = new Map<number, InventoryDemand[]>();
   for (const demand of normalized) {
-    const list = byProduct.get(demand.productId) ?? [];
+    const list = byVariant.get(demand.variantId) ?? [];
     list.push(demand);
-    byProduct.set(demand.productId, list);
+    byVariant.set(demand.variantId, list);
   }
 
   const output: InventoryReservationAllocation[] = [];
-  for (const productId of [...byProduct.keys()].sort((left, right) => left - right)) {
-    const product = productById.get(productId);
+  for (const variantId of [...byVariant.keys()].sort((left, right) => left - right)) {
+    const product = productByVariantId.get(variantId);
     if (!product) {
-      throw new InventoryError('INSUFFICIENT_STOCK', `Product ${productId} is unavailable.`, [
-        productId,
+      throw new InventoryError('INSUFFICIENT_STOCK', `Variant ${variantId} is unavailable.`, [
+        variantId,
       ]);
     }
     if (!Number.isSafeInteger(product.availableToSell) || product.availableToSell < 0) {
       throw new InventoryError(
         'INVENTORY_CORRUPTION',
-        `Product ${productId} has invalid availability.`,
+        `Variant ${variantId} has invalid availability.`,
       );
     }
-    const rows = byProduct.get(productId)!;
+    const rows = byVariant.get(variantId)!;
     const hard = rows.filter((row) => row.demandKind === 'powder_mix' || !product.backorderable);
     const hardQuantity = hard.reduce((total, row) => total + row.quantity, 0);
     if (hardQuantity > product.availableToSell) {
       throw new InventoryError(
         'INSUFFICIENT_STOCK',
-        `Product ${productId} has insufficient stock.`,
-        [productId],
+        `Variant ${variantId} has insufficient stock.`,
+        [variantId],
       );
     }
     let available = product.availableToSell - hardQuantity;
@@ -95,12 +95,12 @@ export function splitInventoryReservation(
   }
   return output.sort(
     (left, right) =>
-      left.productId - right.productId || left.demandKind.localeCompare(right.demandKind),
+      left.variantId - right.variantId || left.demandKind.localeCompare(right.demandKind),
   );
 }
 
-export function receiptFingerprint(productId: number, quantity: number): string {
-  positiveInteger(productId, 'Product ID');
+export function receiptFingerprint(variantId: number, quantity: number): string {
+  positiveInteger(variantId, 'Variant ID');
   positiveInteger(quantity, 'Receipt quantity');
-  return JSON.stringify({ productId, quantity });
+  return JSON.stringify({ variantId, quantity });
 }

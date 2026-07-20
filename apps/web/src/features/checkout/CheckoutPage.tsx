@@ -85,7 +85,7 @@ export function CheckoutPage() {
                 {formatMoney(mix.oldUnitPriceCents)} → {formatMoney(mix.newUnitPriceCents)}{' '}
                 <Link
                   className="text-primary underline-offset-4 hover:underline"
-                  to={`/powderizer?edit=${mix.mixId}`}
+                  to={`/custom-powder?edit=${mix.mixId}`}
                 >
                   Edit mix
                 </Link>
@@ -108,7 +108,7 @@ export function CheckoutPage() {
               <Link
                 key={mixId}
                 className="underline-offset-4 hover:underline"
-                to={`/powderizer?edit=${mixId}`}
+                to={`/custom-powder?edit=${mixId}`}
               >
                 Edit mix
               </Link>

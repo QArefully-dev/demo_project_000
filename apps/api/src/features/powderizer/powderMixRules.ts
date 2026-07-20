@@ -8,7 +8,10 @@ import {
   DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
   POWDER_MIX_BAG_COLOUR_SCHEME_VALUES,
 } from '@shop/contracts/powderizer';
+import { MIXING_GROUPS } from '@shop/catalog';
+import type { CategoryFacts } from '@shop/catalog';
 import {
+  type CombinedPowderMixFacts,
   type NormalizedPowderMixConfig,
   type PowderMixAllocation,
   PowderMixDomainError,
@@ -33,8 +36,16 @@ export const POWDER_MIX_FINENESS_SURCHARGE_CENTS = 0;
 
 type UnknownRecord = Record<string, unknown>;
 
-function domainError(code: PowderMixDomainError['code'], message: string, field?: string): never {
-  throw new PowderMixDomainError(code, message, field);
+function domainError(
+  code: PowderMixDomainError['code'],
+  message: string,
+  field?: string,
+  extra?: {
+    conflictingProductIds?: number[];
+    groupInfo?: readonly { productId: number; mixingGroup: string | null }[];
+  },
+): never {
+  throw new PowderMixDomainError(code, message, field, extra);
 }
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -107,6 +118,93 @@ export function normalizePowderMixBagColourScheme(value: unknown): PowderMixBagC
   return value as PowderMixBagColourScheme;
 }
 
+export const ALLOWED_MIXING_GROUPS = new Set(MIXING_GROUPS);
+
+export function validateMixingGroupCompat(products: readonly PowderMixProduct[]): void {
+  const groupPayload = {
+    conflictingProductIds: products.map((p) => p.id),
+    groupInfo: products.map((p) => ({ productId: p.id, mixingGroup: p.mixingGroup })),
+  };
+  const groups = new Set(products.map((product) => product.mixingGroup));
+  if (groups.has(null)) {
+    domainError(
+      'MIXING_GROUP_MISMATCH',
+      'All mix components must belong to a mixing group.',
+      'components',
+      groupPayload,
+    );
+  }
+  if (groups.size > 1) {
+    domainError(
+      'MIXING_GROUP_MISMATCH',
+      'All mix components must belong to the same mixing group.',
+      'components',
+      groupPayload,
+    );
+  }
+  for (const group of groups) {
+    if (!ALLOWED_MIXING_GROUPS.has(group as (typeof MIXING_GROUPS)[number])) {
+      domainError(
+        'MIXING_GROUP_MISMATCH',
+        `Mixing group '${group}' is not recognised.`,
+        'components',
+        groupPayload,
+      );
+    }
+  }
+}
+
+function parseDetailsJson(json: string | null): CategoryFacts | null {
+  if (!json) return null;
+  try {
+    const parsed = JSON.parse(json) as Record<string, unknown>;
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    return parsed as CategoryFacts;
+  } catch {
+    return null;
+  }
+}
+
+export function deriveCombinedPowderMixFacts(
+  products: readonly PowderMixProduct[],
+): CombinedPowderMixFacts {
+  const ingredients = new Set<string>();
+  const allergens = new Set<string>();
+  const intendedUse = new Set<string>();
+  const safety = new Set<string>();
+
+  for (const product of products) {
+    const facts = parseDetailsJson(product.detailsJson);
+    if (!facts) continue;
+
+    if ('ingredients' in facts && Array.isArray(facts.ingredients)) {
+      for (const ingredient of facts.ingredients) ingredients.add(String(ingredient));
+    }
+    if ('allergens' in facts && Array.isArray(facts.allergens)) {
+      for (const allergen of facts.allergens) allergens.add(String(allergen));
+    }
+    if (facts.intendedUse) {
+      intendedUse.add(facts.intendedUse);
+    }
+    if ('handling' in facts && facts.handling) {
+      safety.add(facts.handling);
+    }
+    if ('hazardStatement' in facts && facts.hazardStatement) {
+      safety.add(facts.hazardStatement);
+    }
+    if ('ppe' in facts && Array.isArray(facts.ppe)) {
+      for (const item of facts.ppe) safety.add(String(item));
+    }
+  }
+
+  return {
+    ingredients: [...ingredients].sort(),
+    allergens: [...allergens].sort(),
+    intendedUse: [...intendedUse],
+    safety: [...safety],
+  };
+}
+
 /** Derives Powderizer safety copy only from canonical product warnings. */
 export function derivePowderMixUsageLabel(
   components: readonly Pick<PowderMixProduct, 'consumptionWarning'>[],
@@ -151,6 +249,10 @@ export function normalizePowderMixConfig(
   if (ids.size !== components.length) {
     domainError('MIX_DUPLICATE_COMPONENT', 'Mix components must be unique.', 'components');
   }
+  const resolvedProducts = components.map((component) =>
+    findProduct(products, component.productId),
+  );
+  validateMixingGroupCompat(resolvedProducts);
   const percentageTotal = components.reduce((total, component) => total + component.percentage, 0);
   if (percentageTotal !== 100) {
     domainError('MIX_PERCENTAGE_TOTAL', 'Mix percentages must total 100.', 'components');
@@ -242,11 +344,15 @@ export function calculatePowderMixPrice(
   }
   const ingredientChargeCents = allocations.reduce((total, allocation) => {
     const product = findProduct(products, allocation.productId);
-    if (!Number.isSafeInteger(product.priceCents) || product.priceCents < 0) {
+    const effectivePriceCents =
+      product.blendSourceVariantId != null && product.sourceVariantPriceCents != null
+        ? product.sourceVariantPriceCents
+        : product.priceCents;
+    if (!Number.isSafeInteger(effectivePriceCents) || effectivePriceCents < 0) {
       throw new Error(`Product ${product.id} has invalid persisted price.`);
     }
     const mixUnitGrams = product.mixUnitGrams as number;
-    return total + Math.ceil((product.priceCents * allocation.allocatedGrams) / mixUnitGrams);
+    return total + Math.ceil((effectivePriceCents * allocation.allocatedGrams) / mixUnitGrams);
   }, 0);
   const unitPriceCents =
     ingredientChargeCents + packagingFeeCents + POWDER_MIX_FINENESS_SURCHARGE_CENTS;
@@ -267,13 +373,15 @@ export function quotePowderMix(
 ): PowderMixQuote {
   const config = normalizePowderMixConfig(input, products);
   const allocations = allocatePowderMixGrams(config);
+  const resolvedProducts = config.components.map((component) =>
+    findProduct(products, component.productId),
+  );
   return {
     config,
     allocations,
     ...calculatePowderMixPrice(allocations, products, config.bagSizeGrams),
-    usageLabel: derivePowderMixUsageLabel(
-      config.components.map((component) => findProduct(products, component.productId)),
-    ),
+    usageLabel: derivePowderMixUsageLabel(resolvedProducts),
+    combinedFacts: deriveCombinedPowderMixFacts(resolvedProducts),
   };
 }
 
@@ -292,8 +400,11 @@ export function calculatePowderMixStockRequirements(
         throw new Error('Mix allocation must be a positive integer.');
       }
       const product = findProduct(products, allocation.productId);
-      const mixUnitGrams = product.mixUnitGrams as number;
-      const bags = Math.ceil((allocation.allocatedGrams * mix.quantity) / mixUnitGrams);
+      const effectiveMixUnitGrams =
+        product.blendSourceVariantId != null && product.sourceVariantMixUnitGrams != null
+          ? product.sourceVariantMixUnitGrams
+          : (product.mixUnitGrams as number);
+      const bags = Math.ceil((allocation.allocatedGrams * mix.quantity) / effectiveMixUnitGrams);
       totals.set(product.id, (totals.get(product.id) ?? 0) + bags);
     }
   }

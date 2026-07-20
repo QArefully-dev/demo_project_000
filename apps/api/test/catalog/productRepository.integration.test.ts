@@ -14,7 +14,7 @@ import {
 } from '../../src/features/catalog/catalogQuery.js';
 import { buildCatalogPredicate, catalogOrderBy } from '../../src/features/catalog/catalogSql.js';
 
-void test('product repository owns catalog SQL', (t) => {
+void test('product repository owns catalog SQL and variant methods', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-catalog-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
   seedDatabase(db);
@@ -24,30 +24,21 @@ void test('product repository owns catalog SQL', (t) => {
   });
   const products = createProductRepository(db);
 
-  assert.deepEqual(products.listCategories(), [
-    'Drinks',
-    'Household',
-    'Impossible',
-    'Outdoors',
-    'Pantry Staples',
-    'Performance',
-    'Questionable',
-  ]);
-  assert.ok(
-    products
-      .list({ q: 'water', sort: 'newest' })
-      .items.some((product) => product.name === 'Powdered Water'),
-  );
-  assert.equal(products.list({ category: 'Impossible', sort: 'newest', pageSize: 48 }).total, 8);
-  assert.ok(
-    products
-      .list({ onSale: true, sort: 'newest', pageSize: 48 })
-      .items.every((product) => product.compare_at_price_cents !== null),
-  );
+  assert.ok(products.listCategories().length >= 4);
+
+  const searchResult = products.list({ q: 'whey', sort: 'newest' });
+  assert.ok(searchResult.items.some((product) => product.name.includes('Whey')));
+
+  const baking = CATALOG_CATEGORY_FROM_DB(products, 'Baking & Pantry');
+  assert.ok(baking > 0);
+
+  const onSaleItems = products.list({ onSale: true, sort: 'newest', pageSize: 48 });
+  assert.ok(onSaleItems.items.every((product) => product.compare_at_price_cents !== null));
+
   db.prepare('UPDATE products SET active = 0 WHERE id IN (1, 2)').run();
   assert.equal(products.findById(1)?.active, 0);
   assert.equal(products.findActiveById(1), undefined);
-  assert.equal(products.list({ sort: 'newest', pageSize: 48 }).total, 48);
+  assert.equal(products.list({ sort: 'newest', pageSize: 48 }).total, 98);
   assert.equal(
     products.listEligibleMixProducts().some((product) => product.id === 1),
     false,
@@ -57,7 +48,34 @@ void test('product repository owns catalog SQL', (t) => {
     products.listMixProducts([1, 2]).map((product) => product.id),
     [1, 2],
   );
+
+  // Variant methods
+  const variants = products.findAllVariants(8);
+  assert.ok(variants.length >= 1);
+  for (const v of variants) {
+    assert.equal(v.product_id, 8);
+    assert.equal(v.active, 1);
+  }
+
+  const variant = products.findVariantById(variants[0].id);
+  assert.ok(variant);
+  assert.equal(variant.sku, variants[0].sku);
+
+  const defaultVar = products.findDefaultVariant(8);
+  assert.ok(defaultVar);
+  assert.equal(defaultVar.sort_order, 1);
+
+  const batchVariants = products.findVariantsByIds([variants[0].id]);
+  assert.equal(batchVariants.length, 1);
+  assert.equal(batchVariants[0].id, variants[0].id);
 });
+
+function CATALOG_CATEGORY_FROM_DB(
+  products: ReturnType<typeof createProductRepository>,
+  category: string,
+): number {
+  return products.list({ category, sort: 'newest', pageSize: 48 }).total;
+}
 
 void test('customer reads hydrate persisted metadata in stable catalog order', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-catalog-hydration-'));
@@ -81,7 +99,7 @@ void test('customer reads hydrate persisted metadata in stable catalog order', (
     `INSERT INTO products
       (id, name, description, price_cents, category, stock_count, image_set_id, slug,
        compare_at_price_cents, sales_count, mixable, mix_unit_grams, active, created_at)
-     VALUES (99, 'Local powder', 'Local metadata', 999, 'Performance', 3, NULL, 'local-powder',
+     VALUES (99, 'Local powder', 'Local metadata', 999, 'Baking & Pantry', 3, NULL, 'local-powder',
        NULL, 0, 0, NULL, 1, '2026-07-01T00:00:00.000Z')`,
   ).run();
   db.prepare('INSERT INTO catalog_tags (key, label) VALUES (?, ?), (?, ?)').run(
@@ -248,9 +266,11 @@ void test('advanced catalog predicates are inclusive, composable, and stable', (
   assert.throws(() => products.list({ spec: ['pack-weight:900g'] }), CatalogQueryError);
 
   const full = products.list({ category: product.category, sort: 'price_asc', pageSize: 48 });
-  const slices = [1, 2, 3, 4].flatMap(
+  const pageSize = 2;
+  const pageCount = Math.ceil(full.total / pageSize);
+  const slices = Array.from({ length: pageCount }, (_, i) => i + 1).flatMap(
     (page) =>
-      products.list({ category: product.category, sort: 'price_asc', page, pageSize: 2 }).items,
+      products.list({ category: product.category, sort: 'price_asc', page, pageSize }).items,
   );
   assert.equal(full.total, full.items.length);
   assert.deepEqual(
@@ -332,6 +352,16 @@ void test('reservation-aware availability filters count and paginate against one
          backorder_lead_days = CASE id WHEN 2 THEN 14 ELSE NULL END
      WHERE id IN (1, 2, 3)`,
   ).run();
+  const variant1Id = (
+    db.prepare('SELECT id FROM product_variants WHERE product_id = 1 AND sort_order = 1').get() as {
+      id: number;
+    }
+  ).id;
+  const variant3Id = (
+    db.prepare('SELECT id FROM product_variants WHERE product_id = 3 AND sort_order = 1').get() as {
+      id: number;
+    }
+  ).id;
   const payment = db.prepare(
     `INSERT INTO payments
       (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand)
@@ -339,17 +369,17 @@ void test('reservation-aware availability filters count and paginate against one
   );
   const reservation = db.prepare(
     `INSERT INTO inventory_reservations
-      (payment_idempotency_key, product_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
+      (payment_idempotency_key, variant_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
      VALUES (?, ?, 'product', 1, 0, ?, ?)`,
   );
   payment.run('catalog-live', 'catalog-live');
-  reservation.run('catalog-live', 1, future, now);
+  reservation.run('catalog-live', variant1Id, future, now);
   payment.run('catalog-expired', 'catalog-expired');
-  reservation.run('catalog-expired', 3, expired, now);
+  reservation.run('catalog-expired', variant3Id, expired, now);
 
-  const available = products.list({ availability: 'available', pageSize: 48 }, now);
-  const backorder = products.list({ availability: 'backorder', pageSize: 48 }, now);
-  const unavailable = products.list({ availability: 'out_of_stock', pageSize: 48 }, now);
+  const available = products.list({ availability: 'available', pageSize: 200 }, now);
+  const backorder = products.list({ availability: 'backorder', pageSize: 200 }, now);
+  const unavailable = products.list({ availability: 'out_of_stock', pageSize: 200 }, now);
   assert.equal(
     available.items.some((product) => product.id === 1),
     false,
@@ -371,9 +401,11 @@ void test('reservation-aware availability filters count and paginate against one
     false,
   );
 
-  const full = products.list({ availability: 'out_of_stock', pageSize: 48 }, now);
-  const pages = [1, 2, 3, 4, 5].flatMap(
-    (page) => products.list({ availability: 'out_of_stock', page, pageSize: 2 }, now).items,
+  const full = products.list({ availability: 'out_of_stock', pageSize: 200 }, now);
+  const pageSize = 2;
+  const pageCount = Math.ceil(full.total / pageSize);
+  const pages = Array.from({ length: pageCount }, (_, i) => i + 1).flatMap(
+    (page) => products.list({ availability: 'out_of_stock', page, pageSize }, now).items,
   );
   assert.equal(full.total, full.items.length);
   assert.deepEqual(

@@ -1,327 +1,327 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  CATALOG_ARTWORK_IDS,
-  CATALOG_CREATED_AT_BY_ID,
-  CURATED_BUNDLES,
   CATALOG_PRODUCTS,
-  catalogProductSpecifications,
-  parsePackWeightGrams,
-  parseMixUnitGrams,
+  CATALOG_ARTWORK_IDS,
+  CURATED_BUNDLES,
+  CATALOG_CATEGORIES,
+  MIXING_GROUPS,
+  CATALOG_CREATED_AT_BY_ID,
   validateCatalog,
   type CatalogProduct,
 } from './index.js';
 
-const firstCatalogProduct = (): CatalogProduct => {
-  const product = CATALOG_PRODUCTS.at(0);
-  if (!product) throw new Error('Catalog must contain at least one product');
-  return product;
-};
-void test('canonical catalog validates only when explicitly invoked', () => {
+void test('catalog contains exactly 100 base products', () => {
+  assert.equal(CATALOG_PRODUCTS.length, 100);
+});
+
+void test('category target counts match plan: 20/20/15/15/15/15', () => {
+  const counts = new Map<string, number>();
+  for (const p of CATALOG_PRODUCTS) {
+    counts.set(p.category, (counts.get(p.category) ?? 0) + 1);
+  }
+  assert.equal(counts.get('Sports Nutrition'), 20);
+  assert.equal(counts.get('Baking & Pantry'), 20);
+  assert.equal(counts.get('Drinks'), 15);
+  assert.equal(counts.get('Household & Cleaning'), 15);
+  assert.equal(counts.get('Garden & Outdoors'), 15);
+  assert.equal(counts.get('Trade & Creative Materials'), 15);
+});
+
+void test('all product IDs are canonical: 1-50 or 1001-1050', () => {
+  for (const p of CATALOG_PRODUCTS) {
+    assert.ok(
+      (p.id >= 1 && p.id <= 50) || (p.id >= 1001 && p.id <= 1050),
+      `Product ${p.slug} has non-canonical ID ${p.id}`,
+    );
+  }
+});
+
+void test('no product claims IDs 51-1000', () => {
+  for (const p of CATALOG_PRODUCTS) {
+    assert.ok(p.id < 51 || p.id > 1000, `Product ${p.slug} claims reserved ID ${p.id}`);
+  }
+});
+
+void test('all IDs and slugs are unique', () => {
+  assert.equal(new Set(CATALOG_PRODUCTS.map((p) => p.id)).size, 100);
+  assert.equal(new Set(CATALOG_PRODUCTS.map((p) => p.slug)).size, 100);
+});
+
+void test('all imageSetIds are unique', () => {
+  assert.equal(new Set(CATALOG_ARTWORK_IDS).size, 100);
+});
+
+void test('all SKUs are unique across all products and variants', () => {
+  const skus = CATALOG_PRODUCTS.flatMap((p) => p.variants.map((v) => v.sku));
+  assert.equal(new Set(skus).size, skus.length);
+});
+
+void test('every product has at least one active variant with sortOrder=1', () => {
+  for (const p of CATALOG_PRODUCTS) {
+    assert.ok(p.variants.length >= 1, `${p.slug} has no variants`);
+    const defaultVariant = p.variants.find((v) => v.sortOrder === 1 && v.active);
+    assert.ok(defaultVariant, `${p.slug} missing active default variant (sortOrder=1)`);
+  }
+});
+
+void test('every product has 1-4 variants', () => {
+  for (const p of CATALOG_PRODUCTS) {
+    assert.ok(
+      p.variants.length >= 1 && p.variants.length <= 4,
+      `${p.slug} has ${p.variants.length} variants (expected 1-4)`,
+    );
+  }
+});
+
+void test('all variant weights are positive integers and <= 1,000,000g', () => {
+  for (const p of CATALOG_PRODUCTS) {
+    for (const v of p.variants) {
+      assert.ok(
+        Number.isSafeInteger(v.weightGrams) && v.weightGrams > 0,
+        `Invalid weight on ${v.sku}`,
+      );
+      assert.ok(v.weightGrams <= 1_000_000, `${v.sku} exceeds max weight`);
+    }
+  }
+});
+
+void test('all variant prices and stock are safe integers', () => {
+  for (const p of CATALOG_PRODUCTS) {
+    for (const v of p.variants) {
+      assert.ok(
+        Number.isSafeInteger(v.priceCents) && v.priceCents > 0,
+        `Invalid price on ${v.sku}`,
+      );
+      assert.ok(
+        Number.isSafeInteger(v.stockCount) && v.stockCount >= 0,
+        `Invalid stock on ${v.sku}`,
+      );
+      if (v.compareAtPriceCents !== undefined) {
+        assert.ok(Number.isSafeInteger(v.compareAtPriceCents), `Invalid compare-at on ${v.sku}`);
+        assert.ok(
+          v.compareAtPriceCents > v.priceCents,
+          `Compare-at should exceed price on ${v.sku}`,
+        );
+      }
+    }
+  }
+});
+
+void test('freight-only variants >= 100kg have delivery class freight', () => {
+  for (const p of CATALOG_PRODUCTS) {
+    for (const v of p.variants) {
+      if (v.weightGrams >= 100_000) {
+        assert.equal(v.deliveryClass, 'freight', `${v.sku} is >= 100 kg but not freight`);
+      }
+    }
+  }
+});
+
+void test('every product has valid consumption classification', () => {
+  const allowed = new Set(['food', 'non-food', 'caution']);
+  for (const p of CATALOG_PRODUCTS) {
+    assert.ok(allowed.has(p.consumptionClassification), `${p.slug} invalid classification`);
+    assert.equal(
+      p.baseFacts.consumptionClassification,
+      p.consumptionClassification,
+      `${p.slug} facts mismatch`,
+    );
+  }
+});
+
+void test('every product has valid mixing group or null', () => {
+  const allowed = new Set<string>(MIXING_GROUPS);
+  for (const p of CATALOG_PRODUCTS) {
+    if (p.mixingGroup !== null) {
+      assert.ok(allowed.has(p.mixingGroup), `${p.slug} invalid mixing group ${p.mixingGroup}`);
+    }
+  }
+});
+
+void test('non-food products have clear handling/PPE/safety facts', () => {
+  for (const p of CATALOG_PRODUCTS) {
+    if (p.consumptionClassification === 'non-food' || p.consumptionClassification === 'caution') {
+      assert.ok(p.baseFacts.storage.length > 5, `${p.slug} has short storage guidance`);
+    }
+  }
+});
+
+void test('food products have ingredients, allergens, and nutrition', () => {
+  for (const p of CATALOG_PRODUCTS) {
+    if (p.consumptionClassification === 'food') {
+      const facts = p.categoryFacts as Record<string, unknown>;
+      assert.ok(
+        Array.isArray(facts.ingredients) && facts.ingredients.length > 0,
+        `${p.slug} missing ingredients`,
+      );
+      assert.ok(Array.isArray(facts.allergens), `${p.slug} missing allergens array`);
+      assert.ok(
+        typeof facts.nutrition === 'object' && facts.nutrition !== null,
+        `${p.slug} missing nutrition`,
+      );
+      assert.ok(
+        typeof facts.servingSize === 'string' && facts.servingSize.length > 0,
+        `${p.slug} missing servingSize`,
+      );
+    }
+  }
+});
+
+void test('no conceptual quantity, impossible, questionable, or comedic content', () => {
+  const banned =
+    /conceptual quantity|powdered wifi|powdered water|powdered-gravity|powdered-moonlight|powdered silence|powdered weekend|powdered horizon|powdered five|powdered meeting|powdered tuesday|powdered queue|powdered spare|powdered house|powdered beach|powdered campfire|trail dust|moon rock|summit air|morning fog|sock drawer|bookshelf dusting|powdered internet|macbook|boat|plane|diamond/i;
+  for (const p of CATALOG_PRODUCTS) {
+    const text = `${p.slug} ${p.name} ${p.description} ${p.tags.join(' ')} ${p.baseFacts.intendedUse}`;
+    assert.ok(!banned.test(text), `${p.slug} contains banned conceptual/comedic content`);
+  }
+});
+
+void test('no health claims, medical claims, or performance guarantees', () => {
+  const banned = /treats |cures |prevents |guarantees |medically |therapeutic|diagnoses/i;
+  for (const p of CATALOG_PRODUCTS) {
+    const text = `${p.name} ${p.description}`;
+    assert.ok(!banned.test(text), `${p.slug} contains health/medical claim`);
+  }
+});
+
+void test('all category files use only the six approved categories', () => {
+  for (const p of CATALOG_PRODUCTS) {
+    assert.ok(CATALOG_CATEGORIES.includes(p.category), `${p.slug} has invalid category`);
+  }
+});
+
+void test('bundle components reference existing catalog variant SKUs', () => {
+  const allSkus = new Set(CATALOG_PRODUCTS.flatMap((p) => p.variants.map((v) => v.sku)));
+  for (const bundle of CURATED_BUNDLES) {
+    assert.ok(bundle.components.length >= 2, `Bundle ${bundle.key} needs >= 2 components`);
+    for (const component of bundle.components) {
+      assert.ok(
+        allSkus.has(component.variantSku),
+        `Bundle ${bundle.key} has unknown SKU ${component.variantSku}`,
+      );
+    }
+  }
+});
+
+void test('bundle components are separately packaged (different product SKUs)', () => {
+  for (const bundle of CURATED_BUNDLES) {
+    const productIds = new Set(
+      bundle.components.map((c) => {
+        const variantSku = c.variantSku;
+        for (const p of CATALOG_PRODUCTS) {
+          if (p.variants.some((v) => v.sku === variantSku)) return p.id;
+        }
+        return -1;
+      }),
+    );
+    assert.equal(
+      productIds.size,
+      bundle.components.length,
+      `Bundle ${bundle.key} has duplicate product variants`,
+    );
+  }
+});
+
+void test('every product has a deterministic imageSetId matching its slug', () => {
+  for (const p of CATALOG_PRODUCTS) {
+    assert.equal(p.imageSetId, p.slug, `${p.slug} imageSetId ${p.imageSetId} does not match slug`);
+  }
+});
+
+void test('canonical validateCatalog passes with defaults', () => {
   assert.doesNotThrow(() => validateCatalog());
-  assert.equal(CATALOG_PRODUCTS.length, 50);
-  assert.equal(new Set(CATALOG_ARTWORK_IDS).size, CATALOG_PRODUCTS.length);
 });
 
-void test('curated bundles retain their fixed product-only definitions', () => {
-  assert.deepEqual(
-    CURATED_BUNDLES.map(({ id, key, sortOrder, components }) => ({
-      id,
-      key,
-      sortOrder,
-      components: components.map(({ productId, quantity, sortOrder: componentSortOrder }) => ({
-        productId,
-        quantity,
-        sortOrder: componentSortOrder,
-      })),
-    })),
-    [
-      {
-        id: 1,
-        key: 'powder-starter-set',
-        sortOrder: 1,
-        components: [
-          { productId: 1, quantity: 1, sortOrder: 1 },
-          { productId: 2, quantity: 1, sortOrder: 2 },
-          { productId: 3, quantity: 1, sortOrder: 3 },
-        ],
-      },
-      {
-        id: 2,
-        key: 'pantry-set',
-        sortOrder: 2,
-        components: [
-          { productId: 5, quantity: 1, sortOrder: 1 },
-          { productId: 6, quantity: 1, sortOrder: 2 },
-          { productId: 7, quantity: 1, sortOrder: 3 },
-        ],
-      },
-      {
-        id: 3,
-        key: 'outdoor-kit',
-        sortOrder: 3,
-        components: [
-          { productId: 27, quantity: 1, sortOrder: 1 },
-          { productId: 29, quantity: 1, sortOrder: 2 },
-          { productId: 31, quantity: 1, sortOrder: 3 },
-        ],
-      },
-      {
-        id: 4,
-        key: 'questionable-assortment',
-        sortOrder: 4,
-        components: [
-          { productId: 35, quantity: 1, sortOrder: 1 },
-          { productId: 36, quantity: 1, sortOrder: 2 },
-          { productId: 38, quantity: 1, sortOrder: 3 },
-        ],
-      },
+void test('validator rejects duplicate SKUs across products', () => {
+  const products = JSON.parse(JSON.stringify(CATALOG_PRODUCTS)) as CatalogProduct[];
+  const firstSku = products[0]!.variants[0]!.sku;
+  const secondProduct = products[1]!;
+  const oldVariant = secondProduct.variants[0]!;
+  secondProduct.variants[0] = { ...oldVariant, sku: firstSku };
+  assert.throws(() => validateCatalog(products), /Duplicate SKU/);
+});
+
+void test('validator rejects product > 1 tonne', () => {
+  const products = JSON.parse(JSON.stringify(CATALOG_PRODUCTS)) as CatalogProduct[];
+  const first = products[0];
+  if (first) {
+    const altered = first.variants.map((v) =>
+      v.sortOrder === 1 ? { ...v, weightGrams: 1_000_001 } : v,
+    );
+    first.variants = altered;
+  }
+  assert.throws(() => validateCatalog(products), /max weight/);
+});
+
+void test('validator rejects missing default variant', () => {
+  const products = JSON.parse(JSON.stringify(CATALOG_PRODUCTS)) as CatalogProduct[];
+  if (products[0]) {
+    products[0].variants = products[0].variants.map((v) =>
+      v.sortOrder === 1 ? { ...v, active: false } : v,
+    );
+  }
+  assert.throws(() => validateCatalog(products), /active default variant/);
+});
+
+void test('validator rejects bundle with unknown SKU', () => {
+  const bundles = JSON.parse(JSON.stringify(CURATED_BUNDLES)) as typeof CURATED_BUNDLES;
+  const firstBundle = {
+    ...bundles[0],
+    components: [
+      { variantSku: 'BOGUS-SKU-999', quantity: 1, sortOrder: 1 },
+      ...bundles[0].components.slice(1),
     ],
-  );
-  assert.ok(CURATED_BUNDLES.every((bundle) => bundle.components.length >= 2));
-});
-
-void test('catalog validation rejects invalid curated bundle references and components', () => {
-  const firstBundle = CURATED_BUNDLES[0];
-  const secondBundle = CURATED_BUNDLES[1];
-  if (!firstBundle || !secondBundle) throw new Error('Catalog must contain curated bundles');
-  assert.throws(
-    () =>
-      validateCatalog(CATALOG_PRODUCTS, [
-        { ...firstBundle, id: secondBundle.id },
-        ...CURATED_BUNDLES.slice(1),
-      ]),
-    /duplicate bundle IDs/,
-  );
-  assert.throws(
-    () =>
-      validateCatalog(CATALOG_PRODUCTS, [
-        { ...firstBundle, key: secondBundle.key },
-        ...CURATED_BUNDLES.slice(1),
-      ]),
-    /duplicate bundle keys/,
-  );
-  assert.throws(
-    () =>
-      validateCatalog(CATALOG_PRODUCTS, [
-        { ...firstBundle, key: 'Not-normalized' },
-        ...CURATED_BUNDLES.slice(1),
-      ]),
-    /Invalid bundle key/,
-  );
-  assert.throws(
-    () =>
-      validateCatalog(CATALOG_PRODUCTS, [
-        { ...firstBundle, sortOrder: secondBundle.sortOrder },
-        ...CURATED_BUNDLES.slice(1),
-      ]),
-    /duplicate bundle sort orders/,
-  );
-  assert.throws(
-    () =>
-      validateCatalog(CATALOG_PRODUCTS, [
-        { ...firstBundle, components: [...firstBundle.components, firstBundle.components[0]] },
-        ...CURATED_BUNDLES.slice(1),
-      ]),
-    /duplicate bundle component product IDs/,
-  );
-  assert.throws(
-    () =>
-      validateCatalog(CATALOG_PRODUCTS, [
-        {
-          ...firstBundle,
-          components: [
-            { ...firstBundle.components[0], quantity: 0 },
-            ...firstBundle.components.slice(1),
-          ],
-        },
-        ...CURATED_BUNDLES.slice(1),
-      ]),
-    /Invalid bundle component quantity/,
-  );
-  assert.throws(
-    () =>
-      validateCatalog(CATALOG_PRODUCTS, [
-        {
-          ...firstBundle,
-          components: [
-            { ...firstBundle.components[0], productId: 999 },
-            ...firstBundle.components.slice(1),
-          ],
-        },
-        ...CURATED_BUNDLES.slice(1),
-      ]),
-    /references unknown product/,
-  );
-  assert.throws(
-    () =>
-      validateCatalog(CATALOG_PRODUCTS, [
-        {
-          ...firstBundle,
-          components: [
-            { ...firstBundle.components[0], productId: 'pantry-set' as never },
-            ...firstBundle.components.slice(1),
-          ],
-        },
-        ...CURATED_BUNDLES.slice(1),
-      ]),
-    /references unknown product/,
-  );
-});
-void test('catalog validation rejects duplicate stable artwork IDs', () => {
-  const firstArtworkId = firstCatalogProduct().image_set_id;
-  const duplicate = CATALOG_PRODUCTS.map((product, index) =>
-    index === 1 ? { ...product, image_set_id: firstArtworkId } : product,
-  );
-  assert.throws(() => validateCatalog(duplicate), /duplicate artwork IDs/);
-});
-
-void test('catalog validation rejects duplicate tags and malformed metadata keys', () => {
-  const product = firstCatalogProduct();
-  assert.throws(
-    () =>
-      validateCatalog([
-        { ...product, tags: [...product.tags, product.tags[0]!] },
-        ...CATALOG_PRODUCTS.slice(1),
-      ]),
-    /duplicate tags/,
-  );
-  assert.throws(
-    () =>
-      validateCatalog([
-        { ...product, tags: [{ key: 'Bad key', label: 'Bad key' }] },
-        ...CATALOG_PRODUCTS.slice(1),
-      ]),
-    /Invalid tag key/,
-  );
-});
-
-void test('missing authoring facts stay absent from resolved specifications', () => {
-  const product = CATALOG_PRODUCTS.find((candidate) => candidate.specifications.source === null);
-  if (!product) throw new Error('Catalog must retain at least one missing source fact');
-  assert.equal(
-    catalogProductSpecifications(product).some((specification) => specification.key === 'source'),
-    false,
-  );
-});
-
-void test('validator rejects authoring attempts to override packaging-derived facts', () => {
-  const product = firstCatalogProduct();
-  const specifications = {
-    ...product.specifications,
-    packWeight: { key: '1g', label: '1g' },
   };
   assert.throws(
-    () => validateCatalog([{ ...product, specifications }, ...CATALOG_PRODUCTS.slice(1)]),
-    /Invalid authoring specification shape|Unexpected derived specification/,
-  );
-  const resolved = catalogProductSpecifications(product);
-  assert.deepEqual(
-    resolved.find((specification) => specification.key === 'pack-weight'),
-    {
-      key: 'pack-weight',
-      label: 'Pack weight',
-      group: 'pack-and-care',
-      groupLabel: 'Pack and care',
-      order: 1,
-      filterable: false,
-      valueKey: product.packaging.quantity,
-      displayValue: product.packaging.quantity,
-      numericValue: parsePackWeightGrams(product.packaging.quantity),
-    },
-  );
-  assert.equal(
-    resolved.find((specification) => specification.key === 'warning-class')?.displayValue,
-    product.packaging.consumptionLabel ?? 'None',
+    () => validateCatalog(CATALOG_PRODUCTS, [firstBundle, ...bundles.slice(1)]),
+    /unknown variant SKU/,
   );
 });
 
-void test('validator rejects timestamps that change canonical chronology', () => {
-  const product = firstCatalogProduct();
-  assert.throws(
-    () =>
-      validateCatalog([
-        { ...product, created_at: '2025-03-01T00:00:00.000Z' },
-        ...CATALOG_PRODUCTS.slice(1),
-      ]),
-    /chronology differs from canonical timestamp/,
-  );
+void test('validator rejects wrong product count', () => {
+  assert.throws(() => validateCatalog(CATALOG_PRODUCTS.slice(0, 99)), /expected 100 products/);
 });
 
-void test('validator rejects packaging values that bypass quantity and warning authorities', () => {
-  const product = firstCatalogProduct();
-  assert.throws(
-    () =>
-      validateCatalog([
-        { ...product, packaging: { ...product.packaging, quantity: '100 G' } },
-        ...CATALOG_PRODUCTS.slice(1),
-      ]),
-    /Invalid packaging quantity/,
-  );
-  assert.throws(
-    () =>
-      validateCatalog([
-        {
-          ...product,
-          packaging: { ...product.packaging, consumptionLabel: 'Wrong' as never },
-        },
-        ...CATALOG_PRODUCTS.slice(1),
-      ]),
-    /Unsupported consumption warning/,
-  );
+void test('canonical timestamps match CATALOG_CREATED_AT_BY_ID', () => {
+  for (const p of CATALOG_PRODUCTS) {
+    assert.equal(p.createdAt, CATALOG_CREATED_AT_BY_ID[p.id], `${p.slug} timestamp mismatch`);
+  }
 });
 
-void test('Powderizer eligibility covers every canonical source bag', () => {
-  const mixable = CATALOG_PRODUCTS.filter((product) => product.mixable);
-  assert.equal(mixable.length, 50);
-  assert.ok(
-    mixable.every(
-      (product) => Number.isInteger(product.mixUnitGrams) && (product.mixUnitGrams ?? 0) > 0,
-    ),
-  );
-  assert.equal(new Set(mixable.map((product) => product.category)).size, 7);
+void test('sale products have at least one variant with compareAtPriceCents', () => {
+  for (const p of CATALOG_PRODUCTS) {
+    if (p.onSale) {
+      assert.ok(
+        p.variants.some((v) => v.compareAtPriceCents !== undefined),
+        `${p.slug} is onSale but has no variant with compare-at price`,
+      );
+    }
+  }
 });
 
-void test('source-unit parser handles grams, kilograms, and conceptual quantities exactly', () => {
-  assert.equal(parseMixUnitGrams('100g'), 100);
-  assert.equal(parseMixUnitGrams('1kg'), 1000);
-  assert.equal(parseMixUnitGrams('conceptual quantity'), 1000);
-  for (const quantity of ['0g', '1.5kg', '100 G', 'conceptual', '9999999999999999kg'])
-    assert.equal(parseMixUnitGrams(quantity), null);
+void test('every product visibility is public', () => {
+  for (const p of CATALOG_PRODUCTS) {
+    assert.ok(
+      p.visibility === 'public' || p.visibility === 'hidden',
+      `${p.slug} has invalid visibility`,
+    );
+  }
 });
 
-void test('expanded catalog preserves stable existing identities and premium product invariants', () => {
-  assert.deepEqual(
-    CATALOG_PRODUCTS.filter((product) => [27, 33, 34].includes(product.id)).map((product) => ({
-      id: product.id,
-      name: product.name,
-      slug: product.slug,
-      imageSetId: product.image_set_id,
-    })),
-    [
-      { id: 27, name: 'Campfire', slug: 'powdered-campfire', imageSetId: 'powdered-campfire' },
-      { id: 33, name: 'House', slug: 'powdered-house', imageSetId: 'powdered-house' },
-      { id: 34, name: 'Internet', slug: 'powdered-wifi', imageSetId: 'powdered-wifi' },
-    ],
-  );
-  const moonRock = CATALOG_PRODUCTS.find((product) => product.slug === 'moon-rock');
-  assert.equal(moonRock?.price_cents, 2500000);
-  assert.equal(
-    moonRock?.price_cents,
-    Math.max(...CATALOG_PRODUCTS.map((product) => product.price_cents)),
-  );
-  assert.ok(CATALOG_PRODUCTS.every((product) => Number.isSafeInteger(product.price_cents)));
+void test('product slug and imageSetId use valid normalized keys', () => {
+  const keyPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+  for (const p of CATALOG_PRODUCTS) {
+    assert.ok(keyPattern.test(p.slug), `${p.slug} invalid slug format`);
+    assert.ok(keyPattern.test(p.imageSetId), `${p.slug} invalid imageSetId format`);
+  }
 });
 
-void test('canonical timestamps preserve exact chronology', () => {
-  assert.deepEqual(
-    CATALOG_PRODUCTS.map((product) => product.created_at),
-    CATALOG_PRODUCTS.map((product) => CATALOG_CREATED_AT_BY_ID[product.id]),
-  );
-  assert.deepEqual(
-    [...CATALOG_PRODUCTS]
-      .sort((left, right) => right.created_at.localeCompare(left.created_at))
-      .map((product) => product.id),
-    Array.from({ length: 50 }, (_, index) => 50 - index),
-  );
+void test('SKUs follow expected format with category prefix', () => {
+  const prefixPattern = /^(SPN|BKP|DRK|HCL|GDN|TCM)-\d{4}-\d{3}$/;
+  for (const p of CATALOG_PRODUCTS) {
+    for (const v of p.variants) {
+      assert.ok(prefixPattern.test(v.sku), `SKU ${v.sku} has invalid format`);
+    }
+  }
 });

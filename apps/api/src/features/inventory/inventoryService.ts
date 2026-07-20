@@ -16,7 +16,7 @@ import {
 
 export interface InventoryService {
   availableToSell(
-    productIds: readonly number[],
+    variantIds: readonly number[],
     now: string,
   ): ReturnType<InventoryRepository['availableToSell']>;
   reserveCheckout(input: {
@@ -36,7 +36,7 @@ export interface InventoryService {
   }): void;
   receiveStock(input: {
     idempotencyKey: string;
-    productId: number;
+    variantId: number;
     quantity: number;
     receivedByUserId: number;
     occurredAt: string;
@@ -83,7 +83,7 @@ export function createInventoryService(dependencies: {
 }): InventoryService {
   const { repository } = dependencies;
   const fulfillBackorders = (
-    productId: number,
+    variantId: number,
     quantity: number,
     occurredAt: string,
     receiptId?: number,
@@ -91,10 +91,10 @@ export function createInventoryService(dependencies: {
   ): InventoryReceiptAllocation[] => {
     let remaining = quantity;
     const fulfilled: InventoryReceiptAllocation[] = [];
-    for (const allocation of repository.listOpenBackorders(productId, excludedOrderId)) {
+    for (const allocation of repository.listOpenBackorders(variantId, excludedOrderId)) {
       if (remaining === 0) break;
       const applied = Math.min(remaining, allocation.backordered_quantity);
-      if (!repository.decrementStock(productId, applied)) {
+      if (!repository.decrementStock(variantId, applied)) {
         throw new InventoryError(
           'INVENTORY_CORRUPTION',
           'Stock disappeared while allocating backorders.',
@@ -106,7 +106,7 @@ export function createInventoryService(dependencies: {
         updatedAt: occurredAt,
       });
       repository.insertMovement({
-        productId,
+        variantId,
         movementType: 'backorder_allocated',
         quantityDelta: -applied,
         orderId: allocation.order_id,
@@ -125,8 +125,8 @@ export function createInventoryService(dependencies: {
   };
 
   return {
-    availableToSell(productIds, now) {
-      return repository.availableToSell(productIds, now);
+    availableToSell(variantIds, now) {
+      return repository.availableToSell(variantIds, now);
     },
     reserveCheckout({ paymentIdempotencyKey, demands, now, expiresAt }) {
       if (expiresAt <= now)
@@ -136,7 +136,7 @@ export function createInventoryService(dependencies: {
         );
       const normalized = aggregateInventoryDemand(demands);
       const availability = repository.availableToSell(
-        normalized.map((demand) => demand.productId),
+        normalized.map((demand) => demand.variantId),
         now,
       );
       const split = splitInventoryReservation(normalized, availability);
@@ -176,37 +176,37 @@ export function createInventoryService(dependencies: {
           'Checkout inventory reservation is not authorized.',
         );
       }
-      const linesByProduct = new Map<number, InventoryOrderLine[]>();
+      const linesByVariant = new Map<number, InventoryOrderLine[]>();
       for (const line of ordinaryLines) {
         requirePositiveInteger(line.orderLineItemId, 'Order line ID');
-        requirePositiveInteger(line.productId, 'Product ID');
+        requirePositiveInteger(line.variantId, 'Variant ID');
         requirePositiveInteger(line.quantity, 'Order line quantity');
-        const rows = linesByProduct.get(line.productId) ?? [];
+        const rows = linesByVariant.get(line.variantId) ?? [];
         rows.push(line);
-        linesByProduct.set(line.productId, rows);
+        linesByVariant.set(line.variantId, rows);
       }
       const reservationProducts = reservations.filter((row) => row.demand_kind === 'product');
-      for (const productId of linesByProduct.keys()) {
-        if (!reservationProducts.some((row) => row.product_id === productId)) {
+      for (const variantId of linesByVariant.keys()) {
+        if (!reservationProducts.some((row) => row.variant_id === variantId)) {
           throw new InventoryError(
             'INVENTORY_CORRUPTION',
-            'Order product has no inventory reservation.',
+            'Order variant has no inventory reservation.',
           );
         }
       }
       for (const reservation of reservations) {
         if (
           reservation.reserved_quantity > 0 &&
-          !repository.decrementStock(reservation.product_id, reservation.reserved_quantity)
+          !repository.decrementStock(reservation.variant_id, reservation.reserved_quantity)
         ) {
           throw new InventoryError(
             'INVENTORY_CORRUPTION',
-            `Stock changed for product ${reservation.product_id}.`,
+            `Stock changed for variant ${reservation.variant_id}.`,
           );
         }
         if (reservation.reserved_quantity > 0)
           repository.insertMovement({
-            productId: reservation.product_id,
+            variantId: reservation.variant_id,
             movementType: 'checkout_consumed',
             quantityDelta: -reservation.reserved_quantity,
             paymentIdempotencyKey,
@@ -214,7 +214,7 @@ export function createInventoryService(dependencies: {
             occurredAt,
           });
         if (reservation.demand_kind === 'powder_mix') continue;
-        const lines = linesByProduct.get(reservation.product_id) ?? [];
+        const lines = linesByVariant.get(reservation.variant_id) ?? [];
         const total = lines.reduce((sum, line) => sum + line.quantity, 0);
         if (total !== reservation.reserved_quantity + reservation.backordered_quantity) {
           throw new InventoryError(
@@ -242,7 +242,7 @@ export function createInventoryService(dependencies: {
         )) {
           repository.insertAllocation({
             orderLineItemId: line.orderLineItemId,
-            productId: line.productId,
+            variantId: line.variantId,
             allocatedQuantity: reservedByLine.get(line.orderLineItemId) ?? 0,
             backorderedQuantity: backorderedByLine.get(line.orderLineItemId) ?? 0,
             stockDebitedQuantity: reservedByLine.get(line.orderLineItemId) ?? 0,
@@ -252,11 +252,11 @@ export function createInventoryService(dependencies: {
       }
       repository.releaseReservation(paymentIdempotencyKey);
     },
-    receiveStock({ idempotencyKey, productId, quantity, receivedByUserId, occurredAt }) {
-      requirePositiveInteger(productId, 'Product ID');
+    receiveStock({ idempotencyKey, variantId, quantity, receivedByUserId, occurredAt }) {
+      requirePositiveInteger(variantId, 'Variant ID');
       requirePositiveInteger(quantity, 'Receipt quantity');
       requirePositiveInteger(receivedByUserId, 'Receiving user ID');
-      const fingerprint = receiptFingerprint(productId, quantity);
+      const fingerprint = receiptFingerprint(variantId, quantity);
       const existing = repository.findReceipt(idempotencyKey);
       if (existing) {
         if (existing.requestFingerprint !== fingerprint) {
@@ -270,37 +270,37 @@ export function createInventoryService(dependencies: {
       const receiptId = repository.insertReceipt({
         idempotencyKey,
         requestFingerprint: fingerprint,
-        productId,
+        variantId,
         receivedQuantity: quantity,
         receivedByUserId,
         createdAt: occurredAt,
       });
-      if (!repository.incrementStock(productId, quantity)) {
+      if (!repository.incrementStock(variantId, quantity)) {
         throw new InventoryError(
           'INVENTORY_CORRUPTION',
-          `Receipt product ${productId} is missing.`,
+          `Receipt variant ${variantId} is missing.`,
         );
       }
       repository.insertMovement({
-        productId,
+        variantId,
         movementType: 'receipt_received',
         quantityDelta: quantity,
         receiptId,
         occurredAt,
       });
-      const allocations = fulfillBackorders(productId, quantity, occurredAt, receiptId);
+      const allocations = fulfillBackorders(variantId, quantity, occurredAt, receiptId);
       const result: InventoryReceiptResult = {
         receiptId,
-        productId,
+        variantId,
         receivedQuantity: quantity,
         allocatedQuantity: allocations.reduce(
           (total, allocation) => total + allocation.quantity,
           0,
         ),
         remainingStock:
-          repository.stockCount(productId) ??
+          repository.stockCount(variantId) ??
           (() => {
-            throw new InventoryError('INVENTORY_CORRUPTION', 'Receipt product disappeared.');
+            throw new InventoryError('INVENTORY_CORRUPTION', 'Receipt variant disappeared.');
           })(),
         allocations,
       };
@@ -310,17 +310,17 @@ export function createInventoryService(dependencies: {
     restoreReturnInventory({ returnRequestId, lines, occurredAt }) {
       const fulfilled: InventoryReceiptAllocation[] = [];
       for (const line of lines) {
-        requirePositiveInteger(line.productId, 'Product ID');
+        requirePositiveInteger(line.variantId, 'Variant ID');
         requirePositiveInteger(line.orderLineItemId, 'Order line item ID');
         requirePositiveInteger(line.quantity, 'Restore quantity');
-        if (!repository.incrementStock(line.productId, line.quantity)) {
+        if (!repository.incrementStock(line.variantId, line.quantity)) {
           throw new InventoryError(
             'INVENTORY_CORRUPTION',
-            `Product ${line.productId} not found for return restoration.`,
+            `Variant ${line.variantId} not found for return restoration.`,
           );
         }
         repository.insertMovement({
-          productId: line.productId,
+          variantId: line.variantId,
           movementType: 'return_received',
           quantityDelta: line.quantity,
           orderLineItemId: line.orderLineItemId,
@@ -328,7 +328,7 @@ export function createInventoryService(dependencies: {
           occurredAt,
         });
         const backorderAllocations = fulfillBackorders(
-          line.productId,
+          line.variantId,
           line.quantity,
           occurredAt,
           undefined,
@@ -340,7 +340,7 @@ export function createInventoryService(dependencies: {
     },
     cancelOrderInventory({ orderId, occurredAt }) {
       const allocations = repository.listOrderAllocations(orderId);
-      const restoredByProduct = new Map<number, number>();
+      const restoredByVariant = new Map<number, number>();
       for (const allocation of allocations) {
         const cancelled = allocation.allocated_quantity + allocation.backordered_quantity;
         if (cancelled === 0) continue;
@@ -351,18 +351,18 @@ export function createInventoryService(dependencies: {
         });
         if (allocation.stock_debited_quantity > 0) {
           const restored =
-            (restoredByProduct.get(allocation.product_id) ?? 0) + allocation.stock_debited_quantity;
-          restoredByProduct.set(allocation.product_id, restored);
+            (restoredByVariant.get(allocation.variant_id) ?? 0) + allocation.stock_debited_quantity;
+          restoredByVariant.set(allocation.variant_id, restored);
           if (
-            !repository.incrementStock(allocation.product_id, allocation.stock_debited_quantity)
+            !repository.incrementStock(allocation.variant_id, allocation.stock_debited_quantity)
           ) {
             throw new InventoryError(
               'INVENTORY_CORRUPTION',
-              'Cancelled allocation product is missing.',
+              'Cancelled allocation variant is missing.',
             );
           }
           repository.insertMovement({
-            productId: allocation.product_id,
+            variantId: allocation.variant_id,
             movementType: 'cancellation_restored',
             quantityDelta: allocation.stock_debited_quantity,
             orderId,
@@ -371,10 +371,10 @@ export function createInventoryService(dependencies: {
           });
         }
       }
-      return [...restoredByProduct.entries()]
+      return [...restoredByVariant.entries()]
         .sort(([left], [right]) => left - right)
-        .flatMap(([productId, quantity]) =>
-          fulfillBackorders(productId, quantity, occurredAt, undefined, orderId),
+        .flatMap(([variantId, quantity]) =>
+          fulfillBackorders(variantId, quantity, occurredAt, undefined, orderId),
         );
     },
   };

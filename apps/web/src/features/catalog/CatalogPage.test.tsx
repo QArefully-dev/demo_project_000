@@ -1,5 +1,9 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { Product, ProductFilterOptionsResponse } from '@shop/contracts/products';
+import type {
+  ProductWithVariants,
+  ProductFilterOptionsResponse,
+  CategoryFacts,
+} from '@shop/contracts/products';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -25,7 +29,16 @@ vi.mock('@/components/WishlistButton', () => ({
   WishlistButton: () => <button type="button" aria-label="Add to wishlist" />,
 }));
 
-const catalogProduct: Product = {
+const defaultFacts: CategoryFacts = {
+  texture: 'Fine',
+  colour: 'White',
+  source: 'Test source',
+  intendedUse: 'Testing',
+  storage: 'Dry cool',
+  consumptionClassification: 'non-food',
+};
+
+const catalogProduct: ProductWithVariants = {
   id: '1',
   name: 'Powdered Water',
   description: 'Just-add-water water powder, 300g. Dry until required.',
@@ -43,6 +56,28 @@ const catalogProduct: Product = {
   tags: [],
   specificationGroups: [],
   mixable: false,
+  variants: [
+    {
+      variantId: 1,
+      productId: 1,
+      sku: 'PW-001',
+      label: 'Standard',
+      weightGrams: 500,
+      priceCents: 1000,
+      stockCount: 5,
+      backorderable: false,
+      backorderLeadDays: null,
+      deliveryClass: 'parcel',
+      active: true,
+      sortOrder: 1,
+    },
+  ],
+  defaultVariantId: 1,
+  categoryFacts: defaultFacts,
+  consumptionClassification: 'non-food',
+  mixingGroup: null,
+  priceRange: { min: 1000, max: 1000 },
+  baseAvailability: 'in_stock',
 };
 
 const filterOptions: ProductFilterOptionsResponse = {

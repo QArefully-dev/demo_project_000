@@ -76,13 +76,41 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
       },
     },
     async (request, reply) => {
-      const cart = carts.add(request.params.cartId, request.body.productId, auditContext(request));
+      const { productId, variantId } = request.body;
+      let resolvedVariantId: string | null | undefined;
+      if (variantId !== undefined) {
+        resolvedVariantId = String(variantId);
+      } else {
+        const active = services.products
+          .listVariants(Number(productId))
+          .filter((v) => v.active === 1);
+        if (active.length === 1) {
+          resolvedVariantId = String(active[0]!.id);
+        } else if (active.length === 0) {
+          resolvedVariantId = undefined;
+        } else {
+          resolvedVariantId = null;
+        }
+      }
+
+      if (resolvedVariantId === null) {
+        return reply.code(400).send({
+          error: `Product ${productId} has multiple active variants. Specify a variantId.`,
+        });
+      }
+      if (resolvedVariantId === undefined) {
+        return reply.code(400).send({
+          error: `Product ${productId} has no active variants.`,
+        });
+      }
+
+      const cart = carts.add(request.params.cartId, resolvedVariantId, auditContext(request));
       if (cart === 'CART_NOT_FOUND') {
         sendNotFound(reply, 'Cart');
         return;
       }
-      if (cart === 'PRODUCT_NOT_FOUND') {
-        sendNotFound(reply, 'Product');
+      if (cart === 'VARIANT_NOT_FOUND') {
+        sendNotFound(reply, 'Variant');
         return;
       }
       if (cart === 'CART_RESERVED')
@@ -102,18 +130,35 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
       },
     },
     async (request, reply) => {
+      const { productId, quantity } = request.body;
+      const cartData = carts.get(request.params.cartId);
+      const cartLine = cartData?.items.find((item) => item.productId === productId);
+      const resolvedVariantId = cartLine?.variantSnap?.variantId
+        ? String(cartLine.variantSnap.variantId)
+        : (() => {
+            const active = services.products
+              .listVariants(Number(productId))
+              .filter((v) => v.active === 1);
+            return active.length === 1 ? String(active[0]!.id) : null;
+          })();
+
+      if (resolvedVariantId === null || resolvedVariantId === undefined) {
+        sendNotFound(reply, 'Variant in cart');
+        return;
+      }
+
       const result = carts.update(
         request.params.cartId,
-        request.body.productId,
-        request.body.quantity,
+        resolvedVariantId,
+        quantity,
         auditContext(request),
       );
       if (result === 'CART_NOT_FOUND') {
         sendNotFound(reply, 'Cart');
         return;
       }
-      if (result === 'PRODUCT_NOT_IN_CART') {
-        sendNotFound(reply, 'Product in cart');
+      if (result === 'VARIANT_NOT_IN_CART') {
+        sendNotFound(reply, 'Variant in cart');
         return;
       }
       if (result === 'CART_RESERVED')
@@ -132,17 +177,30 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
       },
     },
     async (request, reply) => {
-      const result = carts.remove(
-        request.params.cartId,
-        request.params.productId,
-        auditContext(request),
-      );
+      const { productId } = request.params;
+      const cartData = carts.get(request.params.cartId);
+      const cartLine = cartData?.items.find((item) => item.productId === productId);
+      const resolvedVariantId = cartLine?.variantSnap?.variantId
+        ? String(cartLine.variantSnap.variantId)
+        : (() => {
+            const active = services.products
+              .listVariants(Number(productId))
+              .filter((v) => v.active === 1);
+            return active.length === 1 ? String(active[0]!.id) : null;
+          })();
+
+      if (resolvedVariantId === null || resolvedVariantId === undefined) {
+        sendNotFound(reply, 'Variant in cart');
+        return;
+      }
+
+      const result = carts.remove(request.params.cartId, resolvedVariantId, auditContext(request));
       if (result === 'CART_NOT_FOUND') {
         sendNotFound(reply, 'Cart');
         return;
       }
-      if (result === 'PRODUCT_NOT_IN_CART') {
-        sendNotFound(reply, 'Product in cart');
+      if (result === 'VARIANT_NOT_IN_CART') {
+        sendNotFound(reply, 'Variant in cart');
         return;
       }
       if (result === 'CART_RESERVED')

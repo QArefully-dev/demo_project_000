@@ -18,7 +18,7 @@ import {
   POWDER_MIX_LABEL_MAX_GRAPHEMES,
   quotePowderMix,
 } from './powderMixRules.js';
-import { resolveDailyPowderMixRecipe } from './dailyRecipe.js';
+import { FEATURED_POWDER_BLEND } from './featuredBlend.js';
 import type { PowderMixRepository, PowderMixRow } from './powderMixRepository.js';
 import {
   PowderMixDomainError,
@@ -52,13 +52,19 @@ export interface PowderizerService {
 
 function toMixProduct(row: ProductRow): PowderMixProduct {
   const canonicalProduct = CATALOG_PRODUCTS.find((product) => product.id === row.id);
+  const isNonFood = canonicalProduct?.baseFacts.consumptionClassification !== 'food';
   return {
     id: row.id,
     name: row.name,
     priceCents: row.price_cents,
     mixable: row.mixable === 1,
     mixUnitGrams: row.mix_unit_grams ?? null,
-    consumptionWarning: canonicalProduct?.packaging.consumptionLabel ?? null,
+    consumptionWarning: isNonFood ? 'Not for consumption' : null,
+    mixingGroup: row.mixing_group ?? null,
+    blendSourceVariantId: row.blend_source_variant_id ?? null,
+    detailsJson: row.details_json ?? null,
+    sourceVariantPriceCents: null,
+    sourceVariantMixUnitGrams: null,
   };
 }
 
@@ -111,6 +117,15 @@ export function createPowderizerService(dependencies: {
         'Mix component is not eligible.',
         'components',
       );
+    }
+    for (const product of products) {
+      if (product.blendSourceVariantId != null) {
+        const variant = dependencies.products.findVariantById(product.blendSourceVariantId);
+        if (variant) {
+          product.sourceVariantPriceCents = variant.price_cents;
+          product.sourceVariantMixUnitGrams = variant.weight_grams;
+        }
+      }
     }
     return products;
   };
@@ -168,11 +183,39 @@ export function createPowderizerService(dependencies: {
   return {
     config() {
       const eligibleProducts = dependencies.products.listEligibleMixProducts();
-      const dailyRecipe = resolveDailyPowderMixRecipe(
-        dependencies.utcDateProvider(),
-        eligibleProducts,
-      );
-      const normalizedDailyRecipe = quote(dailyRecipe.config).config;
+      let featuredRecipe: PowderizerConfigResponse['dailyRecipe'];
+      try {
+        const normalizedFeaturedBlend = quote(FEATURED_POWDER_BLEND.config).config;
+        featuredRecipe = {
+          effectiveDate: '2026-01-01',
+          name: FEATURED_POWDER_BLEND.name,
+          config: {
+            components: normalizedFeaturedBlend.components.map((component) => ({
+              productId: String(component.productId),
+              percentage: component.percentage,
+            })),
+            bagSizeGrams: normalizedFeaturedBlend.bagSizeGrams,
+            fineness: normalizedFeaturedBlend.fineness,
+            customLabel: normalizedFeaturedBlend.customLabel,
+            bagColourScheme: normalizedFeaturedBlend.bagColourScheme,
+          },
+        };
+      } catch {
+        featuredRecipe = {
+          effectiveDate: '2026-01-01',
+          name: FEATURED_POWDER_BLEND.name,
+          config: {
+            components: FEATURED_POWDER_BLEND.config.components.map((component) => ({
+              productId: component.productId,
+              percentage: component.percentage,
+            })),
+            bagSizeGrams: FEATURED_POWDER_BLEND.config.bagSizeGrams,
+            fineness: FEATURED_POWDER_BLEND.config.fineness,
+            customLabel: null,
+            bagColourScheme: DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
+          },
+        };
+      }
       return {
         eligibleProducts: eligibleProducts.map(toProductContract),
         bagSizesGrams: [...POWDER_MIX_BAG_SIZES],
@@ -181,20 +224,7 @@ export function createPowderizerService(dependencies: {
         priceVersion: 'powderizer-v1',
         bagColourSchemes: [...POWDER_MIX_BAG_COLOUR_SCHEME_VALUES],
         defaultBagColourScheme: DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
-        dailyRecipe: {
-          effectiveDate: dailyRecipe.effectiveDate,
-          name: dailyRecipe.name,
-          config: {
-            components: normalizedDailyRecipe.components.map((component) => ({
-              productId: String(component.productId),
-              percentage: component.percentage,
-            })),
-            bagSizeGrams: normalizedDailyRecipe.bagSizeGrams,
-            fineness: normalizedDailyRecipe.fineness,
-            customLabel: normalizedDailyRecipe.customLabel,
-            bagColourScheme: normalizedDailyRecipe.bagColourScheme,
-          },
-        },
+        dailyRecipe: featuredRecipe,
       };
     },
     quote(input) {

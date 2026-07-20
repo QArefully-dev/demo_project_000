@@ -8,7 +8,15 @@ export type HelpArticlePath<
 > = Group extends 'help' ? `/help/${Slug}` : `/policies/${Slug}`;
 
 export type HelpArticleId =
-  'faq' | 'shipping' | 'returns' | 'powder-safety' | 'storage' | 'pack-sizes' | 'privacy' | 'terms';
+  | 'faq'
+  | 'shipping'
+  | 'returns'
+  | 'powder-safety'
+  | 'storage'
+  | 'pack-sizes'
+  | 'custom-powder'
+  | 'privacy'
+  | 'terms';
 
 export const faqEntryIds = [
   'shop-purpose',
@@ -16,7 +24,7 @@ export const faqEntryIds = [
   'shipping',
   'account-data',
   'cart',
-  'powderizer-history',
+  'custom-powder-history',
 ] as const;
 
 export type FaqEntryId = (typeof faqEntryIds)[number];

@@ -14,8 +14,8 @@ export function getCart(cartId: string): Promise<Cart> {
   return apiFetch(Cart, `/api/cart/${cartId}`);
 }
 
-export function addToCart(cartId: string, productId: string): Promise<Cart> {
-  const body: AddToCartBody = { productId };
+export function addToCart(cartId: string, productId: string, variantId?: number): Promise<Cart> {
+  const body: AddToCartBody = { productId, ...(variantId !== undefined ? { variantId } : {}) };
   return apiFetch(Cart, `/api/cart/${cartId}/items`, {
     method: 'POST',
     body: JSON.stringify(body),

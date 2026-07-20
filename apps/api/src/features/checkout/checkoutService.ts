@@ -179,15 +179,18 @@ function prepare(
         paymentIdempotencyKey: params.idempotencyKey,
         demands: [
           ...preparedCart.items.map((item) => ({
-            productId: Number(item.productId),
+            variantId: item.variantSnap?.variantId ?? 0,
             quantity: item.quantity,
             demandKind: 'product' as const,
           })),
-          ...mixPreparation.requirements.map((requirement) => ({
-            productId: requirement.productId,
-            quantity: requirement.bagEquivalents,
-            demandKind: 'powder_mix' as const,
-          })),
+          ...mixPreparation.requirements.map((requirement) => {
+            const defaultVariant = dependencies.products.findDefaultVariant(requirement.productId);
+            return {
+              variantId: defaultVariant?.id ?? 0,
+              quantity: requirement.bagEquivalents,
+              demandKind: 'powder_mix' as const,
+            };
+          }),
         ],
         now: createdAt,
         expiresAt: reservationExpiresAt,
@@ -198,7 +201,11 @@ function prepare(
       if (error instanceof InventoryError && error.code === 'INSUFFICIENT_STOCK') {
         return failPreparation(
           params.idempotencyKey,
-          { success: false, error: 'INSUFFICIENT_STOCK', productIds: error.productIds.map(String) },
+          {
+            success: false,
+            error: 'INSUFFICIENT_STOCK',
+            productIds: error.variantIds.map(String),
+          },
           params.auditContext,
           dependencies,
         );

@@ -14,3 +14,5 @@ export * from './bundles.js';
 export * from './reviews.js';
 export * from './inventory.js';
 export * from './returns.js';
+export * from './delivery.js';
+export * from './customPowder.js';

@@ -8,6 +8,14 @@ import { PowderMixCartLineItem } from './PowderMixCartLineItem';
 import { formatMoney } from '@/lib/formatMoney';
 import { useCartContext } from '@/hooks/CartContext';
 
+function cartItemKey(item: { productId: string; variantSnap?: { variantId: number } }): string {
+  return `${item.productId}:${item.variantSnap?.variantId ?? 'no-variant'}`;
+}
+
+function deliveryLabel(mode: string): string {
+  return mode === 'freight' ? 'Freight' : 'Parcel';
+}
+
 export function CartPage() {
   const {
     cart,
@@ -50,7 +58,7 @@ export function CartPage() {
         <div className="space-y-1">
           {cart.items.map((item) => (
             <CartLineItem
-              key={item.productId}
+              key={cartItemKey(item)}
               item={item}
               isUpdating={isActionPending(item.productId, 'update')}
               isRemoving={isActionPending(item.productId, 'remove')}
@@ -74,6 +82,19 @@ export function CartPage() {
               <span className="text-muted-foreground">Subtotal ({cart.totalItems} bags)</span>
               <span className="font-semibold">{formatMoney(cart.subtotalCents)}</span>
             </div>
+            {cart.deliveryPreview && (
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span>
+                  {deliveryLabel(cart.deliveryPreview.mode)} delivery &middot;{' '}
+                  {cart.deliveryPreview.reason}
+                </span>
+                <span>
+                  {cart.deliveryPreview.chargeCents === 0
+                    ? 'Free'
+                    : formatMoney(cart.deliveryPreview.chargeCents)}
+                </span>
+              </div>
+            )}
           </div>
           <div className="flex gap-3 pt-4">
             <Button variant="outline" className="flex-1" render={<Link to="/" />}>

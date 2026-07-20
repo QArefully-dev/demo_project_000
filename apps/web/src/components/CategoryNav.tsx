@@ -1,7 +1,7 @@
 import { useLocation, useSearchParams, Link } from 'react-router-dom';
 import { useCategories } from '@/hooks/useCategories';
 import { cn } from '@/lib/utils';
-import { bundlesItem, powderizerItem } from './nav/navItems';
+import { bundlesItem, customPowderItem } from './nav/navItems';
 
 /**
  * Functional category filter navigation.
@@ -23,13 +23,13 @@ export function CategoryNav() {
     );
 
   return (
-    <nav aria-label="Powder types" className="flex min-w-max items-center gap-0.5">
+    <nav aria-label="Product categories" className="flex min-w-max items-center gap-0.5">
       <Link
         to="/catalog"
         aria-current={isCatalog && activeCategory === '' && !isDealsActive ? 'page' : undefined}
         className={linkClassName(isCatalog && activeCategory === '' && !isDealsActive)}
       >
-        All powders
+        All products
       </Link>
       {!isLoading &&
         categories.slice(0, 6).map((category) => (
@@ -45,11 +45,11 @@ export function CategoryNav() {
           </Link>
         ))}
       <Link
-        to="/powderizer"
-        aria-current={pathname === '/powderizer' ? 'page' : undefined}
-        className={cn(linkClassName(pathname === '/powderizer'), powderizerItem.className)}
+        to="/custom-powder"
+        aria-current={pathname === '/custom-powder' ? 'page' : undefined}
+        className={cn(linkClassName(pathname === '/custom-powder'), customPowderItem.className)}
       >
-        {powderizerItem.label}
+        {customPowderItem.label}
       </Link>
       <Link
         to="/bundles"

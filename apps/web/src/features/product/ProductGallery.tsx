@@ -1,12 +1,11 @@
-import type { Product } from '@shop/contracts/products';
+import type { ProductWithVariants } from '@shop/contracts/products';
 
 import { ProductMedia } from '@/components/ProductMedia';
 
 interface ProductGalleryProps {
-  product: Product;
+  product: ProductWithVariants;
 }
 
-/** Canonical products expose one live packaging artwork rather than raster renditions. */
 export function ProductGallery({ product }: ProductGalleryProps) {
   return (
     <section aria-label={`${product.name} images`} className="min-w-0">

@@ -1,12 +1,17 @@
-import { CATALOG_PRODUCTS } from '@shop/catalog';
-import type { Product } from '@shop/contracts/products';
-import type { CustomerProductRow, ProductRow } from '../features/catalog/productRepository.js';
+import type {
+  CatalogVariant,
+  CategoryFacts,
+  PriceRange,
+  Product,
+  ProductWithVariants,
+} from '@shop/contracts/products';
+import type { BaseAvailability } from '@shop/contracts/products';
+import type {
+  CustomerProductRow,
+  ProductRow,
+  VariantRow,
+} from '../features/catalog/productRepository.js';
 
-const packagingByArtworkId = new Map<string, (typeof CATALOG_PRODUCTS)[number]['packaging']>(
-  CATALOG_PRODUCTS.map((product) => [product.image_set_id, product.packaging]),
-);
-
-/** SQLite's `datetime('now')` values omit milliseconds and timezone; it is UTC by definition. */
 function toUtcIsoInstant(value: string): string {
   const sqliteDateTime = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})$/.exec(value);
   if (sqliteDateTime) return `${sqliteDateTime[1]}T${sqliteDateTime[2]}.000Z`;
@@ -14,10 +19,64 @@ function toUtcIsoInstant(value: string): string {
   return Number.isFinite(time) ? new Date(time).toISOString() : value;
 }
 
-/** Maps a persisted product row to transport, using hydrated SQLite metadata when available. */
+function parseDetailsJson(json: string | null): CategoryFacts | null {
+  if (!json) return null;
+  try {
+    const parsed = JSON.parse(json) as Record<string, unknown>;
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    return parsed as CategoryFacts;
+  } catch {
+    return null;
+  }
+}
+
+function computePriceRange(variants: readonly VariantRow[]): PriceRange {
+  const activeVariants = variants.filter((v) => v.active === 1);
+  if (activeVariants.length === 0) return { min: 0, max: 0 };
+  let min = activeVariants[0]!.price_cents;
+  let max = activeVariants[0]!.price_cents;
+  for (const v of activeVariants) {
+    if (v.price_cents < min) min = v.price_cents;
+    if (v.price_cents > max) max = v.price_cents;
+  }
+  return { min, max };
+}
+
+function computeBaseAvailability(
+  row: ProductRow,
+  variants: readonly VariantRow[],
+): BaseAvailability {
+  const activeVariants = variants.filter((v) => v.active === 1);
+  const inStock = activeVariants.some((v) => v.stock_count > 0);
+  const anyBackorder = activeVariants.some((v) => v.backorderable === 1);
+  if (inStock) {
+    const totalStock = activeVariants.reduce((sum, v) => sum + v.stock_count, 0);
+    if (totalStock <= 5) return 'low_stock';
+    return 'in_stock';
+  }
+  if (anyBackorder && row.active === 1) return 'backorder';
+  return 'out_of_stock';
+}
+
+function mapVariant(v: VariantRow): CatalogVariant {
+  return {
+    variantId: v.id,
+    productId: v.product_id,
+    sku: v.sku,
+    label: v.label,
+    weightGrams: v.weight_grams,
+    priceCents: v.price_cents,
+    ...(v.compare_at_price_cents !== null ? { compareAtPriceCents: v.compare_at_price_cents } : {}),
+    stockCount: v.stock_count,
+    backorderable: v.backorderable === 1,
+    backorderLeadDays: v.backorderable === 1 ? (v.backorder_lead_days ?? null) : null,
+    deliveryClass: v.delivery_class as CatalogVariant['deliveryClass'],
+    active: v.active === 1,
+    sortOrder: v.sort_order,
+  };
+}
+
 export function toProductContract(row: ProductRow | CustomerProductRow): Product {
-  const imageSetId = row.image_set_id ?? 'unknown';
-  const packaging = packagingByArtworkId.get(imageSetId);
   const tags = 'tags' in row ? row.tags : [];
   const specificationGroups = 'specificationGroups' in row ? row.specificationGroups : [];
   const stock = row.available_to_sell ?? row.stock_count;
@@ -30,8 +89,7 @@ export function toProductContract(row: ProductRow | CustomerProductRow): Product
     name: row.name,
     description: row.description,
     priceCents: row.price_cents,
-    imageSetId,
-    ...(packaging ? { packaging } : {}),
+    imageSetId: row.image_set_id ?? 'unknown',
     category: row.category,
     stock,
     availability,
@@ -46,5 +104,50 @@ export function toProductContract(row: ProductRow | CustomerProductRow): Product
     available: row.active === 1 && (stock > 0 || backorderable),
     tags,
     specificationGroups,
+    consumptionClassification:
+      (row.consumption_classification as Product['consumptionClassification']) || undefined,
+    mixingGroup: (row as { mixing_group?: string | null }).mixing_group ?? null,
+  };
+}
+
+export function toProductWithVariantsContract(
+  row: ProductRow | CustomerProductRow,
+  variants: readonly VariantRow[],
+): ProductWithVariants {
+  const base = toProductContract(row);
+  const categoryFacts = parseDetailsJson(row.details_json);
+  const priceRange = computePriceRange(variants);
+  const baseAvailability = computeBaseAvailability(row, variants);
+
+  const activeVariantsForAvailable = variants.filter((v) => v.active === 1);
+  const variantStock = activeVariantsForAvailable.reduce((sum, v) => sum + v.stock_count, 0);
+
+  return {
+    ...base,
+    available:
+      row.active === 1 &&
+      (variantStock > 0 || activeVariantsForAvailable.some((v) => v.backorderable === 1)),
+    variants: variants.map(mapVariant),
+    defaultVariantId:
+      row.default_variant_id ??
+      variants.find((v) => v.sort_order === 1)?.id ??
+      variants[0]?.id ??
+      0,
+    categoryFacts: categoryFacts ?? {
+      texture: 'Not specified',
+      colour: 'Not specified',
+      source: 'Not specified',
+      intendedUse: 'Not specified',
+      storage: 'Not specified',
+      consumptionClassification:
+        (row.consumption_classification as CategoryFacts['consumptionClassification']) ||
+        'non-food',
+    },
+    consumptionClassification:
+      (row.consumption_classification as ProductWithVariants['consumptionClassification']) ||
+      'non-food',
+    mixingGroup: row.mixing_group ?? null,
+    priceRange,
+    baseAvailability,
   };
 }

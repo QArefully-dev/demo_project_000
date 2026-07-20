@@ -1,8 +1,8 @@
+import { isNormalizedCatalogKey } from '@shop/catalog';
 import {
   catalogSpecificationByKey,
-  isNormalizedCatalogKey,
   type CatalogSpecificationKey,
-} from '@shop/catalog';
+} from './catalogSpecifications.js';
 import type { ProductQuery, ProductSort } from '@shop/contracts/products';
 
 export class CatalogQueryError extends Error {

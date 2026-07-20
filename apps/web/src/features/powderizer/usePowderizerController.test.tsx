@@ -5,7 +5,11 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Cart } from '@shop/contracts/cart';
 import type { PowderMixQuote, PowderizerConfigResponse } from '@shop/contracts/powderizer';
-import { createPowderMix, getPowderizerConfig, quotePowderMix } from '@/api/powderizer';
+import {
+  createCustomPowderMix,
+  getCustomPowderConfig,
+  quoteCustomPowderMix,
+} from '@/api/customPowder';
 import { useCartContext } from '@/hooks/CartContext';
 import type { BuilderConfig } from './powderizerState';
 import {
@@ -13,11 +17,14 @@ import {
   type PowderizerSubmitSuccessHandler,
 } from './usePowderizerController';
 
-vi.mock('@/api/powderizer', () => ({
-  createPowderMix: vi.fn(),
-  getPowderizerConfig: vi.fn(),
-  quotePowderMix: vi.fn(),
-  updatePowderMix: vi.fn(),
+vi.mock('@/api/customPowder', () => ({
+  createCustomPowderMix: vi.fn(),
+  getCustomPowderConfig: vi.fn(),
+  quoteCustomPowderMix: vi.fn(),
+  updateCustomPowderMix: vi.fn(),
+  requoteCustomPowderMix: vi.fn(),
+  updateCustomPowderMixQuantity: vi.fn(),
+  removeCustomPowderMix: vi.fn(),
 }));
 vi.mock('@/hooks/CartContext', () => ({ useCartContext: vi.fn() }));
 
@@ -114,7 +121,7 @@ function ControllerProbe({
 
 function renderController(onSubmitSuccess?: PowderizerSubmitSuccessHandler) {
   return render(
-    <MemoryRouter initialEntries={['/powderizer']}>
+    <MemoryRouter initialEntries={['/custom-powder']}>
       <ControllerProbe onSubmitSuccess={onSubmitSuccess} />
     </MemoryRouter>,
   );
@@ -123,9 +130,9 @@ function renderController(onSubmitSuccess?: PowderizerSubmitSuccessHandler) {
 describe('usePowderizerController submit success callback', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(getPowderizerConfig).mockResolvedValue(config);
-    vi.mocked(quotePowderMix).mockResolvedValue(quote());
-    vi.mocked(createPowderMix).mockResolvedValue(cart);
+    vi.mocked(getCustomPowderConfig).mockResolvedValue(config);
+    vi.mocked(quoteCustomPowderMix).mockResolvedValue(quote());
+    vi.mocked(createCustomPowderMix).mockResolvedValue(cart);
     vi.mocked(useCartContext).mockReturnValue(controllerCartContext());
   });
 
@@ -143,13 +150,13 @@ describe('usePowderizerController submit success callback', () => {
   it('does not call success callback when create fails', async () => {
     const user = userEvent.setup();
     const onSubmitSuccess = vi.fn();
-    vi.mocked(createPowderMix).mockRejectedValue(new Error('Save failed'));
+    vi.mocked(createCustomPowderMix).mockRejectedValue(new Error('Save failed'));
     renderController(onSubmitSuccess);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled());
     await user.click(screen.getByRole('button', { name: 'Submit' }));
-    await waitFor(() => expect(createPowderMix).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(createCustomPowderMix).toHaveBeenCalledTimes(1));
     expect(onSubmitSuccess).not.toHaveBeenCalled();
-    expect(screen.getByText('/powderizer')).toBeInTheDocument();
+    expect(screen.getByText('/custom-powder')).toBeInTheDocument();
   });
 
   it('navigates after a success callback failure', async () => {

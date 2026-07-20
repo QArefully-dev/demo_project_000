@@ -4,18 +4,14 @@ import type { Product } from '@shop/contracts/products';
 import { Button } from '@/components/ui/button';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
-import { BagColourSchemePicker } from './BagColourSchemePicker';
-import { ComponentPicker, useComponentPicker } from './ComponentPicker';
-import { DailyRecipeCard } from './DailyRecipeCard';
-import { IngredientReaction } from './IngredientReaction';
-import { MixOptions } from './MixOptions';
-import { PowderizerActions } from './PowderizerActions';
-import { PowderMixBagPreview } from './PowderMixBagPreview';
-import { PowderMixVisualization } from './PowderMixVisualization';
+import { IngredientPicker } from '@/features/customPowder/IngredientPicker';
+import { useComponentPicker } from '@/features/customPowder/useComponentPicker';
+import { CompatibilityGuard } from '@/features/customPowder/CompatibilityGuard';
+import { CombinedFacts } from '@/features/customPowder/CombinedFacts';
+import { FeaturedBlend } from '@/features/customPowder/FeaturedBlend';
+import { PowderMixHistory, useCustomPowderHistory } from '@/features/customPowder/PowderMixHistory';
+import { PowderMixControls } from '@/features/customPowder/PowderMixControls';
 import { PowderizerSummary } from './PowderizerSummary';
-import { PowderizerHistoryShelf } from './PowderizerHistoryShelf';
-import { RatioEditor } from './RatioEditor';
-import { usePowderizerHistory } from './usePowderizerHistory';
 import { usePowderizerController } from './usePowderizerController';
 import type { BuilderConfig } from './powderizerState';
 
@@ -35,17 +31,19 @@ export function PowderizerPage() {
     remoteError,
     configLoadError,
     validationError,
+    incompatibleGroupError,
     hasCurrentQuote,
     canSubmit,
     replaceConfig,
     submit,
   } = usePowderizerController({ onSubmitSuccess: recordSuccessfulSubmit });
-  const history = usePowderizerHistory(powderizerConfig?.eligibleProducts ?? EMPTY_PRODUCTS);
+  const eligibleProducts = powderizerConfig?.eligibleProducts ?? EMPTY_PRODUCTS;
+  const history = useCustomPowderHistory(eligibleProducts);
   historyRecordRef.current = history.record;
   const builderRef = useRef<HTMLElement>(null);
   const focusAddedComponentRef = useRef<string | null>(null);
   const picker = useComponentPicker(
-    powderizerConfig?.eligibleProducts ?? [],
+    eligibleProducts,
     state.config.components.map(({ productId }) => productId),
   );
   const ingredientWarnings = useMemo(
@@ -53,13 +51,13 @@ export function PowderizerPage() {
       Array.from(
         new Set(
           state.config.components.flatMap(({ productId }) => {
-            const warning = powderizerConfig?.eligibleProducts.find(({ id }) => id === productId)
-              ?.packaging?.consumptionLabel;
+            const warning = eligibleProducts.find(({ id }) => id === productId)?.packaging
+              ?.consumptionLabel;
             return warning ? [warning] : [];
           }),
         ),
       ),
-    [powderizerConfig?.eligibleProducts, state.config.components],
+    [eligibleProducts, state.config.components],
   );
 
   useEffect(() => {
@@ -76,9 +74,7 @@ export function PowderizerPage() {
       <LoadingSpinner />
     );
 
-  const namesByProductId = new Map(
-    powderizerConfig.eligibleProducts.map((product) => [product.id, product.name]),
-  );
+  const namesByProductId = new Map(eligibleProducts.map((product) => [product.id, product.name]));
   const selectedProductIds = state.config.components.map(({ productId }) => productId);
 
   if (state.editError)
@@ -96,15 +92,18 @@ export function PowderizerPage() {
   return (
     <section ref={builderRef} tabIndex={-1} className="mx-auto max-w-6xl space-y-5">
       <div>
-        <h1 className="text-2xl font-bold">Powderizer</h1>
+        <h1 className="text-2xl font-bold">Custom Powder</h1>
         <p className="mt-2 text-muted-foreground">
-          Build a custom powder mix from every eligible category. Server safety labels always apply.
+          Build a custom powder blend from compatible mixing groups. Server safety labels always
+          apply.
         </p>
       </div>
       <div className="rounded-lg border border-border p-4">
-        <p className="font-medium">{state.editMixId ? 'Editing custom mix' : 'New custom mix'}</p>
+        <p className="font-medium">
+          {state.editMixId ? 'Editing custom blend' : 'New custom blend'}
+        </p>
         <p className="mt-1 text-sm text-muted-foreground">
-          {powderizerConfig.eligibleProducts.length} eligible powders available.
+          {eligibleProducts.length} mixable powders available.
         </p>
         {(validationError || configLoadError) && (
           <p role="alert" className="mt-3 text-sm text-destructive">
@@ -113,7 +112,7 @@ export function PowderizerPage() {
         )}
         {state.quote.status === 'loading' && (
           <p aria-live="polite" className="mt-3 text-sm text-muted-foreground">
-            Calculating quote…
+            Calculating blend quote…
           </p>
         )}
         {state.quote.status === 'error' && (
@@ -134,19 +133,11 @@ export function PowderizerPage() {
           </p>
         )}
       </div>
-      <PowderizerActions
-        activeProducts={picker.activeProducts}
-        products={powderizerConfig.eligibleProducts}
-        baseConfig={state.config}
-        bagSizes={powderizerConfig.bagSizesGrams}
-        finenessValues={powderizerConfig.finenessValues}
-        bagColourSchemes={powderizerConfig.bagColourSchemes}
-        onConfigGenerated={replaceConfig}
-      />
-      <DailyRecipeCard recipe={powderizerConfig.dailyRecipe} onLoad={replaceConfig} />
+      <FeaturedBlend blend={powderizerConfig.dailyRecipe} onLoad={replaceConfig} />
+      <CompatibilityGuard error={incompatibleGroupError} productNamesById={namesByProductId} />
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-5">
-          <ComponentPicker
+          <IngredientPicker
             picker={picker}
             selectedProductIds={selectedProductIds}
             onAdd={(productId) => {
@@ -154,46 +145,30 @@ export function PowderizerPage() {
               dispatch({ type: 'component-added', productId });
             }}
           />
-          <RatioEditor
-            components={state.config.components}
-            products={powderizerConfig.eligibleProducts}
+          <PowderMixControls
+            config={state.config}
+            products={eligibleProducts}
+            bagSizes={powderizerConfig.bagSizesGrams}
+            finenessValues={powderizerConfig.finenessValues}
+            labelMaxGraphemes={powderizerConfig.labelMaxGraphemes}
+            bagColourSchemes={powderizerConfig.bagColourSchemes}
+            priceVersion={powderizerConfig.priceVersion}
+            usageLabel={state.quote.status === 'ready' ? state.quote.quote.usageLabel : null}
             onPercentageChange={(productId, percentage) =>
               dispatch({ type: 'percentage-changed', productId, percentage })
             }
             onRemove={(productId) => dispatch({ type: 'component-removed', productId })}
             onEqualSplit={() => dispatch({ type: 'equal-split' })}
-          />
-          <MixOptions
-            config={state.config}
-            bagSizes={powderizerConfig.bagSizesGrams}
-            finenessValues={powderizerConfig.finenessValues}
-            labelMaxGraphemes={powderizerConfig.labelMaxGraphemes}
             onBagSizeChange={(bagSizeGrams) => dispatch({ type: 'bag-size-changed', bagSizeGrams })}
             onFinenessChange={(fineness) => dispatch({ type: 'fineness-changed', fineness })}
             onLabelChange={(customLabel) => dispatch({ type: 'label-changed', customLabel })}
-          />
-          <BagColourSchemePicker
-            schemes={powderizerConfig.bagColourSchemes}
-            value={state.config.bagColourScheme}
-            onChange={(bagColourScheme) =>
+            onBagColourChange={(bagColourScheme) =>
               dispatch({ type: 'bag-colour-changed', bagColourScheme })
             }
           />
-          <PowderMixVisualization
-            components={state.config.components}
-            products={powderizerConfig.eligibleProducts}
-          />
-          <IngredientReaction
-            components={state.config.components}
-            products={powderizerConfig.eligibleProducts}
-          />
+          <CombinedFacts components={state.config.components} products={eligibleProducts} />
         </div>
         <aside className="space-y-5 lg:sticky lg:top-24">
-          <PowderMixBagPreview
-            config={state.config}
-            priceVersion={powderizerConfig.priceVersion}
-            usageLabel={state.quote.status === 'ready' ? state.quote.quote.usageLabel : null}
-          />
           <PowderizerSummary
             quote={hasCurrentQuote ? state.quote.quote : null}
             namesByProductId={namesByProductId}
@@ -206,12 +181,13 @@ export function PowderizerPage() {
           />
         </aside>
       </div>
-      <PowderizerHistoryShelf
+      <PowderMixHistory
         entries={history.entries}
         available={history.available}
+        migrationNotice={history.migrationNotice}
         onUseAgain={(entry) => {
           dispatch({ type: 'history-config-loaded', config: entry.config });
-          navigate('/powderizer', { replace: true });
+          navigate('/custom-powder', { replace: true });
           window.requestAnimationFrame(() => builderRef.current?.focus());
         }}
         onRemove={history.remove}

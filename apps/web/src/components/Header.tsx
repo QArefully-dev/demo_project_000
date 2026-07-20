@@ -33,7 +33,7 @@ export function Header() {
         <div className="content-shell flex h-11 items-center justify-between gap-4 overflow-x-auto [scrollbar-width:none]">
           <CategoryNav />
           <p className="hidden shrink-0 whitespace-nowrap text-xs font-medium text-muted-foreground xl:block">
-            Anything. Finely considered. · Simulated checkout
+            Food · Performance · Home · Trade · Simulated checkout
           </p>
         </div>
       </div>

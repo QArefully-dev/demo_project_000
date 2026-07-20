@@ -1,13 +1,13 @@
 export type InventoryDemandKind = 'product' | 'powder_mix';
 
 export interface InventoryDemand {
-  productId: number;
+  variantId: number;
   quantity: number;
   demandKind: InventoryDemandKind;
 }
 
 export interface InventoryProduct {
-  productId: number;
+  variantId: number;
   stockCount: number;
   availableToSell: number;
   backorderable: boolean;
@@ -21,7 +21,7 @@ export interface InventoryReservationAllocation extends InventoryDemand {
 
 export interface InventoryOrderLine {
   orderLineItemId: number;
-  productId: number;
+  variantId: number;
   quantity: number;
 }
 
@@ -33,7 +33,7 @@ export interface InventoryReceiptAllocation {
 
 export interface InventoryReceiptResult {
   receiptId: number;
-  productId: number;
+  variantId: number;
   receivedQuantity: number;
   allocatedQuantity: number;
   remainingStock: number;
@@ -41,7 +41,7 @@ export interface InventoryReceiptResult {
 }
 
 export interface ReturnRestoreLine {
-  productId: number;
+  variantId: number;
   orderLineItemId: number;
   quantity: number;
 }
@@ -53,7 +53,7 @@ export class InventoryError extends Error {
   constructor(
     public readonly code: InventoryErrorCode,
     message: string,
-    public readonly productIds: readonly number[] = [],
+    public readonly variantIds: readonly number[] = [],
   ) {
     super(message);
     this.name = 'InventoryError';

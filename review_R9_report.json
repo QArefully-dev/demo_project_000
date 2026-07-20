@@ -1,0 +1,75 @@
+{
+  "reviewVersion": "v1",
+  "reviewId": "R9",
+  "targetChange": "P9-fix on P9 (c921650..6e44fd0)",
+  "branch": "codex/powder-shop-repurposing-20260720-001",
+  "headCommit": "6e44fd0",
+  "verificationDate": "2026-07-20",
+  "summary": "3 of 4 findings resolved. F1 partially wired on frontend; API does not yet produce IncompatibleGroupError.",
+  "score": {
+    "passed": 3,
+    "partial": 1,
+    "failed": 0,
+    "total": 4
+  },
+  "findings": [
+    {
+      "id": "F1",
+      "description": "CompatibilityGuard now receives structured IncompatibleGroupError from controller (not always null)",
+      "status": "PARTIAL",
+      "evidence": [
+        "usePowderizerController now holds incompatibleGroupError state (line 63-65)",
+        "extractIncompatibleGroupError uses Value.Check(IncompatibleGroupError, error.response) to parse API response (line 33-38)",
+        "CompatibilityGuard receives incompatibleGroupError instead of hardcoded null in PowderizerPage.tsx (line 137)",
+        "Both quote-fail and mutation-fail call extractIncompatibleGroupError"
+      ],
+      "defect": "API error handler at apps/api/src/app.ts:233-235 returns { code, error, field } when PowderMixDomainError is thrown. The validateMixingGroupCompat function in powderMixRules.ts throws MIX_COMPONENT_INELIGIBLE � not MIXING_GROUP_MISMATCH � and provides no conflictingProductIds or groupInfo. Value.Check(IncompatibleGroupError, error.response) will always return null because the API response shape never matches the IncompatibleGroupError schema.",
+      "severity": "MEDIUM",
+      "recommendation": "Either: (a) update validateMixingGroupCompat in powderMixRules.ts to produce a structured IncompatibleGroupError response, or (b) add a controller-level fallback that synthesizes IncompatibleGroupError from PowderMixDomainError fields when code is MIX_COMPONENT_INELIGIBLE and products have conflicting mixingGroup. Current wiring is correct frontend architecture but non-functional end-to-end."
+    },
+    {
+      "id": "F2",
+      "description": "IngredientPicker uses mixingGroup (not consumptionClassification) for grouping",
+      "status": "PASS",
+      "evidence": [
+        "IngredientPicker.tsx line 19: product.mixingGroup replaces product.consumptionClassification",
+        "IngredientPicker.tsx line 62-66: incompatibility check uses product.mixingGroup != null and selectedGroups.has(product.mixingGroup)",
+        "products.ts: mixingGroup field added to Product schema",
+        "Clean grep: zero references to consumptionClassification in IngredientPicker.tsx"
+      ]
+    },
+    {
+      "id": "F3",
+      "description": "Stale novelty files removed, tests updated",
+      "status": "PASS",
+      "evidence": [
+        "11 files deleted: DailyRecipeCard, IngredientReaction, PowderizerActions, PowderizerHistoryShelf, powderizerCopy, powderizerHistory, powderizerRandom, usePowderizerHistory + 3 test files",
+        "PowderizerPresentation.test.tsx: IngredientReaction import removed, reaction tests removed (lines 6-7, removed section from original lines 139-184 difference)",
+        "powderizerState.test.ts: selectGoodFor import removed, test renamed from dual-assertion to single-assertion",
+        "No stale references found in remaining source (grep returned zero results for deleted module imports)"
+      ]
+    },
+    {
+      "id": "F4",
+      "description": "New tests for CompatibilityGuard and IngredientPicker",
+      "status": "PASS",
+      "evidence": [
+        "CompatibilityGuard.test.tsx: 5 tests � null render, mismatch display with names/groups, unknown name fallback (Product ID), null mixingGroup fallback (Group: unknown), 3+ conflicting products",
+        "IngredientPicker.test.tsx: 6 tests � incompatible disable, incompatible marking, null mixingGroup no-restrict, max-5-disables-add, category filter + pagination (10->4 results), empty state",
+        "All 40 tests pass across 9 test files in powderizer + customPowder suites",
+        "No test assertions against mock � all tests exercise real components with controlled product data"
+      ]
+    }
+  ],
+  "testResults": {
+    "totalFiles": 9,
+    "passedFiles": 9,
+    "failedFiles": 0,
+    "totalTests": 40,
+    "passedTests": 40,
+    "failedTests": 0,
+    "durationMs": 13060
+  },
+  "overallVerdict": "CONDITIONAL_PASS",
+  "notes": "F1 frontend architecture is correct and safely degrades (null passes through to CompatibilityGuard which renders nothing). The fix fulfills its stated scope: frontend is wired, contracts define the schema, tests cover rendering. However, the end-to-end mixing-group error UX is non-functional until the API produces the structured IncompatibleGroupError. Recommend filing a follow-up for API-side work and then adding an integration test that asserts the full round-trip."
+}

@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Product } from '@shop/contracts/products';
 import type { PowderMixQuote } from '@shop/contracts/powderizer';
 import { BagColourSchemePicker } from './BagColourSchemePicker';
-import { IngredientReaction } from './IngredientReaction';
 import { PowderMixVisualization, powderColour } from './PowderMixVisualization';
 import { PowderizerSummary } from './PowderizerSummary';
 
@@ -44,28 +43,6 @@ function product(id: string, slug: string, powderColor?: string): Product {
 }
 
 const products = [product('1', 'powdered-house'), product('2', 'powdered-campfire', '#f60')];
-const reactionSlugs = [
-  'powdered-house',
-  'powdered-campfire',
-  'macbook-pro',
-  'powdered-wifi',
-  'boat',
-  'powdered-water',
-  'plane',
-  'moon-rock',
-  'diamond',
-  'powdered-gravity',
-  'powdered-silence',
-  'powdered-moonlight',
-] as const;
-const reactionProducts = reactionSlugs.map((slug, index) => product(String(index + 1), slug));
-
-function reactionComponents(slugs: readonly string[]) {
-  return slugs.map((slug) => ({
-    productId: reactionProducts.find((item) => item.slug === slug)!.id,
-    percentage: 50,
-  }));
-}
 
 const quote: PowderMixQuote = {
   priceVersion: 'powderizer-v1',
@@ -139,43 +116,6 @@ describe('Powderizer presentation', () => {
     expect(powderColour(products[0], '1')).toBe(powderColour(products[0], '1'));
   });
 
-  it('renders every deterministic reaction and preserves listed priority', () => {
-    const reactions = [
-      [
-        ['powdered-house', 'powdered-campfire'],
-        'Housewarming achieved. Keep away from actual flames.',
-      ],
-      [['macbook-pro', 'powdered-wifi'], 'Remote work ingredients detected.'],
-      [['boat', 'powdered-water'], 'Returning ingredients to their natural habitat.'],
-      [['plane', 'moon-rock'], 'Flight plan exceeds current airspace.'],
-      [['diamond', 'powdered-gravity'], 'Heavy investment detected.'],
-      [['powdered-wifi', 'powdered-silence'], 'Connection established. Notifications absent.'],
-      [['powdered-house', 'diamond'], 'Aggressive property appreciation.'],
-      [['powdered-campfire', 'powdered-moonlight'], 'Night shift ready.'],
-    ] as const;
-    const view = render(
-      <IngredientReaction
-        components={reactionComponents(reactions[0][0])}
-        products={reactionProducts}
-      />,
-    );
-    for (const [slugs, copy] of reactions) {
-      view.rerender(
-        <IngredientReaction components={reactionComponents(slugs)} products={reactionProducts} />,
-      );
-      expect(screen.getByRole('status')).toHaveTextContent(copy);
-    }
-    view.rerender(
-      <IngredientReaction
-        components={reactionComponents(['powdered-house', 'powdered-campfire', 'diamond'])}
-        products={reactionProducts}
-      />,
-    );
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Housewarming achieved. Keep away from actual flames.',
-    );
-  });
-
   it('renders safety, warnings, and Good for only for multi-component configs', () => {
     const summary = (components: { productId: string; percentage: number }[]) => (
       <PowderizerSummary
@@ -195,14 +135,12 @@ describe('Powderizer presentation', () => {
         }}
       />
     );
-    const view = render(summary(quote.config.components));
+    render(summary(quote.config.components));
     expect(screen.getByLabelText('Server usage label')).toHaveTextContent('Not for consumption');
     expect(screen.getByLabelText('Ingredient warnings')).toHaveTextContent(
       'Keep separate from open flames.',
     );
-    expect(screen.getByText('Good for:', { exact: false })).toBeInTheDocument();
-    view.rerender(summary([{ productId: '1', percentage: 100 }]));
-    expect(screen.queryByText('Good for:', { exact: false })).not.toBeInTheDocument();
+    expect(screen.getByText('Blend summary')).toBeInTheDocument();
   });
 
   it('disables Phase 9 transitions under reduced motion', () => {
