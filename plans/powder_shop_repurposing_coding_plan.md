@@ -206,7 +206,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 `G0 -> P1 -> R1 -> GR1 -> {P2 -> R2 -> GR2 || P3 -> R3 -> GR3} -> G1 -> P4 -> R4 -> GR4 -> P5 -> R5 -> GR5 -> P6 -> R6 -> GR6 -> P7 -> R7 -> GR7 -> G2 -> {P8 -> R8 -> GR8 || P9 -> R9 -> GR9 || P10 -> R10 -> GR10} -> G3 -> S1 -> {R11A || R11B} -> GR11 -> G4 -> G5`
 
 - `G0`: branch/worktree/input and product-rule gate
-- `GR1..GR10`: packet review gate; reviewer pass or all findings closed through worker fix + targeted evidence before dependent launch
+- `GR1..GR10`: packet review gate; reviewer pass or all findings closed through fresh fix worker + targeted evidence before dependent launch
 - `G1`: reviewed contracts + catalog + migration fan-in
 - `G2`: reviewed backend API/commerce/custom/delivery gate
 - `G3`: reviewed parallel web lane fan-in
@@ -492,7 +492,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - write policy: inspect-only
 - test policy: assess `T1`; run only when missing/stale evidence blocks verdict
 - relevant evidence: `T1` -> P1 exact change set
-- return: `reviewer_report_v1`; `GR1` blocks P2/P3 until pass or findings close through P1 fix + targeted evidence
+- return: `reviewer_report_v1`; `GR1` blocks P2/P3 until pass or findings close through fresh fix worker + targeted evidence
 
 ### R2: Review P2 catalog credibility and validation
 
@@ -508,7 +508,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - write policy: inspect-only
 - test policy: assess `T2`; no rerun unless evidence blocks verdict
 - relevant evidence: `T2` -> P2 exact change set
-- return: `reviewer_report_v1`; `GR2` blocks `G1` until pass or findings close through P2 fix + targeted evidence
+- return: `reviewer_report_v1`; `GR2` blocks `G1` until pass or findings close through fresh fix worker + targeted evidence
 
 ### R3: Review P3 migration integrity
 
@@ -524,7 +524,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - write policy: inspect-only
 - test policy: assess `T3`; command only when missing/stale evidence prevents verdict
 - relevant evidence: `T3` -> populated and rollback fixtures at P3 change set
-- return: `reviewer_report_v1`; `GR3` blocks `G1` until pass or findings close through P3 fix + targeted evidence
+- return: `reviewer_report_v1`; `GR3` blocks `G1` until pass or findings close through fresh fix worker + targeted evidence
 
 ### R4: Review P4 seed and catalog API authority
 
@@ -540,7 +540,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - write policy: inspect-only
 - test policy: assess `T4` plus accepted `T2/T3`; rerun only stale/missing blocker
 - relevant evidence: `T2`, `T3`, `T4` projected to P4 target
-- return: `reviewer_report_v1`; `GR4` blocks P5 until pass or findings close through P4 fix + targeted evidence
+- return: `reviewer_report_v1`; `GR4` blocks P5 until pass or findings close through fresh fix worker + targeted evidence
 
 ### R5: Review P5 variant commerce and inventory
 
@@ -556,7 +556,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - write policy: inspect-only
 - test policy: assess `T5`; use `T4` only as upstream interface evidence; no duplicate run
 - relevant evidence: `T4`, `T5` projected to P5 target
-- return: `reviewer_report_v1`; `GR5` blocks P6 until pass or findings close through P5 fix + targeted evidence
+- return: `reviewer_report_v1`; `GR5` blocks P6 until pass or findings close through fresh fix worker + targeted evidence
 
 ### R6: Review P6 Custom Powder safety and compatibility
 
@@ -572,7 +572,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - write policy: inspect-only
 - test policy: assess `T6` and relevant `T4/T5`; run only evidence blocker
 - relevant evidence: `T4`, `T5`, `T6` projected to P6 target
-- return: `reviewer_report_v1`; `GR6` blocks P7 until pass or findings close through P6 fix + targeted evidence
+- return: `reviewer_report_v1`; `GR6` blocks P7 until pass or findings close through fresh fix worker + targeted evidence
 
 ### R7: Review P7 money, delivery, checkout, and lifecycle integration
 
@@ -588,7 +588,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - write policy: inspect-only
 - test policy: assess `T7` plus relevant `T5/T6`; run only stale/missing blocker
 - relevant evidence: `T5`, `T6`, `T7` projected to P7 target
-- return: `reviewer_report_v1`; `GR7` blocks `G2` and P8-P10 until pass or findings close through P7 fix + targeted evidence
+- return: `reviewer_report_v1`; `GR7` blocks `G2` and P8-P10 until pass or findings close through fresh fix worker + targeted evidence
 
 ### R8: Review P8 catalog and variant UI
 
@@ -604,7 +604,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - write policy: inspect-only
 - test policy: assess `T8`; no rerun with valid evidence
 - relevant evidence: `T8` -> P8 exact change set
-- return: `reviewer_report_v1`; `GR8` blocks `G3` until pass or findings close through P8 fix + targeted evidence
+- return: `reviewer_report_v1`; `GR8` blocks `G3` until pass or findings close through fresh fix worker + targeted evidence
 
 ### R9: Review P9 Custom Powder UI
 
@@ -620,7 +620,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - write policy: inspect-only
 - test policy: assess `T9`; relevant `T6/T7` supplied as interface evidence only
 - relevant evidence: `T6`, `T7`, `T9` projected to P9 target
-- return: `reviewer_report_v1`; `GR9` blocks `G3` until pass or findings close through P9 fix + targeted evidence
+- return: `reviewer_report_v1`; `GR9` blocks `G3` until pass or findings close through fresh fix worker + targeted evidence
 
 ### R10: Review P10 purchase UI
 
@@ -636,7 +636,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - write policy: inspect-only
 - test policy: assess `T10`; relevant `T7` supplied without rerun
 - relevant evidence: `T7`, `T10` projected to P10 target
-- return: `reviewer_report_v1`; `GR10` blocks `G3` until pass or findings close through P10 fix + targeted evidence
+- return: `reviewer_report_v1`; `GR10` blocks `G3` until pass or findings close through fresh fix worker + targeted evidence
 
 ### R11A: Review S1 integration and compatibility composition
 
@@ -668,7 +668,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - write policy: inspect-only
 - test policy: assess `T11` and fiction sweep; no broad rerun for confidence
 - relevant evidence: `T11` -> S1 exact change set and allowlist
-- return: `reviewer_report_v1`; `GR11` passes only after both reviews pass or all findings close through S1/originating worker fixes + targeted evidence
+- return: `reviewer_report_v1`; `GR11` passes only after both reviews pass or all findings close through fresh fix worker scoped to S1 or originating packet + targeted evidence
 
 ## Ownership and Collision Rules
 
@@ -686,7 +686,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - schema change: P3 -> G1 acceptance -> P4-P7; no later migration edits without P3 fix directive or new migration owned by designated fix worker
 - migrations: reserve `018` for P3; any review fix needing schema change stays sequential and updates same not-yet-released migration
 - composition: S1 single owner after web fan-in
-- findings: route implementation fix to originating worker; shared/cross-packet fix uses fresh worker with incremented assignment and explicit ownership
+- findings: launch fresh fix worker per finding -> receives packet scope, finding detail, owned paths, acceptance criteria, targeted evidence requirements; never reuses originating worker session/context; cross-packet fix uses separate fresh worker with incremented assignment and explicit ownership
 
 ## Harness Role Binding
 
@@ -732,7 +732,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - recovery snapshot: `orchestrator_run_state_v1` -> `.claude/skills/write-orchestrator-coding-plan/templates/communication/orchestrator-run-state.json`
 - object records: `.claude/skills/write-orchestrator-coding-plan/references/communication-record-shapes.md`
 - worktree context: every assignment includes absolute worktree path, branch, base revision; all paths resolve beneath worktree
-- findings: stable reviewer ID -> worker-targeted fix -> targeted evidence -> closure in checkpoint; no reviewer implementation or automatic review loop
+- findings: stable reviewer ID -> fresh fix worker (never originating worker) -> targeted evidence -> closure in checkpoint; no reviewer implementation or automatic review loop
 - dependency rule: downstream packet cannot consume producer output until producer review gate passes
 
 ## Orchestrator Run Order
@@ -744,15 +744,15 @@ Completion boundary: customer can browse credible products, select actual pack S
 5. Create dedicated implementation branch/worktree from source branch `HEAD`; persist identity before `G0`.
 6. Select Node 22 and validate dependency health under `T0` inside worktree.
 7. Resolve `G0`: approve freight constants; confirm same-group equality; authorize catalog worker to finalize exact credible products/variants within source targets.
-8. Launch P1. Accept report and `T1`; launch R1 against exact P1 change set. Route findings to P1 worker, record targeted evidence, pass `GR1` before consumers launch.
-9. Launch P2 and P3 concurrently after `GR1`. Accept each report/evidence; launch R2 and R3 concurrently against separate exact targets. Close findings through originating workers. Pass `GR2` and `GR3`, then validate reviewed fan-in `G1`.
-10. Launch P4 after `G1`; accept `T4`; launch R4; close findings; pass `GR4`.
-11. Launch P5 after `GR4`; accept `T5`; launch R5; close findings; pass `GR5`.
-12. Launch P6 after `GR5`; accept `T6`; launch R6; close findings; pass `GR6`.
-13. Launch P7 after `GR6`; accept `T7`; launch R7; close findings; pass `GR7`, then validate reviewed backend gate `G2`.
-14. Launch P8, P9, P10 concurrently after `G2`. Prevent edits to S1-owned composition files. Accept `T8-T10`; launch R8-R10 concurrently against separate targets. Close lane findings through each originating worker. Pass `GR8-GR10`, then validate reviewed fan-in `G3`.
+8. Launch P1. Accept report and `T1`; launch R1 against exact P1 change set. Route findings to fresh fix worker with P1 scope, record targeted evidence, pass `GR1` before consumers launch.
+9. Launch P2 and P3 concurrently after `GR1`. Accept each report/evidence; launch R2 and R3 concurrently against separate exact targets. Close findings through fresh fix workers scoped to each packet. Pass `GR2` and `GR3`, then validate reviewed fan-in `G1`.
+10. Launch P4 after `G1`; accept `T4`; launch R4; close findings through fresh fix worker; pass `GR4`.
+11. Launch P5 after `GR4`; accept `T5`; launch R5; close findings through fresh fix worker; pass `GR5`.
+12. Launch P6 after `GR5`; accept `T6`; launch R6; close findings through fresh fix worker; pass `GR6`.
+13. Launch P7 after `GR6`; accept `T7`; launch R7; close findings through fresh fix worker; pass `GR7`, then validate reviewed backend gate `G2`.
+14. Launch P8, P9, P10 concurrently after `G2`. Prevent edits to S1-owned composition files. Accept `T8-T10`; launch R8-R10 concurrently against separate targets. Close lane findings through fresh fix workers scoped to each lane. Pass `GR8-GR10`, then validate reviewed fan-in `G3`.
 15. Launch S1 after `G3` for composition, copy, help, docs, compatibility routes, integration checks. Accept `T11`.
-16. Launch R11A and R11B concurrently against same exact S1 convergence change set with separate functional and copy/accessibility focus. Route integration findings to S1 or originating worker based on ownership. Pass `GR11` after both verdicts pass or all findings close through targeted evidence.
+16. Launch R11A and R11B concurrently against same exact S1 convergence change set with separate functional and copy/accessibility focus. Route integration findings to fresh fix worker scoped to S1 or originating packet based on ownership. Pass `GR11` after both verdicts pass or all findings close through targeted evidence.
 17. Validate `G4`: no open finding/blocker; fiction sweep allowlist contains compatibility identifiers only; evidence ledger covers current change set.
 18. Run `T12`, `T13`, `T14`, `T15` once after all review gates settle. Stop only task-owned dev server.
 19. Validate `G5`; leave implementation worktree and branch intact.
@@ -792,6 +792,6 @@ Completion boundary: customer can browse credible products, select actual pack S
 - core home -> catalog -> product -> cart -> checkout -> confirmation -> order history journey remains simple
 - `en-US` USD formatting boundary explicit; no localization or multi-currency UI
 - README and high-level plan match grounded direction and deterministic fixtures
-- every implementation packet receives exact-target review; every review gate passes or closes findings through worker fix + targeted evidence before dependent launch
+- every implementation packet receives exact-target review; every review gate passes or closes findings through fresh fix worker + targeted evidence before dependent launch
 - `npm run reset`, `npm run smoke`, focused browser journey, `npm run verify` pass on final change set
 - implementation worktree/branch retained; completion reply reports required identity and user-owned merge
