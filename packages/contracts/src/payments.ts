@@ -158,6 +158,7 @@ const PersistedCheckoutVariantLine = Type.Object(
     deliveryClass: DeliveryClass,
     quantity: Type.Integer({ minimum: 1 }),
     lineTotalCents: MoneyCents,
+    consumptionClassification: Type.String(),
   },
   { additionalProperties: false },
 );

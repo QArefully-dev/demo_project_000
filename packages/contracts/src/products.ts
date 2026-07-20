@@ -63,6 +63,13 @@ export const ProductAvailability = Type.Union([
 ]);
 export type ProductAvailability = Static<typeof ProductAvailability>;
 
+export const ConsumptionClassification = Type.Union([
+  Type.Literal('food'),
+  Type.Literal('non-food'),
+  Type.Literal('caution'),
+]);
+export type ConsumptionClassification = Static<typeof ConsumptionClassification>;
+
 export const Product = Type.Object(
   {
     id: PositiveIntegerString,
@@ -85,6 +92,7 @@ export const Product = Type.Object(
     available: Type.Boolean(),
     tags: Type.Array(ProductTag, { maxItems: 16 }),
     specificationGroups: Type.Array(ProductSpecificationGroup, { maxItems: 3 }),
+    consumptionClassification: Type.Optional(ConsumptionClassification),
   },
   { additionalProperties: false },
 );
@@ -225,13 +233,6 @@ export const ProductDetailResponse = Product;
 export type ProductDetailResponse = Static<typeof ProductDetailResponse>;
 
 export const ProductIdParam = Type.Object({ id: PositiveIntegerString });
-
-export const ConsumptionClassification = Type.Union([
-  Type.Literal('food'),
-  Type.Literal('non-food'),
-  Type.Literal('caution'),
-]);
-export type ConsumptionClassification = Static<typeof ConsumptionClassification>;
 
 export const MixingGroup = Type.String({
   minLength: 1,

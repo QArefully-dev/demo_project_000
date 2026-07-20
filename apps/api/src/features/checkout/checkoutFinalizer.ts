@@ -34,7 +34,7 @@ export function finalizeAuthorizedCheckout(
             sku: variant?.sku ?? `SKU-${v.productId}-${v.variantId}`,
             label: v.variantLabel,
             weightGrams: v.weightGrams,
-            consumptionClassification: 'non-food',
+            consumptionClassification: v.consumptionClassification as 'food' | 'non-food' | 'caution',
             deliveryClass: v.deliveryClass,
           };
           return {

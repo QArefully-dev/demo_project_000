@@ -37,6 +37,7 @@ export function createCheckoutQuote(params: {
       deliveryClass: (snap?.deliveryClass ?? 'parcel') as DeliveryClass,
       quantity: item.quantity,
       lineTotalCents: item.lineTotalCents,
+      consumptionClassification: item.product.consumptionClassification ?? 'non-food',
     };
   });
 

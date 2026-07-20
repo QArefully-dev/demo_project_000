@@ -104,6 +104,8 @@ export function toProductContract(row: ProductRow | CustomerProductRow): Product
     available: row.active === 1 && (stock > 0 || backorderable),
     tags,
     specificationGroups,
+    consumptionClassification:
+      (row.consumption_classification as Product['consumptionClassification']) || undefined,
   };
 }
 
