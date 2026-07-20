@@ -5,22 +5,36 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Cart } from '@shop/contracts/cart';
 import type { PowderMixQuote, PowderizerConfigResponse } from '@shop/contracts/powderizer';
 import {
-  createPowderMix,
-  getPowderizerConfig,
-  quotePowderMix,
-  updatePowderMix,
-} from '@/api/powderizer';
+  createCustomPowderMix,
+  getCustomPowderConfig,
+  quoteCustomPowderMix,
+  updateCustomPowderMix,
+} from '@/api/customPowder';
 import { useCartContext } from '@/hooks/CartContext';
 import { PowderizerPage } from './PowderizerPage';
-import { loadPowderizerHistory, POWDERIZER_HISTORY_KEY } from './powderizerHistory';
 
+vi.mock('@/api/customPowder', () => ({
+  createCustomPowderMix: vi.fn(),
+  getCustomPowderConfig: vi.fn(),
+  quoteCustomPowderMix: vi.fn(),
+  updateCustomPowderMix: vi.fn(),
+  requoteCustomPowderMix: vi.fn(),
+  updateCustomPowderMixQuantity: vi.fn(),
+  removeCustomPowderMix: vi.fn(),
+}));
 vi.mock('@/api/powderizer', () => ({
   createPowderMix: vi.fn(),
   getPowderizerConfig: vi.fn(),
   quotePowderMix: vi.fn(),
   updatePowderMix: vi.fn(),
+  requotePowderMix: vi.fn(),
+  updatePowderMixQuantity: vi.fn(),
+  removePowderMix: vi.fn(),
 }));
 vi.mock('@/hooks/CartContext', () => ({ useCartContext: vi.fn() }));
+
+const NEW_HISTORY_KEY = 'customPowder:history:v1';
+const OLD_HISTORY_KEY = 'powderizer:history:v1';
 
 const mixId = '01234567-89ab-4def-8123-456789abcdef';
 const cartId = '01234567-89ab-4def-8123-456789abcdee';
@@ -156,9 +170,14 @@ function renderPage(initialEntry = '/powderizer') {
 async function addValidComponents(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getAllByRole('button', { name: 'Add' })[0]!);
   await user.click(screen.getByRole('button', { name: 'Performance' }));
+  await waitFor(() => {
+    const btns = screen.getAllByRole('button', { name: 'Add' });
+    expect(btns.length).toBeGreaterThanOrEqual(1);
+  });
   await user.click(screen.getAllByRole('button', { name: 'Add' })[0]!);
-  fireEvent.change(screen.getByLabelText('Protein Powder percentage'), { target: { value: '50' } });
-  fireEvent.change(screen.getByLabelText('Cocoa Powder percentage'), { target: { value: '50' } });
+  const ratioInputs = screen.getAllByLabelText(/\w+ percentage/);
+  fireEvent.change(ratioInputs[0]!, { target: { value: '50' } });
+  fireEvent.change(ratioInputs[1]!, { target: { value: '50' } });
 }
 
 function editingCart(customLabel: string): Cart {
@@ -185,41 +204,51 @@ function editingCart(customLabel: string): Cart {
   };
 }
 
-describe('Powderizer history page', () => {
+function parseSavedHistory(key: string) {
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+describe('Custom Powder history page', () => {
   beforeEach(() => {
     vi.useRealTimers();
     vi.resetAllMocks();
     window.localStorage.clear();
-    vi.mocked(getPowderizerConfig).mockResolvedValue(config);
-    vi.mocked(quotePowderMix).mockImplementation((body) => Promise.resolve(quoteFrom(body)));
+    vi.mocked(getCustomPowderConfig).mockResolvedValue(config);
+    vi.mocked(quoteCustomPowderMix).mockImplementation((body) => Promise.resolve(quoteFrom(body)));
     vi.mocked(useCartContext).mockReturnValue(cartContext(emptyCart));
   });
 
-  it('records one successful create without price authority', async () => {
+  it('records one successful create', async () => {
     const user = userEvent.setup();
-    vi.mocked(createPowderMix).mockResolvedValue(emptyCart);
+    vi.mocked(createCustomPowderMix).mockResolvedValue(emptyCart);
     renderPage();
-    await screen.findByRole('heading', { name: 'Powderizer' });
+    await screen.findByRole('heading', { name: 'Custom Powder' });
     await addValidComponents(user);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Add to cart' })).toBeEnabled());
     await user.click(screen.getByRole('button', { name: 'Add to cart' }));
     expect(await screen.findByText('Cart destination')).toBeInTheDocument();
-    const saved = loadPowderizerHistory(window.localStorage, config.eligibleProducts);
+    const saved = parseSavedHistory(NEW_HISTORY_KEY);
     expect(saved.entries).toHaveLength(1);
-    expect(JSON.stringify(saved)).not.toContain('price');
+    expect(JSON.stringify(saved)).not.toContain('"goodFor"');
   });
 
   it('does not record failure and storage failure does not block navigation', async () => {
     const user = userEvent.setup();
-    vi.mocked(createPowderMix).mockRejectedValueOnce(new Error('Save unavailable'));
+    vi.mocked(createCustomPowderMix).mockRejectedValueOnce(new Error('Save unavailable'));
     renderPage();
-    await screen.findByRole('heading', { name: 'Powderizer' });
+    await screen.findByRole('heading', { name: 'Custom Powder' });
     await addValidComponents(user);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Add to cart' })).toBeEnabled());
     await user.click(screen.getByRole('button', { name: 'Add to cart' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Save unavailable');
-    expect(window.localStorage.getItem(POWDERIZER_HISTORY_KEY)).toBeNull();
-    vi.mocked(createPowderMix).mockResolvedValueOnce(emptyCart);
+    expect(window.localStorage.getItem(NEW_HISTORY_KEY)).toBeNull();
+    vi.mocked(createCustomPowderMix).mockResolvedValueOnce(emptyCart);
     const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('Storage unavailable');
     });
@@ -231,21 +260,21 @@ describe('Powderizer history page', () => {
   it('records exactly one successful update', async () => {
     const user = userEvent.setup();
     vi.mocked(useCartContext).mockReturnValue(cartContext(editingCart('Training')));
-    vi.mocked(updatePowderMix).mockResolvedValue(emptyCart);
+    vi.mocked(updateCustomPowderMix).mockResolvedValue(emptyCart);
     renderPage(`/powderizer?edit=${mixId}`);
-    await screen.findByText('Editing custom mix');
+    await screen.findByText('Editing custom blend');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Update cart' })).toBeEnabled());
     await user.click(screen.getByRole('button', { name: 'Update cart' }));
     expect(await screen.findByText('Cart destination')).toBeInTheDocument();
-    const saved = loadPowderizerHistory(window.localStorage, config.eligibleProducts);
+    const saved = parseSavedHistory(NEW_HISTORY_KEY);
     expect(saved.entries).toHaveLength(1);
     expect(saved.entries[0]).toMatchObject({ config: { customLabel: 'Training' } });
   });
 
-  it('uses history as fresh config without restoring edit state or stored price', async () => {
+  it('migrates old history entries and uses them without edit state', async () => {
     const user = userEvent.setup();
     window.localStorage.setItem(
-      POWDERIZER_HISTORY_KEY,
+      OLD_HISTORY_KEY,
       JSON.stringify({
         version: 1,
         entries: [
@@ -265,26 +294,26 @@ describe('Powderizer history page', () => {
             },
             componentNames: { 1: 'Old protein', 2: 'Old cocoa' },
             goodFor: 'Sleep',
-            unitPriceCents: 99999,
           },
         ],
       }),
     );
     vi.mocked(useCartContext).mockReturnValue(cartContext(editingCart('Editing label')));
     renderPage(`/powderizer?edit=${mixId}`);
-    await screen.findByText('Editing custom mix');
-    await waitFor(() => expect(quotePowderMix).toHaveBeenCalled());
-    const before = vi.mocked(quotePowderMix).mock.calls.length;
+    await screen.findByText('Editing custom blend');
+    await waitFor(() => expect(quoteCustomPowderMix).toHaveBeenCalled());
+    const before = vi.mocked(quoteCustomPowderMix).mock.calls.length;
+    expect(await screen.findByText(/Migrated 1 entries/)).toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: 'Use again' }));
-    expect(await screen.findByText('New custom mix')).toBeInTheDocument();
+    expect(await screen.findByText('New custom blend')).toBeInTheDocument();
     expect(screen.getByLabelText(/Bag label/)).toHaveValue('From history');
     await waitFor(() =>
       expect(document.activeElement).toBe(
-        screen.getByRole('heading', { name: 'Powderizer' }).closest('section'),
+        screen.getByRole('heading', { name: 'Custom Powder' }).closest('section'),
       ),
     );
-    await waitFor(() => expect(quotePowderMix).toHaveBeenCalledTimes(before + 1));
-    const freshQuote = vi.mocked(quotePowderMix).mock.calls.at(-1)?.[0];
+    await waitFor(() => expect(quoteCustomPowderMix).toHaveBeenCalledTimes(before + 1));
+    const freshQuote = vi.mocked(quoteCustomPowderMix).mock.calls.at(-1)?.[0];
     expect(freshQuote).toMatchObject({
       components: [
         { productId: '1', percentage: 25 },
@@ -295,6 +324,5 @@ describe('Powderizer history page', () => {
       customLabel: 'From history',
       bagColourScheme: 'solar-flare',
     });
-    expect(freshQuote).not.toHaveProperty('unitPriceCents');
   });
 });

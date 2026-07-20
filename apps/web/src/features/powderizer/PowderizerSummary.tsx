@@ -1,7 +1,6 @@
 import type { PowderMixQuote } from '@shop/contracts/powderizer';
 import { Button } from '@/components/ui/button';
 import { formatMoney } from '@/lib/formatMoney';
-import { selectGoodFor } from './powderizerCopy';
 import type { BuilderConfig } from './powderizerState';
 
 type PowderizerSummaryProps = {
@@ -23,20 +22,19 @@ export function PowderizerSummary({
   editing,
   onSubmit,
   ingredientWarnings = [],
-  config,
+  config: _config,
 }: PowderizerSummaryProps) {
-  const goodFor = config ? selectGoodFor(config) : null;
   return (
     <section
       className="rounded-xl border border-border bg-surface-raised p-4"
       aria-labelledby="mix-summary-title"
     >
       <h2 id="mix-summary-title" className="font-semibold">
-        Quote summary
+        Blend summary
       </h2>
       {!quote ? (
         <p className="mt-2 text-sm text-muted-foreground">
-          A current quote appears here after your mix is valid.
+          A current quote appears here after your blend is valid.
         </p>
       ) : (
         <div className="mt-3 space-y-3 text-sm">
@@ -77,22 +75,17 @@ export function PowderizerSummary({
           ))}
         </ul>
       )}
-      {goodFor && (
-        <p className="mt-3 text-sm text-muted-foreground">
-          <span className="font-semibold text-foreground">Good for:</span> {goodFor}
-        </p>
-      )}
       <Button
         type="button"
         className="mt-4 w-full"
         disabled={!canSubmit || isSubmitting}
         onClick={onSubmit}
       >
-        {isSubmitting ? 'Saving mix…' : editing ? 'Update cart' : 'Add to cart'}
+        {isSubmitting ? 'Saving blend…' : editing ? 'Update cart' : 'Add to cart'}
       </Button>
       {!canSubmit && (
         <p className="mt-2 text-xs text-muted-foreground">
-          A valid, current quote is required before adding this mix.
+          A valid, current quote is required before adding this blend.
         </p>
       )}
     </section>

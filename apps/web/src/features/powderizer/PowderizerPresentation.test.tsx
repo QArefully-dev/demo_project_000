@@ -200,9 +200,7 @@ describe('Powderizer presentation', () => {
     expect(screen.getByLabelText('Ingredient warnings')).toHaveTextContent(
       'Keep separate from open flames.',
     );
-    expect(screen.getByText('Good for:', { exact: false })).toBeInTheDocument();
-    view.rerender(summary([{ productId: '1', percentage: 100 }]));
-    expect(screen.queryByText('Good for:', { exact: false })).not.toBeInTheDocument();
+    expect(screen.getByText('Blend summary')).toBeInTheDocument();
   });
 
   it('disables Phase 9 transitions under reduced motion', () => {

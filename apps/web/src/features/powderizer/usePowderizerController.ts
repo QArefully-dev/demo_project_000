@@ -3,11 +3,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { PowderizerConfigResponse } from '@shop/contracts/powderizer';
 import { ApiError } from '@/api/client';
 import {
-  createPowderMix,
-  getPowderizerConfig,
-  quotePowderMix,
-  updatePowderMix,
-} from '@/api/powderizer';
+  getCustomPowderConfig,
+  quoteCustomPowderMix,
+  createCustomPowderMix,
+  updateCustomPowderMix,
+} from '@/api/customPowder';
 import { useCartContext } from '@/hooks/CartContext';
 import {
   builderQuoteKey,
@@ -32,7 +32,7 @@ export type UsePowderizerControllerOptions = {
   onSubmitSuccess?: PowderizerSubmitSuccessHandler;
 };
 
-/** Browser entropy adapter. Pure generation helpers receive this as an injected dependency. */
+/** Browser entropy adapter. Only used by legacy fallback components. */
 export function cryptoRandom(): number {
   const values = new Uint32Array(1);
   globalThis.crypto.getRandomValues(values);
@@ -57,7 +57,7 @@ export function usePowderizerController({ onSubmitSuccess }: UsePowderizerContro
 
   useEffect(() => {
     const controller = new AbortController();
-    void getPowderizerConfig(controller.signal)
+    void getCustomPowderConfig(controller.signal)
       .then((data) => setRemote({ data, error: null }))
       .catch((error: unknown) => {
         if (!controller.signal.aborted)
@@ -87,7 +87,7 @@ export function usePowderizerController({ onSubmitSuccess }: UsePowderizerContro
     const requestId = ++quoteRequestRef.current;
     const timer = window.setTimeout(() => {
       dispatch({ type: 'quote-started', key: quoteKey, requestId });
-      void quotePowderMix(toPowderMixConfigInput(state.config), controller.signal)
+      void quoteCustomPowderMix(toPowderMixConfigInput(state.config), controller.signal)
         .then((quote) => dispatch({ type: 'quote-succeeded', key: quoteKey, requestId, quote }))
         .catch((error: unknown) => {
           if (!controller.signal.aborted)
@@ -133,8 +133,8 @@ export function usePowderizerController({ onSubmitSuccess }: UsePowderizerContro
     try {
       const submittedConfig = normalizeBuilderConfig(state.config);
       const body = toPowderMixConfigInput(submittedConfig);
-      if (state.editMixId) await updatePowderMix(cartId, state.editMixId, body);
-      else await createPowderMix(cartId, body);
+      if (state.editMixId) await updateCustomPowderMix(cartId, state.editMixId, body);
+      else await createCustomPowderMix(cartId, body);
       try {
         await onSubmitSuccess?.(submittedConfig);
       } catch {
