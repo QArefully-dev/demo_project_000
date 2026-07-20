@@ -1,5 +1,6 @@
-import type { Product } from '@shop/contracts/products';
-import { Check } from 'lucide-react';
+import { useState } from 'react';
+import type { ProductWithVariants, CatalogVariant } from '@shop/contracts/products';
+import { Check, Package, Scale, AlertTriangle, Truck } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { WishlistButton } from '@/components/WishlistButton';
@@ -7,13 +8,124 @@ import { CompareProductButton } from '@/features/comparison/CompareProductButton
 import { formatMoney } from '@/lib/formatMoney';
 
 interface ProductPurchasePanelProps {
-  product: Product;
+  product: ProductWithVariants;
   isCartAvailable: boolean;
   isAdding: boolean;
   actionError: string | null;
   cartError?: string | null;
-  onAddToCart: () => Promise<void>;
+  onAddToCart: (variantId: number) => Promise<void>;
   onRetryCart?: () => void;
+}
+
+function variantIsPurchasable(v: CatalogVariant): boolean {
+  return v.active && (v.stockCount > 0 || v.backorderable);
+}
+
+function VariantSelector({
+  variants,
+  selectedVariantId,
+  onSelect,
+}: {
+  variants: readonly CatalogVariant[];
+  selectedVariantId: number | null;
+  onSelect: (variantId: number) => void;
+}) {
+  const sorted = [...variants].sort((a, b) => a.sortOrder - b.sortOrder);
+
+  return (
+    <fieldset className="mt-6">
+      <legend className="font-semibold text-foreground">Bag options</legend>
+      <div className="mt-3 grid gap-3">
+        {sorted.map((v) => {
+          const isSelected = selectedVariantId === v.variantId;
+          const disabled = !variantIsPurchasable(v);
+          const isOutOfStock = v.active && v.stockCount === 0 && !v.backorderable;
+          const isBackorder = v.active && v.stockCount === 0 && v.backorderable;
+          const isFreight = v.deliveryClass === 'freight';
+          const hasSale = v.compareAtPriceCents != null && v.compareAtPriceCents > v.priceCents;
+
+          return (
+            <label
+              key={v.variantId}
+              className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors ${
+                disabled
+                  ? 'cursor-not-allowed border-border/40 bg-surface-soft/50 opacity-60'
+                  : isSelected
+                    ? 'border-primary/50 bg-primary/5 ring-2 ring-primary/20'
+                    : 'border-border/80 bg-surface-raised hover:border-primary/30'
+              }`}
+            >
+              <input
+                type="radio"
+                name="variant"
+                className="mt-0.5 size-4 accent-primary"
+                checked={isSelected}
+                disabled={disabled}
+                onChange={() => onSelect(v.variantId)}
+              />
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-base font-semibold text-foreground">{v.label}</span>
+                  {isFreight && (
+                    <Badge variant="secondary" className="gap-1 px-2">
+                      <Truck className="size-3" />
+                      Freight
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                  <span className="font-semibold text-foreground">
+                    {hasSale ? (
+                      <>
+                        <span className="text-sale">{formatMoney(v.priceCents)}</span>{' '}
+                        <span className="text-xs font-normal text-muted-foreground line-through">
+                          {formatMoney(v.compareAtPriceCents!)}
+                        </span>
+                      </>
+                    ) : (
+                      formatMoney(v.priceCents)
+                    )}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <Package className="size-3.5" />
+                    SKU: {v.sku}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <Scale className="size-3.5" />
+                    {v.weightGrams >= 1000
+                      ? `${(v.weightGrams / 1000).toFixed(1)} kg`
+                      : `${v.weightGrams} g`}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                  {isOutOfStock ? (
+                    <span className="inline-flex items-center gap-1 font-medium text-destructive">
+                      <AlertTriangle className="size-3.5" />
+                      Sold out
+                    </span>
+                  ) : isBackorder ? (
+                    <span className="inline-flex items-center gap-1 font-medium text-amber-700">
+                      Backorder
+                      {v.backorderLeadDays != null && ` (${v.backorderLeadDays} days lead)`}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 font-medium text-success">
+                      <Check className="size-3.5" />
+                      {v.stockCount === 1
+                        ? '1 in stock'
+                        : v.stockCount <= 5
+                          ? `Only ${v.stockCount} in stock`
+                          : `${v.stockCount} in stock`}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
 }
 
 export function ProductPurchasePanel({
@@ -25,14 +137,44 @@ export function ProductPurchasePanel({
   onAddToCart,
   onRetryCart,
 }: ProductPurchasePanelProps) {
-  const inStock = product.availability === 'in_stock';
-  const backorder = product.availability === 'backorder';
-  const purchasable = inStock || backorder;
+  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const baseAvail = product.baseAvailability;
+  const hasPriceRange = product.priceRange.min !== product.priceRange.max;
   const isOnSale =
-    product.compareAtPriceCents != null && product.compareAtPriceCents > product.priceCents;
-  const savings = isOnSale ? product.compareAtPriceCents! - product.priceCents : 0;
+    product.compareAtPriceCents != null && product.compareAtPriceCents > product.priceRange.min;
+  const savings = isOnSale ? product.compareAtPriceCents! - product.priceRange.min : 0;
   const packSize = product.packaging?.quantity;
   const consumptionLabel = product.packaging?.consumptionLabel;
+  const isFood = product.consumptionClassification === 'food';
+  const isNonFood = product.consumptionClassification === 'non-food';
+  const isCaution = product.consumptionClassification === 'caution';
+
+  const selectedVariant = selectedVariantId
+    ? (product.variants.find((v) => v.variantId === selectedVariantId) ?? null)
+    : null;
+
+  const variantAddDisabled = !selectedVariantId || !variantIsPurchasable(selectedVariant!);
+
+  const priceLabel = hasPriceRange
+    ? `From ${formatMoney(product.priceRange.min)}`
+    : formatMoney(product.priceRange.min);
+
+  const handleAddToCart = async () => {
+    if (!selectedVariantId) {
+      setLocalError('Please select a bag option.');
+      return;
+    }
+    if (!selectedVariant || !variantIsPurchasable(selectedVariant)) {
+      setLocalError('The selected option is not available.');
+      return;
+    }
+    setLocalError(null);
+    await onAddToCart(selectedVariantId);
+  };
+
+  const allUnavailable = product.variants.every((v) => !variantIsPurchasable(v));
 
   return (
     <aside className="product-purchase-panel self-start rounded-2xl border bg-surface-raised p-6 shadow-sm xl:p-8">
@@ -42,12 +184,13 @@ export function ProductPurchasePanel({
           {product.name}
         </h1>
         {isOnSale && <Badge className="bg-sale text-sale-foreground">Sale</Badge>}
+        {isFood && <Badge className="bg-emerald-600 text-white">Food</Badge>}
+        {isNonFood && <Badge variant="secondary">Not for consumption</Badge>}
+        {isCaution && <Badge className="bg-amber-500 text-white">Caution</Badge>}
       </div>
 
       <div className="mt-6 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-3xl font-bold tracking-tight text-foreground">
-          {formatMoney(product.priceCents)}
-        </span>
+        <span className="text-3xl font-bold tracking-tight text-foreground">{priceLabel}</span>
         {isOnSale && (
           <>
             <span className="text-lg text-muted-foreground line-through">
@@ -59,6 +202,37 @@ export function ProductPurchasePanel({
       </div>
 
       <p className="mt-6 leading-7 text-muted-foreground">{product.description}</p>
+
+      <VariantSelector
+        variants={product.variants}
+        selectedVariantId={selectedVariantId}
+        onSelect={(variantId) => {
+          setSelectedVariantId(variantId);
+          setLocalError(null);
+        }}
+      />
+
+      {selectedVariant && (
+        <div className="mt-4 rounded-xl bg-surface-soft p-4 text-sm space-y-2">
+          <p>
+            <span className="font-semibold">Selected:</span> {selectedVariant.label} (SKU:{' '}
+            {selectedVariant.sku})
+          </p>
+          <p>
+            <span className="font-semibold">Price:</span> {formatMoney(selectedVariant.priceCents)}
+            {selectedVariant.compareAtPriceCents != null &&
+              selectedVariant.compareAtPriceCents > selectedVariant.priceCents && (
+                <>
+                  {' '}
+                  <span className="text-muted-foreground line-through">
+                    {formatMoney(selectedVariant.compareAtPriceCents)}
+                  </span>
+                </>
+              )}
+          </p>
+        </div>
+      )}
+
       <div className="mt-5 grid gap-3 rounded-xl border border-border/80 bg-surface-soft p-4 text-sm sm:grid-cols-2">
         <div>
           <p className="font-semibold">Bag format</p>
@@ -99,23 +273,26 @@ export function ProductPurchasePanel({
       <div className="mt-6 rounded-xl bg-surface-soft p-4">
         <p
           className={
-            inStock
+            baseAvail === 'in_stock' || baseAvail === 'low_stock'
               ? 'font-semibold text-success'
-              : backorder
+              : baseAvail === 'backorder'
                 ? 'font-semibold text-amber-700'
                 : 'font-semibold text-destructive'
           }
         >
-          {inStock ? 'In stock' : backorder ? 'Available to backorder' : 'Out of stock'}
+          {baseAvail === 'in_stock'
+            ? 'In stock'
+            : baseAvail === 'low_stock'
+              ? 'Low stock'
+              : baseAvail === 'backorder'
+                ? 'Available to backorder'
+                : 'Out of stock'}
         </p>
-        {inStock && (
+        {selectedVariant && variantIsPurchasable(selectedVariant) && (
           <p className="mt-1 text-sm text-muted-foreground">
-            {product.stock === 1 ? '1 item available' : `${product.stock} items available`}
-          </p>
-        )}
-        {backorder && (
-          <p className="mt-1 text-sm text-muted-foreground">
-            This item can be ordered when stock is replenished. Checkout confirms availability.
+            {selectedVariant.stockCount > 0
+              ? `${selectedVariant.stockCount} items available`
+              : `Backorder (${selectedVariant.backorderLeadDays ?? '?'} days lead)`}
           </p>
         )}
       </div>
@@ -124,16 +301,20 @@ export function ProductPurchasePanel({
         <Button
           size="lg"
           className="h-12 flex-1 text-base"
-          disabled={!isCartAvailable || !purchasable || isAdding}
-          onClick={() => void onAddToCart()}
+          disabled={!isCartAvailable || allUnavailable || variantAddDisabled || isAdding}
+          onClick={() => void handleAddToCart()}
         >
           {!isCartAvailable
             ? 'Cart unavailable'
             : isAdding
-              ? 'Adding…'
-              : purchasable
-                ? 'Add powder'
-                : 'Unavailable'}
+              ? 'Adding\u2026'
+              : allUnavailable
+                ? 'Unavailable'
+                : !selectedVariantId
+                  ? 'Choose a bag option'
+                  : variantAddDisabled
+                    ? 'Unavailable'
+                    : 'Add powder'}
         </Button>
         <div className="rounded-lg border bg-background" title="Add to wishlist">
           <WishlistButton productId={product.id} product={product} />
@@ -143,9 +324,9 @@ export function ProductPurchasePanel({
         <CompareProductButton productId={product.id} productName={product.name} />
       </div>
 
-      {actionError && (
+      {(actionError || localError) && (
         <p role="alert" className="mt-3 text-sm text-destructive">
-          {actionError}
+          {localError ?? actionError}
         </p>
       )}
       {cartError && onRetryCart && (

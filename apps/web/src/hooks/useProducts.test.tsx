@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
-import type { ProductListPaginatedResponse } from '@shop/contracts/products';
+import type { CategoryFacts } from '@shop/contracts/products';
+import type { VariantProductList } from '@/api/products';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getProducts } from '@/api/products';
 import { useProducts } from './useProducts';
@@ -16,7 +17,16 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function response(name: string): ProductListPaginatedResponse {
+const defaultFacts: CategoryFacts = {
+  texture: 'Fine',
+  colour: 'White',
+  source: 'Test source',
+  intendedUse: 'Testing',
+  storage: 'Dry cool',
+  consumptionClassification: 'non-food',
+};
+
+function response(name: string): VariantProductList {
   return {
     items: [
       {
@@ -37,6 +47,28 @@ function response(name: string): ProductListPaginatedResponse {
         tags: [],
         specificationGroups: [],
         mixable: false,
+        variants: [
+          {
+            variantId: 1,
+            productId: 1,
+            sku: `${name}-sku`,
+            label: 'Standard',
+            weightGrams: 500,
+            priceCents: 1000,
+            stockCount: 10,
+            backorderable: false,
+            backorderLeadDays: null,
+            deliveryClass: 'parcel',
+            active: true,
+            sortOrder: 1,
+          },
+        ],
+        defaultVariantId: 1,
+        categoryFacts: defaultFacts,
+        consumptionClassification: 'non-food',
+        mixingGroup: null,
+        priceRange: { min: 1000, max: 1000 },
+        baseAvailability: 'in_stock',
       },
     ],
     total: 1,
@@ -51,8 +83,8 @@ describe('useProducts', () => {
   });
 
   it('aborts and does not commit an out-of-order expanded-filter response', async () => {
-    const first = deferred<ProductListPaginatedResponse>();
-    const second = deferred<ProductListPaginatedResponse>();
+    const first = deferred<VariantProductList>();
+    const second = deferred<VariantProductList>();
     vi.mocked(getProducts).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
 
     type ExpandedFilters = {
@@ -98,8 +130,8 @@ describe('useProducts', () => {
   });
 
   it('ignores an older rejection while the newer request remains loading', async () => {
-    const first = deferred<ProductListPaginatedResponse>();
-    const second = deferred<ProductListPaginatedResponse>();
+    const first = deferred<VariantProductList>();
+    const second = deferred<VariantProductList>();
     vi.mocked(getProducts).mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
 
     const { result, rerender } = renderHook(({ q }) => useProducts({ q }), {

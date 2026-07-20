@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getProducts } from '../api/products';
-import type { Product } from '@shop/contracts/products';
+import type { VariantProductList } from '../api/products';
 import type { GetProductsParams } from '../api/products';
 import { serializeCatalogQuery } from '@/catalogQuery';
 
@@ -8,7 +8,7 @@ export type UseProductsParams = GetProductsParams;
 
 export function useProducts(params?: UseProductsParams) {
   const paramsKey = serializeCatalogQuery(params).toString();
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<VariantProductList['items']>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);

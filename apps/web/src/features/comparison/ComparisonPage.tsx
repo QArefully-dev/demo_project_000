@@ -1,15 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import type { Product, ProductComparisonResponse } from '@shop/contracts/products';
 import { getProductComparison } from '@/api/products';
 import { Button } from '@/components/ui/button';
 import { ComparisonMatrix } from './ComparisonMatrix';
+import type { Product } from '@shop/contracts/products';
 import { parseComparisonSelection, removeComparisonId } from './comparisonSelection';
 import { useComparisonSelection } from './ComparisonSelectionContext';
 
+interface EnrichedProduct extends Product {
+  priceRange?: { min: number; max: number };
+  baseAvailability?: 'in_stock' | 'low_stock' | 'out_of_stock' | 'backorder';
+  variants?: unknown[];
+}
+
 interface LoadedComparison {
-  response: ProductComparisonResponse;
-  products: Product[];
+  items: {
+    id: string;
+    status: 'available' | 'inactive' | 'missing';
+    product?: EnrichedProduct;
+  }[];
+  products: EnrichedProduct[];
 }
 
 export function ComparisonPage() {
@@ -47,12 +57,23 @@ export function ComparisonPage() {
     getProductComparison(selectedIds, controller.signal)
       .then((response) => {
         if (controller.signal.aborted || currentRequest !== requestNumber.current) return;
-        const products = response.items.flatMap((item) =>
-          item.status === 'available' ? [item.product] : [],
-        );
+        const products = response.items.flatMap((item) => {
+          if (item.status === 'available' && item.product) {
+            return [item.product as EnrichedProduct];
+          }
+          return [];
+        });
+        const items = response.items.map((item) => ({
+          id: item.id,
+          status: item.status,
+          product:
+            item.status === 'available' && 'product' in item
+              ? (item as { product: EnrichedProduct }).product
+              : undefined,
+        }));
         if (products.length >= 2 && products.length <= 4)
           syncValidSelection(products.map((product) => product.id));
-        setLoaded({ response, products });
+        setLoaded({ items, products });
       })
       .catch((loadError: unknown) => {
         if (controller.signal.aborted || currentRequest !== requestNumber.current) return;
@@ -68,8 +89,6 @@ export function ComparisonPage() {
 
   const updateIds = (ids: readonly string[]) => {
     if (ids.length < 2) {
-      // A removal that leaves one product is intentionally an empty comparison,
-      // not an instruction to immediately restore the previous saved selection.
       skipStorageRestore.current = true;
       setSearchParams({}, { replace: false });
       return;
@@ -95,7 +114,7 @@ export function ComparisonPage() {
     );
   }
 
-  const unavailable = loaded?.response.items.filter((item) => item.status !== 'available') ?? [];
+  const unavailable = loaded?.items.filter((item) => item.status !== 'available') ?? [];
   return (
     <div className="pb-12">
       <header className="mb-7 max-w-3xl">

@@ -1,9 +1,9 @@
-import type { Product } from '@shop/contracts/products';
+import type { Product, ProductWithVariants } from '@shop/contracts/products';
 
 import { BagArtwork } from '@/components/BagArtwork';
 
 interface ProductMediaProps {
-  product: Product;
+  product: Product | ProductWithVariants;
   className?: string;
 }
 

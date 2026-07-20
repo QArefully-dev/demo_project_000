@@ -1,10 +1,19 @@
 import { render, screen } from '@testing-library/react';
-import type { Product } from '@shop/contracts/products';
+import type { ProductWithVariants, CategoryFacts } from '@shop/contracts/products';
 import { describe, expect, it } from 'vitest';
 
 import { ProductGallery } from './ProductGallery';
 
-const product = (overrides: Partial<Product> = {}): Product => ({
+const defaultFacts: CategoryFacts = {
+  texture: 'Fine',
+  colour: 'White',
+  source: 'Test',
+  intendedUse: 'Testing',
+  storage: 'Dry',
+  consumptionClassification: 'non-food',
+};
+
+const product = (overrides: Partial<ProductWithVariants> = {}): ProductWithVariants => ({
   id: 'powdered-water',
   name: 'Powdered Water',
   description: 'Just-add-water water powder, 300g. Dry until required.',
@@ -31,6 +40,28 @@ const product = (overrides: Partial<Product> = {}): Product => ({
   availability: overrides.availability ?? 'in_stock',
   backorderable: overrides.backorderable ?? false,
   backorderLeadDays: overrides.backorderLeadDays ?? null,
+  variants: overrides.variants ?? [
+    {
+      variantId: 1,
+      productId: 1,
+      sku: 'PW-001',
+      label: 'Standard',
+      weightGrams: 500,
+      priceCents: 12999,
+      stockCount: 8,
+      backorderable: false,
+      backorderLeadDays: null,
+      deliveryClass: 'parcel',
+      active: true,
+      sortOrder: 1,
+    },
+  ],
+  defaultVariantId: overrides.defaultVariantId ?? 1,
+  categoryFacts: overrides.categoryFacts ?? defaultFacts,
+  consumptionClassification: overrides.consumptionClassification ?? 'non-food',
+  mixingGroup: overrides.mixingGroup ?? null,
+  priceRange: overrides.priceRange ?? { min: 12999, max: 12999 },
+  baseAvailability: overrides.baseAvailability ?? 'in_stock',
 });
 
 describe('ProductGallery', () => {

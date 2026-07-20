@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import type { Product } from '@shop/contracts/products';
+import type { ProductWithVariants } from '@shop/contracts/products';
 import { ApiError } from '@/api/client';
 import { getProduct } from '@/api/products';
 import { ErrorMessage } from '@/components/ErrorMessage';
@@ -17,7 +17,7 @@ import { SimilarProductsSection } from './SimilarProductsSection';
 
 export function ProductPage() {
   const { id } = useParams<{ id: string }>();
-  const [product, setProduct] = useState<Product | null>(null);
+  const [product, setProduct] = useState<ProductWithVariants | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -27,6 +27,7 @@ export function ProductPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     activeProductIdRef.current = id;
     setIsLoading(true);
     setError(null);
@@ -39,7 +40,7 @@ export function ProductPage() {
       return;
     }
 
-    getProduct(id)
+    getProduct(id, controller.signal)
       .catch((loadError: unknown) => {
         if (loadError instanceof ApiError && loadError.status === 404) return null;
         throw loadError;
@@ -59,6 +60,7 @@ export function ProductPage() {
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [id]);
 
@@ -66,13 +68,13 @@ export function ProductPage() {
   if (error) return <ErrorMessage message={error} />;
   if (!product) return <ErrorMessage message="Product not found" />;
 
-  const handleAddToCart = async (): Promise<void> => {
+  const handleAddToCart = async (variantId: number): Promise<void> => {
     const productId = product.id;
     if (addInFlightProductIdsRef.current.has(productId)) return;
     addInFlightProductIdsRef.current.add(productId);
     setActionError(null);
     try {
-      if (!(await addItem(productId)) && activeProductIdRef.current === productId) {
+      if (!(await addItem(productId, variantId)) && activeProductIdRef.current === productId) {
         setActionError('Could not add this item. Try again.');
       }
     } finally {
@@ -117,7 +119,7 @@ export function ProductPage() {
       </div>
 
       <div className="mt-12 grid gap-6">
-        <ProductDetails description={product.description} />
+        <ProductDetails description={product.description} categoryFacts={product.categoryFacts} />
         <ProductSpecifications specificationGroups={product.specificationGroups} />
         <ProductContextLinks packagingQuantity={product.packaging?.quantity} />
       </div>
@@ -128,7 +130,7 @@ export function ProductPage() {
         productId={product.id}
         isCartAvailable={isCartAvailable}
         isAdding={(productId) => isActionPending(productId, 'add')}
-        onAddToCart={addItem}
+        onAddToCart={(productId, variantId) => addItem(productId, variantId)}
       />
     </div>
   );
