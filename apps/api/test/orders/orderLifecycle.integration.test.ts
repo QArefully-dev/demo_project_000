@@ -230,7 +230,9 @@ void test('lifecycle commands are idempotent, versioned, audited, and transactio
      VALUES (?, (SELECT id FROM product_variants WHERE product_id = 1 ORDER BY sort_order LIMIT 1), 1, 0, 0, 1, ?, ?)`,
   ).run(restoredLineId, '2026-07-19T12:00:00.000Z', '2026-07-19T12:00:00.000Z');
   const variantId = (
-    db.prepare('SELECT id FROM product_variants WHERE product_id = 1 ORDER BY sort_order LIMIT 1').get() as { id: number }
+    db
+      .prepare('SELECT id FROM product_variants WHERE product_id = 1 ORDER BY sort_order LIMIT 1')
+      .get() as { id: number }
   ).id;
   const stockBeforeRestore = (
     db.prepare('SELECT stock_count FROM product_variants WHERE id = ?').get(variantId) as {
@@ -247,8 +249,11 @@ void test('lifecycle commands are idempotent, versioned, audited, and transactio
     'cancelled',
   );
   assert.equal(
-    (db.prepare('SELECT stock_count FROM product_variants WHERE id = ?').get(variantId) as { stock_count: number })
-      .stock_count,
+    (
+      db.prepare('SELECT stock_count FROM product_variants WHERE id = ?').get(variantId) as {
+        stock_count: number;
+      }
+    ).stock_count,
     stockBeforeRestore + 1,
   );
 

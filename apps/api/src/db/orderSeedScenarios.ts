@@ -365,9 +365,9 @@ export function seedOrderScenarios(db: Database.Database): void {
       const variant = findVariantByProduct.get(line.product.id) as
         | { id: number; sku: string; label: string; weight_grams: number; delivery_class: string }
         | undefined;
-      const consumptionClassification = CATALOG_PRODUCTS.find(
-        (p) => p.id === line.product.id,
-      )?.consumptionClassification ?? 'non-food';
+      const consumptionClassification =
+        CATALOG_PRODUCTS.find((p) => p.id === line.product.id)?.consumptionClassification ??
+        'non-food';
       return Number(
         insertProductLine.run(
           orderId,

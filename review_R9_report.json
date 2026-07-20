@@ -1,0 +1,87 @@
+{
+  "schema_version": "1.0",
+  "message_type": "reviewer_report_v1",
+  "message_id": "R9-001",
+  "run_id": "20260720-001",
+  "packet_id": "R9",
+  "role": "reviewer",
+  "assignment_revision": 1,
+  "verdict": "changes_requested",
+  "summary": "Two blockers found. (1) CompatibilityGuard is always rendered with error={null} — the structured MIXING_GROUP_MISMATCH error UI (showing group-per-product breakdown) is dead code; only a generic string error reaches users. (2) The client-side compatibility filter in IngredientPicker uses consumptionClassification (food/non-food/caution) instead of the server's mixingGroup; the Product type doesn't even expose mixingGroup to the web client, so the picker cannot be mixing-group-aware as required. Also HIGH: acceptance criterion 7 says files should be removed but PowderizerActions.tsx, powderizerRandom.ts, powderizerCopy.ts (contains comedic copy like 'Hairy legs', 'Tax avoidance'), IngredientReaction.tsx, DailyRecipeCard.tsx, and the old history stack all remain on disk.",
+  "reviewed_target": {"implementation_packet_id": "P9", "change_set": "c921650", "head_revision": "c921650"},
+  "evidence_assessment": [
+    {"claim": "typecheck pass", "status": "accepted", "notes": "No contradictory evidence"},
+    {"claim": "10 test files / 41 tests pass", "status": "verified", "notes": "Reproduced: 10 files, 41 tests, all pass at 20:42 UTC"}
+  ],
+  "findings": [
+    {
+      "severity": "blocker",
+      "id": "F1",
+      "title": "CompatibilityGuard always receives error={null} — server-crafted MIXING_GROUP_MISMATCH structured errors never rendered",
+      "ac_criterion": [3],
+      "trace": {
+        "input": "Server returns a MIXING_GROUP_MISMATCH error body conforming to IncompatibleGroupError shape from contracts (conflictingProductIds + groupInfo per product)",
+        "state": "PowderizerPage.tsx:136 renders <CompatibilityGuard error={null} productNamesById={namesByProductId} />. The controller usePowderizerController.ts:87-100 passes all quote errors through messageFor() which only captures error.message as a string. The structured IncompatibleGroupError data is never extracted from the API response.",
+        "wrong_output": "CompatibilityGuard returns null (line 10: if (!error) return null). Only the generic string error appears in the quote error section (lines 117-128). Users never see which specific products conflict or their mixing group names. The rich structured UI in CompatibilityGuard (lines 12-39) showing per-product group labels is dead code."
+      },
+      "remediation": "In the controller, catch API errors that carry IncompatibleGroupError body, extract to state, pass through to CompatibilityGuard instead of hardcoded null."
+    },
+    {
+      "severity": "blocker",
+      "id": "F2",
+      "title": "Client-side compatibility filter uses consumptionClassification, not mixingGroup — picker is not mixing-group-aware",
+      "ac_criterion": [2],
+      "trace": {
+        "input": "Products have both consumptionClassification (optional on Product type: 'food'|'non-food'|'caution') and mixingGroup (only on ProductWithVariants type, absent from Product base type). Server validates mixingGroup on quote.",
+        "state": "IngredientPicker.tsx:14-27 builds selectedGroups from product.consumptionClassification. IngredientPicker.tsx:62-66 checks isIncompatible using selectedGroups.has(product.consumptionClassification). The Product type (products.ts:95) does NOT expose mixingGroup — only ProductWithVariants:392 does. The text label at IngredientPicker.tsx:76 says 'different mix group' but the underlying check is on consumption classification.",
+        "wrong_output": "(a) Products with same consumptionClassification but different mixingGroup pass client guard → server rejects → confusing UX. (b) Products with different consumptionClassification but same mixingGroup are blocked → false restriction. (c) The UI label 'different mix group' is misleading — it's consumption classification filtering, not mixing group."
+      },
+      "remediation": "Either expose mixingGroup on Product type returned from config endpoint and switch the filter to use it, or rename the filter to consumption-classification-based and update labels. The acceptance criterion explicitly calls for 'mixing-group-aware picker' so the first option is the intended fix."
+    },
+    {
+      "severity": "high",
+      "id": "F3",
+      "title": "Files marked for removal by acceptance criterion 7 still exist on disk, including comedic fixture content",
+      "ac_criterion": [7],
+      "trace": {
+        "input": "Acceptance criterion 7: 'Removed: PowderizerActions, powderizerRandom, powderizerCopy, IngredientReaction, DailyRecipeCard, Chaos Mix'",
+        "state": "All listed files still exist: powderizer/Actions.tsx (Chaos Mix button), powderizer/powderizerRandom.ts+test.ts (chaosMixBuilderConfig, isChaosPoolFeasible), powderizer/powderizerCopy.ts+test.ts (selectGoodFor with comedic options: 'Hairy legs', 'Tax avoidance', 'Negotiating raises', 'Avoiding small talk', etc.; selectIngredientReaction with 'Housewarming achieved. Keep away from actual flames.' etc.), powderizer/IngredientReaction.tsx, powderizer/DailyRecipeCard.tsx. Additionally, the old history stack remains: powderizer/usePowderizerHistory.ts (imports selectGoodFor), powderizer/powderizerHistory.ts, powderizer/PowderizerHistoryShelf.tsx. powderizerState.test.ts and PowderizerPresentation.test.tsx still import from powderizerCopy.ts and IngredientReaction.tsx respectively.",
+        "wrong_output": "Competent/humorous content persists in the codebase. Risk: future developer re-imports these as legitimate utilities. Deleting requires updating the two test files that still import from them."
+      },
+      "remediation": "Delete the listed files and the old history stack. Update powderizerState.test.ts (remove selectGoodFor import and dependent tests) and PowderizerPresentation.test.tsx (remove IngredientReaction tests)."
+    },
+    {
+      "severity": "high",
+      "id": "F4",
+      "title": "No test coverage for mixing-group-aware picker or server MIXING_GROUP_MISMATCH error rendering",
+      "ac_criterion": [2, 3],
+      "trace": {
+        "input": "Acceptance criteria 2 and 3 require: (2) mixing-group-aware picker with accessible explanation, (3) server-crafted MIXING_GROUP_MISMATCH errors rendered to user.",
+        "state": "Test fixtures in PowderizerPage.test.tsx and PowderizerHistoryPage.test.tsx do not set consumptionClassification or mixingGroup on products, so the IngredientPicker incompatibility filter never activates in tests. No test simulates a server MIXING_GROUP_MISMATCH error response. No test verifies that the accessible explanation (aria-describedby on disabled incompatible button) is rendered.",
+        "wrong_output": "Both acceptance criteria are untested. A regression in the compatibility filter would not be caught. The blocker F1 (CompatibilityGuard always null) could have been caught by a test."
+      },
+      "remediation": "Add: (a) test with products having different consumptionClassifications to verify disabled+incompatible state and accessible explanation; (b) test simulating a MIXING_GROUP_MISMATCH error from the API and verifying it renders via CompatibilityGuard with per-product group info."
+    },
+    {
+      "severity": "medium",
+      "id": "F5",
+      "title": "Disabled incompatible button explanation not accessible to screen readers",
+      "ac_criterion": [2],
+      "trace": {
+        "input": "A product is incompatible with the current selection. The button is rendered disabled with aria-describedby pointing to a hidden <span> explaining the incompatibility.",
+        "state": "IngredientPicker.tsx:84 sets disabled={selected || isAtMaximum || isIncompatible} on the Button. The Button component renders a native HTML <button disabled> element. Disabled buttons are removed from the tab order by the browser. The aria-describedby on line 86 references a hidden <span> (line 91-93), but screen readers only announce aria-describedby when the element receives focus — which a disabled button never does.",
+        "wrong_output": "Screen reader users navigating via Tab skip all disabled incompatible buttons. The accessible explanation 'This product belongs to a different mixing group than your selected powders' is never read. Only sighted users see the visual 'Incompatible' label and the '— different mix group' text."
+      },
+      "remediation": "Use aria-disabled='true' instead of disabled, or surface the explanation as visible adjacent text with an accessible name, or use a tooltip/aria-live region for screen reader users."
+    }
+  ],
+  "blockers": ["F1", "F2"],
+  "questions": [],
+  "artifacts": [],
+  "observations_notes": [
+    "Navigation label still reads 'Powderizer' in CategoryNav (navItems.ts:32) — not covered by acceptance criteria 1 (headings/actions/history only) but inconsistent with the new 'Custom Powder' heading.",
+    "cryptoRandom() still exported from usePowderizerController.ts:36-39 with comment 'Only used by legacy fallback components' — should be removed once legacy files are deleted.",
+    "No /custom-powder web route or alias/redirect loop exists — route is /powderizer rendering PowderizerPage directly. No compatible-alias-loop risk.",
+    "History migration from OLD_HISTORY_KEY correctly discards goodFor field from old entries — verified by PowderizerHistoryPage.test.tsx:238."
+  ]
+}

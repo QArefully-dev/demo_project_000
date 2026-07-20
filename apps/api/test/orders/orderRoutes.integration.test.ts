@@ -275,9 +275,9 @@ void test('guest payment grants an exact-order, expiring capability cookie', asy
   const cartId = cart.json<{ cartId: string }>().cartId;
   // Resolve a valid variant ID first
   const vId = (
-    db.prepare(
-      'SELECT id FROM product_variants WHERE active = 1 ORDER BY sort_order LIMIT 1',
-    ).get() as { id: number }
+    db
+      .prepare('SELECT id FROM product_variants WHERE active = 1 ORDER BY sort_order LIMIT 1')
+      .get() as { id: number }
   ).id;
   assert.equal(
     (

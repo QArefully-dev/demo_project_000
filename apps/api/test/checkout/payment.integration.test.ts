@@ -115,9 +115,9 @@ void test('atomic checkout orchestration', async (t) => {
     seedDatabase(db);
     const { cartId } = createCart(carts);
     const vId = (
-      db.prepare(
-        'SELECT id FROM product_variants WHERE active = 1 ORDER BY sort_order LIMIT 1',
-      ).get() as { id: number } | undefined
+      db
+        .prepare('SELECT id FROM product_variants WHERE active = 1 ORDER BY sort_order LIMIT 1')
+        .get() as { id: number } | undefined
     )?.id;
     if (!vId) throw new Error('No active variants found');
     addItem(carts, cartId, String(vId));
@@ -318,9 +318,9 @@ void test('atomic checkout orchestration', async (t) => {
     assert.equal(ineligibleGateway.calls(), 0);
   });
 
-    await t.test('uses checkout clock at promo expiry boundary', async () => {
-      const cartId = freshCart();
-      for (const productId of [2, 3]) addVariantForProduct(cartId, productId);
+  await t.test('uses checkout clock at promo expiry boundary', async () => {
+    const cartId = freshCart();
+    for (const productId of [2, 3]) addVariantForProduct(cartId, productId);
     const checkoutClock = new Date('2024-12-31T23:59:59.999Z');
 
     const result = await checkout(
@@ -349,18 +349,18 @@ void test('atomic checkout orchestration', async (t) => {
     if (result.success) assert.equal(result.order.totalCents, expectedTotal);
   });
 
-    await t.test('locks the quote and promo reservation before the gateway wait', async () => {
-      const cartId = freshCart();
-      const deferred = deferredGateway();
-      const first = checkout(payment(cartId, 'cart-change'), { db, gateway: deferred.gateway });
-      assert.equal(addVariantForProduct(cartId, 2), 'CART_RESERVED');
-      deferred.resolve({ status: 'success' });
-      const result = await first;
-      assert.equal(result.success, true);
-      if (result.success) assert.equal(result.order.items.length, 1);
+  await t.test('locks the quote and promo reservation before the gateway wait', async () => {
+    const cartId = freshCart();
+    const deferred = deferredGateway();
+    const first = checkout(payment(cartId, 'cart-change'), { db, gateway: deferred.gateway });
+    assert.equal(addVariantForProduct(cartId, 2), 'CART_RESERVED');
+    deferred.resolve({ status: 'success' });
+    const result = await first;
+    assert.equal(result.success, true);
+    if (result.success) assert.equal(result.order.items.length, 1);
 
-      const promoCartId = freshCart();
-      for (const productId of [2, 3, 4, 5]) addVariantForProduct(promoCartId, productId);
+    const promoCartId = freshCart();
+    for (const productId of [2, 3, 4, 5]) addVariantForProduct(promoCartId, productId);
     const promoDeferred = deferredGateway();
     const promoPayment = { ...payment(promoCartId, 'promo-change'), promoCode: 'SAVE10' };
     const pending = checkout(promoPayment, { db, gateway: promoDeferred.gateway });
@@ -446,7 +446,7 @@ void test('atomic checkout orchestration', async (t) => {
 
   await t.test('rolls back order and redemption writes together', async () => {
     const cartId = freshCart();
-      for (const productId of [2, 3, 4, 5]) addVariantForProduct(cartId, productId);
+    for (const productId of [2, 3, 4, 5]) addVariantForProduct(cartId, productId);
     db.exec(
       `CREATE TRIGGER abort_checkout_mailbox BEFORE INSERT ON dev_mailbox BEGIN SELECT RAISE(ABORT, 'mailbox failure'); END`,
     );

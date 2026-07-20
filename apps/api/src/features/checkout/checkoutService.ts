@@ -184,9 +184,7 @@ function prepare(
             demandKind: 'product' as const,
           })),
           ...mixPreparation.requirements.map((requirement) => {
-            const defaultVariant = dependencies.products.findDefaultVariant(
-              requirement.productId,
-            );
+            const defaultVariant = dependencies.products.findDefaultVariant(requirement.productId);
             return {
               variantId: defaultVariant?.id ?? 0,
               quantity: requirement.bagEquivalents,

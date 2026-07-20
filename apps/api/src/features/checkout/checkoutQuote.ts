@@ -1,9 +1,6 @@
 import type { Cart } from '@shop/contracts/cart';
 import type { DeliveryClass } from '@shop/contracts/delivery';
-import {
-  calculateDiscount,
-  type ValidPromo,
-} from '../promos/promoService.js';
+import { calculateDiscount, type ValidPromo } from '../promos/promoService.js';
 import type { PersistedCheckoutQuote } from '../payments/paymentRepository.js';
 import type { CheckoutParams } from './checkoutTypes.js';
 import type { InventoryReservationAllocation } from '../inventory/inventoryTypes.js';
@@ -73,8 +70,7 @@ export function createCheckoutQuote(params: {
   ];
 
   const deliverySummary = quoteDelivery(deliveryLines);
-  const totalCents =
-    params.cart.subtotalCents - discountCents + deliverySummary.chargeCents;
+  const totalCents = params.cart.subtotalCents - discountCents + deliverySummary.chargeCents;
 
   return {
     version: 5,

@@ -20,6 +20,10 @@ interface CheckoutSummaryProps {
   onRemovePromo: () => void;
 }
 
+function cartItemKey(item: { productId: string; variantSnap?: { variantId: number } }): string {
+  return `${item.productId}:${item.variantSnap?.variantId ?? 'no-variant'}`;
+}
+
 function deliveryModeLabel(mode: string): string {
   return mode === 'freight' ? 'Freight' : 'Parcel';
 }
@@ -47,7 +51,7 @@ export function CheckoutSummary({
       <CardContent className="space-y-4">
         <div className="space-y-2">
           {cart.items.map((item) => (
-            <div key={item.productId} className="flex items-center justify-between text-sm">
+            <div key={cartItemKey(item)} className="flex items-center justify-between text-sm">
               <span className="min-w-0">
                 {item.product.name}{' '}
                 {item.variantSnap && (

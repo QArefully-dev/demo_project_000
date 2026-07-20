@@ -79,8 +79,21 @@ function getVariantId(db: import('better-sqlite3').Database, productId: number):
 
 /** Get variant info including delivery_class and weight_grams */
 function getVariantInfo(db: import('better-sqlite3').Database, variantId: number) {
-  return db.prepare('SELECT id, product_id, delivery_class, weight_grams, price_cents, sku, label FROM product_variants WHERE id = ?').get(variantId) as
-    { id: number; product_id: number; delivery_class: string; weight_grams: number; price_cents: number; sku: string; label: string } | undefined;
+  return db
+    .prepare(
+      'SELECT id, product_id, delivery_class, weight_grams, price_cents, sku, label FROM product_variants WHERE id = ?',
+    )
+    .get(variantId) as
+    | {
+        id: number;
+        product_id: number;
+        delivery_class: string;
+        weight_grams: number;
+        price_cents: number;
+        sku: string;
+        label: string;
+      }
+    | undefined;
 }
 
 void test('checkout delivery integration', async (t) => {
@@ -133,7 +146,10 @@ void test('checkout delivery integration', async (t) => {
     const targetWeight = 100_000;
     for (const v of variants) {
       if (totalWeightAdded >= targetWeight) break;
-      const availableQty = Math.min(v.stock_count, Math.ceil((targetWeight - totalWeightAdded) / Math.max(v.weight_grams, 1)));
+      const availableQty = Math.min(
+        v.stock_count,
+        Math.ceil((targetWeight - totalWeightAdded) / Math.max(v.weight_grams, 1)),
+      );
       if (availableQty <= 0) continue;
       addItem(carts, cartId, String(v.id));
       for (let i = 1; i < availableQty; i++) addItem(carts, cartId, String(v.id));
@@ -145,9 +161,7 @@ void test('checkout delivery integration', async (t) => {
     assert.ok(cart.totalItems >= 1);
 
     const service = checkoutService(db);
-    const result = await service.process(
-      paymentParams(cartId, 'freight-order'),
-    );
+    const result = await service.process(paymentParams(cartId, 'freight-order'));
 
     if (!result.success) {
       console.log('FREIGHT TEST FAILED:', JSON.stringify(result));
@@ -157,10 +171,7 @@ void test('checkout delivery integration', async (t) => {
     const order = result.order;
     assert.equal(order.deliveryMode, 'freight');
     assert.equal(order.deliveryChargeCents, 999);
-    assert.equal(
-      order.totalCents,
-      order.subtotalCents - order.discountCents + 999,
-    );
+    assert.equal(order.totalCents, order.subtotalCents - order.discountCents + 999);
   });
 
   await t.test('idempotent payment replay preserves delivery totals', async () => {
@@ -190,7 +201,13 @@ void test('checkout delivery integration', async (t) => {
     setupFresh();
     const cartId = createCart(carts).cartId;
     // Add 5 items to qualify for SAVE10 (min 5 items)
-    const vIds = [getVariantId(db, 1), getVariantId(db, 2), getVariantId(db, 3), getVariantId(db, 4), getVariantId(db, 5)];
+    const vIds = [
+      getVariantId(db, 1),
+      getVariantId(db, 2),
+      getVariantId(db, 3),
+      getVariantId(db, 4),
+      getVariantId(db, 5),
+    ];
     for (const vId of vIds) addItem(carts, cartId, String(vId));
 
     const service = checkoutService(db);

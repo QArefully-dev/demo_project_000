@@ -111,9 +111,7 @@ void test('returns exclude delivery from refund', async (t) => {
     }
 
     const service = checkoutService(db);
-    const result = await service.process(
-      paymentParams(cartId, 'freight-return-test'),
-    );
+    const result = await service.process(paymentParams(cartId, 'freight-return-test'));
 
     assert.equal(result.success, true);
     if (!result.success) throw new Error('Expected success');
@@ -121,10 +119,7 @@ void test('returns exclude delivery from refund', async (t) => {
     assert.equal(order.deliveryMode, 'freight');
     assert.equal(order.deliveryChargeCents, 999);
     // total = subtotal - discount + delivery
-    assert.equal(
-      order.totalCents,
-      order.subtotalCents - order.discountCents + 999,
-    );
+    assert.equal(order.totalCents, order.subtotalCents - order.discountCents + 999);
     // Merchandise portion = subtotal - discount (no delivery)
     const merchandiseTotal = order.subtotalCents - order.discountCents;
     assert.ok(merchandiseTotal < order.totalCents);
@@ -138,9 +133,7 @@ void test('returns exclude delivery from refund', async (t) => {
     addItem(carts, cartId, String(vId));
 
     const service = checkoutService(db);
-    const result = await service.process(
-      paymentParams(cartId, 'parcel-return-test'),
-    );
+    const result = await service.process(paymentParams(cartId, 'parcel-return-test'));
 
     assert.equal(result.success, true);
     if (!result.success) throw new Error('Expected success');
@@ -157,9 +150,11 @@ void test('returns exclude delivery from refund', async (t) => {
     // Seed orders (alice-processing) already has delivery columns
     const orders = createOrderRepository(db);
     // Find alice-processing order (demo_seed_key)
-    const orderRows = db.prepare(
-      "SELECT id, delivery_mode, delivery_charge_cents, delivery_weight_grams FROM orders WHERE demo_seed_key = 'alice-processing'",
-    ).all() as Array<{
+    const orderRows = db
+      .prepare(
+        "SELECT id, delivery_mode, delivery_charge_cents, delivery_weight_grams FROM orders WHERE demo_seed_key = 'alice-processing'",
+      )
+      .all() as Array<{
       id: number;
       delivery_mode: string | null;
       delivery_charge_cents: number | null;

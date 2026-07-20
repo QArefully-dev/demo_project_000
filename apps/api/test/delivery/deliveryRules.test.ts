@@ -49,9 +49,7 @@ void test('delivery rules', async (t) => {
   });
 
   await t.test('freight-class variant forces freight regardless of weight', () => {
-    const result = quoteDelivery([
-      { deliveryClass: 'freight', unitWeightGrams: 100, quantity: 1 },
-    ]);
+    const result = quoteDelivery([{ deliveryClass: 'freight', unitWeightGrams: 100, quantity: 1 }]);
     assert.equal(result.mode, 'freight');
     assert.equal(result.chargeCents, 999);
     assert.equal(result.weightGrams, 100);

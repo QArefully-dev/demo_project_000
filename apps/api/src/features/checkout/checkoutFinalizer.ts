@@ -34,7 +34,8 @@ export function finalizeAuthorizedCheckout(
             sku: variant?.sku ?? `SKU-${v.productId}-${v.variantId}`,
             label: v.variantLabel,
             weightGrams: v.weightGrams,
-            consumptionClassification: v.consumptionClassification as 'food' | 'non-food' | 'caution',
+            consumptionClassification: v.consumptionClassification as
+              'food' | 'non-food' | 'caution',
             deliveryClass: v.deliveryClass,
           };
           return {
@@ -64,17 +65,10 @@ export function finalizeAuthorizedCheckout(
       totalCents: quote.totalCents,
       userId: quote.userId,
       items: orderItems,
-      mixItems: isV5(quote)
-        ? quote.orderMixSnapshots
-        : quote.version === 1
-          ? []
-          : quote.mixLines,
-      deliveryMode:
-        isV5(quote) ? quote.deliverySummary.mode : undefined,
-      deliveryChargeCents:
-        isV5(quote) ? quote.deliverySummary.chargeCents : undefined,
-      deliveryWeightGrams:
-        isV5(quote) ? quote.deliverySummary.weightGrams : undefined,
+      mixItems: isV5(quote) ? quote.orderMixSnapshots : quote.version === 1 ? [] : quote.mixLines,
+      deliveryMode: isV5(quote) ? quote.deliverySummary.mode : undefined,
+      deliveryChargeCents: isV5(quote) ? quote.deliverySummary.chargeCents : undefined,
+      deliveryWeightGrams: isV5(quote) ? quote.deliverySummary.weightGrams : undefined,
       createdAt,
     });
 
@@ -87,9 +81,7 @@ export function finalizeAuthorizedCheckout(
         paymentIdempotencyKey: idempotencyKey,
         orderId,
         ordinaryLines: order.items.map((line) => {
-          const variantId =
-            line.variantSnapshot?.variantId ??
-            Number(line.productId);
+          const variantId = line.variantSnapshot?.variantId ?? Number(line.productId);
           return {
             orderLineItemId: Number(line.lineId),
             variantId,
