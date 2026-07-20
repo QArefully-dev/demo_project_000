@@ -105,7 +105,8 @@ Use convergence task after parallel lanes. Convergence owner handles shared comp
 
 Plan for orchestrator, not generic team:
 
-- create bounded work packets suitable for one subagent
+- create bounded work packets suitable for one subagent session; see Packet Sizing
+- never bundle full feature into one packet; decompose along layer boundaries and chain through gates
 - project minimum context needed for packet execution
 - give each packet stable ID, dependencies, owned paths, steps, invariants, verification, handoff
 - state which packets launch together and which wait
@@ -447,7 +448,30 @@ Each worker packet must describe edits precisely enough for worker to start with
 
 Do not prescribe line-level code when repository pattern permits multiple valid implementations. Do not use vague tasks such as "update backend," "add tests," or "wire frontend."
 
-Keep packet size coherent. Split packet when it spans unrelated ownership or cannot be verified independently. Merge tiny packets when coordination cost exceeds parallel benefit.
+## Packet Sizing
+
+Target medium packet: one subagent completes it in single session without context exhaustion. Packet is unit of work, not whole feature.
+
+Sizing signals, not hard limits. Use planner judgment against actual repository shape:
+
+- one vertical behavior, or one coherent layer slice of one behavior
+- roughly 10-13 owned source files as loose upper feel, plus colocated tests
+- acceptance stated once, verifiable by focused command set
+- reads and change steps bounded by what one worker can hold without rediscovery
+
+Split packet when any holds:
+
+- spans unrelated ownership, or more than one subsystem boundary (schema + service + route + UI in one packet)
+- acceptance needs multiple unrelated verification commands
+- worker must rediscover scope mid-session to proceed
+- migration plus consumers bundled -> migration/schema owner separate from consumer packets
+- contract change plus consumers bundled -> producer packet first, consumers after review gate
+
+Preferred split axes: layer boundary (schema -> domain/persistence -> contracts -> routes -> client/UI), then behavior, then read/write path.
+
+Merge when coordination cost exceeds benefit: parts touch same file set, neither is independently verifiable, combined size stays reasonable for one session.
+
+Splitting increases packet count; that is acceptable. Do not compress scope into fewer large packets to shorten graph. Prefer more medium packets chained through gates over few heavy packets. Each split packet still needs own acceptance, verification, handoff, and review placement.
 
 Each reviewer assignment must name exact review target and include scoped reads, acceptance criteria, invariants, risk focus, non-goals, inspect-only policy, test policy, and relevant evidence. Reviewer receives no implementation steps, write ownership, worker report dump, or unrelated ledger state.
 
@@ -466,6 +490,8 @@ Before saving plan, confirm:
 - every parallel lane has disjoint write ownership
 - every shared surface has single owner and merge point
 - every packet has verification and handoff
+- every packet fits medium sizing target; no packet spans multiple subsystem boundaries or needs multiple unrelated verification commands
+- schema/migration and contract producers separated from their consumers
 - worker packets include focused path/symbol/purpose reads, acceptance criteria, non-goals, resolved upstream inputs, and relevant evidence only
 - reviewer packets include exact change set, scoped reads, acceptance criteria, invariants, risk focus, inspect-only write policy, test policy, and relevant evidence only
 - every test command has one owner, execution point, reuse rule, invalidation rule

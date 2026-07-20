@@ -16,8 +16,8 @@ G0 approved: freight 100kg threshold, 0¢ parcel, 4999¢ freight; same-group equ
 | G1 gate | passed | — | — |
 | P4 (seed+API) | done | T4: 28/28 pass | R4: approved |
 | P5 (cart+inventory) | done | T5: 26/26 pass (→27 after fix) | R5: approved (F1-F4 closed) |
-| P6 (custom backend) | fix in progress | T6: 21/21 pass (orchestrator-verified 2026-07-20) | R6: conditional_pass (R6-F1/F2 closed); R6-recheck: conditional_pass (R6B-F1/F2/F3 open) |
-| G2 gate | blocked — awaiting GR6 + P7 | — | — |
+| P6 (custom backend) | done | T6: 29/29 pass (orchestrator-verified) | GR6 passed — all P6-owned findings closed |
+| G2 gate | blocked — awaiting P7 only | — | — |
 | P7 (delivery+checkout) | pending | — | — |
 | P8 (web catalog) | pending | — | — |
 | P9 (web custom) | pending | — | — |
@@ -49,30 +49,60 @@ Mixing group validation in `powderMixRules.ts` — all selected products must sh
 - R6-F2 closed — three tests in `powderMixRules.test.ts`: cross-group rejection asserting exact `MIXING_GROUP_MISMATCH` + `productIds`, null-group rejection asserting `MIX_COMPONENT_INELIGIBLE`, same-group cross-category mix passes. Re-reviewer confirmed assertions are on real thrown domain errors, not tautologies.
 - ownership deviation (accepted): R6-F1 required a `packages/contracts/**` edit, normally P1-only. Orchestrator authorized as minimal additive field rather than a P1 fix directive. No consumer broke; contracts 92/92 pass.
 
-### Open R6-recheck Findings (2026-07-20)
+### Closed R6-recheck Findings (2026-07-20)
 
-Reviewer had no executable Node (stale `CLAUDE.md` path) -> all three are code-trace-only, not test-reproduced. Confirm each reproduces before fixing.
+Raised by a reviewer with no executable Node (stale `CLAUDE.md` path) -> all three were code-trace-only. A fresh reviewer with working Node later confirmed all three were REAL defects and all three fixes CORRECT. Trace-only findings proved accurate here; still require reproduction before fixing, since that outcome was not guaranteed.
+
+Status: R6B-F1 fixed (two-pass validation, order-independence test). R6B-F2 fixed at P6 consumption points via `findActiveVariant` wrapper; shared repository deliberately untouched. R6B-F3 fixed (`pickSameGroupFallbackPair`; plain `Error` -> 500 not a misleading 400 on a parameter-less GET, judged defensible).
+
+Original finding text retained below for audit.
 
 - R6B-F1 (high) — order-dependent null-group misclassification. `powderMixRules.ts:161` seeds expected group from `selectedProducts[0]` and null-checks index 0 only. Reordering same invalid set flips error code between `MIX_COMPONENT_INELIGIBLE` and `MIXING_GROUP_MISMATCH`, and mismatch payload falsely claims two products "belong to different mixing groups" when one has none. Fix: validate null-group ineligibility across all components before any equality comparison; add both-orderings test.
 - R6B-F2 (high) — inactive source variant does not fail closed. `findVariantById` (`apps/api/src/features/catalog/productRepository.ts:317-321`) ignores `active`, unlike sibling `findVariantsByProductId`. `powderizerService.ts:178`/`:247` resolve `blend_source_variant_id`/`default_variant_id` for pricing and stock with no active check. Violates named P6 acceptance. Ownership constraint: `productRepository.ts` is P4-owned and gated; cart/checkout share the call -> guard at P6 consumption points, do NOT change shared query semantics. Test must deactivate only the variant, leaving product active.
 - R6B-F3 (high, plausible) — `dailyRecipe.ts:106` `createFallbackBlend` picks first two eligible products with no mixing-group check before `normalizePowderMixConfig`. If preset products drop below 2 eligible and remaining pool spans groups, `resolveFeaturedPowderBlend` throws uncaught -> `GET /api/custom-powder/config` returns 400.
 
-### Carried Input For P7
+### Carried Input For P7 — R6C-F1 (critical)
 
-`checkoutMixPreparation.ts` and `checkoutFinalizer.ts` share the same unguarded `findVariantById` pattern as R6B-F2. Not P6 scope. P7 owns checkout -> P7 assignment must state this explicitly as an upstream input so it is not rediscovered at `G4`.
+Verified by execution, not trace. `apps/api/src/features/checkout/checkoutMixPreparation.ts:20-21,43` calls the shared unguarded `findVariantById` with no `active` check and falls back only when the row is entirely missing.
 
-### Resume Point (2026-07-20)
+Failure: source variant deactivated after a mix enters the cart -> `findVariantById` still returns the row -> `variantPriceCents` and `variantId` taken from the inactive variant with no rejection -> that `variantId` flows into `calculatePowderMixStockRequirements` for stock consumption. Violates the plan invariant that no boundary, checkout preparation included, may bypass the rule.
 
-Stopped at: P6 fix round 2 in flight; `GR6` not passed.
+Fix: apply the `findActiveVariant`-style guard at this call site, failing into the existing requote/failure path. Owner: P7 (checkout), not P6.
 
-Policy debt: the in-flight R6B fix worker was a resumed P6 worker, launched before the fresh-worker rule was adopted. Allowed to finish; its output needs review by a fresh reviewer. All later fixes use fresh workers.
+Correction to earlier note: `checkoutFinalizer.ts` does NOT call `findVariantById` anywhere. Only `checkoutMixPreparation.ts` is affected. The earlier claim that both shared the pattern was unverified and is refuted.
 
-Next steps:
-1. Accept R6B fix report; verify R6B-F1/F2/F3 reproduce-then-resolve, or are dismissed with reasoning
-2. Launch fresh R6 re-review with working Node -> require executable evidence, not code trace -> `GR6`
-3. Validate `G2` (P5 + P6 reviewed fan-in)
-4. Launch P7 (delivery + checkout + orders + returns) with the Carried Input above -> `R7` -> `GR7`
-5. Fan out P8 || P9 || P10 after `G2`/`GR7`
+Root cause remains open by design: `findVariantById` (`apps/api/src/features/catalog/productRepository.ts:317-321`) ignores `active`, unlike sibling `findVariantsByProductId`. P6 and P7 guard at consumption points because the query is P4-owned and shared with cart/bundles. This defers rather than closes the underlying defect -> re-evaluate at `G4` whether a P4 fix directive should land before completion.
+
+### R6-final Findings (2026-07-20)
+
+- R6C-F2 (high, P6-owned) — CLOSED by `P6-FIX-03`. Config read path swallowed an inactive source variant: `config()` fell back to `variant?.price_cents ?? row.price_cents`, so a featured blend with a deactivated `blend_source_variant_id` rendered a normal-looking purchasable price that `quote()`/`create()` rejected on contact. Fix: `powderizerService.ts:266-271` `.map` -> `.flatMap` returning `[]` when `findActiveVariant` resolves undefined, dropping the product from the featured-blend candidate pool and reusing existing `dailyRecipe.ts` fallback machinery. No contract change. Product stays in `eligibleProducts` for manual mixing — only featured-blend candidacy is affected. Legacy `/api/powderizer/config` `dailyRecipe` inherits the fix from the same local, no new divergence.
+- R6C-F1 (critical) — OPEN, routed to P7, see `Carried Input For P7`.
+- noted, not a defect: `MIX_COMPONENT_INELIGIBLE` is reused for "not mixable", "no mixing group", and "inactive variant". Three causes, one client-visible code. `field`/message differ and all read as "component unusable" to the client. Revisit only if customer copy needs to distinguish them.
+
+### Resume Point (2026-07-20) — session ended here, orchestration restarts fresh
+
+Stopped at: `GR6` PASSED. P6 complete, all P6-owned findings closed. Nothing in flight. No uncommitted orchestration state beyond the worktree diff.
+
+Evidence of record (orchestrator-verified in worktree, Node v22.23.1): T6 29/29 pass; `typecheck -w @shop/api` clean; `build -w @shop/api` clean; contracts 92/92 pass.
+
+Worktree diff is uncommitted by design — user owns integration. `apps/api/debug_test.ts` is an untracked stray, unrelated to any packet; delete or ignore.
+
+Next session starts at step 1:
+1. Validate `G2` (P5 + P6 reviewed fan-in) — both gates passed, expect clean
+2. Launch P7 (delivery + checkout + orders + returns). MUST embed `Carried Input For P7` (R6C-F1, critical) as an explicit upstream input — it is a known live defect in P7-owned code, not a discovery task
+3. `R7` -> one review round -> fresh fix worker if needed -> `GR7`
+4. Fan out P8 || P9 || P10 in parallel after `G2`/`GR7`
+5. `G3` fan-in -> S1 -> `R11A` || `R11B` -> `GR11`
+6. At `G4`: `findVariantById` ignoring `active` is OPTIONAL per `Defect Tolerance` — per-consumer guards in P6 and (pending) P7 keep the stock/money boundary intact, so the root cause is a tolerated latent defect. Fix only if cheap; do not block completion.
+7. `G5`: `T12` reset -> `T13` smoke -> `T14` browser journey -> `T15` verify
+
+Process rules adopted mid-run (apply from next session):
+- one review round per packet; never review a fix delta
+- worker-reported evidence is taken at face value; orchestrator does not re-run it
+- every fix goes to a fresh worker, never the originating one
+- every assignment embeds the `Runtime Environment` Node block verbatim
+- orchestrator role is projection, sequencing, gating, ownership routing — not implementation and not verification
+- consequence accepted per `Defect Tolerance`: correctness rests on worker-reported evidence until `G5`. Residual bugs are fine. `T12`-`T15` exist to prove the shop boots and the core journey works, not to hunt defects -> run them, do not expand them.
 
 ## Runtime Environment
 
@@ -135,6 +165,26 @@ Completion boundary: customer can browse credible products, select actual pack S
 - unique photo pipeline, remote assets, CDN, Docker, cloud dependency
 - Reverse Process, object reconstruction, live trading, auctions, conceptual products
 - broad new E2E/Playwright suite; focused browser QA only
+
+## Defect Tolerance
+
+Repo is QA training material. Residual bugs are acceptable output, not run failure. Do not add review rounds, extra verification, or defensive scope to chase them.
+
+Tolerated -> ship it:
+- latent logic bugs a QA can discover through normal testing
+- narrow edge cases, boundary-off-by-one, unhandled rare state
+- gaps in test coverage; CLAUDE.md already directs preserving QA exercise gaps
+- cosmetic/copy inconsistency not contradicting grounded direction
+
+Not tolerated -> fix before gate, regardless of tolerance stance:
+- blocks the learning loop: broken `npm run reset`/seed/migration, app will not boot, core journey home -> catalog -> product -> cart -> checkout -> confirmation -> order dead
+- data corruption or unrecoverable local state
+- structurally absent production boundary: missing auth gate, money not integer minor units, transaction owner not covering full invariant, unguarded stock/money mutation
+- customer-visible impossible/comedic/fictional content -> violates the objective itself
+
+Distinction: a latent defect teaches; a missing boundary teaches wrong. Code is a reference for what production structure looks like -> keep the structure sound, let behavior carry bugs.
+
+Applies to `G4`: open non-blocking findings do not block completion. Record them, do not chase them. `G5` confirms the shop boots and the core path works — not that it is defect-free.
 
 ## Repository Findings
 
@@ -242,12 +292,12 @@ Completion boundary: customer can browse credible products, select actual pack S
 `G0 -> P1 -> R1 -> GR1 -> {P2 -> R2 -> GR2 || P3 -> R3 -> GR3} -> G1 -> P4 -> R4 -> GR4 -> P5 -> R5 -> GR5 -> P6 -> R6 -> GR6 -> P7 -> R7 -> GR7 -> G2 -> {P8 -> R8 -> GR8 || P9 -> R9 -> GR9 || P10 -> R10 -> GR10} -> G3 -> S1 -> {R11A || R11B} -> GR11 -> G4 -> G5`
 
 - `G0`: branch/worktree/input and product-rule gate
-- `GR1..GR10`: packet review gate; reviewer pass or all findings closed through worker fix + targeted evidence before dependent launch
+- `GR1..GR10`: packet review gate; exactly one review round -> fresh fix worker closes findings -> targeted evidence -> gate passes. No re-review of the fix delta.
 - `G1`: reviewed contracts + catalog + migration fan-in
 - `G2`: reviewed backend API/commerce/custom/delivery gate
 - `G3`: reviewed parallel web lane fan-in
 - `GR11`: convergence review gate; both S1 reviewers pass or findings close
-- `G4`: no open findings/blockers; evidence ledger current for final change set
+- `G4`: no open BLOCKER per `Defect Tolerance`; non-blocking findings recorded, not chased; evidence ledger current for final change set
 - `G5`: reset, journey, broad verification, completion
 
 ## Work Packets
@@ -469,7 +519,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - write policy: inspect-only
 - test policy: assess `T1`; run only when missing/stale evidence blocks verdict
 - relevant evidence: `T1` -> P1 exact change set
-- return: `reviewer_report_v1`; `GR1` blocks P2/P3 until pass or findings close through fresh fix worker scoped to P1 owned paths + targeted evidence
+- return: `reviewer_report_v1`; `GR1` blocks P2/P3 until reviewer passes, or its findings close through one fresh fix worker scoped to P1 owned paths + targeted evidence. One review round only.
 
 ### R2: Review P2 catalog credibility and validation
 
@@ -497,7 +547,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - write policy: inspect-only
 - test policy: assess `T5`; use `T4` only as upstream interface evidence; no duplicate run
 - relevant evidence: `T4`, `T5` projected to P5 target
-- return: `reviewer_report_v1`; `GR5` blocks P6 until pass or findings close through fresh fix worker scoped to P5 owned paths + targeted evidence
+- return: `reviewer_report_v1`; `GR5` blocks P6 until reviewer passes, or its findings close through one fresh fix worker scoped to P5 owned paths + targeted evidence. One review round only.
 
 ### R6: Review P6 Custom Powder safety and compatibility
 
@@ -513,7 +563,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - write policy: inspect-only
 - test policy: assess `T6` and relevant `T4/T5`; run only evidence blocker
 - relevant evidence: `T4`, `T5`, `T6` projected to P6 target
-- return: `reviewer_report_v1`; `GR6` blocks P7 until pass or findings close through fresh fix worker scoped to P6 owned paths + targeted evidence
+- return: `reviewer_report_v1`; `GR6` blocks P7 until reviewer passes, or its findings close through one fresh fix worker scoped to P6 owned paths + targeted evidence. One review round only.
 
 ### R7: Review P7 money, delivery, checkout, and lifecycle integration
 
@@ -529,7 +579,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - write policy: inspect-only
 - test policy: assess `T7` plus relevant `T5/T6`; run only stale/missing blocker
 - relevant evidence: `T5`, `T6`, `T7` projected to P7 target
-- return: `reviewer_report_v1`; `GR7` blocks `G2` and P8-P10 until pass or findings close through fresh fix worker scoped to P7 owned paths + targeted evidence
+- return: `reviewer_report_v1`; `GR7` blocks `G2` and P8-P10 until reviewer passes, or its findings close through one fresh fix worker scoped to P7 owned paths + targeted evidence. One review round only.
 
 ### R8: Review P8 catalog and variant UI
 
@@ -545,7 +595,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - write policy: inspect-only
 - test policy: assess `T8`; no rerun with valid evidence
 - relevant evidence: `T8` -> P8 exact change set
-- return: `reviewer_report_v1`; `GR8` blocks `G3` until pass or findings close through fresh fix worker scoped to P8 owned paths + targeted evidence
+- return: `reviewer_report_v1`; `GR8` blocks `G3` until reviewer passes, or its findings close through one fresh fix worker scoped to P8 owned paths + targeted evidence. One review round only.
 
 ### R9: Review P9 Custom Powder UI
 
@@ -561,7 +611,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - write policy: inspect-only
 - test policy: assess `T9`; relevant `T6/T7` supplied as interface evidence only
 - relevant evidence: `T6`, `T7`, `T9` projected to P9 target
-- return: `reviewer_report_v1`; `GR9` blocks `G3` until pass or findings close through fresh fix worker scoped to P9 owned paths + targeted evidence
+- return: `reviewer_report_v1`; `GR9` blocks `G3` until reviewer passes, or its findings close through one fresh fix worker scoped to P9 owned paths + targeted evidence. One review round only.
 
 ### R10: Review P10 purchase UI
 
@@ -577,7 +627,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - write policy: inspect-only
 - test policy: assess `T10`; relevant `T7` supplied without rerun
 - relevant evidence: `T7`, `T10` projected to P10 target
-- return: `reviewer_report_v1`; `GR10` blocks `G3` until pass or findings close through fresh fix worker scoped to P10 owned paths + targeted evidence
+- return: `reviewer_report_v1`; `GR10` blocks `G3` until reviewer passes, or its findings close through one fresh fix worker scoped to P10 owned paths + targeted evidence. One review round only.
 
 ### R11A: Review S1 integration and compatibility composition
 
@@ -609,7 +659,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - write policy: inspect-only
 - test policy: assess `T11` and fiction sweep; no broad rerun for confidence
 - relevant evidence: `T11` -> S1 exact change set and allowlist
-- return: `reviewer_report_v1`; `GR11` passes only after both reviews pass or all findings close through fresh fix worker scoped to S1 or the owning packet paths + targeted evidence
+- return: `reviewer_report_v1`; `GR11` passes after both reviews return and any findings close through one fresh fix worker scoped to S1 or the owning packet paths + targeted evidence. One review round only.
 
 ## Ownership and Collision Rules
 
@@ -660,6 +710,9 @@ Completion boundary: customer can browse credible products, select actual pack S
 - web review: `{T8 -> R8 -> GR8 || T9 -> R9 -> GR9 || T10 -> R10 -> GR10}`; `G3` waits for all three gates
 - convergence review: `T11 -> {R11A || R11B} -> GR11`
 - review execution: inspect supplied evidence; no broad rerun for confidence; finding fix runs smallest invalidated command before gate passes
+- one review round per packet. Fix evidence is accepted from the worker report as stated. Orchestrator does not re-run it and no second reviewer inspects it. Never launch a reviewer against a fix delta.
+- reviewer must reach a complete verdict in its single pass; nothing is deferred to a later round
+- residual risk is accepted deliberately: defects introduced by a fix land at `G4`/`G5` broad verification instead of a packet gate
 
 ## Agent Communication Contract
 
@@ -675,7 +728,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 - recovery snapshot: `orchestrator_run_state_v1` -> `.claude/skills/write-orchestrator-coding-plan/templates/communication/orchestrator-run-state.json`
 - object records: `.claude/skills/write-orchestrator-coding-plan/references/communication-record-shapes.md`
 - worktree context: every assignment includes absolute worktree path, branch, base revision; all paths resolve beneath worktree
-- findings: stable reviewer ID -> fresh fix worker -> targeted evidence -> closure in checkpoint; no reviewer implementation or automatic review loop
+- findings: stable reviewer ID -> fresh fix worker -> reported targeted evidence -> closure in checkpoint. No reviewer implementation. No orchestrator re-run. No review loop, no second round.
 - dependency rule: downstream packet cannot consume producer output until producer review gate passes
 
 ## Orchestrator Run Order
@@ -687,7 +740,7 @@ Completion boundary: customer can browse credible products, select actual pack S
 5. Create dedicated implementation branch/worktree from source branch `HEAD`; persist identity before `G0`.
 6. Select Node 22 and validate dependency health under `T0` inside worktree.
 7. Resolve `G0`: approve freight constants; confirm same-group equality; authorize catalog worker to finalize exact credible products/variants within source targets.
-8. Launch P1. Accept report and `T1`; launch R1 against exact P1 change set. Route findings to P1 worker, record targeted evidence, pass `GR1` before consumers launch.
+8. Launch P1. Accept report and `T1`; launch R1 against exact P1 change set. Route findings to one fresh fix worker, record its reported evidence, pass `GR1` before consumers launch. No second review, no re-run.
 9. Launch P2 and P3 concurrently after `GR1`. Accept each report/evidence; launch R2 and R3 concurrently against separate exact targets. Close findings through fresh fix workers. Pass `GR2` and `GR3`, then validate reviewed fan-in `G1`.
 10. Launch P4 after `G1`; accept `T4`; launch R4; close findings; pass `GR4`.
 11. Launch P5 after `GR4`; accept `T5`; launch R5; close findings; pass `GR5`.
@@ -695,8 +748,8 @@ Completion boundary: customer can browse credible products, select actual pack S
 13. Launch P7 after `GR6`; accept `T7`; launch R7; close findings; pass `GR7`, then validate reviewed backend gate `G2`.
 14. Launch P8, P9, P10 concurrently after `G2`. Prevent edits to S1-owned composition files. Accept `T8-T10`; launch R8-R10 concurrently against separate targets. Close lane findings through fresh per-lane fix workers. Pass `GR8-GR10`, then validate reviewed fan-in `G3`.
 15. Launch S1 after `G3` for composition, copy, help, docs, compatibility routes, integration checks. Accept `T11`.
-16. Launch R11A and R11B concurrently against same exact S1 convergence change set with separate functional and copy/accessibility focus. Route integration findings to fresh fix worker scoped by ownership (S1 or owning packet paths). Pass `GR11` after both verdicts pass or all findings close through targeted evidence.
-17. Validate `G4`: no open finding/blocker; fiction sweep allowlist contains compatibility identifiers only; evidence ledger covers current change set.
+16. Launch R11A and R11B concurrently against same exact S1 convergence change set with separate functional and copy/accessibility focus. Route integration findings to fresh fix worker scoped by ownership (S1 or owning packet paths). Pass `GR11` after both verdicts return and any findings close through one fresh fix worker + its reported targeted evidence.
+17. Validate `G4`: no open blocker per `Defect Tolerance`; record remaining non-blocking findings as known QA-discoverable defects; fiction sweep allowlist contains compatibility identifiers only; evidence ledger covers current change set.
 18. Run `T12`, `T13`, `T14`, `T15` once after all review gates settle. Stop only task-owned dev server.
 19. Validate `G5`; leave implementation worktree and branch intact.
 20. Reply with worktree path, implementation branch, source branch, base revision, major compatibility aliases retained, verification results, open follow-up decisions. State user owns merge.
@@ -735,6 +788,6 @@ Completion boundary: customer can browse credible products, select actual pack S
 - core home -> catalog -> product -> cart -> checkout -> confirmation -> order history journey remains simple
 - `en-US` USD formatting boundary explicit; no localization or multi-currency UI
 - README and high-level plan match grounded direction and deterministic fixtures
-- every implementation packet receives exact-target review; every review gate passes or closes findings through worker fix + targeted evidence before dependent launch
+- every implementation packet receives exactly one exact-target review; every review gate passes or closes findings through one fresh fix worker + its reported evidence before dependent launch
 - `npm run reset`, `npm run smoke`, focused browser journey, `npm run verify` pass on final change set
 - implementation worktree/branch retained; completion reply reports required identity and user-owned merge
