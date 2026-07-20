@@ -291,6 +291,12 @@ export function ReturnPanel({ orderId }: ReturnPanelProps) {
                         >
                           <label htmlFor={inputId} className="min-w-0 flex-1">
                             {line.productName}
+                            {line.variantLabel && (
+                              <span className="text-muted-foreground">
+                                {' '}
+                                &mdash; {line.variantLabel}
+                              </span>
+                            )}
                             <span className="text-muted-foreground">
                               {' '}
                               ({line.availableQuantity} of {line.deliveredQuantity} available)
@@ -396,7 +402,11 @@ export function ReturnPanel({ orderId }: ReturnPanelProps) {
                 <ul className="mt-2 space-y-1 text-sm" aria-label="Requested items">
                   {req.items.map((item) => (
                     <li key={`${item.shipmentId}-${item.orderLineItemId}`}>
-                      {item.productName} × {item.quantity}
+                      {item.productName}
+                      {item.variantLabel && (
+                        <span className="text-muted-foreground"> &mdash; {item.variantLabel}</span>
+                      )}{' '}
+                      × {item.quantity}
                     </li>
                   ))}
                 </ul>

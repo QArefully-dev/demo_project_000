@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { formatMoney } from '@/lib/formatMoney';
 import type { CartLine } from '@shop/contracts/cart';
 import { ProductMedia } from '@/components/ProductMedia';
@@ -13,6 +14,14 @@ interface CartLineItemProps {
   isRemoving?: boolean;
 }
 
+function cartLineKey(item: CartLine): string {
+  return `${item.productId}:${item.variantSnap?.variantId ?? 'no-variant'}`;
+}
+
+function unitPrice(item: CartLine): number {
+  return Math.round(item.lineTotalCents / item.quantity);
+}
+
 export function CartLineItem({
   item,
   onUpdateQuantity,
@@ -22,10 +31,11 @@ export function CartLineItem({
 }: CartLineItemProps) {
   const [actionError, setActionError] = useState<string | null>(null);
   const isPending = isUpdating || isRemoving;
+  const lineKey = cartLineKey(item);
 
   useEffect(() => {
     setActionError(null);
-  }, [item.productId]);
+  }, [lineKey]);
 
   const updateQuantity = async (quantity: number) => {
     setActionError(null);
@@ -47,10 +57,25 @@ export function CartLineItem({
         <ProductMedia product={item.product} className="h-full w-full object-cover" />
       </div>
       <div className="flex flex-1 flex-col gap-1">
-        <p className="text-sm font-medium leading-tight">{item.product.name}</p>
-        <p className="text-xs text-muted-foreground">
-          {formatMoney(item.product.priceCents)} per bag
+        <p className="text-sm font-medium leading-tight">
+          {item.product.name}
+          {item.variantSnap && (
+            <span className="text-muted-foreground"> &mdash; {item.variantSnap.label}</span>
+          )}
         </p>
+        {item.variantSnap && (
+          <p className="text-xs text-muted-foreground">
+            SKU: {item.variantSnap.sku}
+            <span className="mx-1.5">·</span>
+            {item.variantSnap.weightGrams}g
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground">{formatMoney(unitPrice(item))} per bag</p>
+        {item.variantSnap && (
+          <Badge variant="outline" className="w-fit text-[10px]">
+            {item.variantSnap.deliveryClass}
+          </Badge>
+        )}
         {item.product.availability === 'backorder' && (
           <p className="text-xs font-medium text-amber-700">
             Available to backorder. Checkout confirms availability.
