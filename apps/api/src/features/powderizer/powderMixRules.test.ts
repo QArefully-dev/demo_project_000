@@ -419,7 +419,7 @@ void test('rejects cross-group components at quote time', () => {
     },
   ];
 
-  expectCode('MIX_COMPONENT_INELIGIBLE', () =>
+  expectCode('MIXING_GROUP_MISMATCH', () =>
     normalizePowderMixConfig(
       {
         components: [
@@ -438,10 +438,10 @@ void test('rejects null-group components', () => {
   const mixedProducts: readonly PowderMixProduct[] = [
     {
       id: 1,
-      name: 'Flour',
-      priceCents: 295,
+      name: 'Food Item',
+      priceCents: 299,
       mixable: true,
-      mixUnitGrams: 1000,
+      mixUnitGrams: 500,
       mixingGroup: 'food-grade',
       blendSourceVariantId: null,
       sourceVariantPriceCents: null,
@@ -450,8 +450,8 @@ void test('rejects null-group components', () => {
     },
     {
       id: 99,
-      name: 'Orphan',
-      priceCents: 100,
+      name: 'Unknown Group',
+      priceCents: 150,
       mixable: true,
       mixUnitGrams: 500,
       mixingGroup: null,
@@ -462,7 +462,7 @@ void test('rejects null-group components', () => {
     },
   ];
 
-  expectCode('MIX_COMPONENT_INELIGIBLE', () =>
+  expectCode('MIXING_GROUP_MISMATCH', () =>
     normalizePowderMixConfig(
       {
         components: [
@@ -534,7 +534,7 @@ void test('validateMixingGroupCompat rejects null, cross-group, and unknown grou
         },
       ]),
     (error: unknown) =>
-      error instanceof PowderMixDomainError && error.code === 'MIX_COMPONENT_INELIGIBLE',
+      error instanceof PowderMixDomainError && error.code === 'MIXING_GROUP_MISMATCH',
   );
 
   assert.throws(
@@ -566,7 +566,7 @@ void test('validateMixingGroupCompat rejects null, cross-group, and unknown grou
         },
       ]),
     (error: unknown) =>
-      error instanceof PowderMixDomainError && error.code === 'MIX_COMPONENT_INELIGIBLE',
+      error instanceof PowderMixDomainError && error.code === 'MIXING_GROUP_MISMATCH',
   );
 });
 
@@ -620,7 +620,7 @@ void test('rejects cross-group quote via full quotePowderMix path', () => {
     sourceVariantMixUnitGrams: null,
     detailsJson: null,
   };
-  expectCode('MIX_COMPONENT_INELIGIBLE', () =>
+  expectCode('MIXING_GROUP_MISMATCH', () =>
     quotePowderMix(
       {
         components: [

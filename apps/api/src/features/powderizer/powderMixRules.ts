@@ -36,8 +36,16 @@ export const POWDER_MIX_FINENESS_SURCHARGE_CENTS = 0;
 
 type UnknownRecord = Record<string, unknown>;
 
-function domainError(code: PowderMixDomainError['code'], message: string, field?: string): never {
-  throw new PowderMixDomainError(code, message, field);
+function domainError(
+  code: PowderMixDomainError['code'],
+  message: string,
+  field?: string,
+  extra?: {
+    conflictingProductIds?: number[];
+    groupInfo?: readonly { productId: number; mixingGroup: string | null }[];
+  },
+): never {
+  throw new PowderMixDomainError(code, message, field, extra);
 }
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -113,27 +121,34 @@ export function normalizePowderMixBagColourScheme(value: unknown): PowderMixBagC
 export const ALLOWED_MIXING_GROUPS = new Set(MIXING_GROUPS);
 
 export function validateMixingGroupCompat(products: readonly PowderMixProduct[]): void {
+  const groupPayload = {
+    conflictingProductIds: products.map((p) => p.id),
+    groupInfo: products.map((p) => ({ productId: p.id, mixingGroup: p.mixingGroup })),
+  };
   const groups = new Set(products.map((product) => product.mixingGroup));
   if (groups.has(null)) {
     domainError(
-      'MIX_COMPONENT_INELIGIBLE',
+      'MIXING_GROUP_MISMATCH',
       'All mix components must belong to a mixing group.',
       'components',
+      groupPayload,
     );
   }
   if (groups.size > 1) {
     domainError(
-      'MIX_COMPONENT_INELIGIBLE',
+      'MIXING_GROUP_MISMATCH',
       'All mix components must belong to the same mixing group.',
       'components',
+      groupPayload,
     );
   }
   for (const group of groups) {
     if (!ALLOWED_MIXING_GROUPS.has(group as (typeof MIXING_GROUPS)[number])) {
       domainError(
-        'MIX_COMPONENT_INELIGIBLE',
+        'MIXING_GROUP_MISMATCH',
         `Mixing group '${group}' is not recognised.`,
         'components',
+        groupPayload,
       );
     }
   }

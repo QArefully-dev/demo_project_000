@@ -11,6 +11,7 @@ import {
   PowderizerValidationErrorResponse,
   UpdatePowderMixQuantityBody,
 } from '@shop/contracts/powderizer';
+import { PowderMixDomainError } from '../features/powderizer/powderizerTypes.js';
 import type { AppContext, AppServices } from '../app.js';
 
 const CartIdParam = Type.Object({ cartId: Type.String({ format: 'uuid' }) });
@@ -46,6 +47,17 @@ function isCartMutationError(result: string): result is 'CART_NOT_FOUND' | 'CART
   return result === 'CART_NOT_FOUND' || result === 'CART_RESERVED';
 }
 
+function sendGroupMismatch(reply: FastifyReply, error: PowderMixDomainError): void {
+  reply.code(400).send({
+    error: 'MIXING_GROUP_MISMATCH',
+    conflictingProductIds: (error.conflictingProductIds ?? []).map(String),
+    groupInfo: (error.groupInfo ?? []).map((g) => ({
+      productId: String(g.productId),
+      mixingGroup: g.mixingGroup,
+    })),
+  });
+}
+
 function returnCart(carts: AppServices['carts'], cartId: string) {
   return carts.get(cartId);
 }
@@ -55,17 +67,35 @@ export function handleConfig({ powderizer }: AppServices) {
 }
 
 export function handleQuote({ powderizer }: AppServices) {
-  return (request: FastifyRequest) => powderizer.quote(request.body as never);
+  return (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      return powderizer.quote(request.body as never);
+    } catch (error: unknown) {
+      if (error instanceof PowderMixDomainError && error.code === 'MIXING_GROUP_MISMATCH') {
+        sendGroupMismatch(reply, error);
+        return;
+      }
+      throw error;
+    }
+  };
 }
 
 export function handleCreate({ powderizer, carts }: AppServices) {
   return (request: FastifyRequest<{ Params: { cartId: string } }>, reply: FastifyReply) => {
-    const result = powderizer.create(request.params.cartId, request.body as never);
-    if (isCartMutationError(result)) {
-      sendMutationError(reply, result);
-      return;
+    try {
+      const result = powderizer.create(request.params.cartId, request.body as never);
+      if (isCartMutationError(result)) {
+        sendMutationError(reply, result);
+        return;
+      }
+      return returnCart(carts, request.params.cartId);
+    } catch (error: unknown) {
+      if (error instanceof PowderMixDomainError && error.code === 'MIXING_GROUP_MISMATCH') {
+        sendGroupMismatch(reply, error);
+        return;
+      }
+      throw error;
     }
-    return returnCart(carts, request.params.cartId);
   };
 }
 
@@ -74,16 +104,24 @@ export function handleUpdate({ powderizer, carts }: AppServices) {
     request: FastifyRequest<{ Params: { cartId: string; mixId: string } }>,
     reply: FastifyReply,
   ) => {
-    const result = powderizer.update(
-      request.params.cartId,
-      request.params.mixId,
-      request.body as never,
-    );
-    if (result) {
-      sendMutationError(reply, result);
-      return;
+    try {
+      const result = powderizer.update(
+        request.params.cartId,
+        request.params.mixId,
+        request.body as never,
+      );
+      if (result) {
+        sendMutationError(reply, result);
+        return;
+      }
+      return returnCart(carts, request.params.cartId);
+    } catch (error: unknown) {
+      if (error instanceof PowderMixDomainError && error.code === 'MIXING_GROUP_MISMATCH') {
+        sendGroupMismatch(reply, error);
+        return;
+      }
+      throw error;
     }
-    return returnCart(carts, request.params.cartId);
   };
 }
 
@@ -113,12 +151,20 @@ export function handleRequote({ powderizer, carts }: AppServices) {
     request: FastifyRequest<{ Params: { cartId: string; mixId: string } }>,
     reply: FastifyReply,
   ) => {
-    const result = powderizer.requote(request.params.cartId, request.params.mixId);
-    if (result) {
-      sendMutationError(reply, result);
-      return;
+    try {
+      const result = powderizer.requote(request.params.cartId, request.params.mixId);
+      if (result) {
+        sendMutationError(reply, result);
+        return;
+      }
+      return returnCart(carts, request.params.cartId);
+    } catch (error: unknown) {
+      if (error instanceof PowderMixDomainError && error.code === 'MIXING_GROUP_MISMATCH') {
+        sendGroupMismatch(reply, error);
+        return;
+      }
+      throw error;
     }
-    return returnCart(carts, request.params.cartId);
   };
 }
 

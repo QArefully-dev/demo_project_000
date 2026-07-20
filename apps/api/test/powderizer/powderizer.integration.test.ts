@@ -273,6 +273,6 @@ void test('Powderizer rejects cross-group mixes', (t) => {
         fineness: 'standard',
       }),
     (error: unknown) =>
-      error instanceof PowderMixDomainError && error.code === 'MIX_COMPONENT_INELIGIBLE',
+      error instanceof PowderMixDomainError && error.code === 'MIXING_GROUP_MISMATCH',
   );
 });

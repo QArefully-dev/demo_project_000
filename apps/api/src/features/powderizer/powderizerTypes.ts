@@ -16,17 +16,28 @@ export type PowderMixDomainErrorCode =
   | 'MIX_BAG_COLOUR_INVALID'
   | 'MIX_LABEL_INVALID'
   | 'MIX_REQUOTE_REQUIRED'
-  | 'MIX_STOCK_UNAVAILABLE';
+  | 'MIX_STOCK_UNAVAILABLE'
+  | 'MIXING_GROUP_MISMATCH';
+
+export interface MixingGroupInfo {
+  productId: number;
+  mixingGroup: string | null;
+}
 
 export class PowderMixDomainError extends Error {
   readonly name = 'PowderMixDomainError';
+  readonly conflictingProductIds?: number[];
+  readonly groupInfo?: readonly MixingGroupInfo[];
 
   constructor(
     readonly code: PowderMixDomainErrorCode,
     message: string,
     readonly field?: string,
+    extra?: { conflictingProductIds?: number[]; groupInfo?: readonly MixingGroupInfo[] },
   ) {
     super(message);
+    this.conflictingProductIds = extra?.conflictingProductIds;
+    this.groupInfo = extra?.groupInfo;
   }
 }
 
