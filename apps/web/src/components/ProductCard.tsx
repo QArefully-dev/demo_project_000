@@ -23,7 +23,8 @@ interface ProductCardProps {
 }
 
 function getPriceRange(product: ProductOrVariant): { min: number; max: number } {
-  if (hasVariants(product)) return product.priceRange ?? { min: product.priceCents, max: product.priceCents };
+  if (hasVariants(product))
+    return product.priceRange ?? { min: product.priceCents, max: product.priceCents };
   return { min: product.priceCents, max: product.priceCents };
 }
 
@@ -82,7 +83,9 @@ export function ProductCard({
     if (!added) setActionError('Could not add this item. Try again.');
   };
 
-  const priceLabel = hasPriceRange ? `From ${formatMoney(priceRange.min)}` : formatMoney(priceRange.min);
+  const priceLabel = hasPriceRange
+    ? `From ${formatMoney(priceRange.min)}`
+    : formatMoney(priceRange.min);
 
   return (
     <Card className="group flex h-full flex-col gap-0 overflow-hidden border-border/80 bg-surface-raised py-0 shadow-sm transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-lg">
@@ -107,7 +110,11 @@ export function ProductCard({
             </Badge>
           )}
           {isFood && <Badge className="bg-emerald-600 px-2.5 text-white">Food</Badge>}
-          {isNonFood && <Badge variant="secondary" className="px-2.5">Not for consumption</Badge>}
+          {isNonFood && (
+            <Badge variant="secondary" className="px-2.5">
+              Not for consumption
+            </Badge>
+          )}
           {isCaution && <Badge className="bg-amber-500 px-2.5 text-white">Caution</Badge>}
         </div>
         <div className="absolute top-2 right-2 rounded-full bg-background/90 shadow-sm backdrop-blur-sm">

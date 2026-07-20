@@ -1,5 +1,9 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { ProductWithVariants, ProductFilterOptionsResponse, CategoryFacts } from '@shop/contracts/products';
+import type {
+  ProductWithVariants,
+  ProductFilterOptionsResponse,
+  CategoryFacts,
+} from '@shop/contracts/products';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

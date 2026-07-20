@@ -12,7 +12,8 @@ export function PowderizerBanner() {
         <p className="text-xs font-bold uppercase tracking-[0.18em]">Custom Powder</p>
         <h2 className="mt-2 text-3xl font-semibold tracking-tight">Blend your own mix.</h2>
         <p className="mt-2 max-w-2xl text-sm leading-6 opacity-85">
-          Select compatible ingredients from the catalogue to build a custom powder blend with your own label and finish.
+          Select compatible ingredients from the catalogue to build a custom powder blend with your
+          own label and finish.
         </p>
       </div>
       <Link

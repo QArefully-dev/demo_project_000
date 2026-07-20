@@ -11,20 +11,17 @@ type IngredientPickerProps = {
 
 export function IngredientPicker({ selectedProductIds, onAdd, picker }: IngredientPickerProps) {
   const isAtMaximum = selectedProductIds.length >= 5;
-  const selectedGroups = useMemo(
-    () => {
-      const groups = new Set<string>();
-      let hasGroup = false;
-      for (const product of picker.activeProducts) {
-        if (selectedProductIds.includes(product.id) && product.mixingGroup) {
-          groups.add(product.mixingGroup);
-          hasGroup = true;
-        }
+  const selectedGroups = useMemo(() => {
+    const groups = new Set<string>();
+    let hasGroup = false;
+    for (const product of picker.activeProducts) {
+      if (selectedProductIds.includes(product.id) && product.mixingGroup) {
+        groups.add(product.mixingGroup);
+        hasGroup = true;
       }
-      return hasGroup ? groups : null;
-    },
-    [picker.activeProducts, selectedProductIds],
-  );
+    }
+    return hasGroup ? groups : null;
+  }, [picker.activeProducts, selectedProductIds]);
   const resultCount = picker.activeProducts.length;
 
   return (

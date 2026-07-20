@@ -74,7 +74,7 @@ export const faqArticle = {
           answerParagraphs: [
             {
               id: 'custom-powder-history-answer',
-              text: 'Custom Powder can save a bounded history of blend configurations in this browser\'s local storage. Clearing browser storage removes that local history.',
+              text: "Custom Powder can save a bounded history of blend configurations in this browser's local storage. Clearing browser storage removes that local history.",
             },
           ],
         },

@@ -25,9 +25,7 @@ const names = new Map([
 
 describe('CompatibilityGuard', () => {
   it('renders nothing when error is null', () => {
-    const { container } = render(
-      <CompatibilityGuard error={null} productNamesById={names} />,
-    );
+    const { container } = render(<CompatibilityGuard error={null} productNamesById={names} />);
     expect(container.firstChild).toBeNull();
   });
 

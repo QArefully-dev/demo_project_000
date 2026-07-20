@@ -115,7 +115,10 @@ describe('ProductCard', () => {
     rerender(
       <MemoryRouter>
         <ProductCard
-          product={product({ compareAtPriceCents: undefined, priceRange: { min: 7999, max: 7999 } })}
+          product={product({
+            compareAtPriceCents: undefined,
+            priceRange: { min: 7999, max: 7999 },
+          })}
           onAddToCart={vi.fn().mockResolvedValue(true)}
           isCartAvailable={true}
         />

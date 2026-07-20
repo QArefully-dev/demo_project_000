@@ -430,14 +430,14 @@ export function ReturnPanel({ orderId }: ReturnPanelProps) {
                 {req.refund && (
                   <div className="mt-2 rounded-md bg-muted p-2 text-sm">
                     <p>
-                        Refund:{' '}
-                        <span className="font-medium">{formatMoney(req.refund.amountCents)}</span>
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Delivery charges are not refundable.
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Reference: {req.refund.simulatedReference}
+                      Refund:{' '}
+                      <span className="font-medium">{formatMoney(req.refund.amountCents)}</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Delivery charges are not refundable.
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Reference: {req.refund.simulatedReference}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Refunded on{' '}
