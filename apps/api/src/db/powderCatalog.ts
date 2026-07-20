@@ -10,15 +10,19 @@ export const POWDER_CATEGORIES = CATALOG_CATEGORIES;
 export type PowderCategory = CatalogCategory;
 export type PowderProduct = (typeof POWDER_CATALOG)[number];
 
-// Transitional API-test compatibility; canonical data now belongs to @shop/catalog.
 export const POWDER_CATALOG = CATALOG_PRODUCTS.map((product) => ({
   ...product,
-  consumption_warning: product.packaging.consumptionLabel,
+  consumption_warning:
+    product.consumptionClassification === 'food'
+      ? null
+      : product.consumptionClassification === 'caution'
+        ? 'Handle with caution'
+        : 'Not for consumption',
   visual: {
-    label_color: product.packaging.labelColor,
-    powder_color: product.packaging.powderColor,
-    mark: product.packaging.mark,
-    batch_code: product.packaging.batchCode,
+    label_color: String(product.imageSetId),
+    powder_color: String(product.imageSetId),
+    mark: 'PWDR',
+    batch_code: `BATCH-${product.id}`,
   },
 }));
 

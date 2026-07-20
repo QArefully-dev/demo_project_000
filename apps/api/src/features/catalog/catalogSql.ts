@@ -12,7 +12,8 @@ export interface CatalogPredicate {
 export const availableToSellSql = `MAX(0, p.stock_count - COALESCE((
   SELECT SUM(r.reserved_quantity)
   FROM inventory_reservations r
-  WHERE r.product_id = p.id AND (r.expires_at IS NULL OR r.expires_at > ?)
+  JOIN product_variants v ON v.id = r.variant_id
+  WHERE v.product_id = p.id AND (r.expires_at IS NULL OR r.expires_at > ?)
 ), 0))`;
 
 function escapeLike(value: string): string {

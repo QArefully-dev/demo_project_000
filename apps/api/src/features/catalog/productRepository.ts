@@ -1,5 +1,9 @@
 import type Database from 'better-sqlite3';
-import { CATALOG_SPECIFICATION_DEFINITIONS, CATALOG_SPECIFICATION_GROUPS } from '@shop/catalog';
+import {
+  CATALOG_SPECIFICATION_DEFINITIONS,
+  CATALOG_SPECIFICATION_GROUPS,
+} from './catalogSpecifications.js';
+import type { CatalogSpecificationDefinition } from './catalogSpecifications.js';
 import type {
   ProductFilterOptionsResponse,
   ProductQuery,
@@ -16,7 +20,6 @@ export interface ProductRow {
   price_cents: number;
   category: string;
   stock_count: number;
-  /** Customer-read projection only. Raw `stock_count` remains internal on-hand stock. */
   available_to_sell?: number;
   backorderable?: number;
   backorder_lead_days?: number | null;
@@ -28,12 +31,34 @@ export interface ProductRow {
   mix_unit_grams?: number | null;
   active: number;
   created_at: string;
+  consumption_classification: string;
+  mixing_group: string | null;
+  details_json: string | null;
+  default_variant_id: number | null;
+  blend_source_variant_id: number | null;
 }
 
-/** Customer read model with metadata hydrated from persisted catalog tables. */
 export interface CustomerProductRow extends ProductRow {
   tags: ProductTag[];
   specificationGroups: ProductSpecificationGroup[];
+}
+
+export interface VariantRow {
+  id: number;
+  product_id: number;
+  sku: string;
+  label: string;
+  weight_grams: number;
+  price_cents: number;
+  compare_at_price_cents: number | null;
+  stock_count: number;
+  backorderable: number;
+  backorder_lead_days: number | null;
+  delivery_class: string;
+  active: number;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ProductList {
@@ -46,27 +71,26 @@ export interface ProductList {
 export interface ProductRepository {
   list(query: ProductQuery, now?: string): ProductList;
   listFilterOptions(): ProductFilterOptionsResponse;
-  /** Internal lookup for checkout, order history, and persisted mix components. */
   findById(id: number): ProductRow | undefined;
-  /** Customer discovery lookup. Inactive products must remain invisible. */
   findActiveById(id: number, now?: string): CustomerProductRow | undefined;
   listCategories(): string[];
   listBestsellers(limit?: number, now?: string): CustomerProductRow[];
-  /** Explicit comparison lookup; includes active and inactive products only. */
   listByIds(ids: readonly number[], now?: string): CustomerProductRow[];
-  /** Active customer reads for deterministic similarity scoring. */
   listActiveCandidatesExcluding(sourceId: number, now?: string): CustomerProductRow[];
   listEligibleMixProducts(): ProductRow[];
-  /** Active-only component selection for new Powderizer quotes and mixes. */
   listActiveMixProducts(productIds: readonly number[]): ProductRow[];
-  /** Internal component lookup for retained mix/cart history. */
   listMixProducts(productIds: readonly number[]): ProductRow[];
+  findAllVariants(productId: number): VariantRow[];
+  findVariantById(variantId: number): VariantRow | undefined;
+  findVariantsByIds(variantIds: readonly number[]): VariantRow[];
+  findDefaultVariant(productId: number): VariantRow | undefined;
 }
 
 export function createProductRepository(db: Database.Database): ProductRepository {
   const currentTime = (now?: string): string => now ?? new Date().toISOString();
   const customerColumns = `p.*, ${availableToSellSql} AS available_to_sell`;
-  const hydrateCustomerRows = (rows: readonly ProductRow[]): CustomerProductRow[] => {
+
+  function hydrateCustomerRows(rows: readonly ProductRow[]): CustomerProductRow[] {
     if (rows.length === 0) return [];
     const productIds = [...new Set(rows.map((row) => row.id))];
     const placeholders = productIds.map(() => '?').join(', ');
@@ -102,9 +126,9 @@ export function createProductRepository(db: Database.Database): ProductRepositor
       Map<string, ProductSpecificationGroup['specifications']>
     >();
     for (const specification of specificationRows) {
-      const definition = CATALOG_SPECIFICATION_DEFINITIONS.find(
-        (candidate) => candidate.key === specification.specification_key,
-      );
+      const definition = (
+        CATALOG_SPECIFICATION_DEFINITIONS as readonly CatalogSpecificationDefinition[]
+      ).find((candidate) => candidate.key === specification.specification_key);
       if (!definition) continue;
       const productSpecifications =
         specificationsByProduct.get(specification.product_id) ??
@@ -125,19 +149,19 @@ export function createProductRepository(db: Database.Database): ProductRepositor
         const specifications = groupedSpecifications?.get(group.key);
         if (!specifications?.length) return [];
         specifications.sort((left, right) => {
-          const leftOrder = CATALOG_SPECIFICATION_DEFINITIONS.find(
-            (definition) => definition.key === left.key,
-          )!.order;
-          const rightOrder = CATALOG_SPECIFICATION_DEFINITIONS.find(
-            (definition) => definition.key === right.key,
-          )!.order;
-          return leftOrder - rightOrder || left.key.localeCompare(right.key);
+          const leftDef = (
+            CATALOG_SPECIFICATION_DEFINITIONS as readonly CatalogSpecificationDefinition[]
+          ).find((d) => d.key === left.key)!;
+          const rightDef = (
+            CATALOG_SPECIFICATION_DEFINITIONS as readonly CatalogSpecificationDefinition[]
+          ).find((d) => d.key === right.key)!;
+          return leftDef.order - rightDef.order || left.key.localeCompare(right.key);
         });
         return [{ key: group.key, label: group.label, order: group.order, specifications }];
       });
       return { ...row, tags: tagsByProduct.get(row.id) ?? [], specificationGroups };
     });
-  };
+  }
 
   return {
     list(query, now) {
@@ -193,9 +217,9 @@ export function createProductRepository(db: Database.Database): ProductRepositor
       }>;
       const valuesBySpecification = new Map<string, Map<string, string>>();
       for (const value of values) {
-        const definition = CATALOG_SPECIFICATION_DEFINITIONS.find(
-          (candidate) => candidate.key === value.specification_key,
-        );
+        const definition = (
+          CATALOG_SPECIFICATION_DEFINITIONS as readonly CatalogSpecificationDefinition[]
+        ).find((candidate) => candidate.key === value.specification_key);
         if (!definition?.filterable) continue;
         const specificationValues =
           valuesBySpecification.get(definition.key) ?? new Map<string, string>();
@@ -203,7 +227,9 @@ export function createProductRepository(db: Database.Database): ProductRepositor
         valuesBySpecification.set(definition.key, specificationValues);
       }
       const specificationGroups = CATALOG_SPECIFICATION_GROUPS.flatMap((group) => {
-        const specifications = CATALOG_SPECIFICATION_DEFINITIONS.flatMap((definition) => {
+        const specifications = (
+          CATALOG_SPECIFICATION_DEFINITIONS as readonly CatalogSpecificationDefinition[]
+        ).flatMap((definition) => {
           if (definition.group !== group.key || !definition.filterable) return [];
           const valuesForDefinition = valuesBySpecification.get(definition.key);
           if (!valuesForDefinition?.size) return [];
@@ -267,7 +293,7 @@ export function createProductRepository(db: Database.Database): ProductRepositor
       const rows = db
         .prepare(
           `SELECT ${customerColumns} FROM products p
-                  WHERE p.active = 1 AND p.id != ? ORDER BY p.id ASC`,
+           WHERE p.active = 1 AND p.id != ? ORDER BY p.id ASC`,
         )
         .all(currentTime(now), sourceId) as ProductRow[];
       return hydrateCustomerRows(rows);
@@ -296,6 +322,33 @@ export function createProductRepository(db: Database.Database): ProductRepositor
       return db
         .prepare(`SELECT * FROM products WHERE id IN (${placeholders}) ORDER BY id ASC`)
         .all(...productIds) as ProductRow[];
+    },
+    findAllVariants(productId) {
+      return db
+        .prepare(
+          `SELECT * FROM product_variants WHERE product_id = ? AND active = 1 ORDER BY sort_order ASC`,
+        )
+        .all(productId) as VariantRow[];
+    },
+    findVariantById(variantId) {
+      return db.prepare('SELECT * FROM product_variants WHERE id = ?').get(variantId) as
+        VariantRow | undefined;
+    },
+    findVariantsByIds(variantIds) {
+      if (variantIds.length === 0) return [];
+      const placeholders = variantIds.map(() => '?').join(', ');
+      return db
+        .prepare(
+          `SELECT * FROM product_variants WHERE id IN (${placeholders}) ORDER BY sort_order ASC`,
+        )
+        .all(...variantIds) as VariantRow[];
+    },
+    findDefaultVariant(productId) {
+      return db
+        .prepare(
+          `SELECT * FROM product_variants WHERE product_id = ? AND sort_order = 1 AND active = 1 LIMIT 1`,
+        )
+        .get(productId) as VariantRow | undefined;
     },
   };
 }

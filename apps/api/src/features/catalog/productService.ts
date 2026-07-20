@@ -3,26 +3,29 @@ import type {
   ProductFilterOptionsResponse,
   ProductQuery,
 } from '@shop/contracts/products';
-import type { CustomerProductRow, ProductList, ProductRepository } from './productRepository.js';
+import type {
+  CustomerProductRow,
+  ProductList,
+  ProductRepository,
+  VariantRow,
+} from './productRepository.js';
 import { buildComparisonItems, parseComparisonIds } from './productComparison.js';
 import { rankSimilarProducts } from './productSimilarity.js';
 
 export interface ProductService {
   list(query: ProductQuery): ProductList;
   listFilterOptions(): ProductFilterOptionsResponse;
-  /** Customer-facing product detail lookup. */
   findById(id: number): CustomerProductRow | undefined;
+  findCustomerProductById(id: number): CustomerProductRow | undefined;
+  listVariants(productId: number): VariantRow[];
   listCategories(): string[];
   listBestsellers(limit?: number): CustomerProductRow[];
   compare(rawIds: string): ProductComparisonResponse;
-  /** Undefined when the source product is missing or inactive. */
   listSimilar(productId: number): CustomerProductRow[] | undefined;
-  /** Compatibility alias for the deterministic similar-products result. */
   listRelated(productId: number): CustomerProductRow[] | undefined;
 }
 
 export interface ProductReadDependencies {
-  /** Shared app clock; all customer availability reads use one injected instant. */
   clock: { now(): Date };
 }
 
@@ -42,6 +45,8 @@ export function createProductService(
     list: (query) => repository.list(query, now()),
     listFilterOptions: () => repository.listFilterOptions(),
     findById: (id) => repository.findActiveById(id, now()),
+    findCustomerProductById: (id) => repository.findActiveById(id, now()),
+    listVariants: (productId) => repository.findAllVariants(productId),
     listCategories: () => repository.listCategories(),
     listBestsellers: (limit) => repository.listBestsellers(limit, now()),
     compare: (rawIds) => {

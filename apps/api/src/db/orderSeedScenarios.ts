@@ -270,7 +270,9 @@ const SCENARIOS: readonly Scenario[] = [
 function product(productId: number) {
   const item = CATALOG_PRODUCTS.find((candidate) => candidate.id === productId);
   if (!item) throw new Error(`Missing canonical product ${productId} for order seed scenario`);
-  return item;
+  const defaultVariant =
+    item.variants.find((v) => v.sortOrder === 1 && v.active) ?? item.variants[0];
+  return { ...item, price_cents: defaultVariant?.priceCents ?? 0 };
 }
 
 /** Inserts immutable local-demo order fixtures once. Existing fixture state is never rewritten. */
