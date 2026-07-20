@@ -23,12 +23,12 @@ interface ProductCardProps {
 }
 
 function getPriceRange(product: ProductOrVariant): { min: number; max: number } {
-  if (hasVariants(product)) return product.priceRange;
+  if (hasVariants(product)) return product.priceRange ?? { min: product.priceCents, max: product.priceCents };
   return { min: product.priceCents, max: product.priceCents };
 }
 
 function getBaseAvailability(product: ProductOrVariant): string {
-  if (hasVariants(product)) return product.baseAvailability;
+  if (hasVariants(product)) return product.baseAvailability ?? product.availability;
   return product.availability;
 }
 
