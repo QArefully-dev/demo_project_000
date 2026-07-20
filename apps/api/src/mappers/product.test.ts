@@ -189,7 +189,7 @@ void test('toProductWithVariantsContract handles null details_json and baseAvail
 
   assert.equal(result.baseAvailability, 'out_of_stock');
   assert.ok(typeof result.categoryFacts === 'object');
-  assert.equal(result.categoryFacts.texture, '');
+  assert.equal(result.categoryFacts.texture, 'Not specified');
 
   const backorderOnly = toProductWithVariantsContract({ ...canonicalRow, details_json: null }, [
     {

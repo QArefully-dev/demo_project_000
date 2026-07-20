@@ -116,8 +116,12 @@ export function toProductWithVariantsContract(
   const priceRange = computePriceRange(variants);
   const baseAvailability = computeBaseAvailability(row, variants);
 
+  const activeVariantsForAvailable = variants.filter((v) => v.active === 1);
+  const variantStock = activeVariantsForAvailable.reduce((sum, v) => sum + v.stock_count, 0);
+
   return {
     ...base,
+    available: row.active === 1 && (variantStock > 0 || activeVariantsForAvailable.some((v) => v.backorderable === 1)),
     variants: variants.map(mapVariant),
     defaultVariantId:
       row.default_variant_id ??
@@ -125,11 +129,11 @@ export function toProductWithVariantsContract(
       variants[0]?.id ??
       0,
     categoryFacts: categoryFacts ?? {
-      texture: '',
-      colour: '',
-      source: '',
-      intendedUse: '',
-      storage: '',
+      texture: 'Not specified',
+      colour: 'Not specified',
+      source: 'Not specified',
+      intendedUse: 'Not specified',
+      storage: 'Not specified',
       consumptionClassification:
         (row.consumption_classification as CategoryFacts['consumptionClassification']) ||
         'non-food',

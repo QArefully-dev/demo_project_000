@@ -143,15 +143,14 @@ export function seedDatabase(db: Database.Database): void {
   const seed = db.transaction(() => {
     const upsertProduct = db.prepare(`
       INSERT INTO products
-        (id, name, description, price_cents, category, stock_count, backorderable, backorder_lead_days, image_set_id, slug, compare_at_price_cents, sales_count, mixable, mix_unit_grams, active, created_at, consumption_classification, mixing_group, details_json)
+        (id, name, description, price_cents, category, backorderable, backorder_lead_days, image_set_id, slug, compare_at_price_cents, sales_count, mixable, mix_unit_grams, active, created_at, consumption_classification, mixing_group, details_json)
       VALUES
-        (@id, @name, @description, @price_cents, @category, @stock_count, @backorderable, @backorder_lead_days, @image_set_id, @slug, @compare_at_price_cents, @sales_count, @mixable, @mix_unit_grams, @active, @created_at, @consumption_classification, @mixing_group, @details_json)
+        (@id, @name, @description, @price_cents, @category, @backorderable, @backorder_lead_days, @image_set_id, @slug, @compare_at_price_cents, @sales_count, @mixable, @mix_unit_grams, @active, @created_at, @consumption_classification, @mixing_group, @details_json)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         description = excluded.description,
         price_cents = excluded.price_cents,
         category = excluded.category,
-        stock_count = excluded.stock_count,
         backorderable = excluded.backorderable,
         backorder_lead_days = excluded.backorder_lead_days,
         image_set_id = excluded.image_set_id,
@@ -256,7 +255,6 @@ export function seedDatabase(db: Database.Database): void {
         description: product.description,
         price_cents: defaultVariant?.priceCents ?? 0,
         category: product.category,
-        stock_count: defaultVariant?.stockCount ?? 0,
         backorderable: defaultVariant?.backorderable ? 1 : 0,
         backorder_lead_days: defaultVariant?.backorderable
           ? (defaultVariant.backorderLeadDays ?? null)
