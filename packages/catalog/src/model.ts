@@ -1,157 +1,138 @@
 export const CATALOG_CATEGORIES = [
-  'Pantry Staples',
-  'Performance',
+  'Sports Nutrition',
+  'Baking & Pantry',
   'Drinks',
-  'Household',
-  'Outdoors',
-  'Questionable',
-  'Impossible',
+  'Household & Cleaning',
+  'Garden & Outdoors',
+  'Trade & Creative Materials',
 ] as const;
 export type CatalogCategory = (typeof CATALOG_CATEGORIES)[number];
 
-export const MIXABLE_CATALOG_CATEGORIES = [
-  ...CATALOG_CATEGORIES,
-] as const satisfies readonly CatalogCategory[];
-export type MixableCatalogCategory = (typeof MIXABLE_CATALOG_CATEGORIES)[number];
-
-export const NOT_FOR_CONSUMPTION = 'Not for consumption' as const;
-export const NO_CONSUMPTION_WARNING = 'None' as const;
-export const CONCEPTUAL_QUANTITY = 'conceptual quantity' as const;
-
-export const CATALOG_SPECIFICATION_GROUPS = [
-  { key: 'appearance', label: 'Appearance', order: 1 },
-  { key: 'origin-and-use', label: 'Origin and use', order: 2 },
-  { key: 'pack-and-care', label: 'Pack and care', order: 3 },
+export const MIXING_GROUPS = [
+  'food-grade',
+  'cleaning',
+  'garden-treatment',
+  'cementitious-materials',
+  'casting-materials',
+  'pigments',
+  'theatrical-effects',
+  'absorbents',
 ] as const;
-export type CatalogSpecificationGroup = (typeof CATALOG_SPECIFICATION_GROUPS)[number];
-export type CatalogSpecificationGroupKey = CatalogSpecificationGroup['key'];
+export type MixingGroup = (typeof MIXING_GROUPS)[number];
 
-export const CATALOG_SPECIFICATION_DEFINITIONS = [
-  { key: 'texture', label: 'Texture', group: 'appearance', order: 1, filterable: true },
-  { key: 'colour', label: 'Colour', group: 'appearance', order: 2, filterable: true },
-  { key: 'source', label: 'Source', group: 'origin-and-use', order: 1, filterable: true },
-  {
-    key: 'intended-use',
-    label: 'Intended use',
-    group: 'origin-and-use',
-    order: 2,
-    filterable: true,
-  },
-  { key: 'pack-weight', label: 'Pack weight', group: 'pack-and-care', order: 1, filterable: false },
-  {
-    key: 'storage-guidance',
-    label: 'Storage guidance',
-    group: 'pack-and-care',
-    order: 2,
-    filterable: false,
-  },
-  {
-    key: 'warning-class',
-    label: 'Warning class',
-    group: 'pack-and-care',
-    order: 3,
-    filterable: false,
-  },
-] as const;
-export type CatalogSpecificationDefinition = (typeof CATALOG_SPECIFICATION_DEFINITIONS)[number];
-export type CatalogSpecificationKey = CatalogSpecificationDefinition['key'];
+export type ConsumptionClassification = 'food' | 'non-food' | 'caution';
 
-export const catalogSpecificationGroupByKey = new Map(
-  CATALOG_SPECIFICATION_GROUPS.map((group) => [group.key, group]),
-);
-export const catalogSpecificationByKey = new Map(
-  CATALOG_SPECIFICATION_DEFINITIONS.map((definition) => [definition.key, definition]),
-);
+export type DeliveryClass = 'parcel' | 'freight';
+
+export type BaseProductFacts = {
+  texture: string;
+  colour: string;
+  source: string;
+  intendedUse: string;
+  storage: string;
+  consumptionClassification: ConsumptionClassification;
+};
+
+export type EdibleFacts = BaseProductFacts & {
+  ingredients: string[];
+  allergens: string[];
+  nutrition: Record<string, string>;
+  servingSize: string;
+  dietaryAttributes: string[];
+};
+
+export type SportsFacts = EdibleFacts & {
+  flavour: string;
+  servings: number;
+  proteinPerServing: number;
+  carbsPerServing: number;
+};
+
+export type GardenFacts = BaseProductFacts & {
+  npk: string;
+  coverage: string;
+  application: string;
+  handling: string;
+};
+
+export type CleaningFacts = BaseProductFacts & {
+  surfaces: string[];
+  dosage: string;
+  hazardStatement: string;
+  handling: string;
+};
+
+export type TradeFacts = BaseProductFacts & {
+  composition: string;
+  waterRatio: string;
+  coverage: string;
+  settingTime: string;
+  ppe: string[];
+};
+
+export type TheatricalFacts = BaseProductFacts & {
+  approvedApplication: string;
+  cleanup: string;
+  colourProfile: string;
+  particleAppearance: string;
+  ppe: string[];
+};
+
+export type CategoryFacts =
+  | SportsFacts
+  | EdibleFacts
+  | GardenFacts
+  | CleaningFacts
+  | TradeFacts
+  | TheatricalFacts
+  | BaseProductFacts;
+
+export type CatalogVariant = {
+  sku: string;
+  label: string;
+  weightGrams: number;
+  priceCents: number;
+  compareAtPriceCents?: number;
+  stockCount: number;
+  backorderable: boolean;
+  backorderLeadDays?: number;
+  deliveryClass: DeliveryClass;
+  active: boolean;
+  sortOrder: number;
+};
+
+export type CatalogProduct = {
+  id: number;
+  slug: string;
+  name: string;
+  description: string;
+  category: CatalogCategory;
+  mixingGroup: string | null;
+  consumptionClassification: ConsumptionClassification;
+  imageSetId: string;
+  baseFacts: BaseProductFacts;
+  categoryFacts: CategoryFacts;
+  tags: string[];
+  createdAt: string;
+  visibility: 'public' | 'hidden';
+  onSale: boolean;
+  variants: CatalogVariant[];
+};
+
+export const FREIGHT_WEIGHT_THRESHOLD_GRAMS = 100_000;
+export const FREIGHT_CHARGE_CENTS = 999;
+export const PARCEL_CHARGE_CENTS = 0;
 
 export const NORMALIZED_CATALOG_KEY = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
 export const isNormalizedCatalogKey = (value: string): boolean =>
   value.length <= 64 && NORMALIZED_CATALOG_KEY.test(value);
 
-export const isCatalogSpecificationKey = (value: string): value is CatalogSpecificationKey =>
-  catalogSpecificationByKey.has(value as CatalogSpecificationKey);
-
-export type CatalogTag = Readonly<{
-  key: string;
-  label: string;
-}>;
-
-export type CatalogSpecificationValue = Readonly<{
-  key: string;
-  label: string;
-}>;
-
-/** Authoring-only facts. Pack weight and warning class derive from packaging. */
-export type CatalogSpecifications = Readonly<{
-  texture: CatalogSpecificationValue | null;
-  colour: CatalogSpecificationValue | null;
-  source: CatalogSpecificationValue | null;
-  intendedUse: CatalogSpecificationValue | null;
-  storageGuidance: CatalogSpecificationValue | null;
-}>;
-
-export type ProductPackaging = Readonly<{
-  labelColor: string;
-  powderColor: string;
-  mark: string;
-  batchCode: string;
-  quantity: string;
-  consumptionLabel: typeof NOT_FOR_CONSUMPTION | null;
-}>;
-
-export type CatalogProduct = Readonly<{
-  id: number;
-  name: string;
-  description: string;
-  price_cents: number;
-  compare_at_price_cents: number | null;
-  category: CatalogCategory;
-  stock_count: number;
-  backorderable: boolean;
-  backorderLeadDays: number | null;
-  sales_count: number;
-  active: boolean;
-  created_at: string;
-  tags: readonly CatalogTag[];
-  specifications: CatalogSpecifications;
-  image_set_id: string;
-  slug: string;
-  mixable: boolean;
-  mixUnitGrams: number | null;
-  packaging: ProductPackaging;
-}>;
-export type CatalogProductDraft = Omit<
-  CatalogProduct,
-  'mixable' | 'mixUnitGrams' | 'backorderable' | 'backorderLeadDays'
-> &
-  Partial<Pick<CatalogProduct, 'backorderable' | 'backorderLeadDays'>>;
-
-export type ResolvedCatalogSpecification = Readonly<{
-  key: CatalogSpecificationKey;
-  label: string;
-  group: CatalogSpecificationGroupKey;
-  groupLabel: string;
-  order: number;
-  filterable: boolean;
-  valueKey: string;
-  displayValue: string;
-  numericValue: number | null;
-}>;
-
-const quantityToGrams = (quantity: string): number | null => {
-  const grams = /^([1-9][0-9]*)g$/.exec(quantity);
-  const kilograms = /^([1-9][0-9]*)kg$/.exec(quantity);
-  const amount = grams ? Number(grams[1]) : kilograms ? Number(kilograms[1]) * 1000 : NaN;
-  return Number.isSafeInteger(amount) && amount > 0 ? amount : null;
+export const isUtcIsoInstant = (value: string): boolean => {
+  const time = Date.parse(value);
+  return Number.isFinite(time) && new Date(time).toISOString() === value;
 };
 
-/** Converts a labelled source package into grams reserved by Powderizer. */
-export const parseMixUnitGrams = (quantity: string): number | null =>
-  quantity === CONCEPTUAL_QUANTITY ? 1000 : quantityToGrams(quantity);
-
-/** Returns a filterable physical pack weight; conceptual quantities have no gram value. */
-export const parsePackWeightGrams = (quantity: string): number | null => quantityToGrams(quantity);
-
-/** Immutable canonical dates. Category records author these same UTC literals. */
 export const CATALOG_CREATED_AT_BY_ID: Readonly<Record<number, string>> = {
   1: '2025-01-01T00:00:00.000Z',
   2: '2025-01-02T00:00:00.000Z',
@@ -203,85 +184,81 @@ export const CATALOG_CREATED_AT_BY_ID: Readonly<Record<number, string>> = {
   48: '2025-02-17T00:00:00.000Z',
   49: '2025-02-18T00:00:00.000Z',
   50: '2025-02-19T00:00:00.000Z',
+  1001: '2025-02-20T00:00:00.000Z',
+  1002: '2025-02-21T00:00:00.000Z',
+  1003: '2025-02-22T00:00:00.000Z',
+  1004: '2025-02-23T00:00:00.000Z',
+  1005: '2025-02-24T00:00:00.000Z',
+  1006: '2025-02-25T00:00:00.000Z',
+  1007: '2025-02-26T00:00:00.000Z',
+  1008: '2025-02-27T00:00:00.000Z',
+  1009: '2025-02-28T00:00:00.000Z',
+  1010: '2025-03-01T00:00:00.000Z',
+  1011: '2025-03-02T00:00:00.000Z',
+  1012: '2025-03-03T00:00:00.000Z',
+  1013: '2025-03-04T00:00:00.000Z',
+  1014: '2025-03-05T00:00:00.000Z',
+  1015: '2025-03-06T00:00:00.000Z',
+  1016: '2025-03-07T00:00:00.000Z',
+  1017: '2025-03-08T00:00:00.000Z',
+  1018: '2025-03-09T00:00:00.000Z',
+  1019: '2025-03-10T00:00:00.000Z',
+  1020: '2025-03-11T00:00:00.000Z',
+  1021: '2025-03-12T00:00:00.000Z',
+  1022: '2025-03-13T00:00:00.000Z',
+  1023: '2025-03-14T00:00:00.000Z',
+  1024: '2025-03-15T00:00:00.000Z',
+  1025: '2025-03-16T00:00:00.000Z',
+  1026: '2025-03-17T00:00:00.000Z',
+  1027: '2025-03-18T00:00:00.000Z',
+  1028: '2025-03-19T00:00:00.000Z',
+  1029: '2025-03-20T00:00:00.000Z',
+  1030: '2025-03-21T00:00:00.000Z',
+  1031: '2025-03-22T00:00:00.000Z',
+  1032: '2025-03-23T00:00:00.000Z',
+  1033: '2025-03-24T00:00:00.000Z',
+  1034: '2025-03-25T00:00:00.000Z',
+  1035: '2025-03-26T00:00:00.000Z',
+  1036: '2025-03-27T00:00:00.000Z',
+  1037: '2025-03-28T00:00:00.000Z',
+  1038: '2025-03-29T00:00:00.000Z',
+  1039: '2025-03-30T00:00:00.000Z',
+  1040: '2025-03-31T00:00:00.000Z',
+  1041: '2025-04-01T00:00:00.000Z',
+  1042: '2025-04-02T00:00:00.000Z',
+  1043: '2025-04-03T00:00:00.000Z',
+  1044: '2025-04-04T00:00:00.000Z',
+  1045: '2025-04-05T00:00:00.000Z',
+  1046: '2025-04-06T00:00:00.000Z',
+  1047: '2025-04-07T00:00:00.000Z',
+  1048: '2025-04-08T00:00:00.000Z',
+  1049: '2025-04-09T00:00:00.000Z',
+  1050: '2025-04-10T00:00:00.000Z',
 };
 
-export const isUtcIsoInstant = (value: string): boolean => {
-  const time = Date.parse(value);
-  return Number.isFinite(time) && new Date(time).toISOString() === value;
-};
-
-const authoringSpecificationKeys = [
-  ['texture', 'texture'],
-  ['colour', 'colour'],
-  ['source', 'source'],
-  ['intended-use', 'intendedUse'],
-  ['storage-guidance', 'storageGuidance'],
-] as const;
-
-/** Resolves authoring facts plus packaging-derived facts for seed and transport mapping. */
-export const catalogProductSpecifications = (
-  product: Pick<CatalogProduct, 'packaging' | 'specifications'>,
-): readonly ResolvedCatalogSpecification[] => {
-  const values: Array<
-    readonly [CatalogSpecificationKey, CatalogSpecificationValue | null, number | null]
-  > = authoringSpecificationKeys.map(([key, property]) => [
-    key,
-    product.specifications[property],
-    null,
-  ]);
-  values.push([
-    'pack-weight',
-    { key: product.packaging.quantity.replaceAll(' ', '-'), label: product.packaging.quantity },
-    parsePackWeightGrams(product.packaging.quantity),
-  ]);
-  values.push([
-    'warning-class',
-    product.packaging.consumptionLabel
-      ? { key: 'not-for-consumption', label: product.packaging.consumptionLabel }
-      : { key: 'none', label: NO_CONSUMPTION_WARNING },
-    null,
-  ]);
-
-  return values.flatMap(([key, value, numericValue]) => {
-    if (!value) return [];
-    const definition = catalogSpecificationByKey.get(key);
-    if (!definition) throw new Error(`Missing catalog specification definition: ${key}`);
-    const group = catalogSpecificationGroupByKey.get(definition.group);
-    if (!group) throw new Error(`Missing catalog specification group: ${definition.group}`);
-    return [
-      {
-        key,
-        label: definition.label,
-        group: definition.group,
-        groupLabel: group.label,
-        order: definition.order,
-        filterable: definition.filterable,
-        valueKey: value.key,
-        displayValue: value.label,
-        numericValue,
-      },
-    ];
-  });
-};
-
-/** Adds canonical Powderizer eligibility metadata from each source bag's labelled weight. */
-export const createCatalogProducts = <T extends CatalogProductDraft>(
-  products: readonly T[],
-): readonly (T &
-  Pick<CatalogProduct, 'mixable' | 'mixUnitGrams' | 'backorderable' | 'backorderLeadDays'>)[] =>
-  products.map((product) => ({
-    ...product,
-    mixable: true,
-    mixUnitGrams: parseMixUnitGrams(product.packaging.quantity),
-    backorderable: product.backorderable ?? false,
-    backorderLeadDays: product.backorderable ? (product.backorderLeadDays ?? null) : null,
-  }));
-
-export const createPackaging = (
-  labelColor: string,
-  powderColor: string,
-  mark: string,
-  batchCode: string,
-  quantity: string,
-  consumptionLabel: ProductPackaging['consumptionLabel'] = null,
-): ProductPackaging => ({ labelColor, powderColor, mark, batchCode, quantity, consumptionLabel });
+export const makeVariant = (
+  sku: string,
+  label: string,
+  weightGrams: number,
+  priceCents: number,
+  stockCount: number,
+  sortOrder: number,
+  opts?: {
+    compareAtPriceCents?: number;
+    backorderable?: boolean;
+    backorderLeadDays?: number;
+    active?: boolean;
+  },
+): CatalogVariant => ({
+  sku,
+  label,
+  weightGrams,
+  priceCents,
+  compareAtPriceCents: opts?.compareAtPriceCents,
+  stockCount,
+  backorderable: opts?.backorderable ?? false,
+  backorderLeadDays: opts?.backorderable ? (opts?.backorderLeadDays ?? undefined) : undefined,
+  deliveryClass: weightGrams >= FREIGHT_WEIGHT_THRESHOLD_GRAMS ? 'freight' : 'parcel',
+  active: opts?.active ?? true,
+  sortOrder,
+});
