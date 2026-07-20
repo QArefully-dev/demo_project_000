@@ -1,8 +1,39 @@
 # Powder Shop Repurposing Coding Plan
 
-Status: proposed
+Status: in_progress
 Source: `plans/powder_shop_repurposing_decisions.md` -> `Powder Shop Repurposing Decisions`
 Repository baseline: `remove_crazy_stuff` at `b84f7ac700e88c6e04bed0fbe94419f8314fe48c`, inspected 2026-07-19
+
+## Session Continuation (next orchestrator reads this first)
+
+**Last session**: 2026-07-20, run `20260720-001`
+**Completed packets**: G0, P1, R1, P2, R2, P3, R3 (fix applied), G1, P4, R4 (fixes applied), P5, R5 (fixes applied)
+**All review gates cleared**: GR1, GR2, GR3, GR4, GR5
+**Next packet**: P6 (Custom Powder backend, sequential after GR5) — see Work Packets section
+**Next gate**: G2 (reviewed backend API/commerce/custom/delivery gate, after GR7)
+
+**Existing worktree** (reuse — do NOT create new):
+- Path: `C:\Users\iwano\Desktop\repos\demo_project_000_worktree_20260720-001`
+- Branch: `codex/powder-shop-repurposing-20260720-001`
+- Last commit: `1b27a00` (P5-fix: variant price_cents + ambiguity detection)
+- Source branch: `remove_crazy_stuff`
+- Base revision: `dff7e96afb9556b87b3d4c13b56d222a658c9995`
+
+**G0 decisions** (carried forward):
+- Freight threshold: 100,000g; freight charge: 999c; parcel: 0c
+- Custom Powder compatibility: same-group equality only
+- Catalog authorized (accepted at G1)
+
+**Completed findings ledger**:
+- F-R3-001 (P3 CRITICAL): resetDatabase FK violation → fixed at `a2f68ce`
+- F-R4-001 (P4 CRITICAL): seed resets stock_count on re-seed → fixed at `fdb4e84`
+- F-R4-002 (P4 HIGH): mapper empty-string fallback breaks TypeBox → fixed at `fdb4e84`
+- F-R5-001 (P5 CRITICAL): cart uses product.price_cents not variant → fixed at `1b27a00`
+- F-R5-002 (P5 CRITICAL): ambiguity reduce trick odd-variant bug → fixed at `1b27a00`
+
+**Reviewer methodology** (carried forward): all R workers use code-reviewer skill — critical/high only, verified traces, silence valid.
+
+**Runtime** (unchanged pool): Node `C:\Users\iwano\AppData\Local\nvm\v22.23.1`, prepend to PATH, `npm ci` if deps suspect, `npm run build -w @shop/contracts && npm run build -w @shop/catalog` before API work.
 
 ## Runtime Worktree
 
