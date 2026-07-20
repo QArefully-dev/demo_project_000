@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { CATALOG_PRODUCTS, type CatalogProduct, validateCatalog } from '@shop/catalog';
+import { CATALOG_PRODUCTS, validateCatalog } from '@shop/catalog';
 
 void test('canonical powder catalog satisfies grounded catalog constraints', () => {
   assert.doesNotThrow(() => validateCatalog());

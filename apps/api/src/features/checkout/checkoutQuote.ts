@@ -1,5 +1,4 @@
 import type { Cart } from '@shop/contracts/cart';
-import type { DeliveryClass } from '@shop/contracts/delivery';
 import { calculateDiscount, type ValidPromo } from '../promos/promoService.js';
 import type { PersistedCheckoutQuote } from '../payments/paymentRepository.js';
 import type { CheckoutParams } from './checkoutTypes.js';
@@ -31,7 +30,7 @@ export function createCheckoutQuote(params: {
       variantLabel: snap?.label ?? item.product.name,
       unitPriceCents: item.product.priceCents,
       weightGrams: snap?.weightGrams ?? 1000,
-      deliveryClass: (snap?.deliveryClass ?? 'parcel'),
+      deliveryClass: (snap?.deliveryClass ?? 'parcel') as 'parcel' | 'freight',
       quantity: item.quantity,
       lineTotalCents: item.lineTotalCents,
       consumptionClassification: item.product.consumptionClassification ?? 'non-food',
@@ -51,19 +50,19 @@ export function createCheckoutQuote(params: {
       unitPriceCents: item.unitPriceCents,
       quantity: item.quantity,
       lineTotalCents: item.lineTotalCents,
-      deliveryClass: 'parcel',
+      deliveryClass: 'parcel' as 'parcel' | 'freight',
       weightGrams: totalWeight,
     };
   });
 
   const deliveryLines: DeliveryLine[] = [
     ...variantLines.map((v) => ({
-      deliveryClass: v.deliveryClass,
+      deliveryClass: v.deliveryClass as 'parcel' | 'freight',
       unitWeightGrams: v.weightGrams,
       quantity: v.quantity,
     })),
     ...mixLines.map((m) => ({
-      deliveryClass: m.deliveryClass,
+      deliveryClass: m.deliveryClass as 'parcel' | 'freight',
       unitWeightGrams: m.weightGrams / Math.max(m.quantity, 1),
       quantity: m.quantity,
     })),
