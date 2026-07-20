@@ -70,6 +70,12 @@ export const ConsumptionClassification = Type.Union([
 ]);
 export type ConsumptionClassification = Static<typeof ConsumptionClassification>;
 
+export const MixingGroup = Type.String({
+  minLength: 1,
+  maxLength: 64,
+});
+export type MixingGroup = Static<typeof MixingGroup>;
+
 export const Product = Type.Object(
   {
     id: PositiveIntegerString,
@@ -93,6 +99,7 @@ export const Product = Type.Object(
     tags: Type.Array(ProductTag, { maxItems: 16 }),
     specificationGroups: Type.Array(ProductSpecificationGroup, { maxItems: 3 }),
     consumptionClassification: Type.Optional(ConsumptionClassification),
+    mixingGroup: Type.Optional(Type.Union([MixingGroup, Type.Null()])),
   },
   { additionalProperties: false },
 );
@@ -233,12 +240,6 @@ export const ProductDetailResponse = Product;
 export type ProductDetailResponse = Static<typeof ProductDetailResponse>;
 
 export const ProductIdParam = Type.Object({ id: PositiveIntegerString });
-
-export const MixingGroup = Type.String({
-  minLength: 1,
-  maxLength: 64,
-});
-export type MixingGroup = Static<typeof MixingGroup>;
 
 export const BaseProductFacts = Type.Object(
   {

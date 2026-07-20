@@ -31,6 +31,7 @@ export function PowderizerPage() {
     remoteError,
     configLoadError,
     validationError,
+    incompatibleGroupError,
     hasCurrentQuote,
     canSubmit,
     replaceConfig,
@@ -133,7 +134,7 @@ export function PowderizerPage() {
         )}
       </div>
       <FeaturedBlend blend={powderizerConfig.dailyRecipe} onLoad={replaceConfig} />
-      <CompatibilityGuard error={null} productNamesById={namesByProductId} />
+      <CompatibilityGuard error={incompatibleGroupError} productNamesById={namesByProductId} />
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-5">
           <IngredientPicker

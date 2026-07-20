@@ -106,6 +106,7 @@ export function toProductContract(row: ProductRow | CustomerProductRow): Product
     specificationGroups,
     consumptionClassification:
       (row.consumption_classification as Product['consumptionClassification']) || undefined,
+    mixingGroup: (row as { mixing_group?: string | null }).mixing_group ?? null,
   };
 }
 

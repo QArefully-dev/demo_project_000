@@ -14,14 +14,14 @@ export function IngredientPicker({ selectedProductIds, onAdd, picker }: Ingredie
   const selectedGroups = useMemo(
     () => {
       const groups = new Set<string>();
-      let hasClassification = false;
+      let hasGroup = false;
       for (const product of picker.activeProducts) {
-        if (selectedProductIds.includes(product.id) && product.consumptionClassification) {
-          groups.add(product.consumptionClassification);
-          hasClassification = true;
+        if (selectedProductIds.includes(product.id) && product.mixingGroup) {
+          groups.add(product.mixingGroup);
+          hasGroup = true;
         }
       }
-      return hasClassification ? groups : null;
+      return hasGroup ? groups : null;
     },
     [picker.activeProducts, selectedProductIds],
   );
@@ -62,8 +62,8 @@ export function IngredientPicker({ selectedProductIds, onAdd, picker }: Ingredie
             const isIncompatible =
               selectedGroups !== null &&
               !selected &&
-              product.consumptionClassification &&
-              !selectedGroups.has(product.consumptionClassification);
+              product.mixingGroup != null &&
+              !selectedGroups.has(product.mixingGroup);
             return (
               <div
                 key={product.id}
