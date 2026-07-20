@@ -9,12 +9,12 @@ import {
 void test('hard mix demand wins before backorderable ordinary demand', () => {
   const split = splitInventoryReservation(
     [
-      { productId: 2, quantity: 3, demandKind: 'product' },
-      { productId: 2, quantity: 2, demandKind: 'powder_mix' },
+      { variantId: 2, quantity: 3, demandKind: 'product' },
+      { variantId: 2, quantity: 2, demandKind: 'powder_mix' },
     ],
     [
       {
-        productId: 2,
+        variantId: 2,
         stockCount: 4,
         availableToSell: 4,
         backorderable: true,
@@ -24,14 +24,14 @@ void test('hard mix demand wins before backorderable ordinary demand', () => {
   );
   assert.deepEqual(split, [
     {
-      productId: 2,
+      variantId: 2,
       quantity: 2,
       demandKind: 'powder_mix',
       reservedQuantity: 2,
       backorderedQuantity: 0,
     },
     {
-      productId: 2,
+      variantId: 2,
       quantity: 3,
       demandKind: 'product',
       reservedQuantity: 2,
@@ -43,13 +43,13 @@ void test('hard mix demand wins before backorderable ordinary demand', () => {
 void test('demand ordering and expiry boundary are deterministic', () => {
   assert.deepEqual(
     aggregateInventoryDemand([
-      { productId: 3, quantity: 1, demandKind: 'product' },
-      { productId: 2, quantity: 1, demandKind: 'powder_mix' },
-      { productId: 3, quantity: 2, demandKind: 'product' },
+      { variantId: 3, quantity: 1, demandKind: 'product' },
+      { variantId: 2, quantity: 1, demandKind: 'powder_mix' },
+      { variantId: 3, quantity: 2, demandKind: 'product' },
     ]),
     [
-      { productId: 2, quantity: 1, demandKind: 'powder_mix' },
-      { productId: 3, quantity: 3, demandKind: 'product' },
+      { variantId: 2, quantity: 1, demandKind: 'powder_mix' },
+      { variantId: 3, quantity: 3, demandKind: 'product' },
     ],
   );
   assert.equal(

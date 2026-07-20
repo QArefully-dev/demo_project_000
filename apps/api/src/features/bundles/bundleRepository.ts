@@ -3,6 +3,7 @@ import type { ProductRow } from '../catalog/productRepository.js';
 
 export interface BundleComponentRow {
   productId: number;
+  variantId: number | null;
   quantity: number;
   sortOrder: number;
   product: ProductRow | undefined;
@@ -34,6 +35,7 @@ type BundleJoinRow = ProductRow & {
   bundle_active: number;
   bundle_sort_order: number;
   component_product_id: number | null;
+  component_variant_id: number | null;
   component_quantity: number | null;
   component_sort_order: number | null;
 };
@@ -46,6 +48,7 @@ const bundleColumns = `
   b.active AS bundle_active,
   b.sort_order AS bundle_sort_order,
   c.product_id AS component_product_id,
+  c.variant_id AS component_variant_id,
   c.quantity AS component_quantity,
   c.sort_order AS component_sort_order,
   p.*`;
@@ -68,6 +71,7 @@ function hydrateBundles(rows: readonly BundleJoinRow[]): BundleRow[] {
     }
     if (
       row.component_product_id === null ||
+      row.component_variant_id === null ||
       row.component_quantity === null ||
       row.component_sort_order === null
     ) {
@@ -75,6 +79,7 @@ function hydrateBundles(rows: readonly BundleJoinRow[]): BundleRow[] {
     }
     bundle.components.push({
       productId: row.component_product_id,
+      variantId: row.component_variant_id,
       quantity: row.component_quantity,
       sortOrder: row.component_sort_order,
       product:
@@ -95,6 +100,11 @@ function hydrateBundles(rows: readonly BundleJoinRow[]): BundleRow[] {
               mix_unit_grams: row.mix_unit_grams,
               active: row.active,
               created_at: row.created_at,
+              consumption_classification: row.consumption_classification,
+              mixing_group: row.mixing_group,
+              details_json: row.details_json,
+              default_variant_id: row.default_variant_id,
+              blend_source_variant_id: row.blend_source_variant_id,
             },
     });
   }

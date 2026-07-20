@@ -59,16 +59,16 @@ export default function adminInventoryRoutes(
     },
     (request, reply) => {
       const now = services.clock.now().toISOString();
-      const productId = Number(request.body.productId);
-      if (services.inventory.availableToSell([productId], now).length === 0) {
-        sendNotFound(reply, 'Product');
+      const variantId = request.body.variantId;
+      if (services.inventory.availableToSell([variantId], now).length === 0) {
+        sendNotFound(reply, 'Variant');
         return;
       }
       try {
         const receipt = services.inventoryUnitOfWork.run(() => {
           const result = services.inventory.receiveStock({
             idempotencyKey: request.body.idempotencyKey,
-            productId,
+            variantId,
             quantity: request.body.quantity,
             receivedByUserId: request.authenticatedUser!.id,
             occurredAt: now,
@@ -78,7 +78,7 @@ export default function adminInventoryRoutes(
         reply.code(receipt.replayed ? 200 : 201);
         return {
           receiptId: String(receipt.receiptId),
-          productId: String(receipt.productId),
+          variantId: receipt.variantId,
           receivedQuantity: receipt.receivedQuantity,
           allocatedQuantity: receipt.allocatedQuantity,
           remainingStock: receipt.remainingStock,

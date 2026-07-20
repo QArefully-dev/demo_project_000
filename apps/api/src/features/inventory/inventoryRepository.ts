@@ -3,7 +3,7 @@ import type { InventoryDemandKind, InventoryProduct } from './inventoryTypes.js'
 
 interface ReservationRow {
   payment_idempotency_key: string;
-  product_id: number;
+  variant_id: number;
   demand_kind: InventoryDemandKind;
   reserved_quantity: number;
   backordered_quantity: number;
@@ -13,7 +13,7 @@ interface ReservationRow {
 interface AllocationRow {
   order_line_item_id: number;
   order_id: number;
-  product_id: number;
+  variant_id: number;
   allocated_quantity: number;
   backordered_quantity: number;
   cancelled_quantity: number;
@@ -22,11 +22,11 @@ interface AllocationRow {
 }
 
 export interface InventoryRepository {
-  availableToSell(productIds: readonly number[], now: string): readonly InventoryProduct[];
+  availableToSell(variantIds: readonly number[], now: string): readonly InventoryProduct[];
   insertReservations(input: {
     paymentIdempotencyKey: string;
     reservations: readonly {
-      productId: number;
+      variantId: number;
       demandKind: InventoryDemandKind;
       reservedQuantity: number;
       backorderedQuantity: number;
@@ -39,19 +39,19 @@ export interface InventoryRepository {
   authorizeReservation(paymentIdempotencyKey: string, now: string): boolean;
   listExpiredPaymentKeys(now: string): readonly string[];
   releaseExpired(now: string): readonly string[];
-  decrementStock(productId: number, quantity: number): boolean;
-  incrementStock(productId: number, quantity: number): boolean;
-  stockCount(productId: number): number | undefined;
+  decrementStock(variantId: number, quantity: number): boolean;
+  incrementStock(variantId: number, quantity: number): boolean;
+  stockCount(variantId: number): number | undefined;
   insertAllocation(input: {
     orderLineItemId: number;
-    productId: number;
+    variantId: number;
     allocatedQuantity: number;
     backorderedQuantity: number;
     stockDebitedQuantity: number;
     createdAt: string;
   }): void;
   insertMovement(input: {
-    productId: number;
+    variantId: number;
     movementType:
       | 'checkout_consumed'
       | 'receipt_received'
@@ -72,13 +72,13 @@ export interface InventoryRepository {
   insertReceipt(input: {
     idempotencyKey: string;
     requestFingerprint: string;
-    productId: number;
+    variantId: number;
     receivedQuantity: number;
     receivedByUserId: number;
     createdAt: string;
   }): number;
   setReceiptResponse(receiptId: number, responseJson: string): void;
-  listOpenBackorders(productId: number, excludedOrderId?: number): readonly AllocationRow[];
+  listOpenBackorders(variantId: number, excludedOrderId?: number): readonly AllocationRow[];
   fulfillBackorder(input: { orderLineItemId: number; quantity: number; updatedAt: string }): void;
   listOrderAllocations(orderId: number): readonly AllocationRow[];
   cancelAllocation(input: {
@@ -91,32 +91,32 @@ export interface InventoryRepository {
 /** SQLite persistence only. Every caller owns its enclosing transaction. */
 export function createInventoryRepository(db: Database.Database): InventoryRepository {
   return {
-    availableToSell(productIds, now) {
-      const ids = [...new Set(productIds)].sort((left, right) => left - right);
+    availableToSell(variantIds, now) {
+      const ids = [...new Set(variantIds)].sort((left, right) => left - right);
       if (ids.length === 0) return [];
       const placeholders = ids.map(() => '?').join(', ');
       return db
         .prepare(
-          `SELECT p.id AS product_id, p.stock_count,
-          MAX(0, p.stock_count - COALESCE(SUM(CASE WHEN r.expires_at IS NULL OR r.expires_at > ? THEN r.reserved_quantity ELSE 0 END), 0)) AS available_to_sell,
-          p.backorderable, p.backorder_lead_days
-         FROM products p
-         LEFT JOIN inventory_reservations r ON r.product_id = p.id
-         WHERE p.id IN (${placeholders})
-         GROUP BY p.id
-         ORDER BY p.id ASC`,
+          `SELECT v.id AS variant_id, v.stock_count,
+          MAX(0, v.stock_count - COALESCE(SUM(CASE WHEN r.expires_at IS NULL OR r.expires_at > ? THEN r.reserved_quantity ELSE 0 END), 0)) AS available_to_sell,
+          v.backorderable, v.backorder_lead_days
+         FROM product_variants v
+         LEFT JOIN inventory_reservations r ON r.variant_id = v.id
+         WHERE v.id IN (${placeholders})
+         GROUP BY v.id
+         ORDER BY v.id ASC`,
         )
         .all(now, ...ids)
         .map((row) => {
           const value = row as {
-            product_id: number;
+            variant_id: number;
             stock_count: number;
             available_to_sell: number;
             backorderable: number;
             backorder_lead_days: number | null;
           };
           return {
-            productId: value.product_id,
+            variantId: value.variant_id,
             stockCount: value.stock_count,
             availableToSell: value.available_to_sell,
             backorderable: value.backorderable === 1,
@@ -127,14 +127,14 @@ export function createInventoryRepository(db: Database.Database): InventoryRepos
     insertReservations({ paymentIdempotencyKey, reservations, expiresAt, createdAt }) {
       const insert = db.prepare(
         `INSERT INTO inventory_reservations
-          (payment_idempotency_key, product_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
+          (payment_idempotency_key, variant_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
       );
       for (const reservation of reservations) {
         if (reservation.reservedQuantity === 0 && reservation.backorderedQuantity === 0) continue;
         insert.run(
           paymentIdempotencyKey,
-          reservation.productId,
+          reservation.variantId,
           reservation.demandKind,
           reservation.reservedQuantity,
           reservation.backorderedQuantity,
@@ -146,9 +146,9 @@ export function createInventoryRepository(db: Database.Database): InventoryRepos
     listReservations(paymentIdempotencyKey) {
       return db
         .prepare(
-          `SELECT payment_idempotency_key, product_id, demand_kind, reserved_quantity, backordered_quantity, expires_at
+          `SELECT payment_idempotency_key, variant_id, demand_kind, reserved_quantity, backordered_quantity, expires_at
          FROM inventory_reservations WHERE payment_idempotency_key = ?
-         ORDER BY product_id ASC, demand_kind ASC`,
+         ORDER BY variant_id ASC, demand_kind ASC`,
         )
         .all(paymentIdempotencyKey) as ReservationRow[];
     },
@@ -187,30 +187,31 @@ export function createInventoryRepository(db: Database.Database): InventoryRepos
       }
       return keys;
     },
-    decrementStock(productId, quantity) {
+    decrementStock(variantId, quantity) {
       return (
         db
           .prepare(
-            'UPDATE products SET stock_count = stock_count - ? WHERE id = ? AND stock_count >= ?',
+            'UPDATE product_variants SET stock_count = stock_count - ? WHERE id = ? AND stock_count >= ?',
           )
-          .run(quantity, productId, quantity).changes === 1
+          .run(quantity, variantId, quantity).changes === 1
       );
     },
-    incrementStock(productId, quantity) {
+    incrementStock(variantId, quantity) {
       return (
         db
-          .prepare('UPDATE products SET stock_count = stock_count + ? WHERE id = ?')
-          .run(quantity, productId).changes === 1
+          .prepare('UPDATE product_variants SET stock_count = stock_count + ? WHERE id = ?')
+          .run(quantity, variantId).changes === 1
       );
     },
-    stockCount(productId) {
-      const row = db.prepare('SELECT stock_count FROM products WHERE id = ?').get(productId) as
-        { stock_count: number } | undefined;
+    stockCount(variantId) {
+      const row = db
+        .prepare('SELECT stock_count FROM product_variants WHERE id = ?')
+        .get(variantId) as { stock_count: number } | undefined;
       return row?.stock_count;
     },
     insertAllocation({
       orderLineItemId,
-      productId,
+      variantId,
       allocatedQuantity,
       backorderedQuantity,
       stockDebitedQuantity,
@@ -218,12 +219,12 @@ export function createInventoryRepository(db: Database.Database): InventoryRepos
     }) {
       db.prepare(
         `INSERT INTO order_inventory_allocations
-          (order_line_item_id, product_id, allocated_quantity, backordered_quantity, cancelled_quantity,
+          (order_line_item_id, variant_id, allocated_quantity, backordered_quantity, cancelled_quantity,
            stock_debited_quantity, created_at, updated_at)
          VALUES (?, ?, ?, ?, 0, ?, ?, ?)`,
       ).run(
         orderLineItemId,
-        productId,
+        variantId,
         allocatedQuantity,
         backorderedQuantity,
         stockDebitedQuantity,
@@ -232,7 +233,7 @@ export function createInventoryRepository(db: Database.Database): InventoryRepos
       );
     },
     insertMovement({
-      productId,
+      variantId,
       movementType,
       quantityDelta,
       paymentIdempotencyKey,
@@ -244,10 +245,10 @@ export function createInventoryRepository(db: Database.Database): InventoryRepos
     }) {
       db.prepare(
         `INSERT INTO inventory_stock_movements
-          (product_id, movement_type, quantity_delta, payment_idempotency_key, order_id, order_line_item_id, receipt_id, return_request_id, occurred_at)
+          (variant_id, movement_type, quantity_delta, payment_idempotency_key, order_id, order_line_item_id, receipt_id, return_request_id, occurred_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
-        productId,
+        variantId,
         movementType,
         quantityDelta,
         paymentIdempotencyKey ?? null,
@@ -275,21 +276,26 @@ export function createInventoryRepository(db: Database.Database): InventoryRepos
     insertReceipt({
       idempotencyKey,
       requestFingerprint,
-      productId,
+      variantId,
       receivedQuantity,
       receivedByUserId,
       createdAt,
     }) {
+      const productIdRow = db
+        .prepare('SELECT product_id FROM product_variants WHERE id = ?')
+        .get(variantId) as { product_id: number } | undefined;
+      const productId = productIdRow?.product_id ?? variantId;
       return Number(
         db
           .prepare(
             `INSERT INTO inventory_receipts
-          (idempotency_key, request_fingerprint, product_id, received_quantity, response_json, received_by_user_id, created_at)
-         VALUES (?, ?, ?, ?, '{}', ?, ?)`,
+          (idempotency_key, request_fingerprint, variant_id, product_id, received_quantity, response_json, received_by_user_id, created_at)
+         VALUES (?, ?, ?, ?, ?, '{}', ?, ?)`,
           )
           .run(
             idempotencyKey,
             requestFingerprint,
+            variantId,
             productId,
             receivedQuantity,
             receivedByUserId,
@@ -303,18 +309,18 @@ export function createInventoryRepository(db: Database.Database): InventoryRepos
         receiptId,
       );
     },
-    listOpenBackorders(productId, excludedOrderId) {
+    listOpenBackorders(variantId, excludedOrderId) {
       const rows = db
         .prepare(
-          `SELECT a.order_line_item_id, line.order_id, a.product_id, a.allocated_quantity, a.backordered_quantity,
+          `SELECT a.order_line_item_id, line.order_id, a.variant_id, a.allocated_quantity, a.backordered_quantity,
                 a.cancelled_quantity, a.stock_debited_quantity, a.created_at
          FROM order_inventory_allocations a
          JOIN order_line_items line ON line.id = a.order_line_item_id
-         WHERE a.product_id = ? AND a.backordered_quantity > 0
+         WHERE a.variant_id = ? AND a.backordered_quantity > 0
            AND (? IS NULL OR line.order_id <> ?)
          ORDER BY a.created_at ASC, a.order_line_item_id ASC`,
         )
-        .all(productId, excludedOrderId ?? null, excludedOrderId ?? null) as AllocationRow[];
+        .all(variantId, excludedOrderId ?? null, excludedOrderId ?? null) as AllocationRow[];
       return rows;
     },
     fulfillBackorder({ orderLineItemId, quantity, updatedAt }) {
@@ -331,10 +337,10 @@ export function createInventoryRepository(db: Database.Database): InventoryRepos
     listOrderAllocations(orderId) {
       return db
         .prepare(
-          `SELECT a.order_line_item_id, line.order_id, a.product_id, a.allocated_quantity, a.backordered_quantity,
+          `SELECT a.order_line_item_id, line.order_id, a.variant_id, a.allocated_quantity, a.backordered_quantity,
                 a.cancelled_quantity, a.stock_debited_quantity, a.created_at
          FROM order_inventory_allocations a JOIN order_line_items line ON line.id = a.order_line_item_id
-         WHERE line.order_id = ? ORDER BY a.product_id ASC, a.order_line_item_id ASC`,
+         WHERE line.order_id = ? ORDER BY a.variant_id ASC, a.order_line_item_id ASC`,
         )
         .all(orderId) as AllocationRow[];
     },

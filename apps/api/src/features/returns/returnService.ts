@@ -71,13 +71,22 @@ interface ReturnServiceDeps {
   audit: AuditWriter;
   inventory: Pick<InventoryService, 'restoreReturnInventory'>;
   refundGateway: RefundGateway;
+  resolveVariantId: (orderLineItemId: number) => number | undefined;
 }
 
 // ── Factory ────────────────────────────────────────────────────────────
 
 export function createReturnService(deps: ReturnServiceDeps): ReturnService {
-  const { returnRepository, orderRepository, unitOfWork, clock, audit, inventory, refundGateway } =
-    deps;
+  const {
+    returnRepository,
+    orderRepository,
+    unitOfWork,
+    clock,
+    audit,
+    inventory,
+    refundGateway,
+    resolveVariantId,
+  } = deps;
 
   const run = <T>(work: () => T): T => unitOfWork.run(work);
 
@@ -311,8 +320,10 @@ export function createReturnService(deps: ReturnServiceDeps): ReturnService {
             (oi) => String(oi.lineId) === item.orderLineItemId,
           );
           if (!orderItem) throw new ReturnDomainError(ReturnErrorCode.RETURN_DATA_CORRUPT);
+          const variantId = resolveVariantId(Number(item.orderLineItemId));
+          if (variantId == null) throw new ReturnDomainError(ReturnErrorCode.RETURN_DATA_CORRUPT);
           return {
-            productId: Number(orderItem.productId),
+            variantId,
             orderLineItemId: Number(item.orderLineItemId),
             quantity: item.quantity,
           };

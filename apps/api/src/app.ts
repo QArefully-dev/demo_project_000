@@ -209,6 +209,12 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       audit,
       inventory,
       refundGateway: createRefundGateway(),
+      resolveVariantId: (orderLineItemId: number) => {
+        const row = dependencies.db
+          .prepare('SELECT variant_id FROM order_line_items WHERE id = ?')
+          .get(orderLineItemId) as { variant_id: number | null } | undefined;
+        return row?.variant_id ?? undefined;
+      },
     }),
     clock,
     audit: createAuditReadService(auditRepository),

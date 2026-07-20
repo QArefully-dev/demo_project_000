@@ -1,27 +1,56 @@
 import type Database from 'better-sqlite3';
-import type { ProductRow } from '../catalog/productRepository.js';
+import type { VariantRow } from '../catalog/productRepository.js';
 
-export interface CartLineRow extends ProductRow {
+export interface CartLineRow {
+  variant_id: number;
   product_id: number;
   quantity: number;
+  price_cents: number;
+  product_name: string;
+  product_description: string;
+  product_category: string;
+  product_image_set_id: string | null;
+  product_slug: string;
+  product_compare_at_price_cents: number | null;
+  product_sales_count: number;
+  product_mixable?: number;
+  product_mix_unit_grams?: number | null;
+  product_active: number;
+  product_created_at: string;
+  product_consumption_classification: string;
+  variant_sku: string;
+  variant_label: string;
+  variant_weight_grams: number;
+  variant_delivery_class: string;
+  variant_backorderable: number;
+  variant_backorder_lead_days: number | null;
+  variant_active: number;
+  product_default_variant_id: number | null;
+  product_blend_source_variant_id: number | null;
 }
 
 export interface CartRepository {
   create(id: string): void;
   exists(cartId: string): boolean;
   listLines(cartId: string): CartLineRow[];
-  productExists(productId: string): boolean;
-  lineQuantity(cartId: string, productId: string): number;
-  addLine(cartId: string, productId: string): void;
-  addLineQuantity(cartId: string, productId: string, quantity: number): void;
-  updateLine(cartId: string, productId: string, quantity: number): boolean;
-  removeLine(cartId: string, productId: string): boolean;
+  variantExists(variantId: string): boolean;
+  lineQuantity(cartId: string, variantId: string): number;
+  addLine(cartId: string, variantId: string): void;
+  addLineQuantity(cartId: string, variantId: string, quantity: number): void;
+  updateLine(cartId: string, variantId: string, quantity: number): boolean;
+  removeLine(cartId: string, variantId: string): boolean;
   reserve(cartId: string, paymentIdempotencyKey: string, createdAt: string): boolean;
   releaseReservation(paymentIdempotencyKey: string): boolean;
   /** Expired prepared checkout locks do not block cart mutation. */
   isReserved(cartId: string, now?: string): boolean;
   touch(cartId: string): void;
   remove(cartId: string): void;
+  /** Look up a product's default variant ID for ambiguous productId requests. */
+  findDefaultVariantId(productId: string): number | undefined;
+  /** Count active variants for a product to detect ambiguity. */
+  countActiveVariants(productId: string): number;
+  /** Look up a variant row by ID. */
+  getVariant(variantId: number): VariantRow | undefined;
 }
 
 export function createCartRepository(db: Database.Database): CartRepository {
@@ -35,50 +64,77 @@ export function createCartRepository(db: Database.Database): CartRepository {
     listLines(cartId) {
       return db
         .prepare(
-          `SELECT cli.product_id, cli.quantity, p.* FROM cart_line_items cli
-           JOIN products p ON p.id = cli.product_id WHERE cli.cart_id = ?`,
+          `SELECT cli.variant_id, cli.quantity,
+            p.id AS product_id, p.name AS product_name, p.description AS product_description,
+            p.price_cents, p.category AS product_category,
+            p.image_set_id AS product_image_set_id, p.slug AS product_slug,
+            p.compare_at_price_cents AS product_compare_at_price_cents,
+            p.sales_count AS product_sales_count,
+            p.mixable AS product_mixable, p.mix_unit_grams AS product_mix_unit_grams,
+            p.active AS product_active, p.created_at AS product_created_at,
+            p.consumption_classification AS product_consumption_classification,
+            p.default_variant_id AS product_default_variant_id,
+            p.blend_source_variant_id AS product_blend_source_variant_id,
+            v.sku AS variant_sku, v.label AS variant_label,
+            v.weight_grams AS variant_weight_grams,
+            v.delivery_class AS variant_delivery_class,
+            v.backorderable AS variant_backorderable,
+            v.backorder_lead_days AS variant_backorder_lead_days,
+            v.active AS variant_active
+         FROM cart_line_items cli
+         JOIN product_variants v ON v.id = cli.variant_id
+         JOIN products p ON p.id = v.product_id
+         WHERE cli.cart_id = ?`,
         )
         .all(cartId) as CartLineRow[];
     },
-    productExists(productId) {
+    variantExists(variantId) {
       return (
-        db.prepare('SELECT 1 FROM products WHERE id = ? AND active = 1').get(productId) !==
+        db.prepare('SELECT 1 FROM product_variants WHERE id = ? AND active = 1').get(variantId) !==
         undefined
       );
     },
-    lineQuantity(cartId, productId) {
+    lineQuantity(cartId, variantId) {
       return (
         (
           db
-            .prepare('SELECT quantity FROM cart_line_items WHERE cart_id = ? AND product_id = ?')
-            .get(cartId, productId) as { quantity: number } | undefined
+            .prepare('SELECT quantity FROM cart_line_items WHERE cart_id = ? AND variant_id = ?')
+            .get(cartId, variantId) as { quantity: number } | undefined
         )?.quantity ?? 0
       );
     },
-    addLine(cartId, productId) {
+    addLine(cartId, variantId) {
       db.prepare(
-        `INSERT INTO cart_line_items (cart_id, product_id, quantity) VALUES (?, ?, 1)
-         ON CONFLICT(cart_id, product_id) DO UPDATE SET quantity = quantity + 1`,
-      ).run(cartId, productId);
+        `INSERT INTO cart_line_items (cart_id, variant_id, quantity, created_at, updated_at)
+         VALUES (?, ?, 1, datetime('now'), datetime('now'))
+         ON CONFLICT(cart_id, variant_id) DO UPDATE SET
+           quantity = quantity + 1,
+           updated_at = datetime('now')`,
+      ).run(cartId, variantId);
     },
-    addLineQuantity(cartId, productId, quantity) {
+    addLineQuantity(cartId, variantId, quantity) {
       db.prepare(
-        `INSERT INTO cart_line_items (cart_id, product_id, quantity) VALUES (?, ?, ?)
-         ON CONFLICT(cart_id, product_id) DO UPDATE SET quantity = quantity + excluded.quantity`,
-      ).run(cartId, productId, quantity);
+        `INSERT INTO cart_line_items (cart_id, variant_id, quantity, created_at, updated_at)
+         VALUES (?, ?, ?, datetime('now'), datetime('now'))
+         ON CONFLICT(cart_id, variant_id) DO UPDATE SET
+           quantity = quantity + excluded.quantity,
+           updated_at = datetime('now')`,
+      ).run(cartId, variantId, quantity);
     },
-    updateLine(cartId, productId, quantity) {
+    updateLine(cartId, variantId, quantity) {
       return (
         db
-          .prepare('UPDATE cart_line_items SET quantity = ? WHERE cart_id = ? AND product_id = ?')
-          .run(quantity, cartId, productId).changes > 0
+          .prepare(
+            "UPDATE cart_line_items SET quantity = ?, updated_at = datetime('now') WHERE cart_id = ? AND variant_id = ?",
+          )
+          .run(quantity, cartId, variantId).changes > 0
       );
     },
-    removeLine(cartId, productId) {
+    removeLine(cartId, variantId) {
       return (
         db
-          .prepare('DELETE FROM cart_line_items WHERE cart_id = ? AND product_id = ?')
-          .run(cartId, productId).changes > 0
+          .prepare('DELETE FROM cart_line_items WHERE cart_id = ? AND variant_id = ?')
+          .run(cartId, variantId).changes > 0
       );
     },
     reserve(cartId, paymentIdempotencyKey, createdAt) {
@@ -127,6 +183,27 @@ export function createCartRepository(db: Database.Database): CartRepository {
     },
     remove(cartId) {
       db.prepare('DELETE FROM carts WHERE id = ?').run(cartId);
+    },
+    findDefaultVariantId(productId) {
+      const row = db
+        .prepare(
+          `SELECT v.id FROM product_variants v
+           WHERE v.product_id = ? AND v.active = 1 AND v.sort_order = 1 LIMIT 1`,
+        )
+        .get(productId) as { id: number } | undefined;
+      return row?.id;
+    },
+    countActiveVariants(productId) {
+      const row = db
+        .prepare(
+          'SELECT COUNT(*) AS count FROM product_variants WHERE product_id = ? AND active = 1',
+        )
+        .get(productId) as { count: number };
+      return row.count;
+    },
+    getVariant(variantId) {
+      return db.prepare('SELECT * FROM product_variants WHERE id = ?').get(variantId) as
+        VariantRow | undefined;
     },
   };
 }
