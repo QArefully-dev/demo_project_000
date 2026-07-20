@@ -121,7 +121,9 @@ export function toProductWithVariantsContract(
 
   return {
     ...base,
-    available: row.active === 1 && (variantStock > 0 || activeVariantsForAvailable.some((v) => v.backorderable === 1)),
+    available:
+      row.active === 1 &&
+      (variantStock > 0 || activeVariantsForAvailable.some((v) => v.backorderable === 1)),
     variants: variants.map(mapVariant),
     defaultVariantId:
       row.default_variant_id ??

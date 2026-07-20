@@ -15,14 +15,15 @@ type MixPreparation =
 function toMixProduct(
   row: NonNullable<ReturnType<CheckoutDependencies['products']['findById']>>,
 ): PowderMixProduct {
+  const canonicalProduct = CATALOG_PRODUCTS.find((product) => product.id === row.id);
+  const isNonFood = canonicalProduct?.baseFacts.consumptionClassification !== 'food';
   return {
     id: row.id,
     name: row.name,
     priceCents: row.price_cents,
     mixable: row.mixable === 1,
     mixUnitGrams: row.mix_unit_grams ?? null,
-    consumptionWarning:
-      CATALOG_PRODUCTS.find((product) => product.id === row.id)?.packaging.consumptionLabel ?? null,
+    consumptionWarning: isNonFood ? 'Not for consumption' : null,
   };
 }
 

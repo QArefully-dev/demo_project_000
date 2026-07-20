@@ -234,134 +234,48 @@ Completion boundary: customer can browse credible products, select actual pack S
 
 ## Execution Graph
 
-`G0 -> P1 -> R1 -> GR1 -> {P2 -> R2 -> GR2 || P3 -> R3 -> GR3} -> G1 -> P4 -> R4 -> GR4 -> P5 -> R5 -> GR5 -> P6 -> R6 -> GR6 -> P7 -> R7 -> GR7 -> G2 -> {P8 -> R8 -> GR8 || P9 -> R9 -> GR9 || P10 -> R10 -> GR10} -> G3 -> S1 -> {R11A || R11B} -> GR11 -> G4 -> G5`
+**[DONE]**: G0 -> P1 -> R1 -> GR1 -> {P2 -> R2 -> GR2 || P3 -> R3 -> GR3} -> G1 -> P4 -> R4 -> GR4 -> P5 -> R5 -> GR5
 
-- `G0`: branch/worktree/input and product-rule gate
+**[REMAINING]**: P6 -> R6 -> GR6 -> P7 -> R7 -> GR7 -> G2 -> {P8 -> R8 -> GR8 || P9 -> R9 -> GR9 || P10 -> R10 -> GR10} -> G3 -> S1 -> {R11A || R11B} -> GR11 -> G4 -> G5
+
+- `G0`: branch/worktree/input and product-rule gate [DONE]
 - `GR1..GR10`: packet review gate; reviewer pass or all findings closed through fresh fix worker + targeted evidence before dependent launch
-- `G1`: reviewed contracts + catalog + migration fan-in
+- `G1`: reviewed contracts + catalog + migration fan-in [DONE]
 - `G2`: reviewed backend API/commerce/custom/delivery gate
 - `G3`: reviewed parallel web lane fan-in
 - `GR11`: convergence review gate; both S1 reviewers pass or findings close
 - `G4`: no open findings/blockers; evidence ledger current for final change set
 - `G5`: reset, journey, broad verification, completion
 
-## Work Packets
+## Work Packets — Completed [DONE: P1-P5]
 
-### P1: Freeze contracts and compatibility shapes
+### P1 [DONE]: Freeze contracts and compatibility shapes
+- commit: `173a7c7`, 14 files, 96 tests pass
+- outcome: ProductWithVariants, CatalogVariant, DeliveryMode/Summary, CustomPowder schemas, checkout v5, legacy v1-v4/v1/v2 parsers byte-for-byte preserved, exports for `delivery` + `customPowder` subpaths
+- review: R1 PASS, no findings
 
-- mode: sequential after `G0`
-- depends on: `G0`
-- owns: `packages/contracts/src/products.ts`, `cart.ts`, `bundles.ts`, `payments.ts`, `orders.ts`, `inventory.ts`, `returns.ts`, `powderizer.ts`, `index.ts`, proposed `delivery.ts`, proposed `customPowder.ts`, `packages/contracts/package.json`, `packages/contracts/test/**`
-- reads: `packages/contracts/src/common.ts` -> shared money/ID types; current owned files -> strict legacy shapes; `apps/web/src/api/client.ts` -> successful-response validation
-- acceptance: strict transport contracts describe base products, variants, delivery, Custom Powder; old checkout v1-v4 and mix snapshot v1/v2 parsers remain exact; package exports build
-- non-goals: database, API route, UI implementation; compatibility alias removal
-- upstream inputs: `G0` -> approved freight constant names, compatibility window, product/variant identity decisions
-- changes:
-  - add variant, delivery, consumption, mixing-group, structured-fact schemas
-  - change cart/bundle/order current shapes to variant-aware contracts
-  - add checkout quote v5; preserve v1-v4 definitions byte-for-behavior
-  - add current Custom Powder names and compatibility aliases for existing PowderMix/Powderizer imports
-  - define exact validation and error schemas for incompatible groups and legacy ambiguous variant resolution
-- invariants: no widened legacy parser; integer money/weights; `additionalProperties: false`; no API source import
-- relevant evidence: none
-- test duty: `T1` -> `npm test -w @shop/contracts && npm run typecheck -w @shop/contracts`
-- verification: exports resolve for current and new subpaths; storage parser tests cover v1-v5 and invalid cross-version data
-- handoff: accepted TypeBox names/shapes consumed by P2-P10
-- review: `R1` -> `GR1`
+### P2 [DONE]: Author credible canonical catalog and bundles
+- commit: `723ee38`, 17 files, 33 tests pass
+- outcome: 100 products across 6 categories (20/20/15/15/15/15), IDs 1..50 + 1001..1050, no 51..1000 claimed, unique slugs/SKUs/art, max 25kg weight, 6 professional bundles, validateCatalog uses explicit Set membership
+- review: R2 PASS, no findings
 
-### P2: Author credible canonical catalog and bundles
+### P3 [DONE]: Migration 018 — variant and delivery storage
+- commit: `26ba7d4` + fix `a2f68ce`, 3 files, 16 tests pass
+- outcome: product_variants table, backfill 1 default variant per product, cart/inventory tables rebuild with variant_id FKs, orders+order_line_items extended with delivery+snapshot columns, FK check clean, idempotent, atomic rollback, reset.ts updated
+- fix: `DELETE FROM product_variants` added to resetDatabase before `DELETE FROM products`
+- review: R3 PASS (1 CRITICAL fixed)
 
-- mode: parallel with `P3` after `GR1`
-- depends on: `P1`, `R1`, `GR1`
-- owns: `packages/catalog/src/**`, `packages/catalog/package.json`
-- reads: `plans/powder_shop_repurposing_decisions.md` -> approved categories/families/safety/specifications; P1 contracts -> category/variant/group values; current category files -> reusable credible facts and stable IDs
-- acceptance: 100 credible real powders/dry mixes across six categories; every product and variant passes validation; no conceptual quantity, impossible claim, novelty item, comedic copy, unsafe excluded product, or old bundle
-- non-goals: persisted seed, API, UI, exact allergen/dietary filters, remote imagery
-- upstream inputs: `GR1` -> reviewed contract change set; `G0` -> catalog authoring and freight constants
-- changes:
-  - replace seven-category registry with six categories
-  - retain/convert IDs `1..50`; add new IDs `1001..1050`; record any category target redistribution reason
-  - replace authoring model with base product + variants + typed details + explicit groups/classification
-  - remove conceptual parser and universal `mixable=true`
-  - extend stable created-at facts without assuming contiguous IDs
-  - create professional bundles with exact component SKUs
-  - rewrite validation around explicit canonical ID/SKU sets and required safety/category facts
-  - replace fiction-coupled unit tests with credibility, counts, variants, max-weight, group, bundle, and deterministic-art tests
-- invariants: no overwrite claim for IDs `51..1000`; unique slug/art/SKU; all weights physical; no product over 1 tonne; non-food warnings complete
-- relevant evidence: `BASE-CATALOG-01` -> current 50/seven-category baseline at source revision
-- test duty: `T2` -> `npm test -w @shop/catalog && npm run typecheck -w @shop/catalog`
-- verification: repository `rg` over catalog finds no `Impossible|Questionable|conceptual quantity|Powdered Water|powdered-(wifi|gravity|moonlight)` except explicit negative test fixtures
-- handoff: canonical products, variants, bundle definitions, approved ID/SKU sets, redistribution record
-- review: `R2` -> `GR2`
+### P4 [DONE]: Seed and expose base products with variants
+- commit: `d142aa0` + fix `fdb4e84`, 15 files, 29 tests pass
+- outcome: seed upserts 100 products+variants from catalog using explicit ID sets, local IDs 51..1000 survive, productRepository adds variant queries + details_json parse, productMapper removes canonical lookup, routes return ProductWithVariants
+- fixes: seed no longer overwrites stock_count on re-seed; mapper fallback uses "Not specified" not empty strings
+- review: R4 PASS (1 CRITICAL + 1 HIGH fixed)
 
-### P3: Add migration-safe variant and delivery storage
-
-- mode: parallel with `P2` after `GR1`
-- depends on: `P1`, `R1`, `GR1`
-- owns: proposed `apps/api/src/db/migrations/018_grounded_catalog_variants.ts`, `apps/api/src/db/migrations/index.ts`, `apps/api/test/db/migrations.integration.test.ts`
-- reads: migrations `001`, `008`, `010`, `012`, `015`, `017` -> source columns/FKs/triggers; `apps/api/src/db/migrate.ts` -> ordering/error contract; P1 contracts -> snapshot fields
-- acceptance: migration upgrades populated v17 DB without data loss, maps every live commerce reference to variant, passes FK check, remains idempotent through migration runner, rejects corrupt source state
-- non-goals: canonical content upsert, repository/service changes, table-name cosmetic renames
-- upstream inputs: `GR1` -> reviewed storage-facing fields; `G0` -> variant authority decision
-- changes:
-  - create product variants and product-level classification/detail/default/source references
-  - backfill exactly one default variant per existing product
-  - rebuild cart/inventory/bundle tables with variant keys and preserved constraints/triggers/indexes
-  - extend order/order-line delivery and variant snapshot columns with safe historical defaults
-  - copy and verify counts/identity before temporary-table removal
-  - add populated legacy DB, user product IDs `51..1000`, carts, reservations, orders, returns, corrupt-row rollback tests
-- invariants: transaction atomic; unknown migration errors surface; audit/order/payment facts unchanged; no ID-range deletion; old custom mix rows retained
-- relevant evidence: `BASE-MIGRATION-01` -> migration list ends at `017`
-- test duty: `T3` -> `npm exec -w @shop/api -- tsx --test test/db/migrations.integration.test.ts`
-- verification: `PRAGMA foreign_key_check` empty; before/after entity and ledger counts match; rollback fixture unchanged after forced failure
-- handoff: schema v18 and backfill semantics for P4-P7
-- review: `R3` -> `GR3`
-
-### P4: Seed and expose base products with variants
-
-- mode: sequential after reviewed fan-in `G1`
-- depends on: `P2`, `R2`, `GR2`, `P3`, `R3`, `GR3`, `G1`
-- owns: `apps/api/src/db/seed.ts`, `powderCatalog.ts`, seed scenario files, `apps/api/src/features/catalog/**`, `apps/api/src/mappers/product.ts`, `apps/api/src/routes/products.ts`, `apps/api/test/db/seed.integration.test.ts`, `apps/api/test/catalog/**`, `apps/api/src/db/powderCatalog.test.ts`, `apps/api/src/mappers/product.test.ts`
-- reads: P2 catalog exports -> canonical facts/IDs/SKUs; P3 schema -> storage columns; `apps/api/src/features/reviews/**` and `favourites/**` -> base-product ownership
-- acceptance: seed idempotently installs 100 canonical base products and variants, preserves local products/metadata, returns one base product with ordered variants, keeps reviews/favourites/comparison product-scoped
-- non-goals: cart mutation, inventory reservation, Custom Powder, freight quote, web rendering
-- upstream inputs: `GR2` -> reviewed catalog change set and explicit canonical sets; `GR3` -> reviewed schema change set
-- changes:
-  - replace numeric-range metadata operations with explicit canonical IDs
-  - upsert products, variants, typed details, default/blend-source links, tags/specifications, bundle SKU links
-  - update favourites/review/order fixtures to credible products and exact variants without rewriting existing mutable scenarios
-  - add variant hydration and strict details parse to repository/mapper
-  - remove canonical packaging lookup from mapper; persisted facts become transport authority
-  - update list/filter/sort/bestseller/similarity behavior for base rows and variant price/availability aggregates
-- invariants: seed preserves rows outside explicit canonical sets; normal seed never resets user stock/orders/reviews; base product URL identity stable
-- relevant evidence: `T2`, `T3`
-- test duty: `T4` -> `npm exec -w @shop/api -- tsx --test test/db/seed.integration.test.ts test/catalog/*.integration.test.ts src/db/powderCatalog.test.ts src/mappers/product.test.ts`
-- verification: two consecutive seeds produce same canonical facts; local ID 51 fixture survives; API schema validation accepts all catalog responses
-- handoff: product/variant repository interfaces and seeded variant IDs for P5-P10
-- review: `R4` -> `GR4`
-
-### P5: Move cart, bundles, and inventory to variant authority
-
-- mode: sequential after `GR4`
-- depends on: `P4`, `R4`, `GR4`
-- owns: `apps/api/src/features/cart/**`, `inventory/**`, `bundles/**`, `apps/api/src/routes/cart.ts`, `bundles.ts`, `adminInventory.ts`, related `apps/api/test/cart/**`, `inventory/**`, `http/bundles.integration.test.ts`
-- reads: P4 product repository -> variant lookup/aggregate; P3 schema -> variant FKs; `apps/api/src/features/returns/returnService.ts` -> restoration caller contract
-- acceptance: ordinary cart, bundle atomic add, stock reservation, authorization, consumption, backorder, receipt, cancellation, and return restoration operate on exact variant
-- non-goals: Custom Powder component rules, freight charge, web UI
-- upstream inputs: `GR4` -> reviewed variant repository and seed change set
-- changes:
-  - change cart commands and audit facts to variant IDs while retaining product context
-  - map line product + selected variant and use variant price/availability
-  - make bundles resolve exact seeded component variants
-  - change inventory domain/repository keys and error payloads to variants
-  - preserve hard-demand-first, FIFO, expiry, idempotency, immutable movement semantics
-  - add ambiguous legacy product-ID request rejection and unambiguous compatibility cases
-- invariants: one transaction per cart/bundle/inventory invariant; no oversell; exact SKU receives/restores stock; return/cancellation never restores sibling variant
-- relevant evidence: `T4`
-- test duty: `T5` -> `npm exec -w @shop/api -- tsx --test test/cart/*.integration.test.ts test/inventory/*.integration.test.ts src/features/inventory/inventoryRules.test.ts`
-- verification: concurrent final-stock test targets one variant; sibling SKU unchanged; bundle failure leaves cart untouched
-- handoff: variant cart/inventory interfaces and evidence for P6/P7
-- review: `R5` -> `GR5`
+### P5 [DONE]: Cart, bundles, inventory to variant authority
+- commit: `d69fbd8` + fix `1b27a00`, 19 files, 32 tests pass
+- outcome: cart line keys = variantId with product audit context, bundles resolve exact variant components, inventory reservations/allocations/movements/receipts use variant_id, return restoration targets correct variant, sibling SKU isolation
+- fixes: cart SQL changed from p.price_cents to v.price_cents; ambiguity reduce trick replaced with explicit count check
+- review: R5 PASS (2 CRITICAL fixed)
 
 ### P6: Enforce professional Custom Powder backend
 
@@ -507,87 +421,17 @@ Completion boundary: customer can browse credible products, select actual pack S
 - handoff: integrated change set, fiction sweep, compatibility allowlist, evidence for reviewers
 - review: `R11A`; additional focus review `R11B` -> `GR11`
 
-## Review Assignments
+## Review Assignments — Completed [DONE: R1-R5]
 
-### R1: Review P1 contracts and compatibility
+### R1 [DONE]: Review P1 contracts -> PASS, no findings
 
-- target: `P1` -> exact worker base/head change set
-- timing: immediately after P1 report + `T1`; before P2/P3 assignment
-- blocks: `GR1`, P2, P3
-- consolidation reason: none; one packet, one exact target
-- reads: `packages/contracts/src/products.ts`, `cart.ts`, `payments.ts`, `orders.ts`, `inventory.ts`, `returns.ts`, `powderizer.ts`, proposed `delivery.ts`, proposed `customPowder.ts` -> public/storage shapes and exports
-- acceptance: current schemas express variant/delivery/Custom Powder design; legacy checkout v1-v4 and mix v1/v2 parsers remain strict; consumers receive one coherent interface
-- invariants: integer money/weights; `additionalProperties: false`; no widened legacy read; public export coverage
-- risk focus: incompatible alias, optional field hiding authority, version parser accepting mixed shapes, package export omission
-- non-goals: persistence or UI implementation; test rerun with valid `T1`
-- write policy: inspect-only
-- test policy: assess `T1`; run only when missing/stale evidence blocks verdict
-- relevant evidence: `T1` -> P1 exact change set
-- return: `reviewer_report_v1`; `GR1` blocks P2/P3 until pass or findings close through fresh fix worker + targeted evidence
+### R2 [DONE]: Review P2 catalog -> PASS, no findings
 
-### R2: Review P2 catalog credibility and validation
+### R3 [DONE]: Review P3 migration -> PASS, 1 CRITICAL (reset FK) fixed at `a2f68ce`
 
-- target: `P2` -> exact worker base/head change set
-- timing: immediately after P2 report + `T2`; parallel with R3; before `G1`
-- blocks: `GR2`, `G1`, P4
-- consolidation reason: none; one packet, one exact target
-- reads: `packages/catalog/src/model.ts`, `catalog.ts`, `validateCatalog.ts`, category modules, `bundles.ts`, catalog tests -> content/model/validation
-- acceptance: 100 real products, six categories, physical variants, typed facts, safe groups/classifications, professional bundles, no fiction
-- invariants: IDs `1..50` retained; new IDs `1001..1050`; explicit canonical sets; unique SKU/slug/art; max 1 tonne
-- risk focus: unsafe candidate, weak conversion, conceptual unit residue, missing handling fact, count/redistribution drift, invalid bundle SKU
-- non-goals: persistence mapping, visual polish, allergen/dietary filters
-- write policy: inspect-only
-- test policy: assess `T2`; no rerun unless evidence blocks verdict
-- relevant evidence: `T2` -> P2 exact change set
-- return: `reviewer_report_v1`; `GR2` blocks `G1` until pass or findings close through fresh fix worker + targeted evidence
+### R4 [DONE]: Review P4 seed/catalog API -> PASS, 1 CRITICAL (seed stock_count) + 1 HIGH (mapper fallback) fixed at `fdb4e84`
 
-### R3: Review P3 migration integrity
-
-- target: `P3` -> exact worker base/head change set
-- timing: immediately after P3 report + `T3`; parallel with R2; before `G1`
-- blocks: `GR3`, `G1`, P4
-- consolidation reason: none; one packet, one exact target
-- reads: proposed migration 018, migration index, migration integration tests, source migrations `001`, `008`, `010`, `012`, `015`, `017` -> copy/constraint/trigger/FK behavior
-- acceptance: populated v17 upgrade preserves identities and facts, remaps live references, recreates constraints/indexes/triggers, rolls back corrupt input
-- invariants: atomic migration; no user-ID overwrite; old orders/payments/audit/custom rows unchanged; `foreign_key_check` clean
-- risk focus: table rebuild data loss, variant mismatch, missing trigger/index, default backfill ambiguity, temporary table cleanup before verification
-- non-goals: canonical content seed, API repository behavior
-- write policy: inspect-only
-- test policy: assess `T3`; command only when missing/stale evidence prevents verdict
-- relevant evidence: `T3` -> populated and rollback fixtures at P3 change set
-- return: `reviewer_report_v1`; `GR3` blocks `G1` until pass or findings close through fresh fix worker + targeted evidence
-
-### R4: Review P4 seed and catalog API authority
-
-- target: `P4` -> exact worker base/head change set using reviewed P2/P3 inputs
-- timing: immediately after P4 report + `T4`; before P5 assignment
-- blocks: `GR4`, P5
-- consolidation reason: none; one packet, one exact target
-- reads: `apps/api/src/db/seed.ts`, seed scenarios, catalog repository/query, product mapper/routes, seed/catalog tests -> explicit-set seed and transport mapping
-- acceptance: seed installs reviewed catalog idempotently, preserves local rows, exposes base products with ordered variants, keeps review/favourite/comparison product scope
-- invariants: no range deletion; persisted facts map without canonical runtime lookup; base URL IDs stable; invalid details fail closed
-- risk focus: local ID/metadata overwrite, duplicate variant after reseed, stock reset, static packaging authority, aggregate availability/price bug
-- non-goals: cart/inventory mutations, web rendering
-- write policy: inspect-only
-- test policy: assess `T4` plus accepted `T2/T3`; rerun only stale/missing blocker
-- relevant evidence: `T2`, `T3`, `T4` projected to P4 target
-- return: `reviewer_report_v1`; `GR4` blocks P5 until pass or findings close through fresh fix worker + targeted evidence
-
-### R5: Review P5 variant commerce and inventory
-
-- target: `P5` -> exact worker base/head change set
-- timing: immediately after P5 report + `T5`; before P6 assignment
-- blocks: `GR5`, P6
-- consolidation reason: none; one packet, one exact target
-- reads: cart, inventory, bundle features/routes/tests; `apps/api/src/features/returns/returnService.ts` caller boundary -> variant key and transaction behavior
-- acceptance: cart, bundle, reservation, consume, backorder, receipt, cancellation, return restoration affect exact SKU only
-- invariants: atomic mutations; no oversell; hard-demand/FIFO/idempotency preserved; immutable movement ledger; sibling variants isolated
-- risk focus: product/variant ID confusion, bundle partial write, backorder sibling leakage, receipt/cancellation restoring wrong SKU, ambiguous legacy request
-- non-goals: Custom Powder grouping, delivery charge, customer UI
-- write policy: inspect-only
-- test policy: assess `T5`; use `T4` only as upstream interface evidence; no duplicate run
-- relevant evidence: `T4`, `T5` projected to P5 target
-- return: `reviewer_report_v1`; `GR5` blocks P6 until pass or findings close through fresh fix worker + targeted evidence
+### R5 [DONE]: Review P5 variant commerce -> PASS, 2 CRITICAL (cart variant price, ambiguity reduce) fixed at `1b27a00`
 
 ### R6: Review P6 Custom Powder safety and compatibility
 
@@ -703,12 +547,8 @@ Completion boundary: customer can browse credible products, select actual pack S
 
 ## Ownership and Collision Rules
 
-- `packages/contracts/**`: P1 only; consumers request contract correction through P1 directive before editing
-- `packages/catalog/**`: P2 only
-- migration 018 + migration index/test: P3 only
-- `apps/api/src/db/seed.ts` and seed scenarios: P4, then P7 only for delivery/order fixture delta through sequential ownership
-- product repository/mapper/routes: P4 only after G1
-- cart/inventory/bundle API: P5 only after P4
+**[DONE: P1-P5 ownership lines]**. Rules unchanged for P6+:
+
 - powderizer/custom backend: P6 only after P5
 - checkout/payment/order/return/delivery API: P7 only after P6
 - parallel web lanes: P8 catalog/product; P9 Custom Powder; P10 purchase flows; no shared writes
@@ -726,12 +566,8 @@ Completion boundary: customer can browse credible products, select actual pack S
 
 ## Test Execution Schedule
 
-- `T0`: `G0` -> Node 22 selection and dependency health: `node --version`, `npm exec -- tsx --version`, `npm run typecheck -w @shop/api`
-- `T1`: P1 -> contracts test/typecheck
-- `T2`: P2 -> catalog test/typecheck
-- `T3`: P3 -> focused populated migration integration
-- `T4`: P4 -> seed + catalog API/mapping
-- `T5`: P5 -> cart/inventory/bundle variant integration
+**[DONE: T0-T5]**. Remaining:
+
 - `T6`: P6 -> Custom Powder domain/API
 - `T7`: P7 -> checkout/order/return/delivery integration
 - `T8`: P8 -> catalog/product/comparison web unit/integration
@@ -768,17 +604,8 @@ Completion boundary: customer can browse credible products, select actual pack S
 
 ## Orchestrator Run Order
 
-1. End planning context after plan is saved.
-2. Require user to commit updated coding plan, or explicitly choose different branch baseline. Preserve and ignore unrelated source-checkout changes.
-3. Start fresh runtime orchestrator. Load `CLAUDE.md`, source decision, coding plan, canonical communication contracts, current checkpoint only.
-4. Record source path, named branch, `HEAD`; stop on detached HEAD or relevant uncommitted inputs.
-5. Create dedicated implementation branch/worktree from source branch `HEAD`; persist identity before `G0`.
-6. Select Node 22 and validate dependency health under `T0` inside worktree.
-7. Resolve `G0`: approve freight constants; confirm same-group equality; authorize catalog worker to finalize exact credible products/variants within source targets.
-8. Launch P1. Accept report and `T1`; launch R1 against exact P1 change set. Route findings to fresh fix worker with P1 scope, record targeted evidence, pass `GR1` before consumers launch.
-9. Launch P2 and P3 concurrently after `GR1`. Accept each report/evidence; launch R2 and R3 concurrently against separate exact targets. Close findings through fresh fix workers scoped to each packet. Pass `GR2` and `GR3`, then validate reviewed fan-in `G1`.
-10. Launch P4 after `G1`; accept `T4`; launch R4; close findings through fresh fix worker; pass `GR4`.
-11. Launch P5 after `GR4`; accept `T5`; launch R5; close findings through fresh fix worker; pass `GR5`.
+**[DONE: Steps 1-11]**. Continue from step 12:
+
 12. Launch P6 after `GR5`; accept `T6`; launch R6; close findings through fresh fix worker; pass `GR6`.
 13. Launch P7 after `GR6`; accept `T7`; launch R7; close findings through fresh fix worker; pass `GR7`, then validate reviewed backend gate `G2`.
 14. Launch P8, P9, P10 concurrently after `G2`. Prevent edits to S1-owned composition files. Accept `T8-T10`; launch R8-R10 concurrently against separate targets. Close lane findings through fresh fix workers scoped to each lane. Pass `GR8-GR10`, then validate reviewed fan-in `G3`.
@@ -791,23 +618,10 @@ Completion boundary: customer can browse credible products, select actual pack S
 
 ## Risks and Open Questions
 
-- risk: canonical expansion overwrites local IDs -> mitigation: retain `1..50`, allocate `1001..1050`, explicit-set seed operations, migration fixture with local IDs
-- risk: variant migration creates dual inventory authority -> mitigation: variant tables become sole runtime authority; legacy product fields receive no consumers; repository search gate
-- risk: SQLite table rebuild loses triggers/indexes/FKs -> mitigation: explicit recreation + count/identity assertions + `foreign_key_check` + rollback fixture
-- risk: existing carts point to product only -> mitigation: default-variant backfill before cart rebuild; canonical seed updates backfilled row
-- risk: old custom mixes become cross-group -> mitigation: readable history, explicit requote/removal conflict, checkout fail closed
-- risk: delivery recalculated after authorization -> mitigation: quote v5 snapshot and replay tests
-- risk: delivery charge accidentally discounted/refunded -> mitigation: separate fields and pure total/refund tests
-- risk: 100-product authoring introduces unsafe or weak entries -> mitigation: typed required facts, excluded-product validation, G1 credibility review
-- risk: frontend shows product availability while selected SKU unavailable -> mitigation: card aggregate only; detail/cart actions exact variant
-- risk: rename breaks saved routes/history/orders -> mitigation: redirects, API delegates, localStorage migration, strict old snapshot parser
-- risk: removing novelty changes seeded reviews/orders -> mitigation: convert stable product IDs in place and rewrite seed copy; immutable existing order names remain historical data
-- risk: producer defect propagates into dependent packets -> mitigation: R1-R10 immediate inspect-only review gates; reviewed fan-in; separate S1 convergence reviews
-- question: exact freight threshold and parcel/freight charges -> owner: user/product decision at `G0`; no implementation packet launches without values
-- question: exact 100 products, variants, prices, stock, colour tokens -> owner: P2 proposes within decisions; orchestrator accepts at `G1`
-- question: category redistribution -> owner: P2 records credibility reason; orchestrator checks total/category coverage at `G1`
-- question: detailed within-group exceptions -> deferred; equality rule is initial scope
-- question: allergen/dietary filters -> deferred; data may display but filters remain out
+**[RESOLVED risks: canonical expansion, variant authority, migration triggers, cart backfill, product authoring]**.
+**[RESOLVED questions: freight=100kg/999c/0c; catalog authorized; category targets met; same-group equality confirmed]**.
+
+Remaining risks and questions for P6+:
 
 ## Done Criteria
 
