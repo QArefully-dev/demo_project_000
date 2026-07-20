@@ -43,19 +43,36 @@ R5 findings closed (F1-F4): quote lines carry variantId+snapshot; finalizer read
 
 Mixing group validation in `powderMixRules.ts` — all selected products must share same non-null mixing_group. MIXING_GROUP_MISMATCH error added to domain types and route handlers. Source variant pricing/stock via blend_source_variant_id. Combined facts computed per quote (ingredients, allergens, safety, consumption classification). Featured blend replaces daily recipe (hardcoded "Chocolate Protein Blend" preset). Comedic content removed. Canonical `/api/custom-powder/*` route registered; legacy `/api/powderizer/*` delegates. CustomPowderFeaturedBlend contract used in config response.
 
-### Open R6 Findings (2026-07-20)
+### Closed R6 Findings (2026-07-20)
 
-- R6-F1 — combinedFacts computed but dropped from quote transport: `powderMixRules.ts` computes `combinedFacts` in every `PowderMixQuote` but `toContractQuote` in `powderizerService.ts` omits it from the wire response. `CustomPowderQuote` contract in `customPowder.ts` also lacks `combinedFacts` field. Combined facts only reachable via `GET /api/custom-powder/config` → `featuredBlend.combinedFacts`.
-- R6-F2 — no test for MIXING_GROUP_MISMATCH or null mixing group rejection in `powderMixRules.test.ts`. Logic correct but untested for cross-group rejection and null-group ineligibility.
+- R6-F1 closed — `combinedFacts` added to `CustomPowderQuote` (`packages/contracts/src/customPowder.ts`, reusing `CustomPowderCombinedFacts`) and emitted by `toContractQuote` in `powderizerService.ts`. Wire-level `app.inject()` test asserts product-ID ordering and strongest-classification-wins on the parsed response. Legacy `/api/powderizer/quote` shape intentionally frozen without the field; test excludes it via documented destructure — re-reviewer confirmed legitimate contract boundary, not masked divergence.
+- R6-F2 closed — three tests in `powderMixRules.test.ts`: cross-group rejection asserting exact `MIXING_GROUP_MISMATCH` + `productIds`, null-group rejection asserting `MIX_COMPONENT_INELIGIBLE`, same-group cross-category mix passes. Re-reviewer confirmed assertions are on real thrown domain errors, not tautologies.
+- ownership deviation (accepted): R6-F1 required a `packages/contracts/**` edit, normally P1-only. Orchestrator authorized as minimal additive field rather than a P1 fix directive. No consumer broke; contracts 92/92 pass.
+
+### Open R6-recheck Findings (2026-07-20)
+
+Reviewer had no executable Node (stale `CLAUDE.md` path) -> all three are code-trace-only, not test-reproduced. Confirm each reproduces before fixing.
+
+- R6B-F1 (high) — order-dependent null-group misclassification. `powderMixRules.ts:161` seeds expected group from `selectedProducts[0]` and null-checks index 0 only. Reordering same invalid set flips error code between `MIX_COMPONENT_INELIGIBLE` and `MIXING_GROUP_MISMATCH`, and mismatch payload falsely claims two products "belong to different mixing groups" when one has none. Fix: validate null-group ineligibility across all components before any equality comparison; add both-orderings test.
+- R6B-F2 (high) — inactive source variant does not fail closed. `findVariantById` (`apps/api/src/features/catalog/productRepository.ts:317-321`) ignores `active`, unlike sibling `findVariantsByProductId`. `powderizerService.ts:178`/`:247` resolve `blend_source_variant_id`/`default_variant_id` for pricing and stock with no active check. Violates named P6 acceptance. Ownership constraint: `productRepository.ts` is P4-owned and gated; cart/checkout share the call -> guard at P6 consumption points, do NOT change shared query semantics. Test must deactivate only the variant, leaving product active.
+- R6B-F3 (high, plausible) — `dailyRecipe.ts:106` `createFallbackBlend` picks first two eligible products with no mixing-group check before `normalizePowderMixConfig`. If preset products drop below 2 eligible and remaining pool spans groups, `resolveFeaturedPowderBlend` throws uncaught -> `GET /api/custom-powder/config` returns 400.
+
+### Carried Input For P7
+
+`checkoutMixPreparation.ts` and `checkoutFinalizer.ts` share the same unguarded `findVariantById` pattern as R6B-F2. Not P6 scope. P7 owns checkout -> P7 assignment must state this explicitly as an upstream input so it is not rediscovered at `G4`.
 
 ### Resume Point (2026-07-20)
 
+Stopped at: P6 fix round 2 in flight; `GR6` not passed.
+
+Policy debt: the in-flight R6B fix worker was a resumed P6 worker, launched before the fresh-worker rule was adopted. Allowed to finish; its output needs review by a fresh reviewer. All later fixes use fresh workers.
+
 Next steps:
-1. Close R6-F1: add `combinedFacts` to `CustomPowderQuote` contract + `toContractQuote` mapper
-2. Close R6-F2: add group-validation boundary tests
-3. Re-run T6 + R6 re-review → GR6
-4. Re-validate G2 (P5 + P6 reviewed fan-in)
-5. Launch P7 (delivery + checkout + orders + returns integration)
+1. Accept R6B fix report; verify R6B-F1/F2/F3 reproduce-then-resolve, or are dismissed with reasoning
+2. Launch fresh R6 re-review with working Node -> require executable evidence, not code trace -> `GR6`
+3. Validate `G2` (P5 + P6 reviewed fan-in)
+4. Launch P7 (delivery + checkout + orders + returns) with the Carried Input above -> `R7` -> `GR7`
+5. Fan out P8 || P9 || P10 after `G2`/`GR7`
 
 ## Runtime Environment
 

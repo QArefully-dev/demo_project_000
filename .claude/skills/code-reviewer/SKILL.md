@@ -1,6 +1,7 @@
 ---
 name: code-reviewer
-description: Critical/high-severity code review for the shop-qarefully department-store repo (apps/api Fastify+SQLite, apps/web React+Vite, packages/contracts, packages/catalog). Finds real defects only - logic bugs, money/inventory/order correctness, missing auth gates, broken transaction boundaries, migration hazards, tests that assert nothing or test the mock, misleading names, frontend-backend rule drift, unmet plan acceptance criteria. Reports nothing trivial. Use whenever the user asks to review code, review a diff/branch/PR, check a change before commit or handoff, asks "does this look right", "any bugs here", "is this ready to merge", or after finishing an implementation packet in this repo.
+description: Critical/high-severity code review for the shop-qarefully department-store repo (apps/api Fastify+SQLite, apps/web React+Vite, packages/contracts, packages/catalog). Finds real defects only - logic bugs, money/inventory/order correctness, missing auth gates, broken transaction boundaries, migration hazards, tests that assert nothing or test the mock, misleading names, frontend-backend rule drift, unmet plan acceptance criteria. Reports nothing trivial. Invoke only when the user explicitly runs /code-reviewer.
+disable-model-invocation: true
 ---
 
 # Code Reviewer (critical + high only)
