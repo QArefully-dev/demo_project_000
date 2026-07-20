@@ -38,6 +38,7 @@ const expectedVersions = [
   '015',
   '016',
   '017',
+  '018',
 ];
 
 function migrationVersions(db: Database.Database): string[] {
@@ -370,7 +371,10 @@ void test('review depth backfills and trigger-maintains published aggregates', (
 
   migrateDatabase(
     db,
-    migrations.filter((migration) => migration.version !== '016' && migration.version !== '017'),
+    migrations.filter(
+      (migration) =>
+        migration.version !== '016' && migration.version !== '017' && migration.version !== '018',
+    ),
   );
   db.exec(`
     INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id)
@@ -622,7 +626,10 @@ void test('inventory migration copies legacy mix reservations into unified lease
     db,
     migrations.filter(
       (migration) =>
-        migration.version !== '015' && migration.version !== '016' && migration.version !== '017',
+        migration.version !== '015' &&
+        migration.version !== '016' &&
+        migration.version !== '017' &&
+        migration.version !== '018',
     ),
   );
   db.prepare(
@@ -667,14 +674,14 @@ void test('inventory migration copies legacy mix reservations into unified lease
   assert.deepEqual(
     db
       .prepare(
-        `SELECT payment_idempotency_key, product_id, demand_kind, reserved_quantity,
+        `SELECT payment_idempotency_key, variant_id, demand_kind, reserved_quantity,
                 backordered_quantity, expires_at
          FROM inventory_reservations`,
       )
       .get(),
     {
       payment_idempotency_key: 'legacy-prepared',
-      product_id: 99,
+      variant_id: 1,
       demand_kind: 'powder_mix',
       reserved_quantity: 2,
       backordered_quantity: 0,
@@ -714,7 +721,8 @@ void test('lifecycle migration preserves pre-existing order lines and mix snapsh
         migration.version !== '014' &&
         migration.version !== '015' &&
         migration.version !== '016' &&
-        migration.version !== '017',
+        migration.version !== '017' &&
+        migration.version !== '018',
     ),
   );
   db.prepare(
@@ -1122,6 +1130,10 @@ void test('v017 migration creates return tables and extends inventory movements'
   db.exec(`
     INSERT INTO products (name, description, price_cents, category, stock_count, image_set_id)
     VALUES ('Test product', 'For return test', 1000, 'Test', 10, 'test-product');
+    INSERT INTO product_variants
+      (product_id, sku, label, weight_grams, price_cents, stock_count, delivery_class, active, sort_order, created_at, updated_at)
+    VALUES (1, 'TEST-RETURN-001', 'Test product (Legacy)', 1000, 1000, 10, 'parcel', 1, 0, datetime('now'), datetime('now'));
+    UPDATE products SET default_variant_id = 1 WHERE id = 1;
     INSERT INTO users (email, display_name, password_hash, password_salt, role)
     VALUES ('return-test@example.test', 'Return tester', 'hash', 'salt', 'customer');
     INSERT INTO orders
@@ -1150,7 +1162,7 @@ void test('v017 migration creates return tables and extends inventory movements'
   db.prepare(
     `
     INSERT INTO inventory_stock_movements
-      (product_id, movement_type, quantity_delta, order_id, order_line_item_id, return_request_id, occurred_at)
+      (variant_id, movement_type, quantity_delta, order_id, order_line_item_id, return_request_id, occurred_at)
     VALUES (1, 'return_received', 1, ${orderId}, 1, ${returnId}, '2026-07-03T12:00:00.000Z')
   `,
   ).run();
@@ -1230,4 +1242,340 @@ void test('seed and reset operate on a migrated database', (t) => {
     0,
   );
   assert.deepEqual(migrationVersions(db), expectedVersions);
+});
+
+void test('v18 migration backfills variants, rebuilds tables, and preserves data', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-v18-'));
+  const db = new Database(join(directory, 'shop.db'));
+  db.pragma('foreign_keys = ON');
+  t.after(() => {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  migrateDatabase(
+    db,
+    migrations.filter((migration) => migration.version !== '018'),
+  );
+
+  db.exec(`
+    INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id)
+    VALUES
+      (51, 'Custom product 51', 'User-created', 999, 'Custom', 10, 'custom-51'),
+      (100, 'Custom product 100', 'User-created', 4999, 'Custom', 25, 'custom-100'),
+      (1000, 'Custom product 1000', 'User-created', 99, 'Custom', 100, 'custom-1000');
+    INSERT INTO users (id, email, display_name, password_hash, password_salt, role)
+    VALUES (51, 'v18-user@example.test', 'V18 user', 'hash', 'salt', 'customer');
+    INSERT INTO carts (id) VALUES ('v18-cart');
+    INSERT INTO cart_line_items (cart_id, product_id, quantity)
+    VALUES ('v18-cart', 51, 2), ('v18-cart', 100, 1), ('v18-cart', 1000, 5);
+    INSERT INTO orders
+      (id, customer_name, customer_email, shipping_address, subtotal_cents, total_cents, lifecycle_status, version)
+    VALUES (51, 'V18 customer', 'v18@example.test', '51 Test Rd', 999, 999, 'processing', 0);
+    INSERT INTO order_line_items
+      (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents)
+    VALUES (51, 51, 'Custom product 51', 999, 2, 1998);
+    INSERT INTO payments
+      (id, idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand)
+    VALUES (51, 'v18-payment-key', 'v18-fingerprint', 'succeeded', 999, '4242', 'Visa');
+    INSERT INTO curated_bundles (id, key, name, description, active, sort_order)
+    VALUES (51, 'v18-bundle', 'V18 bundle', 'V18 test bundle', 1, 51);
+    INSERT INTO curated_bundle_components (bundle_id, product_id, quantity, sort_order)
+    VALUES (51, 51, 1, 51);
+    INSERT INTO powder_mixes
+      (id, cart_id, quantity, bag_size_grams, fineness, custom_label, price_version,
+       quoted_unit_price_cents, created_at, updated_at)
+    VALUES ('v18-mix', 'v18-cart', 1, 500, 'standard', NULL, 'powderizer-v1', 1000,
+            datetime('now'), datetime('now'));
+    INSERT INTO powder_mix_components (mix_id, product_id, percentage, allocated_grams)
+    VALUES ('v18-mix', 51, 100, 500);
+  `);
+
+  const orderCountBefore = (
+    db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }
+  ).count;
+  const paymentCountBefore = (
+    db.prepare('SELECT COUNT(*) AS count FROM payments').get() as { count: number }
+  ).count;
+  const cartLineCountBefore = (
+    db.prepare('SELECT COUNT(*) AS count FROM cart_line_items').get() as { count: number }
+  ).count;
+  const productCountBefore = (
+    db.prepare('SELECT COUNT(*) AS count FROM products').get() as { count: number }
+  ).count;
+  const mixCountBefore = (
+    db.prepare('SELECT COUNT(*) AS count FROM powder_mixes').get() as { count: number }
+  ).count;
+
+  migrateDatabase(db);
+
+  // Verify all products have default variants
+  assert.equal(
+    (
+      db
+        .prepare('SELECT COUNT(*) AS count FROM products WHERE default_variant_id IS NULL')
+        .get() as { count: number }
+    ).count,
+    0,
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM product_variants').get() as { count: number }).count,
+    productCountBefore,
+  );
+
+  // Verify product 51's variant
+  const variant51 = db
+    .prepare(
+      `SELECT v.sku, v.label, v.weight_grams, v.price_cents, v.stock_count, v.delivery_class, v.active, v.sort_order
+       FROM product_variants v
+       JOIN products p ON p.default_variant_id = v.id
+       WHERE p.id = 51`,
+    )
+    .get() as Record<string, unknown>;
+  assert.equal(variant51.sku, 'LEGACY-51-001');
+  assert.equal(variant51.label, 'Custom product 51 (Legacy)');
+  assert.equal(variant51.weight_grams, 1000);
+  assert.equal(variant51.price_cents, 999);
+  assert.equal(variant51.stock_count, 10);
+  assert.equal(variant51.delivery_class, 'parcel');
+  assert.equal(variant51.active, 1);
+
+  // Verify product 1000's variant
+  const variant1000 = db
+    .prepare(
+      `SELECT sku FROM product_variants v
+       JOIN products p ON p.default_variant_id = v.id
+       WHERE p.id = 1000`,
+    )
+    .get() as { sku: string };
+  assert.equal(variant1000.sku, 'LEGACY-1000-001');
+
+  // Verify cart_line_items rebuilt with variant_id
+  const cartLines = db
+    .prepare(
+      `SELECT cart_id, variant_id, quantity FROM cart_line_items
+       WHERE cart_id = 'v18-cart' ORDER BY variant_id`,
+    )
+    .all() as Array<{ cart_id: string; variant_id: number; quantity: number }>;
+  assert.equal(cartLines.length, cartLineCountBefore);
+
+  // Verify UNIQUE(cart_id, variant_id) constraint
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `INSERT INTO cart_line_items (cart_id, variant_id, quantity, created_at, updated_at)
+           VALUES ('v18-cart', ?, 1, datetime('now'), datetime('now'))`,
+        )
+        .run(cartLines[0].variant_id),
+    /UNIQUE constraint failed/,
+  );
+
+  // Powder mixes survive
+  assert.equal(
+    (
+      db.prepare("SELECT COUNT(*) AS count FROM powder_mixes WHERE id = 'v18-mix'").get() as {
+        count: number;
+      }
+    ).count,
+    1,
+  );
+  assert.equal(
+    (
+      db
+        .prepare("SELECT COUNT(*) AS count FROM powder_mix_components WHERE mix_id = 'v18-mix'")
+        .get() as { count: number }
+    ).count,
+    1,
+  );
+
+  // Order/payment counts unchanged
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }).count,
+    orderCountBefore,
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM payments').get() as { count: number }).count,
+    paymentCountBefore,
+  );
+
+  // New product columns exist
+  const productColumns = db.prepare('PRAGMA table_info(products)').all() as { name: string }[];
+  for (const col of [
+    'consumption_classification',
+    'mixing_group',
+    'details_json',
+    'default_variant_id',
+    'blend_source_variant_id',
+  ]) {
+    assert.ok(
+      productColumns.some((c) => c.name === col),
+      `Missing column: ${col}`,
+    );
+  }
+
+  // New order columns exist
+  const orderColumns = db.prepare('PRAGMA table_info(orders)').all() as { name: string }[];
+  for (const col of ['delivery_mode', 'delivery_charge_cents', 'delivery_weight_grams']) {
+    assert.ok(
+      orderColumns.some((c) => c.name === col),
+      `Missing column: ${col}`,
+    );
+  }
+
+  // New order_line_items columns exist
+  const oliColumns = db.prepare('PRAGMA table_info(order_line_items)').all() as { name: string }[];
+  for (const col of [
+    'variant_id',
+    'sku',
+    'variant_label',
+    'weight_grams',
+    'consumption_classification',
+    'delivery_class',
+  ]) {
+    assert.ok(
+      oliColumns.some((c) => c.name === col),
+      `Missing column: ${col}`,
+    );
+  }
+
+  // bundle_components has variant_id
+  const bundleCols = db.prepare('PRAGMA table_info(curated_bundle_components)').all() as {
+    name: string;
+  }[];
+  assert.ok(bundleCols.some((c) => c.name === 'variant_id'));
+
+  // PRAGMA foreign_key_check is clean
+  const fkViolations = db.pragma('foreign_key_check') as unknown[];
+  assert.equal(fkViolations.length, 0);
+
+  // Idempotency: running migration again doesn't corrupt
+  migrateDatabase(db);
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM product_variants').get() as { count: number }).count,
+    productCountBefore,
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }).count,
+    orderCountBefore,
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM powder_mixes').get() as { count: number }).count,
+    mixCountBefore,
+  );
+  const fkViolations2 = db.pragma('foreign_key_check') as unknown[];
+  assert.equal(fkViolations2.length, 0);
+});
+
+void test('v18 migration rollback on corrupt product data', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-v18-rollback-'));
+  const db = new Database(join(directory, 'shop.db'));
+  db.pragma('foreign_keys = ON');
+  t.after(() => {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  migrateDatabase(
+    db,
+    migrations.filter((migration) => migration.version !== '018'),
+  );
+
+  db.exec(`
+    INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id)
+    VALUES (51, 'Good product', 'Ok', 1000, 'Test', 5, 'good');
+    INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id)
+    VALUES (100, 'Another', 'Ok', 500, 'Test', 1, 'another');
+  `);
+
+  // Corrupt: pre-create product_variants with a SKU that will conflict with backfill
+  db.exec(`
+    CREATE TABLE product_variants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL REFERENCES products(id),
+      sku TEXT NOT NULL UNIQUE,
+      label TEXT NOT NULL,
+      weight_grams INTEGER NOT NULL,
+      price_cents INTEGER NOT NULL,
+      compare_at_price_cents INTEGER,
+      stock_count INTEGER NOT NULL DEFAULT 0,
+      backorderable INTEGER NOT NULL DEFAULT 0,
+      backorder_lead_days INTEGER,
+      delivery_class TEXT NOT NULL DEFAULT 'parcel',
+      active INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(product_id, sort_order)
+    );
+    INSERT INTO product_variants
+      (product_id, sku, label, weight_grams, price_cents, stock_count, delivery_class, active, sort_order, created_at, updated_at)
+    VALUES (51, 'LEGACY-51-001', 'Conflicting variant', 1000, 999, 5, 'parcel', 1, 0, datetime('now'), datetime('now'));
+  `);
+
+  // Migration should fail on duplicate SKU
+  assert.throws(() => migrateDatabase(db), /UNIQUE constraint failed/);
+
+  // DB should still have the corrupt variant row, unchanged
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM product_variants').get() as { count: number }).count,
+    1,
+  );
+  // Products table was rolled back — no v18 columns exist
+  const productCols = db.prepare('PRAGMA table_info(products)').all() as { name: string }[];
+  assert.ok(!productCols.some((c) => c.name === 'consumption_classification'));
+});
+
+void test('v18 migration creates fresh inventory tables when 015 skipped', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-v18-015skip-'));
+  const db = new Database(join(directory, 'shop.db'));
+  db.pragma('foreign_keys = ON');
+  t.after(() => {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  migrateDatabase(
+    db,
+    migrations.filter(
+      (migration) =>
+        migration.version !== '015' &&
+        migration.version !== '016' &&
+        migration.version !== '017' &&
+        migration.version !== '018',
+    ),
+  );
+
+  db.exec(`
+    INSERT INTO products (id, name, description, price_cents, category, stock_count)
+    VALUES (51, 'Skip test', 'Skip test', 500, 'Test', 3);
+    INSERT INTO users (email, display_name, password_hash, password_salt, role)
+    VALUES ('skip@example.test', 'Skip user', 'hash', 'salt', 'customer');
+  `);
+
+  migrateDatabase(db);
+
+  // v18 should create inventory tables with variant_id
+  const tables = [
+    'inventory_reservations',
+    'order_inventory_allocations',
+    'inventory_stock_movements',
+  ];
+  for (const table of tables) {
+    assert.deepEqual(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table),
+      { name: table },
+    );
+  }
+
+  // Verify variant_id column exists (not product_id)
+  const resCols = db.prepare('PRAGMA table_info(inventory_reservations)').all() as {
+    name: string;
+  }[];
+  assert.ok(resCols.some((c) => c.name === 'variant_id'));
+  assert.ok(!resCols.some((c) => c.name === 'product_id'));
+
+  // FK check clean
+  const fkViolations = db.pragma('foreign_key_check') as unknown[];
+  assert.equal(fkViolations.length, 0);
 });
