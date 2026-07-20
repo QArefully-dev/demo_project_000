@@ -7,6 +7,15 @@ import type {
 } from '@shop/contracts/orders';
 import type { PowderMixOrderItem } from '@shop/contracts/powderizer';
 
+export interface CreateOrderLineVariantSnapshot {
+  variantId: number;
+  sku: string;
+  label: string;
+  weightGrams: number;
+  consumptionClassification: 'food' | 'non-food' | 'caution';
+  deliveryClass: 'parcel' | 'freight';
+}
+
 export interface CreateOrderParams {
   customerName: string;
   customerEmail: string;
@@ -22,8 +31,12 @@ export interface CreateOrderParams {
     unitPriceCents: number;
     quantity: number;
     lineTotalCents: number;
+    variantSnapshot?: CreateOrderLineVariantSnapshot;
   }>;
   mixItems: PowderMixOrderItem[];
+  deliveryMode?: 'parcel' | 'freight';
+  deliveryChargeCents?: number;
+  deliveryWeightGrams?: number;
   createdAt: string;
 }
 

@@ -12,6 +12,7 @@ import {
 import { PlaceOrderResponse } from './orders.js';
 import {
   PowderMixConflictResponse,
+  PowderMixOrderItem,
   PowderMixOrderItemSnapshotV1,
   PowderMixOrderItemSnapshotV2,
 } from './powderizer.js';
@@ -179,6 +180,7 @@ export const PersistedCheckoutQuoteV5 = Type.Object(
     version: Type.Literal(5),
     ...PersistedCheckoutQuoteFields,
     mixLines: Type.Array(PersistedCheckoutMixLine),
+    orderMixSnapshots: Type.Array(PowderMixOrderItem),
     variantLines: Type.Array(PersistedCheckoutVariantLine),
     deliverySummary: DeliverySummary,
     inventoryAllocations: Type.Array(PersistedInventoryAllocation),

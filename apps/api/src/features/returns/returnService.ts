@@ -484,8 +484,9 @@ export function createReturnService(deps: ReturnServiceDeps): ReturnService {
           });
         }
 
-        // Cap: never exceed payment amount or order total
-        if (netRefundCents > payment.amountCents || netRefundCents > orderDetail.totalCents) {
+        // Cap: never exceed merchandise total (exclude delivery charge from refund cap)
+        const merchandiseTotal = orderDetail.subtotalCents - orderDetail.discountCents;
+        if (netRefundCents > merchandiseTotal) {
           throw new ReturnDomainError(ReturnErrorCode.PAYMENT_NOT_REFUNDABLE);
         }
 

@@ -113,7 +113,7 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
       db
         .prepare('SELECT quote_json FROM payments WHERE idempotency_key = ?')
         .get(params.idempotencyKey) as { quote_json: string }
-    ).quote_json.includes('"version":4'),
+    ).quote_json.includes('"version":5'),
     true,
   );
   const storedSnapshot = (
