@@ -6,6 +6,8 @@ import type {
   ProductWithVariants,
 } from '@shop/contracts/products';
 import type { BaseAvailability } from '@shop/contracts/products';
+import { TIER_LADDER } from '@shop/contracts/pricing';
+import { perTonneCents } from '../features/pricing/pricingRules.js';
 import type {
   CustomerProductRow,
   ProductRow,
@@ -66,6 +68,9 @@ function mapVariant(v: VariantRow): CatalogVariant {
     label: v.label,
     weightGrams: v.weight_grams,
     priceCents: v.price_cents,
+    moqSacks: v.moq_sacks,
+    perTonneCents: perTonneCents(v.price_cents, v.weight_grams),
+    priceTiers: TIER_LADDER,
     ...(v.compare_at_price_cents !== null ? { compareAtPriceCents: v.compare_at_price_cents } : {}),
     stockCount: v.stock_count,
     backorderable: v.backorderable === 1,

@@ -23,7 +23,7 @@ export function ProductPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const addInFlightProductIdsRef = useRef(new Set<string>());
   const activeProductIdRef = useRef<string | undefined>(id);
-  const { addItem, isCartAvailable, isActionPending } = useCartContext();
+  const { addItem, isCartAvailable, isActionPending, error: cartError } = useCartContext();
 
   useEffect(() => {
     let cancelled = false;
@@ -68,13 +68,16 @@ export function ProductPage() {
   if (error) return <ErrorMessage message={error} />;
   if (!product) return <ErrorMessage message="Product not found" />;
 
-  const handleAddToCart = async (variantId: number): Promise<void> => {
+  const handleAddToCart = async (variantId: number, quantity: number): Promise<void> => {
     const productId = product.id;
     if (addInFlightProductIdsRef.current.has(productId)) return;
     addInFlightProductIdsRef.current.add(productId);
     setActionError(null);
     try {
-      if (!(await addItem(productId, variantId)) && activeProductIdRef.current === productId) {
+      if (
+        !(await addItem(productId, variantId, quantity)) &&
+        activeProductIdRef.current === productId
+      ) {
         setActionError('Could not add this item. Try again.');
       }
     } finally {
@@ -114,6 +117,9 @@ export function ProductPage() {
           isCartAvailable={isCartAvailable}
           isAdding={isActionPending(product.id, 'add')}
           actionError={actionError}
+          belowMoqError={
+            cartError?.toLowerCase().includes('minimum order quantity') ? cartError : null
+          }
           onAddToCart={handleAddToCart}
         />
       </div>

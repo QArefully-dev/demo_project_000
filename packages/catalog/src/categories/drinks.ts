@@ -1,6 +1,6 @@
-import { type CatalogProduct, makeVariant } from '../model.js';
+import { industrializeProducts, type CatalogProduct, makeVariant } from '../model.js';
 
-export const drinksProducts: readonly CatalogProduct[] = [
+export const drinksProducts: readonly CatalogProduct[] = industrializeProducts([
   {
     id: 14,
     slug: 'matcha-green-tea-powder',
@@ -629,4 +629,4 @@ export const drinksProducts: readonly CatalogProduct[] = [
       makeVariant('DRK-1035-002', '700 g Tub', 700, 1695, 24, 2),
     ],
   },
-];
+]);

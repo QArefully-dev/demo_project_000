@@ -66,10 +66,10 @@ export function MailboxPage() {
 
   return (
     <div className="mx-auto max-w-2xl py-10">
-      <h1 className="text-2xl font-bold">QArefully Powder Co. Dev Mailbox</h1>
+      <h1 className="text-2xl font-bold">QArefully Materials Exchange Dev Mailbox</h1>
 
       {messages.length === 0 ? (
-        <p className="mt-8 text-center text-muted-foreground">No powder correspondence yet.</p>
+        <p className="mt-8 text-center text-muted-foreground">No materials correspondence yet.</p>
       ) : (
         <ul className="mt-6 space-y-4">
           {messages.map((msg) => {

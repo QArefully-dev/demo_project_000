@@ -50,6 +50,7 @@ export interface VariantRow {
   label: string;
   weight_grams: number;
   price_cents: number;
+  moq_sacks: number;
   compare_at_price_cents: number | null;
   stock_count: number;
   backorderable: number;

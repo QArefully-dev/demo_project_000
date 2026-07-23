@@ -29,9 +29,17 @@ import {
   CategoryFacts,
 } from '../src/products.js';
 import {
+  MOQ_DEFAULT_SACKS,
+  PALLET_WEIGHT_GRAMS,
+  PriceTier,
+  SACKS_PER_PALLET,
+  SACK_WEIGHT_GRAMS,
+  TIER_LADDER,
+  TierLadder,
+} from '../src/pricing.js';
+import {
   DeliverySummary,
   DeliveryMode,
-  DeliveryClass,
   DeliveryQuoteInput,
   FREIGHT_WEIGHT_THRESHOLD_GRAMS,
   FREIGHT_CHARGE_CENTS,
@@ -45,7 +53,15 @@ import {
   CustomPowderQuoteResponse,
   IncompatibleGroupError,
 } from '../src/customPowder.js';
-import { CartLineVariantSnap, MixingGroupMismatchError } from '../src/cart.js';
+import {
+  AddToCartBody,
+  BelowMoqError,
+  CartLine,
+  CartLineVariantSnap,
+  MixingGroupMismatchError,
+  RemoveFromCartBody,
+  UpdateCartLineBody,
+} from '../src/cart.js';
 import { CustomPowderFeaturedBlend } from '../src/powderizer.js';
 
 const uuid = '123e4567-e89b-42d3-a456-426614174000';
@@ -116,6 +132,22 @@ void test('G0 freight constants match spec', () => {
   assert.equal(FREIGHT_WEIGHT_THRESHOLD_GRAMS, 100_000);
   assert.equal(FREIGHT_CHARGE_CENTS, 999);
   assert.equal(PARCEL_CHARGE_CENTS, 0);
+});
+
+void test('pricing constants and tier transport match materials pricing policy', () => {
+  assert.equal(SACK_WEIGHT_GRAMS, 25_000);
+  assert.equal(PALLET_WEIGHT_GRAMS, 1_000_000);
+  assert.equal(SACKS_PER_PALLET, 40);
+  assert.equal(MOQ_DEFAULT_SACKS, 4);
+  assert.deepEqual(TIER_LADDER, [
+    { minTonnes: 1, discountPct: 0 },
+    { minTonnes: 5, discountPct: 5 },
+    { minTonnes: 10, discountPct: 10 },
+  ]);
+  assert.equal(Value.Check(PriceTier, TIER_LADDER[0]), true);
+  assert.equal(Value.Check(TierLadder, TIER_LADDER), true);
+  assert.equal(Value.Check(PriceTier, { minTonnes: 1, discountPct: 101 }), false);
+  assert.equal(Value.Check(PriceTier, { minTonnes: 1, discountPct: 0, extra: true }), false);
 });
 
 // ---------------------------------------------------------------------------
@@ -330,6 +362,9 @@ void test('CatalogVariant requires variantId, deliveryClass, sortOrder', () => {
     label: '500g Tub',
     weightGrams: 500,
     priceCents: 2500,
+    moqSacks: 4,
+    perTonneCents: 5_000_000,
+    priceTiers: TIER_LADDER,
     stockCount: 10,
     backorderable: false,
     backorderLeadDays: null,
@@ -378,6 +413,9 @@ void test('ProductWithVariants requires variants, defaultVariantId, categoryFact
         label: '500g Tub',
         weightGrams: 500,
         priceCents: 2500,
+        moqSacks: 4,
+        perTonneCents: 5_000_000,
+        priceTiers: TIER_LADDER,
         stockCount: 10,
         backorderable: false,
         backorderLeadDays: null,
@@ -429,6 +467,96 @@ void test('CartLineVariantSnap validates variant details', () => {
   };
   assert.equal(Value.Check(CartLineVariantSnap, snap), true);
   assert.equal(Value.Check(CartLineVariantSnap, { ...snap, deliveryClass: 'express' }), false);
+});
+
+void test('CartLine requires server-resolved pack and base tonne prices', () => {
+  const line = {
+    productId: '1',
+    product,
+    variantSnap: {
+      variantId: 1,
+      sku: 'SN-0001-001',
+      label: '500g Tub',
+      weightGrams: 500,
+      deliveryClass: 'parcel',
+    },
+    perTonneCents: 5_000_000,
+    resolvedUnitPriceCents: 2_375,
+    quantity: 10,
+    lineTotalCents: 23_750,
+  };
+  assert.equal(Value.Check(CartLine, line), true);
+  const withoutResolvedPrices = { ...line };
+  delete (withoutResolvedPrices as Partial<typeof withoutResolvedPrices>).perTonneCents;
+  assert.equal(Value.Check(CartLine, withoutResolvedPrices), false);
+  assert.equal(Value.Check(CartLine, { ...line, resolvedUnitPriceCents: -1 }), false);
+});
+
+void test('AddToCartBody accepts an optional positive quantity and rejects extras', () => {
+  assert.equal(Value.Check(AddToCartBody, { productId: '1', variantId: 1 }), true);
+  assert.equal(Value.Check(AddToCartBody, { productId: '1', variantId: 1, quantity: 4 }), true);
+  assert.equal(Value.Check(AddToCartBody, { productId: '1', quantity: 0 }), false);
+  assert.equal(
+    Value.Check(AddToCartBody, { productId: '1', quantity: Number.MAX_SAFE_INTEGER }),
+    true,
+  );
+  assert.equal(
+    Value.Check(AddToCartBody, { productId: '1', quantity: Number.MAX_SAFE_INTEGER + 1 }),
+    false,
+  );
+  assert.equal(Value.Check(AddToCartBody, { productId: '1', quantity: 1.5 }), false);
+  assert.equal(Value.Check(AddToCartBody, { productId: '1', quantity: 1, extra: true }), false);
+});
+
+void test('UpdateCartLineBody allows zero removal but rejects unsafe quantities', () => {
+  assert.equal(Value.Check(UpdateCartLineBody, { productId: '1', quantity: 0 }), true);
+  assert.equal(
+    Value.Check(UpdateCartLineBody, { productId: '1', variantId: 1, quantity: 4 }),
+    true,
+  );
+  assert.equal(
+    Value.Check(UpdateCartLineBody, { productId: '1', variantId: 0, quantity: 4 }),
+    false,
+  );
+  assert.equal(
+    Value.Check(UpdateCartLineBody, {
+      productId: '1',
+      variantId: Number.MAX_SAFE_INTEGER + 1,
+      quantity: 4,
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(UpdateCartLineBody, { productId: '1', quantity: Number.MAX_SAFE_INTEGER }),
+    true,
+  );
+  assert.equal(
+    Value.Check(UpdateCartLineBody, { productId: '1', quantity: Number.MAX_SAFE_INTEGER + 1 }),
+    false,
+  );
+  assert.equal(Value.Check(UpdateCartLineBody, { productId: '1', quantity: 1.5 }), false);
+});
+
+void test('RemoveFromCartBody supports optional safe variant targeting', () => {
+  assert.equal(Value.Check(RemoveFromCartBody, { productId: '1' }), true);
+  assert.equal(Value.Check(RemoveFromCartBody, { productId: '1', variantId: 1 }), true);
+  assert.equal(Value.Check(RemoveFromCartBody, { productId: '1', variantId: 0 }), false);
+  assert.equal(
+    Value.Check(RemoveFromCartBody, { productId: '1', variantId: Number.MAX_SAFE_INTEGER + 1 }),
+    false,
+  );
+});
+
+void test('BelowMoqError exposes a strict typed cart error', () => {
+  assert.equal(
+    Value.Check(BelowMoqError, {
+      code: 'BELOW_MOQ',
+      error: 'Minimum order quantity is four sacks',
+    }),
+    true,
+  );
+  assert.equal(Value.Check(BelowMoqError, { code: 'MIXING_GROUP_MISMATCH', error: 'No' }), false);
+  assert.equal(Value.Check(BelowMoqError, { code: 'BELOW_MOQ', error: 'No', extra: true }), false);
 });
 
 void test('MixingGroupMismatchError requires conflicting product IDs and groupInfo', () => {
@@ -629,6 +757,7 @@ void test('PersistedCheckoutQuoteV5 roundtrip with variant lines and delivery', 
         unitPriceCents: 2500,
         weightGrams: 500,
         deliveryClass: 'parcel',
+        consumptionClassification: 'food',
         quantity: 1,
         lineTotalCents: variantLineTotal,
       },
@@ -643,6 +772,7 @@ void test('PersistedCheckoutQuoteV5 roundtrip with variant lines and delivery', 
         weightGrams: 25000,
       },
     ],
+    orderMixSnapshots: [],
     deliverySummary: {
       mode: 'freight',
       chargeCents: deliveryCharge,
@@ -747,6 +877,7 @@ void test('v4 rejects v5 shape (variantLines present)', () => {
         unitPriceCents: 1000,
         weightGrams: 500,
         deliveryClass: 'parcel',
+        consumptionClassification: 'food',
         quantity: 1,
         lineTotalCents: 1000,
       },
@@ -812,6 +943,7 @@ void test('parsePersistedCheckoutQuote parses all valid v1-v5', () => {
         unitPriceCents: 1000,
         weightGrams: 500,
         deliveryClass: 'parcel',
+        consumptionClassification: 'food',
         quantity: 1,
         lineTotalCents: 1000,
       },
@@ -826,6 +958,7 @@ void test('parsePersistedCheckoutQuote parses all valid v1-v5', () => {
         weightGrams: 500,
       },
     ],
+    orderMixSnapshots: [],
     deliverySummary: { mode: 'parcel', chargeCents: 0, weightGrams: 1000, reason: 'ok' },
     inventoryAllocations: [{ productId: '1', reservedQuantity: 1, backorderedQuantity: 0 }],
   };

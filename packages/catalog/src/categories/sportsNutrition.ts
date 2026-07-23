@@ -1,6 +1,6 @@
-import { type CatalogProduct, makeVariant } from '../model.js';
+import { industrializeProducts, type CatalogProduct, makeVariant } from '../model.js';
 
-export const sportsNutritionProducts: readonly CatalogProduct[] = [
+export const sportsNutritionProducts: readonly CatalogProduct[] = industrializeProducts([
   {
     id: 8,
     slug: 'whey-protein-isolate',
@@ -991,4 +991,4 @@ export const sportsNutritionProducts: readonly CatalogProduct[] = [
       makeVariant('SPN-1014-003', '2.5 kg Bag', 2500, 7995, 10, 3),
     ],
   },
-];
+]);

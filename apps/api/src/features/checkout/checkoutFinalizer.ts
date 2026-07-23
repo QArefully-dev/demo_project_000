@@ -75,19 +75,26 @@ export function finalizeAuthorizedCheckout(
     const order = dependencies.orders.findById(orderId);
     if (!order) throw new Error('Created order could not be hydrated');
 
-    const hasAllocations = isV4(quote) || isV5(quote);
+    const hasAllocations =
+      isV4(quote) || isV5(quote) || (quote.version !== 1 && quote.mixLines.length > 0);
     if (hasAllocations) {
       dependencies.inventory.commitReservation({
         paymentIdempotencyKey: idempotencyKey,
         orderId,
-        ordinaryLines: order.items.map((line) => {
-          const variantId = line.variantSnapshot?.variantId ?? Number(line.productId);
-          return {
-            orderLineItemId: Number(line.lineId),
-            variantId,
-            quantity: line.quantity,
-          };
-        }),
+        ordinaryLines:
+          isV4(quote) || isV5(quote)
+            ? order.items.map((line) => {
+                const variantId =
+                  line.variantSnapshot?.variantId ??
+                  dependencies.products.findDefaultVariant(Number(line.productId))?.id ??
+                  0;
+                return {
+                  orderLineItemId: Number(line.lineId),
+                  variantId,
+                  quantity: line.quantity,
+                };
+              })
+            : [],
         occurredAt: createdAt,
       });
     }

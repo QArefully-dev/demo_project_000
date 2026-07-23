@@ -119,7 +119,9 @@ export function ComparisonPage() {
     <div className="pb-12">
       <header className="mb-7 max-w-3xl">
         <p className="section-eyebrow">Side by side</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Compare powders</h1>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
+          Compare materials
+        </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Compare price, availability, and ingredient facts in one place.
         </p>
@@ -164,7 +166,7 @@ export function ComparisonPage() {
         <div className="rounded-2xl border bg-surface-raised p-6 text-center">
           <h2 className="text-xl font-semibold">Not enough active products to compare</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Try a link with at least two currently available powders.
+            Try a link with at least two currently available materials.
           </p>
         </div>
       )}
@@ -183,7 +185,7 @@ function ComparisonMessage({ title, detail }: { title: string; detail: string })
         nativeButton={false}
         render={<Link to="/catalog" />}
       >
-        Browse all powders
+        Browse materials
       </Button>
     </div>
   );

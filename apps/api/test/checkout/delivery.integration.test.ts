@@ -116,6 +116,9 @@ void test('checkout delivery integration', async (t) => {
     setupFresh();
     const cartId = createCart(carts).cartId;
     const vId = getVariantId(db, 1);
+    db.prepare(
+      "UPDATE product_variants SET delivery_class = 'parcel', moq_sacks = 1 WHERE id = ?",
+    ).run(vId);
     const variant = getVariantInfo(db, vId)!;
     assert.equal(variant.delivery_class, 'parcel');
     addItem(carts, cartId, String(vId));

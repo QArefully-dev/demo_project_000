@@ -1,6 +1,6 @@
-import { type CatalogProduct, makeVariant } from '../model.js';
+import { industrializeProducts, type CatalogProduct, makeVariant } from '../model.js';
 
-export const tradeCreativeProducts: readonly CatalogProduct[] = [
+export const tradeCreativeProducts: readonly CatalogProduct[] = industrializeProducts([
   {
     id: 33,
     slug: 'portland-cement',
@@ -647,4 +647,4 @@ export const tradeCreativeProducts: readonly CatalogProduct[] = [
       makeVariant('TCM-1050-002', '1 kg Tub', 1000, 1495, 25, 2),
     ],
   },
-];
+]);

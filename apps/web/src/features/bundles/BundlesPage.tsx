@@ -28,7 +28,7 @@ export function BundlesPage() {
         <p className="section-eyebrow">Curated bundles</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Bundle sets</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Fixed selections of powders, with current prices and availability shown here.
+          Fixed selections of materials, with current prices and availability shown here.
         </p>
       </header>
       {loadError && (

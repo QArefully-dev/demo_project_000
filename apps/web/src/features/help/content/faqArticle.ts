@@ -6,12 +6,13 @@ export const faqArticle = {
   slug: 'faq',
   path: '/help/faq',
   title: 'Frequently asked questions',
-  summary: 'How this local QArefully Powder Co. demo handles browsing, checkout, and saved data.',
+  summary:
+    'How this local QArefully Materials Exchange demo handles browsing, checkout, and saved data.',
   blocks: [
     {
       kind: 'paragraph',
       id: 'demo-context',
-      text: 'QArefully Powder Co. is a local QA demo with a credible powder catalogue, Custom Powder blend builder, and simulated commerce.',
+      text: 'QArefully Materials Exchange is a local QA demo with a credible materials catalogue, Custom Powder blend builder, and simulated commerce.',
     },
     {
       kind: 'faq',

@@ -37,6 +37,15 @@ const cart: Cart = {
         tags: [],
         specificationGroups: [],
       },
+      variantSnap: {
+        variantId: 1,
+        sku: 'H2O-001',
+        label: '25kg sack',
+        weightGrams: 25000,
+        deliveryClass: 'freight',
+      },
+      perTonneCents: 40000,
+      resolvedUnitPriceCents: 1000,
       quantity: 1,
       lineTotalCents: 1000,
     },
@@ -44,6 +53,12 @@ const cart: Cart = {
   mixItems: [],
   subtotalCents: 1000,
   totalItems: 1,
+  deliveryPreview: {
+    mode: 'freight',
+    chargeCents: 999,
+    weightGrams: 25000,
+    reason: 'A freight-class item requires freight delivery',
+  },
 };
 
 const clearCart = vi.fn();
@@ -107,6 +122,55 @@ describe('CheckoutPage', () => {
     vi.mocked(pay).mockReset();
     vi.mocked(validatePromo).mockReset();
     clearCart.mockClear();
+  });
+
+  it('renders server-resolved pack, tonne, and pack-weight values in the order summary', () => {
+    renderCheckout();
+
+    expect(screen.getByText(/Resolved pack price: \$10.00/)).toBeInTheDocument();
+    expect(screen.getByText(/\$400.00 \/ tonne/)).toBeInTheDocument();
+    expect(screen.getByText(/25,?000g pack/)).toBeInTheDocument();
+  });
+
+  it('adds the server-provided delivery preview to the checkout total', () => {
+    renderCheckout();
+
+    expect(screen.getByText('$9.99')).toBeInTheDocument();
+    expect(screen.getByText('$19.99')).toBeInTheDocument();
+  });
+
+  it('displays the freight-inclusive total returned by a valid promo quote', async () => {
+    const eligibleCart = {
+      ...cart,
+      items: [{ ...cart.items[0]!, quantity: 5, lineTotalCents: 5000 }],
+      subtotalCents: 5000,
+      totalItems: 5,
+    };
+    const { useCartContext } = await import('@/hooks/CartContext');
+    vi.mocked(useCartContext).mockReturnValue({
+      ...cartContext,
+      cart: eligibleCart,
+      cartId: eligibleCart.id,
+    });
+    vi.mocked(validatePromo).mockResolvedValue({
+      valid: true,
+      promoCode: {
+        code: 'SAVE10',
+        discountPercent: 10,
+        minItemCount: 5,
+        kind: 'percent',
+      },
+      discountCents: 500,
+      totalCents: 5499,
+    });
+    const user = userEvent.setup();
+    renderCheckout();
+
+    await user.type(screen.getByLabelText('Powder promotion'), 'SAVE10');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+
+    expect(await screen.findByText('$54.99')).toBeInTheDocument();
+    expect(screen.getByText('$9.99')).toBeInTheDocument();
   });
 
   it('validates contact before entering payment and keeps browser back in checkout flow', async () => {

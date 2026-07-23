@@ -11,7 +11,7 @@ export const privacyArticle = defineHelpArticle({
     {
       kind: 'paragraph',
       id: 'privacy-local-demo',
-      text: 'QArefully Powder Co. is a local QA demo, not a production service. Use fictional or otherwise non-sensitive test data while exploring it.',
+      text: 'QArefully Materials Exchange is a local QA demo, not a production service. Use fictional or otherwise non-sensitive test data while exploring it.',
     },
     {
       kind: 'section',
@@ -73,7 +73,7 @@ export const termsArticle = defineHelpArticle({
     {
       kind: 'paragraph',
       id: 'terms-demo-purpose',
-      text: 'QArefully Powder Co. is an educational local QA demo for exploring a storefront interface. Its catalog content, product descriptions, and checkout flow are fictional or simulated.',
+      text: 'QArefully Materials Exchange is an educational local QA demo for exploring a materials-supply interface. Its catalogue content, product descriptions, and checkout flow are fictional or simulated.',
     },
     {
       kind: 'notice',

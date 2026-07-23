@@ -28,7 +28,7 @@ describe('CategoryNav', () => {
     const customPowder = screen.getByRole('link', { name: 'Custom Powder' });
     expect(customPowder).toHaveAttribute('aria-current', 'page');
     expect(customPowder).toHaveClass('powderizer-nav-link');
-    expect(screen.getByRole('link', { name: 'All products' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'Materials' })).not.toHaveAttribute('aria-current');
   });
 
   it('does not apply Custom Powder treatment to category or deals links', () => {
@@ -41,7 +41,9 @@ describe('CategoryNav', () => {
     expect(screen.getByRole('link', { name: 'Sports Nutrition' })).not.toHaveClass(
       'powderizer-nav-link',
     );
-    expect(screen.getByRole('link', { name: 'Deals' })).not.toHaveClass('powderizer-nav-link');
+    expect(screen.getByRole('link', { name: 'Stock offers' })).not.toHaveClass(
+      'powderizer-nav-link',
+    );
   });
 
   it('links to bundles and marks its dedicated page as current', () => {

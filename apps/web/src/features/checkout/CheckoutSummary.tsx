@@ -46,7 +46,7 @@ export function CheckoutSummary({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Bag summary</CardTitle>
+        <CardTitle>Order summary</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
@@ -61,6 +61,12 @@ export function CheckoutSummary({
                 {item.variantSnap && (
                   <span className="block text-xs text-muted-foreground">
                     SKU: {item.variantSnap.sku} · {item.variantSnap.weightGrams}g
+                  </span>
+                )}
+                {item.variantSnap && (
+                  <span className="block text-xs text-muted-foreground">
+                    Resolved pack price: {formatMoney(item.resolvedUnitPriceCents)} ·{' '}
+                    {formatMoney(item.perTonneCents)} / tonne · {item.variantSnap.weightGrams}g pack
                   </span>
                 )}
               </span>
@@ -99,7 +105,7 @@ export function CheckoutSummary({
         </div>
         <Separator />
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">Merchandise subtotal</span>
+          <span className="text-muted-foreground">Resolved merchandise subtotal</span>
           <span>{formatMoney(cart.subtotalCents)}</span>
         </div>
         <PromoCodeForm
@@ -119,17 +125,23 @@ export function CheckoutSummary({
           </div>
         )}
         {deliveryPreview && (
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>
-              {deliveryModeLabel(deliveryPreview.mode)} delivery
-              {deliveryPreview.mode !== 'freight' && ' · Free'}
-            </span>
-            <span>
-              {deliveryPreview.chargeCents === 0
-                ? '$0.00'
-                : formatMoney(deliveryPreview.chargeCents)}
-            </span>
-          </div>
+          <>
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>
+                {deliveryModeLabel(deliveryPreview.mode) === 'Freight'
+                  ? 'Pallet freight scheduled after order confirmation'
+                  : 'Parcel delivery · Free'}
+              </span>
+              <span>
+                {deliveryPreview.chargeCents === 0
+                  ? '$0.00'
+                  : formatMoney(deliveryPreview.chargeCents)}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Total order weight: {deliveryPreview.weightGrams.toLocaleString()}g
+            </p>
+          </>
         )}
         <Separator />
         <div className="flex items-center justify-between text-lg font-bold">

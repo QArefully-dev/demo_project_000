@@ -72,6 +72,9 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
         case 'CARD_INVALID':
           sendBadRequest(reply, 'Invalid card details');
           return;
+        case 'BELOW_MOQ':
+          sendBadRequest(reply, 'Cart quantity does not meet a variant minimum order quantity');
+          return;
         case 'PROMO_INVALID':
           sendBadRequest(reply, result.promoError ?? 'Invalid or ineligible promo code');
           return;

@@ -29,7 +29,7 @@ export function CategoryNav() {
         aria-current={isCatalog && activeCategory === '' && !isDealsActive ? 'page' : undefined}
         className={linkClassName(isCatalog && activeCategory === '' && !isDealsActive)}
       >
-        All products
+        Materials
       </Link>
       {!isLoading &&
         categories.slice(0, 6).map((category) => (
@@ -66,7 +66,7 @@ export function CategoryNav() {
           isDealsActive && 'bg-sale/10',
         )}
       >
-        Deals
+        Stock offers
       </Link>
     </nav>
   );

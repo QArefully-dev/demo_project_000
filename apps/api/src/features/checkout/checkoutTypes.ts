@@ -24,6 +24,7 @@ export type CheckoutErrorCode =
   | 'IDEMPOTENT_IN_PROGRESS'
   | 'RESERVATION_EXPIRED'
   | 'INSUFFICIENT_STOCK'
+  | 'BELOW_MOQ'
   | 'CHECKOUT_FAILED';
 
 export type CheckoutResult =

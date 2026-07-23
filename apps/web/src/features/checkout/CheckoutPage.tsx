@@ -40,17 +40,18 @@ export function CheckoutPage() {
             {flow.cartRecoveryMessage}
           </p>
         )}
-        <p className="text-muted-foreground">Your powder cart is empty</p>
-        <Button render={<Link to="/catalog" />}>Shop powders</Button>
+        <p className="text-muted-foreground">Your order is empty</p>
+        <Button render={<Link to="/catalog" />}>Browse materials</Button>
       </div>
     );
   }
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h1 className="mb-2 text-2xl font-bold">Checkout your powders</h1>
+      <h1 className="mb-2 text-2xl font-bold">Confirm your order</h1>
       <p className="mb-6 text-sm text-muted-foreground">
-        This is a simulated checkout. No payment card will be charged.
+        Payment is simulated for this demo. No real payment is collected and no goods are
+        dispatched.
       </p>
       {cartError && (
         <div

@@ -56,7 +56,17 @@ function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError && error.isNetworkError) {
     return 'Unable to reach the shop server. Check that it is running and try again.';
   }
+  if (
+    error instanceof ApiError &&
+    (error.response as { code?: unknown } | null)?.code === 'BELOW_MOQ'
+  ) {
+    return 'Minimum order quantity not met. Adjust pallet quantity and try again.';
+  }
   return error instanceof Error ? error.message : fallback;
+}
+
+function cartLinePendingKey(productId: string, variantId?: number): string {
+  return variantId === undefined ? productId : `line:${productId}:${variantId}`;
 }
 
 export function useCart() {
@@ -193,11 +203,14 @@ export function useCart() {
   );
 
   const addItem = useCallback(
-    (productId: string, variantId?: number) =>
+    (productId: string, variantId?: number, quantity?: number) =>
       runCartAction(
         'add',
         productId,
-        (cartId) => api.addToCart(cartId, productId, variantId),
+        (cartId) =>
+          quantity === undefined
+            ? api.addToCart(cartId, productId, variantId)
+            : api.addToCart(cartId, productId, variantId, quantity),
         true,
       ),
     [runCartAction],
@@ -213,18 +226,29 @@ export function useCart() {
     [runCartAction],
   );
   const updateQuantity = useCallback(
-    (productId: string, quantity: number) =>
+    (productId: string, quantity: number, variantId?: number) =>
       runCartAction(
         'update',
-        productId,
-        (cartId) => api.updateCartItem(cartId, productId, quantity),
+        cartLinePendingKey(productId, variantId),
+        (cartId) =>
+          variantId === undefined
+            ? api.updateCartItem(cartId, productId, quantity)
+            : api.updateCartItem(cartId, productId, quantity, variantId),
         false,
       ),
     [runCartAction],
   );
   const removeItem = useCallback(
-    (productId: string) =>
-      runCartAction('remove', productId, (cartId) => api.removeFromCart(cartId, productId), false),
+    (productId: string, variantId?: number) =>
+      runCartAction(
+        'remove',
+        cartLinePendingKey(productId, variantId),
+        (cartId) =>
+          variantId === undefined
+            ? api.removeFromCart(cartId, productId)
+            : api.removeFromCart(cartId, productId, variantId),
+        false,
+      ),
     [runCartAction],
   );
   const updateMixQuantity = useCallback(
@@ -267,8 +291,8 @@ export function useCart() {
   }, [initializeCart]);
 
   const isActionPending = useCallback(
-    (productId: string, action?: CartAction) => {
-      const pendingAction = state.pendingActions[productId];
+    (productId: string, action?: CartAction, variantId?: number) => {
+      const pendingAction = state.pendingActions[cartLinePendingKey(productId, variantId)];
       return action ? pendingAction === action : pendingAction !== undefined;
     },
     [state.pendingActions],

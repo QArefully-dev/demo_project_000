@@ -8,10 +8,7 @@ import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter, type AuditWriter } from '../../src/features/audit/auditService.js';
 import { createBundleRepository } from '../../src/features/bundles/bundleRepository.js';
-import {
-  createBundleService,
-  type BundleUnavailable,
-} from '../../src/features/bundles/bundleService.js';
+import { createBundleService } from '../../src/features/bundles/bundleService.js';
 import {
   createCartRepository,
   type CartRepository,
@@ -224,9 +221,7 @@ void test('rejects every unavailable component without touching ordinary cart li
   assert.equal(typeof result, 'object');
   if (typeof result === 'string' || !('error' in result))
     throw new Error('Expected unavailable bundle');
-  const sortedVariantIds = (result).variantIds.sort(
-    (a, b) => Number(a) - Number(b),
-  );
+  const sortedVariantIds = result.variantIds.sort((a, b) => Number(a) - Number(b));
   const expected = [variant8, variant13].map(String).sort((a, b) => Number(a) - Number(b));
   assert.deepEqual(sortedVariantIds, expected);
   assert.equal(carts.lineQuantity(cartId, variant8), 2);

@@ -18,6 +18,10 @@
       "types": "./dist/products.d.ts",
       "import": "./dist/products.js"
     },
+    "./pricing": {
+      "types": "./dist/pricing.d.ts",
+      "import": "./dist/pricing.js"
+    },
     "./cart": {
       "types": "./dist/cart.d.ts",
       "import": "./dist/cart.js"

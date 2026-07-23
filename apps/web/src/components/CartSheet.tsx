@@ -55,7 +55,7 @@ export function CartSheet() {
       </SheetTrigger>
       <SheetContent className="flex flex-col w-full sm:w-auto">
         <SheetHeader>
-          <SheetTitle>Powder cart ({itemCount} bags)</SheetTitle>
+          <SheetTitle>Order ({itemCount} units)</SheetTitle>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto py-4">
           {isInitializing && <LoadingSpinner />}
@@ -75,20 +75,34 @@ export function CartSheet() {
             </div>
           )}
           {!isInitializing && !isLoading && cart && cart.totalItems === 0 && (
-            <p className="py-8 text-center text-muted-foreground">Your powder cart is empty</p>
+            <p className="py-8 text-center text-muted-foreground">Your order is empty</p>
           )}
           {!isInitializing &&
             !isLoading &&
             cart &&
             cart.items.map((item) => (
-              <CartLineItem
-                key={cartItemKey(item)}
-                item={item}
-                isUpdating={isActionPending(item.productId, 'update')}
-                isRemoving={isActionPending(item.productId, 'remove')}
-                onUpdateQuantity={updateQuantity}
-                onRemove={removeItem}
-              />
+              <div key={cartItemKey(item)}>
+                <CartLineItem
+                  item={item}
+                  isUpdating={isActionPending(
+                    item.productId,
+                    'update',
+                    item.variantSnap?.variantId,
+                  )}
+                  isRemoving={isActionPending(
+                    item.productId,
+                    'remove',
+                    item.variantSnap?.variantId,
+                  )}
+                  onUpdateQuantity={updateQuantity}
+                  onRemove={removeItem}
+                />
+                {item.variantSnap && (
+                  <p className="-mt-1 pb-3 text-xs text-muted-foreground">
+                    {formatMoney(item.perTonneCents)} / tonne · {item.variantSnap.weightGrams}g pack
+                  </p>
+                )}
+              </div>
             ))}
           {!isInitializing &&
             !isLoading &&
@@ -107,18 +121,27 @@ export function CartSheet() {
         {!isInitializing && cart && cart.totalItems > 0 && (
           <div className="border-t pt-4 space-y-3">
             <div className="flex items-center justify-between text-sm">
-              <span>Subtotal</span>
+              <span>Resolved order subtotal</span>
               <span className="font-semibold">{formatMoney(cart.subtotalCents)}</span>
             </div>
             {cart.deliveryPreview && (
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <span>{deliveryLabel(cart.deliveryPreview.mode)} delivery</span>
-                <span>
-                  {cart.deliveryPreview.chargeCents === 0
-                    ? 'Free'
-                    : formatMoney(cart.deliveryPreview.chargeCents)}
-                </span>
-              </div>
+              <>
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>
+                    {deliveryLabel(cart.deliveryPreview.mode) === 'Freight'
+                      ? 'Pallet freight'
+                      : 'Parcel delivery'}
+                  </span>
+                  <span>
+                    {cart.deliveryPreview.chargeCents === 0
+                      ? 'Free'
+                      : formatMoney(cart.deliveryPreview.chargeCents)}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Total order weight: {cart.deliveryPreview.weightGrams.toLocaleString()}g
+                </p>
+              </>
             )}
             <Separator />
             <Button
@@ -126,7 +149,7 @@ export function CartSheet() {
               variant="outline"
               render={<Link to="/cart" onClick={() => setOpen(false)} />}
             >
-              View Full Cart
+              Review order
             </Button>
           </div>
         )}

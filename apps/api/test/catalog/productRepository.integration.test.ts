@@ -294,8 +294,10 @@ void test('advanced catalog predicates are inclusive, composable, and stable', (
     'price_desc',
     'bestselling',
   ] as const) {
-    const ties = [1, 2]
-      .flatMap((page) => products.list({ sort, page, pageSize: 48 }).items)
+    const pageSize = 48;
+    const pageCount = Math.ceil(products.list({ sort, pageSize }).total / pageSize);
+    const ties = Array.from({ length: pageCount }, (_, index) => index + 1)
+      .flatMap((page) => products.list({ sort, page, pageSize }).items)
       .filter((row) => row.id === 1 || row.id === tieId);
     assert.deepEqual(
       ties.map((row) => row.id),

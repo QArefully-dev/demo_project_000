@@ -68,15 +68,13 @@ describe('HomePage', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('Blended to order')).toBeInTheDocument();
-    expect(screen.getByText('Professionally packed')).toBeInTheDocument();
-    expect(screen.getByText('Simulated checkout')).toBeInTheDocument();
+    expect(screen.getByText('Clear product data')).toBeInTheDocument();
+    expect(screen.getByText('Supply-ready catalogue')).toBeInTheDocument();
+    expect(screen.getByText('Demo ordering')).toBeInTheDocument();
     expect(screen.getByText('No real payment is processed')).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Custom Powder builder' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /open custom powder/i })).toHaveAttribute(
-      'href',
-      '/custom-powder',
-    );
+    expect(screen.getByLabelText('Live trading update')).toBeInTheDocument();
+    expect(screen.getByText('Coming next')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Live trading' })).toBeInTheDocument();
     expect(screen.getByText('Bestsellers')).toBeInTheDocument();
     expect(screen.getByText('Just in')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Product new')).toBeInTheDocument());

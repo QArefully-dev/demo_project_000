@@ -11,7 +11,7 @@ export const shippingArticle = defineHelpArticle({
     {
       kind: 'paragraph',
       id: 'shipping-demo-purpose',
-      text: 'QArefully Powder Co. is a local QA demo. Checkout and order updates let you explore the interface, but they do not create a real shipment.',
+      text: 'QArefully Materials Exchange is a local QA demo. Checkout and order updates let you explore the interface, but they do not create a real shipment.',
     },
     {
       kind: 'section',
@@ -83,7 +83,7 @@ export const returnsArticle = defineHelpArticle({
     {
       kind: 'paragraph',
       id: 'returns-demo-purpose',
-      text: 'QArefully Powder Co. provides a simulated returns and refunds workflow for QA testing. All purchases, payments, and refunds are simulated only and do not represent real transactions.',
+      text: 'QArefully Materials Exchange provides a simulated returns and refunds workflow for QA testing. All purchases, payments, and refunds are simulated only and do not represent real transactions.',
     },
     {
       kind: 'notice',
@@ -273,12 +273,12 @@ export const safetyArticle = defineHelpArticle({
   path: '/help/powder-safety',
   title: 'Product safety',
   summary:
-    'Consumption classification, handling guidance, and PPE requirements for QArefully Powder Co. products.',
+    'Consumption classification, handling guidance, and PPE requirements for QArefully Materials Exchange products.',
   blocks: [
     {
       kind: 'paragraph',
       id: 'safety-overview',
-      text: 'QArefully Powder Co. products fall into food and non-food categories. Each product page displays its consumption classification and any handling warnings.',
+      text: 'QArefully Materials Exchange products fall into food and non-food categories. Each product page displays its consumption classification and any handling warnings.',
     },
     {
       kind: 'section',
@@ -313,11 +313,11 @@ export const safetyArticle = defineHelpArticle({
       paragraphs: [
         {
           id: 'safety-ppe-guidance',
-          text: 'Non-food powders such as cement, plaster, mortar, pigments, garden lime, laundry powder, and spill absorbents require personal protective equipment during handling. Use eye protection, gloves, and a dust mask when handling these materials.',
+          text: 'Non-food materials such as cement, plaster, mortar, pigments, garden lime, laundry powder, and spill absorbents require personal protective equipment during handling. Use eye protection, gloves, and a dust mask when handling these materials.',
         },
         {
           id: 'safety-ppe-ventilation',
-          text: 'Work in a well-ventilated area. Avoid breathing dust. Keep powders dry and sealed when not in use.',
+          text: 'Work in a well-ventilated area. Avoid breathing dust. Keep materials dry and sealed when not in use.',
         },
       ],
     },

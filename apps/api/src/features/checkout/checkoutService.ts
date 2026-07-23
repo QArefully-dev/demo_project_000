@@ -8,6 +8,7 @@ import { createCheckoutQuote } from './checkoutQuote.js';
 import { finalizeAuthorizedCheckout } from './checkoutFinalizer.js';
 import { prepareMixes } from './checkoutMixPreparation.js';
 import { InventoryError } from '../inventory/inventoryTypes.js';
+import { validateMoq } from '../pricing/pricingRules.js';
 import type { PreGatewayFailureCode } from '../audit/auditEvent.js';
 import type {
   CheckoutDependencies,
@@ -108,6 +109,13 @@ function prepare(
       return failPreparation(
         params.idempotencyKey,
         { success: false, error: 'CART_EMPTY' },
+        params.auditContext,
+        dependencies,
+      );
+    if (!cartMeetsVariantMoq(cart, dependencies))
+      return failPreparation(
+        params.idempotencyKey,
+        { success: false, error: 'BELOW_MOQ' },
         params.auditContext,
         dependencies,
       );
@@ -231,6 +239,19 @@ function prepare(
       throw new Error('Checkout intent quote persistence failed');
     }
     return { quoteTotalCents: quote.totalCents, card };
+  });
+}
+
+function cartMeetsVariantMoq(cart: Cart, dependencies: CheckoutDependencies): boolean {
+  return cart.items.every((item) => {
+    const variantId = item.variantSnap?.variantId;
+    if (!variantId) return false;
+    const variant = dependencies.carts.getVariant(variantId);
+    return (
+      variant !== undefined &&
+      variant.active === 1 &&
+      validateMoq(item.quantity, variant.weight_grams, variant.moq_sacks)
+    );
   });
 }
 

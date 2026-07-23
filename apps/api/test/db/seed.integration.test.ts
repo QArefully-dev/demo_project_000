@@ -768,6 +768,40 @@ void test('seed is idempotent for canonical catalog and variants', (t) => {
   assert.equal(secondSpecs.count, firstSpecs.count);
 });
 
+void test('repeat seed keeps canonical defaults product-owned and preserves noncanonical products', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-repeat-seed-defaults-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+  db.prepare(
+    "INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id, slug, sales_count) VALUES (51, 'Local 51', 'User-created product', 500, 'Local', 10, 'local-51', 'local-51', 0)",
+  ).run();
+  seedDatabase(db);
+
+  const canonicalIds = CATALOG_PRODUCTS.map((product) => product.id);
+  const placeholders = canonicalIds.map(() => '?').join(',');
+  const foreignDefaults = (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS count
+         FROM products p
+         LEFT JOIN product_variants v ON v.id = p.default_variant_id
+         WHERE p.id IN (${placeholders})
+           AND (v.product_id IS NULL OR v.product_id <> p.id)`,
+      )
+      .get(...canonicalIds) as { count: number }
+  ).count;
+  assert.equal(foreignDefaults, 0);
+  assert.deepEqual(db.prepare('SELECT id, name FROM products WHERE id = 51').get(), {
+    id: 51,
+    name: 'Local 51',
+  });
+});
+
 void test('seed preserves local product ID 51 outside canonical sets', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-local-id-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });

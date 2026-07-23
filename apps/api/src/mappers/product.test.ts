@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { Value } from '@sinclair/typebox/value';
+import { ProductWithVariants } from '@shop/contracts/products';
+import { TIER_LADDER } from '@shop/contracts/pricing';
 
 import { toProductContract, toProductWithVariantsContract } from './product.js';
 import type { ProductRow, VariantRow } from '../features/catalog/productRepository.js';
@@ -46,6 +49,7 @@ const sampleVariants: VariantRow[] = [
     label: '1 kg Bag',
     weight_grams: 1000,
     price_cents: 799,
+    moq_sacks: 4,
     compare_at_price_cents: null,
     stock_count: 10,
     backorderable: 0,
@@ -63,6 +67,7 @@ const sampleVariants: VariantRow[] = [
     label: '5 kg Bag',
     weight_grams: 5000,
     price_cents: 2499,
+    moq_sacks: 4,
     compare_at_price_cents: 2999,
     stock_count: 5,
     backorderable: 1,
@@ -80,6 +85,7 @@ const sampleVariants: VariantRow[] = [
     label: '25 kg Bag',
     weight_grams: 25000,
     price_cents: 8499,
+    moq_sacks: 4,
     compare_at_price_cents: null,
     stock_count: 0,
     backorderable: 0,
@@ -162,6 +168,9 @@ void test('toProductWithVariantsContract maps variants, facts, price range, and 
   assert.equal(result.variants[0]!.sku, 'BKP-0001-001');
   assert.equal(result.variants[0]!.variantId, 1);
   assert.equal(result.variants[0]!.weightGrams, 1000);
+  assert.equal(result.variants[0]!.moqSacks, 4);
+  assert.equal(result.variants[0]!.perTonneCents, 799000);
+  assert.deepEqual(result.variants[0]!.priceTiers, TIER_LADDER);
   assert.equal(result.variants[0]!.backorderable, false);
   assert.equal(result.variants[1]!.backorderable, true);
   assert.equal(result.variants[1]!.backorderLeadDays, 7);
@@ -174,6 +183,7 @@ void test('toProductWithVariantsContract maps variants, facts, price range, and 
   assert.equal(result.mixingGroup, 'food-grade');
   assert.ok(typeof result.categoryFacts === 'object');
   assert.equal((result.categoryFacts as Record<string, unknown>).texture, 'Fine soft powder');
+  assert.equal(Value.Check(ProductWithVariants, result), true);
 });
 
 void test('toProductWithVariantsContract handles null details_json and baseAvailability edge cases', () => {

@@ -1,5 +1,6 @@
 import type { Cart, CartLineVariantSnap } from '@shop/contracts/cart';
 import type { PowderMixCartItem } from '@shop/contracts/powderizer';
+import { SACK_WEIGHT_GRAMS } from '@shop/contracts/pricing';
 import { CATALOG_PRODUCTS } from '@shop/catalog';
 import { toProductContract } from '../../mappers/product.js';
 import type { CartLineRow, CartRepository } from './cartRepository.js';
@@ -9,6 +10,8 @@ import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
 import type { InventoryService } from '../inventory/inventoryService.js';
+import { perTonneCents, resolveUnitPriceCents, validateMoq } from '../pricing/pricingRules.js';
+import { quoteCartDelivery } from '../delivery/deliveryRules.js';
 
 export interface CartAuditDependencies {
   unitOfWork: UnitOfWork;
@@ -26,14 +29,27 @@ export interface CartService {
   add(
     cartId: string,
     variantId: string,
+    quantityOrContext?: number | AuditContext,
     context?: AuditContext,
-  ): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_FOUND' | 'CART_RESERVED';
+  ):
+    | Cart
+    | 'CART_NOT_FOUND'
+    | 'VARIANT_NOT_FOUND'
+    | 'CART_RESERVED'
+    | 'BELOW_MOQ'
+    | 'INVALID_QUANTITY';
   update(
     cartId: string,
     variantId: string,
     quantity: number,
     context?: AuditContext,
-  ): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_IN_CART' | 'CART_RESERVED';
+  ):
+    | Cart
+    | 'CART_NOT_FOUND'
+    | 'VARIANT_NOT_IN_CART'
+    | 'CART_RESERVED'
+    | 'BELOW_MOQ'
+    | 'INVALID_QUANTITY';
   remove(
     cartId: string,
     variantId: string,
@@ -62,11 +78,20 @@ export function createCartService(
         return result;
       }),
     get: (cartId) => getCart(repository, cartId, mixes, availabilityDependencies),
-    add: (cartId, variantId, context) =>
+    add: (cartId, variantId, quantityOrContext, context) =>
       runCartMutation(auditDependencies, () => {
-        requireAuditContext(auditDependencies, context);
-        const result = addItem(repository, cartId, variantId, mixes, availabilityDependencies);
-        if (context && auditDependencies && typeof result !== 'string') {
+        const quantity = typeof quantityOrContext === 'number' ? quantityOrContext : undefined;
+        const auditContext = typeof quantityOrContext === 'number' ? context : quantityOrContext;
+        requireAuditContext(auditDependencies, auditContext);
+        const result = addItem(
+          repository,
+          cartId,
+          variantId,
+          quantity,
+          mixes,
+          availabilityDependencies,
+        );
+        if (auditContext && auditDependencies && typeof result !== 'string') {
           auditDependencies.audit.append({
             action: 'cart.product_added',
             cartId,
@@ -74,7 +99,7 @@ export function createCartService(
             quantity:
               result.items.find((item) => item.variantSnap?.variantId === Number(variantId))
                 ?.quantity ?? 1,
-            context,
+            context: auditContext,
           });
         }
         return result;
@@ -229,6 +254,11 @@ export function getCart(
     const productBase = cartLineRowToProductBase(row);
     const available = availableByVariant.get(row.variant_id) ?? 0;
     const variantBackorderable = row.variant_backorderable === 1;
+    const unitPriceCents = resolveUnitPriceCents(
+      row.price_cents,
+      row.quantity,
+      row.variant_weight_grams,
+    );
     return {
       productId: String(row.product_id),
       product: toProductContract({
@@ -238,8 +268,10 @@ export function getCart(
         backorder_lead_days: row.variant_backorder_lead_days,
       }),
       variantSnap: toVariantSnap(row),
+      perTonneCents: perTonneCents(row.price_cents, row.variant_weight_grams),
+      resolvedUnitPriceCents: unitPriceCents,
       quantity: row.quantity,
-      lineTotalCents: row.price_cents * row.quantity,
+      lineTotalCents: unitPriceCents * row.quantity,
     };
   });
   const mixItems = mixes?.listForCart(cartId).map(toPowderMixCartItem) ?? [];
@@ -249,6 +281,7 @@ export function getCart(
     mixItems,
     subtotalCents: [...items, ...mixItems].reduce((total, item) => total + item.lineTotalCents, 0),
     totalItems: [...items, ...mixItems].reduce((total, item) => total + item.quantity, 0),
+    deliveryPreview: quoteCartDelivery({ items, mixItems }),
   };
 }
 
@@ -256,16 +289,70 @@ export function addItem(
   repository: CartRepository,
   cartId: string,
   variantId: string,
+  quantity?: number,
   mixes?: PowderMixRepository,
   availabilityDependencies?: CartAvailabilityDependencies,
-): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_FOUND' | 'CART_RESERVED' {
+):
+  | Cart
+  | 'CART_NOT_FOUND'
+  | 'VARIANT_NOT_FOUND'
+  | 'CART_RESERVED'
+  | 'BELOW_MOQ'
+  | 'INVALID_QUANTITY' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
   if (repository.isReserved(cartId, availabilityDependencies?.clock.now().toISOString()))
     return 'CART_RESERVED';
   if (!repository.variantExists(variantId)) return 'VARIANT_NOT_FOUND';
-  repository.addLine(cartId, variantId);
+  const variant = repository.getVariant(Number(variantId));
+  if (!variant) return 'VARIANT_NOT_FOUND';
+  const addedQuantity = quantity ?? minimumMoqQuantity(variant.weight_grams, variant.moq_sacks);
+  if (addedQuantity === undefined) return 'INVALID_QUANTITY';
+  const nextQuantity = repository.lineQuantity(cartId, variantId) + addedQuantity;
+  if (!supportsCartLineArithmetic(variant, nextQuantity)) return 'INVALID_QUANTITY';
+  if (!validateMoq(nextQuantity, variant.weight_grams, variant.moq_sacks)) {
+    return 'BELOW_MOQ';
+  }
+  repository.addLineQuantity(cartId, variantId, addedQuantity);
   repository.touch(cartId);
   return getCart(repository, cartId, mixes, availabilityDependencies) ?? 'CART_NOT_FOUND';
+}
+
+function minimumMoqQuantity(weightGrams: number, moqSacks: number): number | undefined {
+  if (
+    !Number.isSafeInteger(weightGrams) ||
+    weightGrams < 1 ||
+    !Number.isSafeInteger(moqSacks) ||
+    moqSacks < 1 ||
+    moqSacks > Math.floor(Number.MAX_SAFE_INTEGER / SACK_WEIGHT_GRAMS)
+  ) {
+    return undefined;
+  }
+  const quantity = Math.ceil((moqSacks * SACK_WEIGHT_GRAMS) / weightGrams);
+  if (!Number.isSafeInteger(quantity) || quantity < 1) {
+    return undefined;
+  }
+  return quantity;
+}
+
+function supportsCartLineArithmetic(
+  variant: { weight_grams: number; price_cents: number },
+  quantity: number,
+): boolean {
+  if (
+    !Number.isSafeInteger(quantity) ||
+    quantity < 1 ||
+    !Number.isSafeInteger(variant.weight_grams) ||
+    variant.weight_grams < 1 ||
+    !Number.isSafeInteger(variant.price_cents) ||
+    variant.price_cents < 0 ||
+    quantity > Math.floor(Number.MAX_SAFE_INTEGER / variant.weight_grams) ||
+    variant.price_cents > Math.floor(Number.MAX_SAFE_INTEGER / 100) ||
+    (variant.price_cents > 0 &&
+      quantity > Math.floor(Number.MAX_SAFE_INTEGER / variant.price_cents))
+  ) {
+    return false;
+  }
+  return true;
 }
 
 export function updateItem(
@@ -275,10 +362,23 @@ export function updateItem(
   quantity: number,
   mixes?: PowderMixRepository,
   availabilityDependencies?: CartAvailabilityDependencies,
-): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_IN_CART' | 'CART_RESERVED' {
+):
+  | Cart
+  | 'CART_NOT_FOUND'
+  | 'VARIANT_NOT_IN_CART'
+  | 'CART_RESERVED'
+  | 'BELOW_MOQ'
+  | 'INVALID_QUANTITY' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
   if (repository.isReserved(cartId, availabilityDependencies?.clock.now().toISOString()))
     return 'CART_RESERVED';
+  if (quantity !== 0) {
+    if (repository.lineQuantity(cartId, variantId) === 0) return 'VARIANT_NOT_IN_CART';
+    const variant = repository.getVariant(Number(variantId));
+    if (!variant) return 'VARIANT_NOT_IN_CART';
+    if (!supportsCartLineArithmetic(variant, quantity)) return 'INVALID_QUANTITY';
+    if (!validateMoq(quantity, variant.weight_grams, variant.moq_sacks)) return 'BELOW_MOQ';
+  }
   const changed =
     quantity === 0
       ? repository.removeLine(cartId, variantId)

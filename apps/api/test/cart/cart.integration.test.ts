@@ -27,6 +27,7 @@ import { createAuditRepository } from '../../src/features/audit/auditRepository.
 import { createAuditWriter, type AuditWriter } from '../../src/features/audit/auditService.js';
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
+import { perTonneCents, resolveUnitPriceCents } from '../../src/features/pricing/pricingRules.js';
 
 function defaultVariantId(db: ReturnType<typeof openDatabase>, productId: number): string {
   const row = db
@@ -36,6 +37,15 @@ function defaultVariantId(db: ReturnType<typeof openDatabase>, productId: number
     .get(productId) as { id: number } | undefined;
   if (!row) throw new Error(`No default variant for product ${productId}`);
   return String(row.id);
+}
+
+function responseStatusCode(response: unknown): number {
+  if (typeof response !== 'object' || response === null || !('statusCode' in response)) {
+    throw new Error('Expected an injected HTTP response');
+  }
+  const { statusCode } = response;
+  if (typeof statusCode !== 'number') throw new Error('Expected a numeric HTTP status code');
+  return statusCode;
 }
 
 void test('cart service coordinates cart repository and promo eligibility', (t) => {
@@ -50,7 +60,7 @@ void test('cart service coordinates cart repository and promo eligibility', (t) 
   const variant1 = defaultVariantId(db, 1);
   const { cartId } = createCart(carts);
   assert.equal(addItem(carts, cartId, variant1).id, cartId);
-  assert.equal(updateItem(carts, cartId, variant1, 2).totalItems, 2);
+  assert.equal(updateItem(carts, cartId, variant1, 4).totalItems, 4);
   assert.equal(
     validatePromo(
       { code: 'SAVE10', cartId, userId: null, now: new Date('2026-07-14T10:00:00.000Z') },
@@ -78,6 +88,46 @@ void test('cart blocks new inactive selections but retains existing lines', (t) 
   db.prepare('UPDATE product_variants SET active = 0 WHERE id = ?').run(variant1);
   assert.equal(addItem(carts, cartId, variant1), 'VARIANT_NOT_FOUND');
   assert.equal(getCart(carts, cartId)?.items[0]?.productId, '1');
+});
+
+void test('cart transports server-resolved default and discounted-tier prices', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-tier-pricing-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+  const carts = createCartRepository(db);
+  const variant = db
+    .prepare(
+      `SELECT id, price_cents, weight_grams
+       FROM product_variants WHERE active = 1 ORDER BY id LIMIT 1`,
+    )
+    .get() as { id: number; price_cents: number; weight_grams: number };
+  const defaultCartId = createCart(carts).cartId;
+  carts.addLineQuantity(defaultCartId, String(variant.id), 1);
+  const defaultLine = getCart(carts, defaultCartId)?.items[0];
+  assert.equal(defaultLine?.resolvedUnitPriceCents, variant.price_cents);
+  assert.equal(
+    defaultLine?.perTonneCents,
+    perTonneCents(variant.price_cents, variant.weight_grams),
+  );
+  assert.equal(defaultLine?.lineTotalCents, variant.price_cents);
+
+  const quantity = Math.ceil(5_000_000 / variant.weight_grams);
+  const discountedCartId = createCart(carts).cartId;
+  carts.addLineQuantity(discountedCartId, String(variant.id), quantity);
+  const cart = getCart(carts, discountedCartId);
+  const unitPriceCents = resolveUnitPriceCents(variant.price_cents, quantity, variant.weight_grams);
+  assert.ok(unitPriceCents < variant.price_cents);
+  assert.equal(cart?.items[0]?.resolvedUnitPriceCents, unitPriceCents);
+  assert.equal(
+    cart?.items[0]?.perTonneCents,
+    perTonneCents(variant.price_cents, variant.weight_grams),
+  );
+  assert.equal(cart?.items[0]?.lineTotalCents, unitPriceCents * quantity);
+  assert.equal(cart?.subtotalCents, unitPriceCents * quantity);
 });
 
 void test('cart reads batch available-to-sell and ignores only expired prepared locks', (t) => {
@@ -138,6 +188,7 @@ void test('cart reads persisted mixes as first-class lines and promos count bag 
   const directory = mkdtempSync(join(tmpdir(), 'shop-mix-cart-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
   seedDatabase(db);
+  db.prepare("UPDATE products SET mixing_group = 'food-grade' WHERE id IN (1, 2, 3, 4, 5)").run();
   t.after(() => {
     closeDatabase(db);
     rmSync(directory, { recursive: true, force: true });
@@ -175,20 +226,20 @@ void test('cart reads persisted mixes as first-class lines and promos count bag 
     mixId,
     components: [
       { productId: '1', productName: 'All-Purpose Flour', percentage: 50, allocatedGrams: 250 },
-      { productId: '2', productName: 'Powdered Sugar', percentage: 50, allocatedGrams: 250 },
+      { productId: '2', productName: 'dry Sugar', percentage: 50, allocatedGrams: 250 },
     ],
     bagSizeGrams: 500,
     fineness: 'fine',
     bagColourScheme: 'ultraviolet-cyan',
     customLabel: 'Breakfast blend',
     priceVersion: 'powderizer-v1',
-    unitPriceCents: 622,
+    unitPriceCents: 472,
     quantity: 5,
-    lineTotalCents: 3110,
+    lineTotalCents: 2360,
     usageLabel: 'Consumable powder',
   });
-  assert.equal(cart.totalItems, 6);
-  assert.equal(cart.subtotalCents, 3110 + cart.items[0].lineTotalCents);
+  assert.equal(cart.totalItems, 9);
+  assert.equal(cart.subtotalCents, 2360 + cart.items[0].lineTotalCents);
   assert.equal(
     validatePromo(
       { code: 'SAVE10', cartId, userId: null, now: new Date('2026-07-14T10:00:00.000Z') },
@@ -238,6 +289,9 @@ void test('cart HTTP response preserves product lines and adds mixItems', async 
   });
   const created = await app.inject({ method: 'POST', url: '/api/cart' });
   const cartId = Value.Parse(CreateCartResponse, created.json()).cartId;
+  db.prepare(
+    "UPDATE product_variants SET delivery_class = 'parcel', weight_grams = 99500, moq_sacks = 1 WHERE id = 6",
+  ).run();
   const product = await app.inject({
     method: 'POST',
     url: `/api/cart/${cartId}/items`,
@@ -262,9 +316,168 @@ void test('cart HTTP response preserves product lines and adds mixItems', async 
   const cart = Value.Parse(Cart, createdMix.json());
   assert.equal(cart.items.length, 1);
   assert.equal(cart.mixItems.length, 1);
-  assert.equal(cart.mixItems[0].lineTotalCents, 622);
+  assert.equal(cart.mixItems[0].lineTotalCents, 472);
   assert.equal(cart.totalItems, 2);
-  assert.equal(cart.subtotalCents, cart.items[0].lineTotalCents + 622);
+  assert.equal(cart.subtotalCents, cart.items[0].lineTotalCents + 472);
+  assert.deepEqual(cart.deliveryPreview, {
+    mode: 'freight',
+    chargeCents: 999,
+    weightGrams: 100_000,
+    reason: 'Total weight 100000g meets or exceeds 100000g freight threshold',
+  });
+});
+
+void test('cart HTTP enforces MOQ and defaults omitted add quantity to its floor', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-moq-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
+  t.after(async () => {
+    await app.close();
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const variant = db
+    .prepare(
+      `SELECT v.id, v.product_id, v.weight_grams, v.moq_sacks
+       FROM product_variants v WHERE v.active = 1 ORDER BY v.id LIMIT 1`,
+    )
+    .get() as { id: number; product_id: number; weight_grams: number; moq_sacks: number };
+  const minimumQuantity = Math.ceil((variant.moq_sacks * 25_000) / variant.weight_grams);
+  const create = await app.inject({ method: 'POST', url: '/api/cart' });
+  const cartId = Value.Parse(CreateCartResponse, create.json()).cartId;
+
+  const added = await app.inject({
+    method: 'POST',
+    url: `/api/cart/${cartId}/items`,
+    payload: { productId: String(variant.product_id), variantId: variant.id },
+  });
+  assert.equal(added.statusCode, 200);
+  const cart = Value.Parse(Cart, added.json());
+  assert.equal(cart.items[0]?.quantity, minimumQuantity);
+
+  const below = await app.inject({
+    method: 'PATCH',
+    url: `/api/cart/${cartId}/items`,
+    payload: { productId: String(variant.product_id), quantity: minimumQuantity - 1 },
+  });
+  assert.equal(below.statusCode, 400);
+  assert.deepEqual(below.json(), {
+    code: 'BELOW_MOQ',
+    error: 'Quantity does not meet this variant minimum order quantity.',
+  });
+});
+
+void test('cart HTTP validates quantities and targets exact variant cart lines', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-variant-mutation-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
+  t.after(async () => {
+    await app.close();
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const variants = db
+    .prepare<[], { id: number; product_id: number; weight_grams: number; moq_sacks: number }>(
+      `SELECT v.id, v.product_id, v.weight_grams, v.moq_sacks
+       FROM product_variants v
+       WHERE v.active = 1
+         AND v.product_id = (
+           SELECT product_id FROM product_variants WHERE active = 1
+           GROUP BY product_id HAVING COUNT(*) > 1 ORDER BY product_id LIMIT 1
+         )
+       ORDER BY v.sort_order LIMIT 2`,
+    )
+    .all();
+  assert.equal(variants.length, 2);
+  const [first, second] = variants;
+  if (!first || !second) throw new Error('Expected two active variants');
+  const firstMinimum = Math.ceil((first.moq_sacks * 25_000) / first.weight_grams);
+  const secondMinimum = Math.ceil((second.moq_sacks * 25_000) / second.weight_grams);
+  const create = await app.inject({ method: 'POST', url: '/api/cart' });
+  const cartId = Value.Parse(CreateCartResponse, create.json()).cartId;
+
+  for (const variant of variants) {
+    const minimum = variant.id === first.id ? firstMinimum : secondMinimum;
+    const added = await app.inject({
+      method: 'POST',
+      url: `/api/cart/${cartId}/items`,
+      payload: {
+        productId: String(variant.product_id),
+        variantId: variant.id,
+        quantity: Number(minimum),
+      },
+    });
+    assert.equal(responseStatusCode(added), 200);
+  }
+
+  for (const payload of [
+    { productId: String(first.product_id), variantId: first.id, quantity: Number.MAX_SAFE_INTEGER },
+    {
+      productId: String(first.product_id),
+      variantId: first.id,
+      quantity: Number.MAX_SAFE_INTEGER + 1,
+    },
+    { productId: String(first.product_id), variantId: first.id, quantity: 1.5 },
+  ]) {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/cart/${cartId}/items`,
+      payload,
+    });
+    assert.equal(responseStatusCode(response), 400);
+  }
+  for (const quantity of [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER + 1, 1.5]) {
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/cart/${cartId}/items`,
+      payload: { productId: String(first.product_id), variantId: first.id, quantity },
+    });
+    assert.equal(responseStatusCode(response), 400);
+  }
+
+  const ambiguousUpdate = await app.inject({
+    method: 'PATCH',
+    url: `/api/cart/${cartId}/items`,
+    payload: { productId: String(first.product_id), quantity: firstMinimum },
+  });
+  assert.equal(ambiguousUpdate.statusCode, 400);
+  const ambiguousRemove = await app.inject({
+    method: 'DELETE',
+    url: `/api/cart/${cartId}/items/${first.product_id}`,
+  });
+  assert.equal(ambiguousRemove.statusCode, 400);
+
+  const updated = await app.inject({
+    method: 'PATCH',
+    url: `/api/cart/${cartId}/items`,
+    payload: {
+      productId: String(first.product_id),
+      variantId: first.id,
+      quantity: firstMinimum + 1,
+    },
+  });
+  assert.equal(updated.statusCode, 200);
+  assert.equal(
+    Value.Parse(Cart, updated.json()).items.find((item) => item.variantSnap?.variantId === first.id)
+      ?.quantity,
+    firstMinimum + 1,
+  );
+
+  const removed = await app.inject({
+    method: 'DELETE',
+    url: `/api/cart/${cartId}/items/${first.product_id}`,
+    payload: { productId: String(first.product_id), variantId: second.id },
+  });
+  assert.equal(removed.statusCode, 200);
+  const remaining = Value.Parse(Cart, removed.json()).items;
+  assert.deepEqual(
+    remaining.map((item) => item.variantSnap?.variantId),
+    [first.id],
+  );
 });
 
 void test('every mix mutation rejects a reserved cart', async (t) => {
@@ -371,7 +584,7 @@ void test('audited cart mutations emit one allowlisted event per committed chang
 
   const { cartId } = service.create(anonymous);
   assert.notEqual(service.add(cartId, variant1, user), 'CART_NOT_FOUND');
-  assert.notEqual(service.update(cartId, variant1, 3, user), 'CART_NOT_FOUND');
+  assert.notEqual(service.update(cartId, variant1, 4, user), 'CART_NOT_FOUND');
   assert.notEqual(service.update(cartId, variant1, 0, user), 'CART_NOT_FOUND');
   assert.equal(service.update(cartId, variant1, 2, user), 'VARIANT_NOT_IN_CART');
 
@@ -412,7 +625,7 @@ void test('audited cart mutations emit one allowlisted event per committed chang
         actor_user_id: 12,
         entity_id: cartId,
         request_id: 'cart-b',
-        metadata_json: JSON.stringify({ productId: Number(variant1), quantity: 1 }),
+        metadata_json: JSON.stringify({ productId: Number(variant1), quantity: 4 }),
       },
       {
         action: 'cart.product_quantity_changed',
@@ -420,7 +633,7 @@ void test('audited cart mutations emit one allowlisted event per committed chang
         actor_user_id: 12,
         entity_id: cartId,
         request_id: 'cart-b',
-        metadata_json: JSON.stringify({ productId: Number(variant1), quantity: 3 }),
+        metadata_json: JSON.stringify({ productId: Number(variant1), quantity: 4 }),
       },
       {
         action: 'cart.product_removed',

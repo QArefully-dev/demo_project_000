@@ -4,22 +4,21 @@ import { describe, expect, it } from 'vitest';
 import { HeroSection } from './HeroSection';
 
 describe('HeroSection', () => {
-  it('renders QArefully powder CTAs with shareable catalog targets', () => {
+  it('renders QArefully Materials Exchange CTA and supply overview', () => {
     render(
       <MemoryRouter>
         <HeroSection />
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('button', { name: /shop powders/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /browse materials/i })).toHaveAttribute(
       'href',
       '/catalog',
     );
-    expect(screen.getByRole('button', { name: /custom blends/i })).toHaveAttribute(
-      'href',
-      '/custom-powder',
-    );
-    expect(screen.getByRole('heading', { name: /powders for food/i })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'Protein Powder powder bag' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /materials supply with operational clarity/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Materials exchange supply overview')).toBeInTheDocument();
+    expect(screen.getByText('Food ingredients')).toBeInTheDocument();
   });
 });

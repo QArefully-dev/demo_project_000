@@ -60,11 +60,46 @@ function cart(id: string, productIds: string[] = []): Cart {
         tags: [],
         specificationGroups: [],
       },
+      perTonneCents: 4000,
+      resolvedUnitPriceCents: 100,
       lineTotalCents: 100,
     })),
     mixItems: [],
     totalItems: productIds.length,
     subtotalCents: productIds.length * 100,
+  };
+}
+
+function cartWithProductVariants(id: string): Cart {
+  const baseLine = cart(id, ['1']).items[0]!;
+  const variants = [
+    { variantId: 101, label: '25kg sack', weightGrams: 25000, quantity: 4, lineTotalCents: 400 },
+    {
+      variantId: 102,
+      label: '1 tonne pallet',
+      weightGrams: 1000000,
+      quantity: 1,
+      lineTotalCents: 1000,
+    },
+  ];
+  return {
+    id,
+    items: variants.map((variant) => ({
+      ...baseLine,
+      variantSnap: {
+        variantId: variant.variantId,
+        sku: `MAT-${variant.variantId}`,
+        label: variant.label,
+        weightGrams: variant.weightGrams,
+        deliveryClass: 'freight' as const,
+      },
+      quantity: variant.quantity,
+      resolvedUnitPriceCents: variant.lineTotalCents / variant.quantity,
+      lineTotalCents: variant.lineTotalCents,
+    })),
+    mixItems: [],
+    subtotalCents: 1400,
+    totalItems: 5,
   };
 }
 
@@ -149,6 +184,103 @@ describe('useCart', () => {
     expect(cartApi.addToCart).toHaveBeenNthCalledWith(2, 'new-cart', 'powder', undefined);
     expect(result.current.cartId).toBe('new-cart');
     expect(result.current.error).toBeNull();
+  });
+
+  it('passes an explicit pallet quantity through the add action', async () => {
+    setCartId('cart');
+    vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
+    vi.mocked(cartApi.addToCart).mockResolvedValueOnce(cart('cart', ['powder']));
+
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    await act(async () => expect(await result.current.addItem('powder', 42, 8)).toBe(true));
+
+    expect(cartApi.addToCart).toHaveBeenCalledWith('cart', 'powder', 42, 8);
+  });
+
+  it('surfaces an MOQ response as a pallet-quantity error', async () => {
+    setCartId('cart');
+    vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart', ['powder']));
+    vi.mocked(cartApi.updateCartItem).mockRejectedValueOnce(
+      new ApiError('Quantity does not meet this variant minimum order quantity.', 400, {
+        error: 'Quantity does not meet this variant minimum order quantity.',
+        code: 'BELOW_MOQ',
+      } as never),
+    );
+
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    await act(async () => expect(await result.current.updateQuantity('powder', 1)).toBe(false));
+
+    expect(result.current.error).toBe(
+      'Minimum order quantity not met. Adjust pallet quantity and try again.',
+    );
+  });
+
+  it('updates same-product sack and pallet lines by their variant identity', async () => {
+    setCartId('cart');
+    const first = deferred<Cart>();
+    const second = deferred<Cart>();
+    vi.mocked(cartApi.getCart).mockResolvedValueOnce(cartWithProductVariants('cart'));
+    vi.mocked(cartApi.updateCartItem)
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    let sackUpdate!: Promise<boolean>;
+    let palletUpdate!: Promise<boolean>;
+    act(() => {
+      sackUpdate = result.current.updateQuantity('1', 5, 101);
+      palletUpdate = result.current.updateQuantity('1', 2, 102);
+    });
+
+    expect(cartApi.updateCartItem).toHaveBeenNthCalledWith(1, 'cart', '1', 5, 101);
+    expect(cartApi.updateCartItem).toHaveBeenNthCalledWith(2, 'cart', '1', 2, 102);
+    expect(result.current.isActionPending('1', 'update', 101)).toBe(true);
+    expect(result.current.isActionPending('1', 'update', 102)).toBe(true);
+
+    await act(async () => {
+      first.resolve(cartWithProductVariants('cart'));
+      second.resolve(cartWithProductVariants('cart'));
+      await Promise.all([first.promise, second.promise]);
+    });
+    expect(await sackUpdate).toBe(true);
+    expect(await palletUpdate).toBe(true);
+  });
+
+  it('removes same-product sack and pallet lines by their variant identity', async () => {
+    setCartId('cart');
+    const first = deferred<Cart>();
+    const second = deferred<Cart>();
+    vi.mocked(cartApi.getCart).mockResolvedValueOnce(cartWithProductVariants('cart'));
+    vi.mocked(cartApi.removeFromCart)
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    let sackRemoval!: Promise<boolean>;
+    let palletRemoval!: Promise<boolean>;
+    act(() => {
+      sackRemoval = result.current.removeItem('1', 101);
+      palletRemoval = result.current.removeItem('1', 102);
+    });
+
+    expect(cartApi.removeFromCart).toHaveBeenNthCalledWith(1, 'cart', '1', 101);
+    expect(cartApi.removeFromCart).toHaveBeenNthCalledWith(2, 'cart', '1', 102);
+    expect(result.current.isActionPending('1', 'remove', 101)).toBe(true);
+    expect(result.current.isActionPending('1', 'remove', 102)).toBe(true);
+
+    await act(async () => {
+      first.resolve(cart('cart'));
+      second.resolve(cart('cart'));
+      await Promise.all([first.promise, second.promise]);
+    });
+    expect(await sackRemoval).toBe(true);
+    expect(await palletRemoval).toBe(true);
   });
 
   it('uses a bundle-specific pending key and adds the bundle to the active cart', async () => {

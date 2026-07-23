@@ -1,6 +1,7 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { MoneyCents, PositiveIntegerString } from './common.js';
 import { DeliveryClass } from './delivery.js';
+import { PriceTier } from './pricing.js';
 
 const NormalizedCatalogKey = Type.String({
   minLength: 1,
@@ -354,6 +355,9 @@ export const CatalogVariant = Type.Object(
     label: Type.String({ minLength: 1, maxLength: 160 }),
     weightGrams: Type.Integer({ minimum: 1 }),
     priceCents: MoneyCents,
+    moqSacks: Type.Integer({ minimum: 1 }),
+    perTonneCents: MoneyCents,
+    priceTiers: Type.Array(PriceTier, { minItems: 1 }),
     compareAtPriceCents: Type.Optional(MoneyCents),
     stockCount: Type.Integer({ minimum: 0 }),
     backorderable: Type.Boolean(),

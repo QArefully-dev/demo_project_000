@@ -90,6 +90,17 @@ describe('Help pages', () => {
     expect(screen.getByText(/Cancellation stops simulated fulfilment/)).toBeInTheDocument();
   });
 
+  it('uses Materials Exchange branding in product safety guidance', () => {
+    renderHelpRoute('/help/powder-safety');
+
+    expect(screen.getByRole('article', { name: 'Product safety' })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'QArefully Materials Exchange products fall into food and non-food categories. Each product page displays its consumption classification and any handling warnings.',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('uses direct native summary disclosure for FAQ entries', () => {
     const { container } = renderHelpRoute('/help/faq');
 

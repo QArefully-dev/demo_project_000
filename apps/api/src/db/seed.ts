@@ -168,9 +168,9 @@ export function seedDatabase(db: Database.Database): void {
 
     const upsertVariant = db.prepare(`
       INSERT INTO product_variants
-        (product_id, sku, label, weight_grams, price_cents, compare_at_price_cents, stock_count, backorderable, backorder_lead_days, delivery_class, active, sort_order, created_at, updated_at)
+        (product_id, sku, label, weight_grams, price_cents, compare_at_price_cents, stock_count, backorderable, backorder_lead_days, delivery_class, active, sort_order, moq_sacks, created_at, updated_at)
       VALUES
-        (@product_id, @sku, @label, @weight_grams, @price_cents, @compare_at_price_cents, @stock_count, @backorderable, @backorder_lead_days, @delivery_class, @active, @sort_order, @created_at, @updated_at)
+        (@product_id, @sku, @label, @weight_grams, @price_cents, @compare_at_price_cents, @stock_count, @backorderable, @backorder_lead_days, @delivery_class, @active, @sort_order, @moq_sacks, @created_at, @updated_at)
       ON CONFLICT(product_id, sort_order) DO UPDATE SET
         sku = excluded.sku,
         label = excluded.label,
@@ -182,6 +182,7 @@ export function seedDatabase(db: Database.Database): void {
         backorder_lead_days = excluded.backorder_lead_days,
         delivery_class = excluded.delivery_class,
         active = excluded.active,
+        moq_sacks = excluded.moq_sacks,
         updated_at = excluded.updated_at
     `);
 
@@ -233,6 +234,9 @@ export function seedDatabase(db: Database.Database): void {
     `);
 
     const variantBySku = db.prepare('SELECT id, product_id FROM product_variants WHERE sku = ?');
+    const variantByProductAndSku = db.prepare(
+      'SELECT id, product_id FROM product_variants WHERE product_id = ? AND sku = ?',
+    );
 
     deleteCanonicalTags.run();
     deleteCanonicalSpecifications.run();
@@ -273,7 +277,7 @@ export function seedDatabase(db: Database.Database): void {
       });
 
       for (const variant of product.variants) {
-        const result = upsertVariant.run({
+        upsertVariant.run({
           product_id: product.id,
           sku: variant.sku,
           label: variant.label,
@@ -286,11 +290,18 @@ export function seedDatabase(db: Database.Database): void {
           delivery_class: variant.deliveryClass,
           active: variant.active ? 1 : 0,
           sort_order: variant.sortOrder,
+          moq_sacks: variant.moqSacks,
           created_at: createdAt,
           updated_at: createdAt,
         });
-        const variantId = Number(result.lastInsertRowid);
-        skuToVariant.set(variant.sku, { id: variantId, product_id: product.id });
+        const storedVariant = variantByProductAndSku.get(product.id, variant.sku) as
+          { id: number; product_id: number } | undefined;
+        if (!storedVariant) {
+          throw new Error(
+            `Seed assertion failed: missing canonical variant ${variant.sku} for product ${product.id}`,
+          );
+        }
+        skuToVariant.set(variant.sku, storedVariant);
       }
 
       const defaultVariantId = defaultVariant
