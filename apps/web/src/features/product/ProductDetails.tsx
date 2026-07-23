@@ -9,13 +9,16 @@ function formatFactValue(value: unknown): string {
   if (value === null || value === undefined) return 'Not specified';
   if (typeof value === 'number') return String(value);
   if (typeof value === 'string') return value;
-  if (Array.isArray(value)) return value.join(', ');
+  if (Array.isArray(value)) return value.map(formatFactValue).join(', ');
   if (typeof value === 'object') {
     return Object.entries(value as Record<string, unknown>)
-      .map(([k, v]) => `${k}: ${v}`)
+      .map(([k, v]) => `${k}: ${formatFactValue(v)}`)
       .join('\u00A0\u00B7 ');
   }
-  return String(value);
+  if (typeof value === 'boolean' || typeof value === 'bigint' || typeof value === 'symbol') {
+    return value.toString();
+  }
+  return 'Not specified';
 }
 
 function factDisplayPairs(facts: CategoryFacts): { label: string; value: string }[] {

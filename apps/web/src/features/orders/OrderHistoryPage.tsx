@@ -67,7 +67,7 @@ export function OrderHistoryPage() {
             <p className="font-medium">No orders yet</p>
             <p className="mt-1 text-sm text-muted-foreground">Completed orders will appear here.</p>
             <Button className="mt-4" render={<Link to="/catalog" />}>
-              Browse powders
+              Browse materials
             </Button>
           </CardContent>
         </Card>

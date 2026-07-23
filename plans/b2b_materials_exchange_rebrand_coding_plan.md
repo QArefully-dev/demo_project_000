@@ -1,8 +1,24 @@
 # B2B Materials Exchange Rebrand Coding Plan
 
-Status: proposed
+Status: complete — implementation, convergence review, and final verification complete (2026-07-23)
 Source: grilling/decision session 2026-07-20 (handoff `b2b_materials_exchange_rebrand_handoff.md`, now superseded + deleted). This plan is self-contained; all locked decisions, terminology, and scope embedded below.
 Repository baseline: `main` @ `5625b7b` (inspection date 2026-07-20)
+
+## Execution Checkpoint — 2026-07-23
+
+- execution worktree: `C:\Users\iwano\Desktop\repos\demo_project_000-worktrees\b2b-materials-exchange-rebrand`
+- implementation branch: `codex/b2b-materials-exchange-rebrand`
+- source branch / base: `main` @ `5625b7b`
+- G1 accepted: P1/R1 migration + P2/R2 contracts complete. `npm run reset`, contracts tests/build, and pricing subpath export verified.
+- G2 accepted: P3/R3 pricing rules + P6/R6 catalog/seed complete. Pricing boundary tests, catalog tests/build, reset/idempotence, and repeat-seed default-variant regression verified.
+- G3 accepted: P4/R4 catalog read path + P5/R5 cart/checkout complete. API typecheck, catalog mapper tests, and cart/checkout integration verification passed.
+- R5 remediation closed: unsafe and overflowing quantities return 400; cart mutations target exact `variantId`; ambiguous legacy product-only mutations reject rather than mutating the first line; checkout revalidates MOQ before reservation/payment.
+- G4 accepted: P7/R7 and P10/R10 copy accepted; P8/R8 product UX accepted with local MOQ guard; P9/R9 cart/checkout accepted with variant mutations, server price fields, delivery preview, and promo freight total.
+- S1 accepted: final `npm.cmd run verify` PASS — format, typecheck, lint, tests, build.
+- R11/G5 accepted: convergence review PASS, including V2/V3 mixed-quote fix.
+- source leak: preserved separately at `codex/recovery-materials-exchange-source-leak` @ `4966a5791fdf30ea7330d4a7828e23c52c17a25e`.
+- semantic audit: all substantive source changes incorporated or deliberately superseded; this plan transferred as only missing artifact.
+- completion: Done Criteria complete. No auto merge; user owns merge.
 
 Pivot: B2C powder retail (`QArefully Powder Co.`) -> B2B bulk/wholesale pallet ordering + (later) live trading. Additive rebrand; reuse catalog/pricing/inventory/checkout/orders foundations. No storefront rewrite. Reason: grounded real-world commerce -> richer QA learning material (concurrency, bidding, bulk pricing, minimum-order rules).
 

@@ -1,10 +1,10 @@
 import type { Cart } from '@shop/contracts/cart';
+import type { PersistedCheckoutQuoteV5 } from '@shop/contracts/payments';
 import { calculateDiscount, type ValidPromo } from '../promos/promoService.js';
 import type { PersistedCheckoutQuote } from '../payments/paymentRepository.js';
 import type { CheckoutParams } from './checkoutTypes.js';
 import type { InventoryReservationAllocation } from '../inventory/inventoryTypes.js';
-import { quoteDelivery } from '../delivery/deliveryRules.js';
-import type { DeliveryLine } from '../delivery/deliveryRules.js';
+import { quoteCartDelivery } from '../delivery/deliveryRules.js';
 
 /** Maps cart data once into an immutable, persistence-safe checkout quote. */
 export function createCheckoutQuote(params: {
@@ -21,16 +21,16 @@ export function createCheckoutQuote(params: {
       })
     : 0;
 
-  const variantLines = params.cart.items.map((item) => {
+  const variantLines: PersistedCheckoutQuoteV5['variantLines'] = params.cart.items.map((item) => {
     const snap = item.variantSnap;
     return {
       productId: item.productId,
       variantId: snap?.variantId ?? 0,
       productName: item.product.name,
       variantLabel: snap?.label ?? item.product.name,
-      unitPriceCents: item.product.priceCents,
+      unitPriceCents: resolvedLineUnitPrice(item.lineTotalCents, item.quantity),
       weightGrams: snap?.weightGrams ?? 1000,
-      deliveryClass: (snap?.deliveryClass ?? 'parcel') as 'parcel' | 'freight',
+      deliveryClass: snap?.deliveryClass ?? 'parcel',
       quantity: item.quantity,
       lineTotalCents: item.lineTotalCents,
       consumptionClassification: item.product.consumptionClassification ?? 'non-food',
@@ -42,7 +42,7 @@ export function createCheckoutQuote(params: {
     snapshotVersion: 2 as const,
   }));
 
-  const mixLines = params.cart.mixItems.map((item) => {
+  const mixLines: PersistedCheckoutQuoteV5['mixLines'] = params.cart.mixItems.map((item) => {
     const bagWeight = item.bagSizeGrams;
     const totalWeight = bagWeight * item.quantity;
     return {
@@ -50,25 +50,12 @@ export function createCheckoutQuote(params: {
       unitPriceCents: item.unitPriceCents,
       quantity: item.quantity,
       lineTotalCents: item.lineTotalCents,
-      deliveryClass: 'parcel' as 'parcel' | 'freight',
+      deliveryClass: 'parcel',
       weightGrams: totalWeight,
     };
   });
 
-  const deliveryLines: DeliveryLine[] = [
-    ...variantLines.map((v) => ({
-      deliveryClass: v.deliveryClass as 'parcel' | 'freight',
-      unitWeightGrams: v.weightGrams,
-      quantity: v.quantity,
-    })),
-    ...mixLines.map((m) => ({
-      deliveryClass: m.deliveryClass as 'parcel' | 'freight',
-      unitWeightGrams: m.weightGrams / Math.max(m.quantity, 1),
-      quantity: m.quantity,
-    })),
-  ];
-
-  const deliverySummary = quoteDelivery(deliveryLines);
+  const deliverySummary = quoteCartDelivery(params.cart);
   const totalCents = params.cart.subtotalCents - discountCents + deliverySummary.chargeCents;
 
   return {
@@ -98,4 +85,17 @@ export function createCheckoutQuote(params: {
       })),
     createdAt: params.createdAt,
   };
+}
+
+function resolvedLineUnitPrice(lineTotalCents: number, quantity: number): number {
+  if (
+    !Number.isSafeInteger(lineTotalCents) ||
+    !Number.isSafeInteger(quantity) ||
+    quantity < 1 ||
+    lineTotalCents < 0 ||
+    lineTotalCents % quantity !== 0
+  ) {
+    throw new Error('Cart line has an invalid resolved price.');
+  }
+  return lineTotalCents / quantity;
 }

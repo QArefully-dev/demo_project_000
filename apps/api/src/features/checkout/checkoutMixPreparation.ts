@@ -77,7 +77,9 @@ export function prepareMixes(cartId: string, dependencies: CheckoutDependencies)
     const products = (componentRows as Array<NonNullable<(typeof componentRows)[number]>>).map(
       toMixProduct,
     );
-    products.forEach((p) => resolveSourceVariant(p, dependencies.products.findVariantById));
+    products.forEach((p) =>
+      resolveSourceVariant(p, (variantId) => dependencies.products.findVariantById(variantId)),
+    );
     try {
       const quoted = quotePowderMix(
         {
@@ -151,7 +153,9 @@ export function prepareMixes(cartId: string, dependencies: CheckoutDependencies)
     .map((id) => dependencies.products.findById(id))
     .filter((product): product is NonNullable<typeof product> => product !== undefined)
     .map(toMixProduct);
-  products.forEach((p) => resolveSourceVariant(p, dependencies.products.findVariantById));
+  products.forEach((p) =>
+    resolveSourceVariant(p, (variantId) => dependencies.products.findVariantById(variantId)),
+  );
   let requirements: readonly PowderMixStockRequirement[];
   try {
     requirements = calculatePowderMixStockRequirements(stockLines, products);

@@ -39,6 +39,7 @@ const expectedVersions = [
   '016',
   '017',
   '018',
+  '019',
 ];
 
 function migrationVersions(db: Database.Database): string[] {
@@ -115,6 +116,23 @@ void test('migrations create a fresh schema, record every version, and remain id
   assert.deepEqual(
     db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'products'").get(),
     { name: 'products' },
+  );
+  const moqColumn = (
+    db.prepare('PRAGMA table_info(product_variants)').all() as {
+      name: string;
+      type: string;
+      notnull: number;
+      dflt_value: string | null;
+    }[]
+  ).find((column) => column.name === 'moq_sacks');
+  assert.deepEqual(
+    moqColumn && {
+      name: moqColumn.name,
+      type: moqColumn.type,
+      notnull: moqColumn.notnull,
+      dflt_value: moqColumn.dflt_value,
+    },
+    { name: 'moq_sacks', type: 'INTEGER', notnull: 1, dflt_value: '4' },
   );
   assert.ok(
     (db.prepare('PRAGMA table_info(payments)').all() as { name: string }[]).some(
@@ -371,10 +389,7 @@ void test('review depth backfills and trigger-maintains published aggregates', (
 
   migrateDatabase(
     db,
-    migrations.filter(
-      (migration) =>
-        migration.version !== '016' && migration.version !== '017' && migration.version !== '018',
-    ),
+    migrations.filter((migration) => migration.version < '016'),
   );
   db.exec(`
     INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id)
@@ -624,13 +639,7 @@ void test('inventory migration copies legacy mix reservations into unified lease
 
   migrateDatabase(
     db,
-    migrations.filter(
-      (migration) =>
-        migration.version !== '015' &&
-        migration.version !== '016' &&
-        migration.version !== '017' &&
-        migration.version !== '018',
-    ),
+    migrations.filter((migration) => migration.version < '015'),
   );
   db.prepare(
     `INSERT INTO products (id, name, description, price_cents, category, stock_count)
@@ -716,14 +725,7 @@ void test('lifecycle migration preserves pre-existing order lines and mix snapsh
 
   migrateDatabase(
     db,
-    migrations.filter(
-      (migration) =>
-        migration.version !== '014' &&
-        migration.version !== '015' &&
-        migration.version !== '016' &&
-        migration.version !== '017' &&
-        migration.version !== '018',
-    ),
+    migrations.filter((migration) => migration.version < '014'),
   );
   db.prepare(
     `INSERT INTO orders
@@ -1255,7 +1257,7 @@ void test('v18 migration backfills variants, rebuilds tables, and preserves data
 
   migrateDatabase(
     db,
-    migrations.filter((migration) => migration.version !== '018'),
+    migrations.filter((migration) => migration.version < '018'),
   );
 
   db.exec(`
@@ -1308,6 +1310,11 @@ void test('v18 migration backfills variants, rebuilds tables, and preserves data
   ).count;
 
   migrateDatabase(db);
+
+  assert.deepEqual(
+    db.prepare('SELECT moq_sacks FROM product_variants WHERE product_id = ?').get(51),
+    { moq_sacks: 4 },
+  );
 
   // Verify all products have default variants
   assert.equal(
@@ -1478,7 +1485,7 @@ void test('v18 migration rollback on corrupt product data', (t) => {
 
   migrateDatabase(
     db,
-    migrations.filter((migration) => migration.version !== '018'),
+    migrations.filter((migration) => migration.version < '018'),
   );
 
   db.exec(`
@@ -1537,13 +1544,7 @@ void test('v18 migration creates fresh inventory tables when 015 skipped', (t) =
 
   migrateDatabase(
     db,
-    migrations.filter(
-      (migration) =>
-        migration.version !== '015' &&
-        migration.version !== '016' &&
-        migration.version !== '017' &&
-        migration.version !== '018',
-    ),
+    migrations.filter((migration) => migration.version < '015'),
   );
 
   db.exec(`

@@ -1,6 +1,6 @@
-import { type CatalogProduct, makeVariant } from '../model.js';
+import { industrializeProducts, type CatalogProduct, makeVariant } from '../model.js';
 
-export const bakingPantryProducts: readonly CatalogProduct[] = [
+export const bakingPantryProducts: readonly CatalogProduct[] = industrializeProducts([
   {
     id: 1,
     slug: 'all-purpose-flour',
@@ -823,4 +823,4 @@ export const bakingPantryProducts: readonly CatalogProduct[] = [
       makeVariant('BKP-1027-002', '600 g Box', 600, 645, 28, 2),
     ],
   },
-];
+]);

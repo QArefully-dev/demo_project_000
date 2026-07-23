@@ -21,6 +21,7 @@ export interface CartLineRow {
   variant_sku: string;
   variant_label: string;
   variant_weight_grams: number;
+  variant_moq_sacks: number;
   variant_delivery_class: string;
   variant_backorderable: number;
   variant_backorder_lead_days: number | null;
@@ -77,6 +78,7 @@ export function createCartRepository(db: Database.Database): CartRepository {
             p.blend_source_variant_id AS product_blend_source_variant_id,
             v.sku AS variant_sku, v.label AS variant_label,
             v.weight_grams AS variant_weight_grams,
+            v.moq_sacks AS variant_moq_sacks,
             v.delivery_class AS variant_delivery_class,
             v.backorderable AS variant_backorderable,
             v.backorder_lead_days AS variant_backorder_lead_days,

@@ -36,6 +36,13 @@ function deferredGateway() {
   };
 }
 
+function defaultVariantStock(
+  products: ReturnType<typeof createProductRepository>,
+  productId: number,
+) {
+  return products.findDefaultVariant(productId)?.stock_count;
+}
+
 void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', async (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-mix-checkout-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
@@ -96,7 +103,7 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
     userId: null,
     auditContext: { actor: { type: 'anonymous', userId: null }, requestId: crypto.randomUUID() },
   };
-  const beforeStock = products.findById(27)?.stock_count;
+  const beforeStock = defaultVariantStock(products, 27);
   const result = await checkout.process(params);
   assert.equal(result.success, true);
   if (!result.success) return;
@@ -130,12 +137,12 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
     ).count,
     0,
   );
-  assert.equal(products.findById(27)?.stock_count, (beforeStock ?? 0) - 1);
+  assert.equal(defaultVariantStock(products, 27), (beforeStock ?? 0) - 1);
   db.prepare("UPDATE products SET name = 'Changed name', price_cents = 1 WHERE id = 27").run();
   assert.equal(
     createOrderRepository(db).findById(Number(result.order.id))?.mixItems[0]?.components[0]
       ?.productName,
-    'Lawn Fertiliser',
+    'All-Purpose Garden Fertilizer',
   );
   db.prepare('UPDATE order_powder_mix_items SET snapshot_json = ? WHERE order_id = ?').run(
     JSON.stringify({
@@ -170,7 +177,7 @@ void test('mixed checkout snapshots mixes, reserves stock, and finalizes once', 
   );
   const replay = await checkout.process(params);
   assert.equal(replay.success, true);
-  assert.equal(products.findById(27)?.stock_count, (beforeStock ?? 0) - 1);
+  assert.equal(defaultVariantStock(products, 27), (beforeStock ?? 0) - 1);
 });
 
 void test('finalizes migrated authorized v2 and v3 mix quotes through unified inventory once', async (t) => {
@@ -193,6 +200,12 @@ void test('finalizes migrated authorized v2 and v3 mix quotes through unified in
   for (const version of [2, 3] as const) {
     const cartId = crypto.randomUUID();
     carts.create(cartId);
+    const legacyProductId = 1027;
+    const legacyDefaultVariant = products.findDefaultVariant(legacyProductId);
+    if (!legacyDefaultVariant) throw new Error('Expected legacy product default variant');
+    assert.notEqual(legacyDefaultVariant.id, legacyProductId);
+    const legacyQuantity = 4;
+    carts.addLineQuantity(cartId, String(legacyDefaultVariant.id), legacyQuantity);
     const mixId = powderizer.create(cartId, {
       components: [
         { productId: '27', percentage: 50 },
@@ -233,31 +246,56 @@ void test('finalizes migrated authorized v2 and v3 mix quotes through unified in
       userId: null,
       auditContext: { actor: { type: 'anonymous', userId: null }, requestId: crypto.randomUUID() },
     };
-    const beforeStock = products.findById(27)?.stock_count;
+    const beforeStock = defaultVariantStock(products, 27);
+    const beforeLegacyStock = defaultVariantStock(products, legacyProductId);
     const pending = checkout.process(params);
     const payment = db
       .prepare('SELECT quote_json FROM payments WHERE idempotency_key = ?')
       .get(params.idempotencyKey) as { quote_json: string };
-    const quote = JSON.parse(payment.quote_json) as Record<string, unknown> & {
-      mixLines: Array<Record<string, unknown>>;
+    const v5Quote = JSON.parse(payment.quote_json) as Record<string, unknown> & {
+      orderMixSnapshots: Array<Record<string, unknown>>;
+      variantLines: Array<{
+        productId: string;
+        productName: string;
+        unitPriceCents: number;
+        quantity: number;
+        lineTotalCents: number;
+      }>;
     };
-    quote.version = version;
-    if (version === 2) {
-      quote.mixLines = quote.mixLines.map((line) => {
+    const quote = {
+      ...v5Quote,
+      version,
+      lines: v5Quote.variantLines.map((line) => ({
+        productId: line.productId,
+        productName: line.productName,
+        unitPriceCents: line.unitPriceCents,
+        quantity: line.quantity,
+        lineTotalCents: line.lineTotalCents,
+      })),
+      mixLines: v5Quote.orderMixSnapshots.map((line) => {
+        if (version === 3) return line;
         const legacyLine = { ...line };
         delete legacyLine.bagColourScheme;
         delete legacyLine.usageLabel;
         return { ...legacyLine, snapshotVersion: 1 };
-      });
-    }
+      }),
+    };
+    delete quote.orderMixSnapshots;
+    delete quote.variantLines;
+    delete quote.deliverySummary;
+    delete quote.inventoryAllocations;
     db.prepare('UPDATE payments SET quote_json = ? WHERE idempotency_key = ?').run(
       JSON.stringify(quote),
       params.idempotencyKey,
     );
+    db.prepare(
+      "DELETE FROM inventory_reservations WHERE payment_idempotency_key = ? AND demand_kind = 'product'",
+    ).run(params.idempotencyKey);
     deferred.resolve({ status: 'success', reference: `migrated-${version}` });
     const result = await pending;
     assert.equal(result.success, true);
-    assert.equal(products.findById(27)?.stock_count, (beforeStock ?? 0) - 1);
+    assert.equal(defaultVariantStock(products, 27), (beforeStock ?? 0) - 1);
+    assert.equal(defaultVariantStock(products, legacyProductId), beforeLegacyStock);
     assert.equal(
       (
         db
@@ -278,9 +316,21 @@ void test('finalizes migrated authorized v2 and v3 mix quotes through unified in
       ).count,
       2,
     );
+    assert.equal(
+      (
+        db
+          .prepare(
+            `SELECT COUNT(*) AS count FROM order_inventory_allocations
+             WHERE order_line_item_id IN (SELECT id FROM order_line_items WHERE order_id = ?)`,
+          )
+          .get(Number(result.order.id)) as { count: number }
+      ).count,
+      0,
+    );
     const replay = await checkout.process(params);
     assert.deepEqual(replay, result);
-    assert.equal(products.findById(27)?.stock_count, (beforeStock ?? 0) - 1);
+    assert.equal(defaultVariantStock(products, 27), (beforeStock ?? 0) - 1);
+    assert.equal(defaultVariantStock(products, legacyProductId), beforeLegacyStock);
   }
 });
 
@@ -368,11 +418,13 @@ void test('mix price and stock conflicts block gateway before reservation', asyn
   }
   assert.equal(calls, 0);
   const stockCart = makeCart();
-  db.prepare('UPDATE products SET stock_count = 0 WHERE id = 1').run();
+  const defaultVariant = products.findDefaultVariant(1);
+  if (!defaultVariant) throw new Error('Expected default variant');
+  db.prepare('UPDATE product_variants SET stock_count = 0 WHERE id = ?').run(defaultVariant.id);
   assert.equal((await checkout.process(payment(stockCart))).error, 'INSUFFICIENT_STOCK');
   assert.equal(calls, 0);
 
-  db.prepare('UPDATE products SET stock_count = 10 WHERE id = 1').run();
+  db.prepare('UPDATE product_variants SET stock_count = 10 WHERE id = ?').run(defaultVariant.id);
   const inactiveCart = makeCart();
   db.prepare('UPDATE products SET active = 0 WHERE id = 1').run();
   assert.equal((await checkout.process(payment(inactiveCart))).error, 'MIX_REQUOTE_REQUIRED');

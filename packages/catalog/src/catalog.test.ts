@@ -65,11 +65,20 @@ void test('every product has at least one active variant with sortOrder=1', () =
   }
 });
 
-void test('every product has 1-4 variants', () => {
+void test('every product has the industrial 25 kg sack and 1,000 kg pallet variants', () => {
   for (const p of CATALOG_PRODUCTS) {
+    assert.equal(p.variants.length, 2, `${p.slug} must have exactly two variants`);
+    assert.deepEqual(
+      p.variants.map(({ label, weightGrams }) => ({ label, weightGrams })),
+      [
+        { label: '25 kg Sack', weightGrams: 25_000 },
+        { label: '1,000 kg Pallet', weightGrams: 1_000_000 },
+      ],
+      `${p.slug} has invalid industrial packs`,
+    );
     assert.ok(
-      p.variants.length >= 1 && p.variants.length <= 4,
-      `${p.slug} has ${p.variants.length} variants (expected 1-4)`,
+      p.variants.every((variant) => variant.moqSacks === 4),
+      `${p.slug} MOQ must be 4`,
     );
   }
 });
@@ -108,13 +117,34 @@ void test('all variant prices and stock are safe integers', () => {
   }
 });
 
-void test('freight-only variants >= 100kg have delivery class freight', () => {
+void test('all canonical variants use freight delivery', () => {
   for (const p of CATALOG_PRODUCTS) {
     for (const v of p.variants) {
-      if (v.weightGrams >= 100_000) {
-        assert.equal(v.deliveryClass, 'freight', `${v.sku} is >= 100 kg but not freight`);
-      }
+      assert.equal(v.deliveryClass, 'freight', `${v.sku} is not freight`);
     }
+  }
+});
+
+void test('industrial pricing is material-specific USD cents', () => {
+  const sackPrices = CATALOG_PRODUCTS.map((product) => product.variants[0]!.priceCents);
+  assert.ok(sackPrices.every((priceCents) => priceCents >= 2_500));
+  assert.ok(new Set(sackPrices).size > 1, 'all sack prices must not be uniform');
+  for (const product of CATALOG_PRODUCTS) {
+    assert.ok(
+      product.variants[1]!.priceCents > product.variants[0]!.priceCents,
+      `${product.slug} pallet price must exceed sack price`,
+    );
+  }
+});
+
+void test('canonical names and descriptions do not use retail powder terminology', () => {
+  for (const p of CATALOG_PRODUCTS) {
+    assert.doesNotMatch(p.name, /\bpowder(?:ed)?\b/i, `${p.slug} name retains powder terminology`);
+    assert.doesNotMatch(
+      p.description,
+      /\bpowder(?:ed)?\b/i,
+      `${p.slug} description retains powder terminology`,
+    );
   }
 });
 

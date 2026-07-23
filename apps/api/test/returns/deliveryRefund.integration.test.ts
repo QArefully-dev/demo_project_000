@@ -8,7 +8,7 @@ import {
   type CheckoutParams,
 } from '../../src/features/checkout/checkoutService.js';
 import { createCartRepository } from '../../src/features/cart/cartRepository.js';
-import { addItem, createCart, getCart } from '../../src/features/cart/cartService.js';
+import { addItem, createCart } from '../../src/features/cart/cartService.js';
 import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
 import { createPromoRepository } from '../../src/features/promos/promoRepository.js';
 import { createPaymentRepository } from '../../src/features/payments/paymentRepository.js';
@@ -130,6 +130,9 @@ void test('returns exclude delivery from refund', async (t) => {
     seedDatabase(db);
     const cartId = createCart(carts).cartId;
     const vId = getVariantId(db, 1);
+    db.prepare(
+      "UPDATE product_variants SET delivery_class = 'parcel', moq_sacks = 1 WHERE id = ?",
+    ).run(vId);
     addItem(carts, cartId, String(vId));
 
     const service = checkoutService(db);
@@ -143,12 +146,11 @@ void test('returns exclude delivery from refund', async (t) => {
     assert.equal(order.totalCents, order.subtotalCents - order.discountCents);
   });
 
-  await t.test('legacy orders load with default delivery fields', async () => {
+  await t.test('legacy orders load with default delivery fields', () => {
     resetDatabase(db);
     seedDatabase(db);
 
     // Seed orders (alice-processing) already has delivery columns
-    const orders = createOrderRepository(db);
     // Find alice-processing order (demo_seed_key)
     const orderRows = db
       .prepare(

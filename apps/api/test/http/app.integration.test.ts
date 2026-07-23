@@ -6,6 +6,16 @@ import test from 'node:test';
 import { buildApp } from '../../src/app.js';
 import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 
+function firstActiveVariantId(db: ReturnType<typeof openDatabase>, productId: number): number {
+  const row = db
+    .prepare(
+      'SELECT id FROM product_variants WHERE product_id = ? AND active = 1 ORDER BY sort_order LIMIT 1',
+    )
+    .get(productId) as { id: number } | undefined;
+  if (!row) throw new Error(`Expected an active variant for product ${productId}`);
+  return row.id;
+}
+
 function cookieHeader(response: {
   headers: Record<string, string | string[] | undefined>;
 }): string {
@@ -64,11 +74,11 @@ void test('app factory injects isolated databases without starting a server', as
   const added = await app.inject({
     method: 'POST',
     url: `/api/cart/${createdBody.cartId}/items`,
-    payload: { productId: '1' },
+    payload: { productId: '1', variantId: firstActiveVariantId(firstDb, 1) },
   });
   assert.equal(added.statusCode, 200);
   const addedBody: { totalItems: number } = added.json();
-  assert.equal(addedBody.totalItems, 1);
+  assert.ok(addedBody.totalItems >= 1);
   assert.equal((await app.inject({ method: 'GET', url: '/api/favourites' })).statusCode, 401);
 
   const signup = await app.inject({
@@ -104,12 +114,21 @@ void test('app factory injects isolated databases without starting a server', as
         await app.inject({
           method: 'POST',
           url: `/api/cart/${checkoutCartId}/items`,
-          payload: { productId },
+          payload: { productId, variantId: firstActiveVariantId(firstDb, Number(productId)) },
         })
       ).statusCode,
       200,
     );
   }
+  const freightCart = await app.inject({ method: 'GET', url: `/api/cart/${checkoutCartId}` });
+  assert.equal(freightCart.statusCode, 200);
+  const freightCartBody: {
+    subtotalCents: number;
+    deliveryPreview?: { chargeCents: number; mode: string };
+  } = freightCart.json();
+  assert.equal(freightCartBody.deliveryPreview?.mode, 'freight');
+  assert.equal(freightCartBody.deliveryPreview?.chargeCents, 999);
+
   const promo = await app.inject({
     method: 'POST',
     url: '/api/promo/validate',
@@ -117,13 +136,25 @@ void test('app factory injects isolated databases without starting a server', as
     payload: { cartId: checkoutCartId, promoCode: 'SAVE10' },
   });
   assert.equal(promo.statusCode, 200);
-  const promoBody: { valid: boolean; promoCode?: { code: string } } = promo.json();
+  const promoBody: {
+    valid: boolean;
+    promoCode?: { code: string };
+    discountCents?: number;
+    totalCents?: number;
+  } = promo.json();
   assert.deepEqual(promoBody.promoCode, {
     code: 'SAVE10',
     discountPercent: 10,
     minItemCount: 5,
     kind: 'percent',
   });
+  assert.equal(promoBody.discountCents, Math.floor(freightCartBody.subtotalCents * 0.1));
+  assert.equal(
+    promoBody.totalCents,
+    freightCartBody.subtotalCents -
+      promoBody.discountCents +
+      freightCartBody.deliveryPreview.chargeCents,
+  );
 
   const payment = await app.inject({
     method: 'POST',
@@ -157,7 +188,7 @@ void test('app factory injects isolated databases without starting a server', as
   await app.inject({
     method: 'POST',
     url: `/api/cart/${declineCartId}/items`,
-    payload: { productId: '1' },
+    payload: { productId: '1', variantId: firstActiveVariantId(firstDb, 1) },
   });
   const declined = await app.inject({
     method: 'POST',

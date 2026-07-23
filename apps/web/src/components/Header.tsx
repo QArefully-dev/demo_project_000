@@ -13,9 +13,10 @@ export function Header() {
         <div className="grid min-h-[4.5rem] grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 py-3 sm:gap-x-4 lg:h-[4.5rem] lg:grid-cols-[auto_minmax(20rem,1fr)_auto] lg:gap-x-7 lg:py-0">
           <Link
             to="/"
+            aria-label="QArefully Materials Exchange"
             className="w-fit rounded-md font-semibold tracking-[-0.055em] text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:text-xl"
           >
-            <span className="font-black text-primary">QA</span>refully Powder Co.
+            <span className="font-black text-primary">QA</span>refully Materials Exchange
           </Link>
           <div
             role="group"
@@ -33,7 +34,7 @@ export function Header() {
         <div className="content-shell flex h-11 items-center justify-between gap-4 overflow-x-auto [scrollbar-width:none]">
           <CategoryNav />
           <p className="hidden shrink-0 whitespace-nowrap text-xs font-medium text-muted-foreground xl:block">
-            Food · Performance · Home · Trade · Simulated checkout
+            Materials data · Available stock · Trade supply
           </p>
         </div>
       </div>

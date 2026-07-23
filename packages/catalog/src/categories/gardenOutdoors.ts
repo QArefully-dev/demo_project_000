@@ -1,6 +1,6 @@
-import { type CatalogProduct, makeVariant } from '../model.js';
+import { industrializeProducts, type CatalogProduct, makeVariant } from '../model.js';
 
-export const gardenOutdoorsProducts: readonly CatalogProduct[] = [
+export const gardenOutdoorsProducts: readonly CatalogProduct[] = industrializeProducts([
   {
     id: 27,
     slug: 'all-purpose-garden-fertilizer',
@@ -611,4 +611,4 @@ export const gardenOutdoorsProducts: readonly CatalogProduct[] = [
       makeVariant('GDN-1048-002', '15 kg Bag', 15000, 2295, 20, 2),
     ],
   },
-];
+]);

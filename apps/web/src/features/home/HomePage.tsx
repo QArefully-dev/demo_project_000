@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { getBestsellers, getCategories, getProducts } from '@/api/products';
 import { CategoryTiles } from '@/components/home/CategoryTiles';
 import { HeroSection } from '@/components/home/HeroSection';
-import { PowderizerBanner } from '@/components/home/PowderizerBanner';
 import { ProductShelf } from '@/components/home/ProductShelf';
 import { PromoBanner } from '@/components/home/PromoBanner';
 import { useCartContext } from '@/hooks/CartContext';
@@ -101,21 +100,36 @@ export function HomePage() {
   return (
     <div className="space-y-16 pb-12 lg:space-y-20">
       <HeroSection />
-      <PowderizerBanner />
+      <section
+        aria-label="Live trading update"
+        className="grid gap-4 rounded-2xl border-2 border-foreground bg-surface-raised p-6 shadow-sm sm:grid-cols-[auto_1fr] sm:items-center sm:p-8"
+      >
+        <p className="w-fit border border-primary bg-primary/10 px-3 py-1 text-xs font-bold tracking-[0.16em] text-primary uppercase">
+          Coming next
+        </p>
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight">Live trading</h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            Market-linked trading, inventory holds and repeat-order tools are in preparation.
+          </p>
+        </div>
+      </section>
       <section
         aria-label="Store assurances"
         className="grid divide-y rounded-2xl border bg-surface-raised text-center shadow-sm sm:grid-cols-3 sm:divide-x sm:divide-y-0"
       >
         <p className="p-4 text-sm">
-          <strong className="block text-foreground">Blended to order</strong>
-          <span className="text-muted-foreground">Every bag receives a batch mark</span>
+          <strong className="block text-foreground">Clear product data</strong>
+          <span className="text-muted-foreground">
+            Specifications and pack formats in one place
+          </span>
         </p>
         <p className="p-4 text-sm">
-          <strong className="block text-foreground">Professionally packed</strong>
-          <span className="text-muted-foreground">Measured, sealed, and plainly labelled</span>
+          <strong className="block text-foreground">Supply-ready catalogue</strong>
+          <span className="text-muted-foreground">Availability signals for practical sourcing</span>
         </p>
         <p className="p-4 text-sm">
-          <strong className="block text-foreground">Simulated checkout</strong>
+          <strong className="block text-foreground">Demo ordering</strong>
           <span className="text-muted-foreground">No real payment is processed</span>
         </p>
       </section>

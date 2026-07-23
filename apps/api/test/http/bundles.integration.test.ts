@@ -21,7 +21,7 @@ void test('bundle HTTP routes validate input, expose current bundles, and audit 
   assert.equal(listed.statusCode, 200);
   assert.deepEqual(
     listed.json<Array<{ key: string }>>().map((bundle) => bundle.key),
-    ['powder-starter-set'],
+    ['baking-essentials'],
   );
   assert.equal(
     (await app.inject({ method: 'GET', url: '/api/bundles?productId=not-a-number' })).statusCode,
@@ -56,9 +56,9 @@ void test('bundle HTTP routes validate input, expose current bundles, and audit 
       .json<{ items: Array<{ productId: string; quantity: number }> }>()
       .items.map((item) => [item.productId, item.quantity]),
     [
-      ['1', 1],
-      ['2', 1],
-      ['3', 1],
+      ['8', 1],
+      ['9', 1],
+      ['13', 1],
     ],
   );
   const audit = db
@@ -98,7 +98,12 @@ void test('bundle HTTP add maps unavailable and reserved-cart conflicts', async 
   const unavailableCart = (await app.inject({ method: 'POST', url: '/api/cart' })).json<{
     cartId: string;
   }>();
-  db.prepare('UPDATE products SET stock_count = 0 WHERE id = 1').run();
+  const unavailableVariant = db
+    .prepare(
+      'SELECT id FROM product_variants WHERE product_id = 8 AND sort_order = 1 AND active = 1 LIMIT 1',
+    )
+    .get() as { id: number };
+  db.prepare('UPDATE product_variants SET stock_count = 0 WHERE id = ?').run(unavailableVariant.id);
   const unavailable = await app.inject({
     method: 'POST',
     url: `/api/cart/${unavailableCart.cartId}/bundles`,
@@ -108,7 +113,7 @@ void test('bundle HTTP add maps unavailable and reserved-cart conflicts', async 
   assert.deepEqual(unavailable.json(), {
     code: 'BUNDLE_UNAVAILABLE',
     error: 'One or more bundle components are unavailable',
-    productIds: ['1'],
+    productIds: [String(unavailableVariant.id)],
   });
 
   const reservedCart = (await app.inject({ method: 'POST', url: '/api/cart' })).json<{

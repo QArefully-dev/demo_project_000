@@ -17,7 +17,10 @@ import { createCartRepository } from '../../src/features/cart/cartRepository.js'
 import { addItem, createCart, getCart } from '../../src/features/cart/cartService.js';
 import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
 import { createPromoRepository } from '../../src/features/promos/promoRepository.js';
-import { createPaymentRepository } from '../../src/features/payments/paymentRepository.js';
+import {
+  createPaymentRepository,
+  parsePersistedCheckoutQuote,
+} from '../../src/features/payments/paymentRepository.js';
 import { createOrderRepository } from '../../src/features/orders/orderRepository.js';
 import { createMailboxRepository } from '../../src/features/mailbox/mailboxRepository.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
@@ -124,10 +127,6 @@ void test('atomic checkout orchestration', async (t) => {
     return cartId;
   };
 
-  function addVariantById(cartId: string, variantId: number) {
-    addItem(carts, cartId, String(variantId));
-  }
-
   function addVariantForProduct(cartId: string, productId: number) {
     const row = db
       .prepare(
@@ -225,7 +224,7 @@ void test('atomic checkout orchestration', async (t) => {
       const first = await checkout(params, { db, gateway });
       const replay = await checkout(params, { db, gateway });
       assert.deepEqual(replay, first);
-      assert.equal(getCart(carts, cartId)?.totalItems, 1);
+      assert.equal(getCart(carts, cartId)?.totalItems, 4);
       const events = db
         .prepare('SELECT action, entity_id FROM audit_events WHERE request_id = ?')
         .all(params.auditContext.requestId) as Array<{ action: string; entity_id: string }>;
@@ -298,6 +297,25 @@ void test('atomic checkout orchestration', async (t) => {
     assert.equal(gateway.calls(), 0);
   });
 
+  await t.test('rejects a cart line below its variant MOQ before gateway processing', async () => {
+    resetDatabase(db);
+    seedDatabase(db);
+    const cartId = createCart(carts).cartId;
+    const variant = db
+      .prepare('SELECT id FROM product_variants WHERE active = 1 ORDER BY id LIMIT 1')
+      .get() as { id: number };
+    carts.addLineQuantity(cartId, String(variant.id), 1);
+    const gateway = spyGateway();
+
+    const result = await checkout(payment(cartId, 'below-moq-checkout'), {
+      db,
+      gateway: gateway.gateway,
+    });
+
+    assert.deepEqual(result, { success: false, error: 'BELOW_MOQ' });
+    assert.equal(gateway.calls(), 0);
+  });
+
   await t.test('does not call gateway for invalid or ineligible promos', async () => {
     const invalidCartId = freshCart();
     const invalidGateway = spyGateway();
@@ -338,11 +356,13 @@ void test('atomic checkout orchestration', async (t) => {
   await t.test('charges the persisted server quote total', async () => {
     const cartId = freshCart();
     const gateway = spyGateway();
-    const expectedTotal = getCart(carts, cartId)?.subtotalCents;
     const result = await checkout(payment(cartId, 'quoted-amount'), {
       db,
       gateway: gateway.gateway,
     });
+    const quoteJson = createPaymentRepository(db).load('quoted-amount')?.quoteJson;
+    if (!quoteJson) throw new Error('Expected persisted checkout quote');
+    const expectedTotal = parsePersistedCheckoutQuote(quoteJson).totalCents;
 
     assert.equal(result.success, true);
     assert.equal(gateway.requests()[0]?.amountCents, expectedTotal);
@@ -452,7 +472,7 @@ void test('atomic checkout orchestration', async (t) => {
     );
     const result = await checkout({ ...payment(cartId, 'rollback'), promoCode: 'SAVE10' }, { db });
     assert.deepEqual(result, { success: false, error: 'IDEMPOTENT_IN_PROGRESS' });
-    assert.equal(getCart(carts, cartId)?.totalItems, 5);
+    assert.equal(getCart(carts, cartId)?.totalItems, 20);
     assert.equal(
       (
         db
@@ -521,7 +541,7 @@ void test('atomic checkout orchestration', async (t) => {
       ).count,
       0,
     );
-    assert.equal(getCart(carts, cartId)?.totalItems, 1);
+    assert.equal(getCart(carts, cartId)?.totalItems, 4);
     assert.equal(
       (
         db

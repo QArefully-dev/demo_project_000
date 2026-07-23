@@ -8,18 +8,14 @@ import { ProductMedia } from '@/components/ProductMedia';
 
 interface CartLineItemProps {
   item: CartLine;
-  onUpdateQuantity: (productId: string, quantity: number) => Promise<boolean>;
-  onRemove: (productId: string) => Promise<boolean>;
+  onUpdateQuantity: (productId: string, quantity: number, variantId?: number) => Promise<boolean>;
+  onRemove: (productId: string, variantId?: number) => Promise<boolean>;
   isUpdating?: boolean;
   isRemoving?: boolean;
 }
 
 function cartLineKey(item: CartLine): string {
   return `${item.productId}:${item.variantSnap?.variantId ?? 'no-variant'}`;
-}
-
-function unitPrice(item: CartLine): number {
-  return Math.round(item.lineTotalCents / item.quantity);
 }
 
 export function CartLineItem({
@@ -39,14 +35,14 @@ export function CartLineItem({
 
   const updateQuantity = async (quantity: number) => {
     setActionError(null);
-    if (!(await onUpdateQuantity(item.productId, quantity))) {
+    if (!(await onUpdateQuantity(item.productId, quantity, item.variantSnap?.variantId))) {
       setActionError('Quantity update failed. Try again.');
     }
   };
 
   const remove = async () => {
     setActionError(null);
-    if (!(await onRemove(item.productId))) {
+    if (!(await onRemove(item.productId, item.variantSnap?.variantId))) {
       setActionError('Remove failed. Try again.');
     }
   };
@@ -70,7 +66,9 @@ export function CartLineItem({
             {item.variantSnap.weightGrams}g
           </p>
         )}
-        <p className="text-xs text-muted-foreground">{formatMoney(unitPrice(item))} per bag</p>
+        <p className="text-xs text-muted-foreground">
+          Resolved pack price: {formatMoney(item.resolvedUnitPriceCents)}
+        </p>
         {item.variantSnap && (
           <Badge variant="outline" className="w-fit text-[10px]">
             {item.variantSnap.deliveryClass}

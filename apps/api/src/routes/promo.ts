@@ -35,7 +35,10 @@ export default function promoRoutes(app: FastifyInstance, { services }: AppConte
           promo: result.promoCode,
           subtotalCents: cart.subtotalCents,
         });
-        const totalCents = cart.subtotalCents - discountCents;
+        // Promotions discount merchandise only. Reuse the cart's server-owned delivery quote
+        // so clients receive the same freight-inclusive total shown at checkout.
+        const totalCents =
+          cart.subtotalCents - discountCents + (cart.deliveryPreview?.chargeCents ?? 0);
         return { ...result, discountCents, totalCents };
       }
       return result;
