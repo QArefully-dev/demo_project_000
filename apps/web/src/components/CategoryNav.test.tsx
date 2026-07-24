@@ -28,7 +28,15 @@ describe('CategoryNav', () => {
     const customSmallOrder = screen.getByRole('link', { name: 'Custom Small Order' });
     expect(customSmallOrder).toHaveAttribute('aria-current', 'page');
     expect(customSmallOrder).toHaveClass('powderizer-nav-link');
-    expect(screen.getByRole('link', { name: 'Materials' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'All Materials' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('links All Materials to the unfiltered catalogue and marks it current only there', () => {
+    renderNav('/catalog');
+
+    const allMaterials = screen.getByRole('link', { name: 'All Materials' });
+    expect(allMaterials).toHaveAttribute('href', '/catalog');
+    expect(allMaterials).toHaveAttribute('aria-current', 'page');
   });
 
   it('does not apply Custom Small Order treatment to category or deals links', () => {
@@ -38,6 +46,7 @@ describe('CategoryNav', () => {
       'aria-current',
       'page',
     );
+    expect(screen.getByRole('link', { name: 'All Materials' })).not.toHaveAttribute('aria-current');
     expect(screen.getByRole('link', { name: 'Sports Nutrition' })).not.toHaveClass(
       'powderizer-nav-link',
     );

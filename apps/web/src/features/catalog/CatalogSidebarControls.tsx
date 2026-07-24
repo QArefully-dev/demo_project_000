@@ -272,7 +272,7 @@ function DraftInput({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={id}>
+    <label className="grid min-w-0 gap-1 text-xs font-medium text-muted-foreground" htmlFor={id}>
       {label}
       <input
         id={id}
@@ -282,7 +282,7 @@ function DraftInput({
         inputMode={type === 'number' ? 'numeric' : undefined}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 rounded-lg border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="h-10 min-w-0 w-full rounded-lg border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
     </label>
   );

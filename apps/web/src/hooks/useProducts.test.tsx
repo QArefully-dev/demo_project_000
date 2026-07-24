@@ -158,4 +158,65 @@ describe('useProducts', () => {
     expect(result.current.isLoading).toBe(false);
     expect(result.current.products[0]?.name).toBe('second');
   });
+
+  it('clears prior category cards while Trade & Creative Materials is loading', async () => {
+    const pantry = deferred<VariantProductList>();
+    const trade = deferred<VariantProductList>();
+    vi.mocked(getProducts).mockReturnValueOnce(pantry.promise).mockReturnValueOnce(trade.promise);
+
+    const { result, rerender } = renderHook(
+      ({ category }) => useProducts({ category }),
+      { initialProps: { category: 'Baking & Pantry' } },
+    );
+
+    await act(async () => {
+      pantry.resolve(response('Pantry Flour'));
+      await pantry.promise;
+    });
+    expect(result.current.products[0]?.name).toBe('Pantry Flour');
+
+    rerender({ category: 'Trade & Creative Materials' });
+    await waitFor(() => expect(getProducts).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(getProducts).mock.calls[1]?.[0]).toEqual({
+      category: 'Trade & Creative Materials',
+    });
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.products).toEqual([]);
+    expect(result.current.total).toBe(0);
+
+    await act(async () => {
+      trade.resolve(response('Trade Cement'));
+      await trade.promise;
+    });
+    expect(result.current.products.map((product) => product.name)).toEqual(['Trade Cement']);
+  });
+
+  it('clears current cards before a manual refetch resolves', async () => {
+    const initial = deferred<VariantProductList>();
+    const refreshed = deferred<VariantProductList>();
+    vi.mocked(getProducts).mockReturnValueOnce(initial.promise).mockReturnValueOnce(refreshed.promise);
+
+    const { result } = renderHook(() => useProducts({ category: 'Trade & Creative Materials' }));
+
+    await act(async () => {
+      initial.resolve(response('Original Cement'));
+      await initial.promise;
+    });
+    expect(result.current.products[0]?.name).toBe('Original Cement');
+
+    await act(async () => {
+      void result.current.refetch();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(getProducts).toHaveBeenCalledTimes(2));
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.products).toEqual([]);
+    expect(result.current.total).toBe(0);
+
+    await act(async () => {
+      refreshed.resolve(response('Refreshed Cement'));
+      await refreshed.promise;
+    });
+    expect(result.current.products[0]?.name).toBe('Refreshed Cement');
+  });
 });

@@ -288,6 +288,16 @@ describe('CatalogPage URL state', () => {
     );
   });
 
+  it('sizes price range inputs to their grid columns', () => {
+    renderCatalog('/catalog');
+
+    for (const label of ['Minimum (cents)', 'Maximum (cents)']) {
+      const input = screen.getByLabelText(label);
+      expect(input).toHaveClass('min-w-0', 'w-full');
+      expect(input.closest('label')).toHaveClass('min-w-0');
+    }
+  });
+
   it('uses only loaded filter-option values and cleans unsupported values on the next mutation', async () => {
     const user = userEvent.setup();
     renderCatalog('/catalog?tag=pantry&tag=unknown&spec=texture%3Afine&spec=missing%3Avalue');

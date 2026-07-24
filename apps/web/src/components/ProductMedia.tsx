@@ -8,6 +8,63 @@ interface ProductMediaProps {
   className?: string;
 }
 
+type FoodBagArtwork = {
+  accent: string;
+  powderAccent: string;
+  mark: string;
+  category: string;
+  quantity: string;
+  batchCode: string;
+};
+
+const FOOD_BAG_DESIGNS: Readonly<
+  Record<string, Omit<FoodBagArtwork, 'batchCode'>>
+> = {
+  'Sports Nutrition': {
+    accent: '#547a6e',
+    powderAccent: '#d5e3c0',
+    mark: 'SN',
+    category: 'Sports Nutrition',
+    quantity: '1 kg',
+  },
+  'Baking & Pantry': {
+    accent: '#a86936',
+    powderAccent: '#f0d7a7',
+    mark: 'BP',
+    category: 'Baking & Pantry',
+    quantity: '1 kg',
+  },
+  Drinks: {
+    accent: '#287fa6',
+    powderAccent: '#b9e2ee',
+    mark: 'DR',
+    category: 'Drinks',
+    quantity: '1 kg',
+  },
+};
+
+function stableBatchSuffix(value: string): string {
+  let hash = 0;
+  for (const character of value) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  return hash.toString(36).toUpperCase().padStart(6, '0').slice(-6);
+}
+
+/**
+ * Supplies the list API's intentionally omitted food packaging fields from stable display-safe
+ * product fields. Unknown categories stay unresolved so the generic fallback remains visible.
+ */
+export function resolveFoodBagArtwork(
+  product: Pick<Product, 'category' | 'name' | 'imageSetId'>,
+): FoodBagArtwork | undefined {
+  const design = FOOD_BAG_DESIGNS[product.category];
+  if (!design) return undefined;
+
+  return {
+    ...design,
+    batchCode: `F-${stableBatchSuffix(`${product.category}:${product.name}:${product.imageSetId}`)}`,
+  };
+}
+
 const VESSEL_LABEL: Readonly<Record<Vessel, string>> = {
   'kraft-sack': 'stitched kraft sack',
   'woven-sack': 'woven sack',
@@ -61,6 +118,24 @@ export function ProductMedia({ product, className }: ProductMediaProps) {
         mark=""
         consumptionLabel={null}
         ariaLabel={`${product.name} ${VESSEL_LABEL[spec.vessel]}`}
+        className={className}
+      />
+    );
+  }
+
+  const foodArtwork = resolveFoodBagArtwork(product);
+  if (foodArtwork) {
+    return (
+      <PackagingArtwork
+        name={product.name}
+        spec={spec}
+        mark={foodArtwork.mark}
+        quantity={foodArtwork.quantity}
+        batchCode={foodArtwork.batchCode}
+        accent={foodArtwork.accent}
+        powderAccent={foodArtwork.powderAccent}
+        consumptionLabel={null}
+        ariaLabel={`${product.name} ${VESSEL_LABEL['food-bag']}`}
         className={className}
       />
     );

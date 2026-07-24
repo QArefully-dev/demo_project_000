@@ -64,6 +64,28 @@ describe('ProductMedia', () => {
     expect(image).toHaveAttribute('height', '720');
   });
 
+  it.each([
+    ['Sports Nutrition', 'Whey Protein Isolate'],
+    ['Baking & Pantry', 'Strong White Bread Flour'],
+    ['Drinks', 'Hot Chocolate Mix'],
+  ])('renders a food bag for list products in %s without packaging', (category, name) => {
+    render(
+      <ProductMedia
+        product={product({
+          category,
+          name,
+          imageSetId: name.toLowerCase().replaceAll(' ', '-'),
+          packaging: undefined,
+        })}
+      />,
+    );
+
+    const artwork = screen.getByRole('img', { name: `${name} bag` });
+    expect(artwork.tagName).toBe('svg');
+    expect(artwork).toHaveTextContent(category.toUpperCase());
+    expect(artwork).toHaveTextContent('1 KG');
+  });
+
   it('renders the heavy-duty vessel for a non-food category instead of the fallback', () => {
     render(
       <ProductMedia

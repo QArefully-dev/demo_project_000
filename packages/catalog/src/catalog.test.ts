@@ -253,6 +253,25 @@ void test('bundle components are separately packaged (different product SKUs)', 
   }
 });
 
+void test('bundle component quantities satisfy their variant MOQ', () => {
+  const variantsBySku = new Map(
+    CATALOG_PRODUCTS.flatMap((product) =>
+      product.variants.map((variant) => [variant.sku, variant] as const),
+    ),
+  );
+  for (const bundle of CURATED_BUNDLES) {
+    for (const component of bundle.components) {
+      const variant = variantsBySku.get(component.variantSku);
+      assert.ok(variant, `Bundle ${bundle.key} has unknown variant ${component.variantSku}`);
+      const minimumQuantity = Math.ceil((variant.moqSacks * 25_000) / variant.weightGrams);
+      assert.ok(
+        component.quantity >= minimumQuantity,
+        `Bundle ${bundle.key} component ${component.variantSku} is below MOQ`,
+      );
+    }
+  }
+});
+
 void test('every product has a deterministic imageSetId matching its slug', () => {
   for (const p of CATALOG_PRODUCTS) {
     assert.equal(p.imageSetId, p.slug, `${p.slug} imageSetId ${p.imageSetId} does not match slug`);

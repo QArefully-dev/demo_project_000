@@ -19,6 +19,7 @@ import { createPowderMixRepository } from '../../src/features/powderizer/powderM
 import { createPowderizerService } from '../../src/features/powderizer/powderizerService.js';
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
+import { validateMoq } from '../../src/features/pricing/pricingRules.js';
 
 function defaultVariantId(db: ReturnType<typeof openDatabase>, productId: number): string {
   const row = db
@@ -78,7 +79,7 @@ void test('lists visible bundles with current component prices and deterministic
     variant8,
   );
   const refreshed = service.list().find((bundle) => bundle.id === starter.id);
-  assert.equal(refreshed?.components[0]?.lineTotalCents, 4321);
+  assert.equal(refreshed?.components[0]?.lineTotalCents, 17_284);
   assert.equal(refreshed?.available, false);
   db.prepare('UPDATE products SET active = 0 WHERE id = 9').run();
   assert.equal(
@@ -149,10 +150,21 @@ void test('adds a bundle as ordinary cart lines, increments repeats, and writes 
   assert.deepEqual(
     first.items.map((item) => [item.productId, item.quantity]),
     [
-      ['8', 1],
-      ['9', 1],
-      ['13', 1],
+      ['8', 4],
+      ['9', 4],
+      ['13', 4],
     ],
+  );
+  assert.ok(
+    first.items.every((item) => {
+      const variant = db
+        .prepare('SELECT weight_grams, moq_sacks FROM product_variants WHERE id = ?')
+        .get(item.variantSnap?.variantId) as
+        | { weight_grams: number; moq_sacks: number }
+        | undefined;
+      return variant !== undefined && validateMoq(item.quantity, variant.weight_grams, variant.moq_sacks);
+    }),
+    'every bundle cart line must meet the checkout MOQ predicate',
   );
   assert.deepEqual(first.mixItems, []);
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM powder_mixes').get().count, 0);
@@ -160,9 +172,9 @@ void test('adds a bundle as ordinary cart lines, increments repeats, and writes 
   assert.deepEqual(
     getCart(carts, cartId, mixes)?.items.map((item) => [item.productId, item.quantity]),
     [
-      ['8', 2],
-      ['9', 2],
-      ['13', 2],
+      ['8', 8],
+      ['9', 8],
+      ['13', 8],
     ],
   );
   const events = db
@@ -171,11 +183,11 @@ void test('adds a bundle as ordinary cart lines, increments repeats, and writes 
   assert.deepEqual(events, [
     {
       action: 'cart.bundle_added',
-      metadata_json: '{"bundleId":1,"componentCount":3,"quantity":3}',
+      metadata_json: '{"bundleId":1,"componentCount":3,"quantity":12}',
     },
     {
       action: 'cart.bundle_added',
-      metadata_json: '{"bundleId":1,"componentCount":3,"quantity":3}',
+      metadata_json: '{"bundleId":1,"componentCount":3,"quantity":12}',
     },
   ]);
 });

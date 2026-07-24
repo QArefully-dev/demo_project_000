@@ -29,7 +29,7 @@ export function CategoryNav() {
         aria-current={isCatalog && activeCategory === '' && !isDealsActive ? 'page' : undefined}
         className={linkClassName(isCatalog && activeCategory === '' && !isDealsActive)}
       >
-        Materials
+        All Materials
       </Link>
       {!isLoading &&
         categories.slice(0, 6).map((category) => (

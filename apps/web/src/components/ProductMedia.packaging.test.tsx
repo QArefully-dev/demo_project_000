@@ -8,7 +8,7 @@ vi.mock('@/components/BagArtwork', () => ({
   ),
 }));
 
-import { ProductMedia } from './ProductMedia';
+import { ProductMedia, resolveFoodBagArtwork } from './ProductMedia';
 
 const product: Product = {
   id: 'powdered-water-1',
@@ -45,5 +45,36 @@ describe('ProductMedia packaging mapping', () => {
     const artwork = screen.getByTestId('bag-artwork');
     expect(artwork).toHaveAttribute('data-accent', product.packaging?.labelColor);
     expect(artwork).toHaveAttribute('data-powder-accent', product.packaging?.powderColor);
+  });
+
+  it('derives deterministic food bag inputs from list-safe fields only', () => {
+    const listProduct = {
+      category: 'Sports Nutrition',
+      name: 'Whey Protein Isolate',
+      imageSetId: 'whey-protein-isolate',
+    } as const;
+
+    const first = resolveFoodBagArtwork(listProduct);
+    const second = resolveFoodBagArtwork(listProduct);
+
+    expect(first).toEqual(second);
+    expect(first).toMatchObject({
+      accent: '#547a6e',
+      powderAccent: '#d5e3c0',
+      mark: 'SN',
+      category: 'Sports Nutrition',
+      quantity: '1 kg',
+    });
+    expect(first?.batchCode).toMatch(/^F-[A-Z0-9]{6}$/);
+  });
+
+  it('does not invent food artwork for unknown categories', () => {
+    expect(
+      resolveFoodBagArtwork({
+        category: 'Retired Materials',
+        name: 'Legacy Product',
+        imageSetId: 'legacy-product',
+      }),
+    ).toBeUndefined();
   });
 });

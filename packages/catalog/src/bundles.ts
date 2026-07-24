@@ -26,9 +26,9 @@ export const CURATED_BUNDLES = [
     discountPercent: 10,
     sortOrder: 1,
     components: [
-      { variantSku: 'SPN-0008-001', quantity: 1, sortOrder: 1 },
-      { variantSku: 'SPN-0009-001', quantity: 1, sortOrder: 2 },
-      { variantSku: 'SPN-0013-001', quantity: 1, sortOrder: 3 },
+      { variantSku: 'SPN-0008-001', quantity: 4, sortOrder: 1 },
+      { variantSku: 'SPN-0009-001', quantity: 4, sortOrder: 2 },
+      { variantSku: 'SPN-0013-001', quantity: 4, sortOrder: 3 },
     ],
   },
   {
@@ -41,10 +41,10 @@ export const CURATED_BUNDLES = [
     discountPercent: 10,
     sortOrder: 2,
     components: [
-      { variantSku: 'BKP-0001-001', quantity: 1, sortOrder: 1 },
-      { variantSku: 'BKP-0003-001', quantity: 1, sortOrder: 2 },
-      { variantSku: 'BKP-1016-001', quantity: 1, sortOrder: 3 },
-      { variantSku: 'DRK-1035-001', quantity: 1, sortOrder: 4 },
+      { variantSku: 'BKP-0001-001', quantity: 4, sortOrder: 1 },
+      { variantSku: 'BKP-0003-001', quantity: 4, sortOrder: 2 },
+      { variantSku: 'BKP-1016-001', quantity: 4, sortOrder: 3 },
+      { variantSku: 'DRK-1035-001', quantity: 4, sortOrder: 4 },
     ],
   },
   {
@@ -57,9 +57,9 @@ export const CURATED_BUNDLES = [
     discountPercent: 10,
     sortOrder: 3,
     components: [
-      { variantSku: 'GDN-0027-001', quantity: 1, sortOrder: 1 },
-      { variantSku: 'GDN-0028-001', quantity: 1, sortOrder: 2 },
-      { variantSku: 'GDN-0031-001', quantity: 1, sortOrder: 3 },
+      { variantSku: 'GDN-0027-001', quantity: 4, sortOrder: 1 },
+      { variantSku: 'GDN-0028-001', quantity: 4, sortOrder: 2 },
+      { variantSku: 'GDN-0031-001', quantity: 4, sortOrder: 3 },
     ],
   },
   {
@@ -72,9 +72,9 @@ export const CURATED_BUNDLES = [
     discountPercent: 10,
     sortOrder: 4,
     components: [
-      { variantSku: 'HCL-0022-001', quantity: 1, sortOrder: 1 },
-      { variantSku: 'HCL-0026-001', quantity: 1, sortOrder: 2 },
-      { variantSku: 'HCL-0043-001', quantity: 1, sortOrder: 3 },
+      { variantSku: 'HCL-0022-001', quantity: 4, sortOrder: 1 },
+      { variantSku: 'HCL-0026-001', quantity: 4, sortOrder: 2 },
+      { variantSku: 'HCL-0043-001', quantity: 4, sortOrder: 3 },
     ],
   },
   {
@@ -87,9 +87,9 @@ export const CURATED_BUNDLES = [
     discountPercent: 10,
     sortOrder: 5,
     components: [
-      { variantSku: 'TCM-0034-001', quantity: 1, sortOrder: 1 },
-      { variantSku: 'TCM-0036-001', quantity: 1, sortOrder: 2 },
-      { variantSku: 'TCM-0038-001', quantity: 1, sortOrder: 3 },
+      { variantSku: 'TCM-0034-001', quantity: 4, sortOrder: 1 },
+      { variantSku: 'TCM-0036-001', quantity: 4, sortOrder: 2 },
+      { variantSku: 'TCM-0038-001', quantity: 4, sortOrder: 3 },
     ],
   },
   {
@@ -102,9 +102,9 @@ export const CURATED_BUNDLES = [
     discountPercent: 10,
     sortOrder: 6,
     components: [
-      { variantSku: 'DRK-0014-001', quantity: 1, sortOrder: 1 },
-      { variantSku: 'DRK-0018-001', quantity: 1, sortOrder: 2 },
-      { variantSku: 'DRK-0016-001', quantity: 1, sortOrder: 3 },
+      { variantSku: 'DRK-0014-001', quantity: 4, sortOrder: 1 },
+      { variantSku: 'DRK-0018-001', quantity: 4, sortOrder: 2 },
+      { variantSku: 'DRK-0016-001', quantity: 4, sortOrder: 3 },
     ],
   },
 ] as const satisfies readonly CatalogBundle[];

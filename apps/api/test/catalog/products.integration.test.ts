@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import {
+  ProductListPaginatedResponse,
   ProductWithVariants,
-  type ProductListPaginatedResponse,
   type ProductFilterOptionsResponse,
   SimilarProductsResponse,
 } from '@shop/contracts/products';
@@ -73,11 +73,33 @@ void test('customer catalog endpoints exclude inactive products', async (t) => {
   const list = await app.inject({ method: 'GET', url: '/api/products?pageSize=48' });
   assert.equal(list.statusCode, 200);
   const body = list.json<ProductListPaginatedResponse>();
+  assert.equal(Value.Check(ProductListPaginatedResponse, body), true);
   assert.equal(body.total, 99);
   assert.equal(
     body.items.some((product) => product.id === '1'),
     false,
   );
+});
+
+void test('Trade catalogue list has contract-valid specification keys', async (t) => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'shop-product-trade-list-'));
+  const db = openDatabase({ path: join(tempDir, 'shop.db') });
+  seedDatabase(db);
+  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
+  t.after(async () => {
+    await app.close();
+    closeDatabase(db);
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  const response = await app.inject({
+    method: 'GET',
+    url: '/api/products?category=Trade%20%26%20Creative%20Materials',
+  });
+  assert.equal(response.statusCode, 200);
+  const body = response.json<ProductListPaginatedResponse>();
+  assert.equal(Value.Check(ProductListPaginatedResponse, body), true);
+  assert.equal(body.total, 15);
 });
 
 void test('similar products endpoint is deterministic and related remains its compatibility alias', async (t) => {

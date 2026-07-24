@@ -56,9 +56,9 @@ void test('bundle HTTP routes validate input, expose current bundles, and audit 
       .json<{ items: Array<{ productId: string; quantity: number }> }>()
       .items.map((item) => [item.productId, item.quantity]),
     [
-      ['8', 1],
-      ['9', 1],
-      ['13', 1],
+      ['8', 4],
+      ['9', 4],
+      ['13', 4],
     ],
   );
   const audit = db
@@ -81,7 +81,7 @@ void test('bundle HTTP routes validate input, expose current bundles, and audit 
   assert.equal(audit.entity_type, 'cart');
   assert.equal(audit.entity_id, cartId);
   assert.ok(audit.request_id.length > 0);
-  assert.equal(audit.metadata_json, '{"bundleId":1,"componentCount":3,"quantity":3}');
+  assert.equal(audit.metadata_json, '{"bundleId":1,"componentCount":3,"quantity":12}');
 });
 
 void test('bundle HTTP add maps unavailable and reserved-cart conflicts', async (t) => {
