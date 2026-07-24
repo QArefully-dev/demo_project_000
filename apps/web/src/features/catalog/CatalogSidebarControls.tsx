@@ -50,10 +50,10 @@ export function CatalogSidebarControls({
   return (
     <>
       <fieldset>
-        <legend className="mb-2 text-sm font-semibold">Powder type</legend>
+        <legend className="mb-2 text-sm font-semibold">Material type</legend>
         <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 lg:mx-0 lg:block lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">
           <CategoryChoice checked={!category} onChange={() => onCategoryChange(undefined)}>
-            All powders
+            All materials
           </CategoryChoice>
           {categories.map((item) => (
             <CategoryChoice

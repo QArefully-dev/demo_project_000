@@ -29,7 +29,7 @@ export const wishlistItem: NavItem = {
 
 export const customPowderItem: NavItem = {
   key: 'customPowder',
-  label: 'Custom Powder',
+  label: 'Custom Small Order',
   icon: 'FlaskConical',
   enabled: true,
   className: 'powderizer-nav-link',

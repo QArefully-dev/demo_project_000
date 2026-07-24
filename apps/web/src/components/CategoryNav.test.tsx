@@ -22,16 +22,16 @@ function renderNav(path: string) {
 }
 
 describe('CategoryNav', () => {
-  it('keeps Custom Powder current-page semantics with its dedicated treatment', () => {
+  it('keeps Custom Small Order current-page semantics with its dedicated treatment', () => {
     renderNav('/custom-powder');
 
-    const customPowder = screen.getByRole('link', { name: 'Custom Powder' });
-    expect(customPowder).toHaveAttribute('aria-current', 'page');
-    expect(customPowder).toHaveClass('powderizer-nav-link');
+    const customSmallOrder = screen.getByRole('link', { name: 'Custom Small Order' });
+    expect(customSmallOrder).toHaveAttribute('aria-current', 'page');
+    expect(customSmallOrder).toHaveClass('powderizer-nav-link');
     expect(screen.getByRole('link', { name: 'Materials' })).not.toHaveAttribute('aria-current');
   });
 
-  it('does not apply Custom Powder treatment to category or deals links', () => {
+  it('does not apply Custom Small Order treatment to category or deals links', () => {
     renderNav('/catalog?category=Baking+%26+Pantry');
 
     expect(screen.getByRole('link', { name: 'Baking & Pantry' })).toHaveAttribute(
@@ -59,7 +59,7 @@ describe('CategoryNav', () => {
 
     expect(styles).toContain('--powderizer-gradient-duration: 12s;');
     expect(styles).toMatch(
-      /@media \(prefers-reduced-motion: reduce\) \{\s+\.powderizer-gradient-animated,\s+\.powderizer-nav-link \{\s+animation: none;/,
+      /@media \(prefers-reduced-motion: reduce\) \{\s+\.powderizer-nav-link \{\s+animation: none;/,
     );
   });
 });

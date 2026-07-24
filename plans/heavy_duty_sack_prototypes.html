@@ -1,121 +1,278 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Heavy-duty packaging — approved directions A, B and F</title>
-<style>
-  :root{--page:#f3f1ec;--ink:#22241f;--muted:#6f6d63;--line:#d6d2c7;--raised:#fbfaf7}
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--page);color:var(--ink);
-    font-family:system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
-  .wrap{max-width:1100px;margin:0 auto;padding:40px 28px 80px}
-  .eyebrow{font-family:'Arial Narrow',Arial,sans-serif;font-size:11px;font-weight:700;
-    letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin:0}
-  h1{font-family:'Arial Narrow',Arial,sans-serif;font-size:36px;font-weight:700;margin:10px 0 8px}
-  .lede{max-width:64ch;margin:0;color:var(--muted);font-size:15px;line-height:1.55}
-  hr{border:0;height:1px;background:var(--line);margin:34px 0 24px}
-  h2{font-family:'Arial Narrow',Arial,sans-serif;font-size:13px;font-weight:700;
-    letter-spacing:.2em;text-transform:uppercase;margin:0 0 16px;color:var(--muted)}
-  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:22px}
-  .proto{background:var(--raised);border:1px solid var(--line);border-radius:14px;overflow:hidden}
-  .proto header{display:flex;gap:12px;align-items:baseline;padding:16px 18px 0}
-  .tag{font-family:'Arial Narrow',Arial,sans-serif;font-weight:700;font-size:12px;letter-spacing:.12em;
-    background:var(--ink);color:var(--page);padding:4px 8px;border-radius:4px;line-height:1}
-  .proto h3{margin:0;font-size:16px;font-weight:600}
-  .proto .why{margin:8px 18px 0;font-size:13px;line-height:1.55;color:var(--muted)}
-  .proto .scope{margin:10px 18px 0;font-size:12px;font-family:'Arial Narrow',Arial,sans-serif;
-    letter-spacing:.08em;text-transform:uppercase;color:var(--ink)}
-  .stage{padding:6px 10px 16px}
-  .stage svg{width:100%;height:auto;display:block}
-  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
-  .card{background:var(--raised);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-  .card .thumb{background:#eae7df;aspect-ratio:4/5;padding:8px}
-  .card .thumb svg{width:100%;height:100%;display:block}
-  .card .body{padding:12px 14px 16px}
-  .card .cat{font-family:'Arial Narrow',Arial,sans-serif;font-size:10px;font-weight:700;
-    letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 4px}
-  .card .nm{margin:0;font-size:14px;font-weight:600;line-height:1.3}
-  .open{background:#fbf6e8;border:1px solid #e3d5ac;border-radius:12px;padding:16px 18px;
-    font-size:14px;line-height:1.6}
-  .open b{font-weight:600}
-  @media (max-width:820px){.grid2,.cards{grid-template-columns:1fr}}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <p class="eyebrow">Packaging study — non-food classes</p>
-  <h1>Approved sack directions</h1>
-  <p class="lede">Food-grade lines keep the existing bag unchanged. Non-food lines split across three
-    vessels, one per category. Artwork is drawn on the same 720&times;720 canvas as
-    <code>BagArtwork</code>, so it substitutes directly inside <code>ProductMedia</code>.</p>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Heavy-duty packaging — approved directions A, B and F</title>
+    <style>
+      :root {
+        --page: #f3f1ec;
+        --ink: #22241f;
+        --muted: #6f6d63;
+        --line: #d6d2c7;
+        --raised: #fbfaf7;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--page);
+        color: var(--ink);
+        font-family:
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 40px 28px 80px;
+      }
+      .eyebrow {
+        font-family: 'Arial Narrow', Arial, sans-serif;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 0;
+      }
+      h1 {
+        font-family: 'Arial Narrow', Arial, sans-serif;
+        font-size: 36px;
+        font-weight: 700;
+        margin: 10px 0 8px;
+      }
+      .lede {
+        max-width: 64ch;
+        margin: 0;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.55;
+      }
+      hr {
+        border: 0;
+        height: 1px;
+        background: var(--line);
+        margin: 34px 0 24px;
+      }
+      h2 {
+        font-family: 'Arial Narrow', Arial, sans-serif;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        margin: 0 0 16px;
+        color: var(--muted);
+      }
+      .grid2 {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 22px;
+      }
+      .proto {
+        background: var(--raised);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        overflow: hidden;
+      }
+      .proto header {
+        display: flex;
+        gap: 12px;
+        align-items: baseline;
+        padding: 16px 18px 0;
+      }
+      .tag {
+        font-family: 'Arial Narrow', Arial, sans-serif;
+        font-weight: 700;
+        font-size: 12px;
+        letter-spacing: 0.12em;
+        background: var(--ink);
+        color: var(--page);
+        padding: 4px 8px;
+        border-radius: 4px;
+        line-height: 1;
+      }
+      .proto h3 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .proto .why {
+        margin: 8px 18px 0;
+        font-size: 13px;
+        line-height: 1.55;
+        color: var(--muted);
+      }
+      .proto .scope {
+        margin: 10px 18px 0;
+        font-size: 12px;
+        font-family: 'Arial Narrow', Arial, sans-serif;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ink);
+      }
+      .stage {
+        padding: 6px 10px 16px;
+      }
+      .stage svg {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+      }
+      .card {
+        background: var(--raised);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .card .thumb {
+        background: #eae7df;
+        aspect-ratio: 4/5;
+        padding: 8px;
+      }
+      .card .thumb svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .card .body {
+        padding: 12px 14px 16px;
+      }
+      .card .cat {
+        font-family: 'Arial Narrow', Arial, sans-serif;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 0 0 4px;
+      }
+      .card .nm {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.3;
+      }
+      .open {
+        background: #fbf6e8;
+        border: 1px solid #e3d5ac;
+        border-radius: 12px;
+        padding: 16px 18px;
+        font-size: 14px;
+        line-height: 1.6;
+      }
+      .open b {
+        font-weight: 600;
+      }
+      @media (max-width: 820px) {
+        .grid2,
+        .cards {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <p class="eyebrow">Packaging study — non-food classes</p>
+      <h1>Approved sack directions</h1>
+      <p class="lede">
+        Food-grade lines keep the existing bag unchanged. Non-food lines split across three vessels,
+        one per category. Artwork is drawn on the same 720&times;720 canvas as
+        <code>BagArtwork</code>, so it substitutes directly inside <code>ProductMedia</code>.
+      </p>
 
-  <hr />
-  <h2>Approved</h2>
-  <div class="grid2" id="protos"></div>
+      <hr />
+      <h2>Approved</h2>
+      <div class="grid2" id="protos"></div>
 
-  <hr />
-  <h2>At catalogue grid size</h2>
-  <div class="cards" id="cards"></div>
+      <hr />
+      <h2>At catalogue grid size</h2>
+      <div class="cards" id="cards"></div>
 
-  <hr />
-  <h2>Open</h2>
-  <div class="open">
-    <p style="margin:0 0 8px"><b>The mild cleaning lines do not fit F.</b> Carpet cleaner and shoe
-      deodorising powder are <code>mixingGroup: 'absorbents'</code> and their worst hazard is
-      &ldquo;may cause dust irritation&rdquo;. A corrosion stripe on shoe powder overstates the risk.
-      Either carve those out or soften F when <code>consumptionClassification</code> is
-      <code>non-food</code> rather than <code>caution</code>.</p>
-    <p style="margin:0 0 8px"><b>Trade pack sizes are ahead of the catalog.</b> F prints 5&nbsp;kg;
-      <code>packages/catalog</code> currently tops out at a 600&nbsp;g tub for these products. The
-      wholesale pivot implies larger units, but nothing here depends on the number.</p>
-    <p style="margin:0"><b>Brand string is inconsistent.</b> These vessels print
-      <code>QAREFULLY MATERIALS EXCHANGE</code>; the food bag still prints
-      <code>QAREFULLY POWDER CO.</code></p>
-  </div>
-</div>
+      <hr />
+      <h2>Open</h2>
+      <div class="open">
+        <p style="margin: 0 0 8px">
+          <b>Resolved: mild cleaning carve-out.</b> Household &amp; Cleaning lines with
+          <code>consumptionClassification: 'non-food'</code> (carpet cleaner, shoe deodorising
+          powder -- both <code>mixingGroup: 'absorbents'</code>) render keg direction F with a
+          softened <code>tone: 'mild'</code>: the stripe swaps the alert ink for the category ink,
+          the pictogram becomes a generic irritant mark, and the vertical
+          <code>CORROSIVE</code> word plus the <code>DANGER</code> band are dropped entirely.
+          <code>caution</code> lines keep the full corrosive tone. Web implementation:
+          <code>apps/web/src/components/packaging/KegArtwork.tsx</code>.
+        </p>
+        <p style="margin: 0 0 8px">
+          <b>Resolved: pack sizes.</b> The "trade pack sizes ahead of the catalog" note above is
+          stale. <code>packages/catalog/src/model.ts</code>
+          <code>industrializeProducts</code> already forces every non-food variant to a
+          <code>25 kg Sack</code> / <code>1,000 kg Pallet</code> pair. The web artwork prints the
+          resolved variant's own label rather than a literal, so no vessel depends on this number.
+        </p>
+        <p style="margin: 0">
+          <b>Resolved: brand string.</b> Unified to <code>QAREFULLY MATERIALS EXCHANGE</code> across
+          every vessel, including the food bag
+          (<code>apps/web/src/components/BagArtwork.tsx</code>). No vessel prints
+          <code>QAREFULLY POWDER CO.</code> any longer.
+        </p>
+      </div>
+    </div>
 
-<script>
-const NARROW = "Haettenschweiler,'Arial Narrow',Impact,sans-serif";
-const UI = "Arial,Helvetica,sans-serif";
-const MONO = "'Courier New',monospace";
+    <script>
+      const NARROW = "Haettenschweiler,'Arial Narrow',Impact,sans-serif";
+      const UI = 'Arial,Helvetica,sans-serif';
+      const MONO = "'Courier New',monospace";
 
-/** Single-plate ink colours, keyed by the direction a category was assigned. */
-const INKS = {
-  trade:  { ink:'#26292c', alert:'#b0381a' },
-  garden: { ink:'#2c5130', alert:'#9d5416' },
-  clean:  { ink:'#1b4a68', alert:'#b0381a' },
-};
+      /** Single-plate ink colours, keyed by the direction a category was assigned. */
+      const INKS = {
+        trade: { ink: '#26292c', alert: '#b0381a' },
+        garden: { ink: '#2c5130', alert: '#9d5416' },
+        clean: { ink: '#1b4a68', alert: '#b0381a' },
+      };
 
-let uid = 0;
-const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      let uid = 0;
+      const esc = (s) =>
+        String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/* textLength + spacingAndGlyphs forces true condensation without a webfont. */
-function cond(x, y, str, size, width, fill, opts = {}) {
-  const o = { anchor:'start', opacity:1, ...opts };
-  return `<text x="${x}" y="${y}" fill="${fill}" opacity="${o.opacity}" font-family="${NARROW}"
+      /* textLength + spacingAndGlyphs forces true condensation without a webfont. */
+      function cond(x, y, str, size, width, fill, opts = {}) {
+        const o = { anchor: 'start', opacity: 1, ...opts };
+        return `<text x="${x}" y="${y}" fill="${fill}" opacity="${o.opacity}" font-family="${NARROW}"
     font-size="${size}" text-anchor="${o.anchor}"
     textLength="${width}" lengthAdjust="spacingAndGlyphs">${esc(str)}</text>`;
-}
-function lab(x, y, str, size, fill, sp = 1.4, opts = {}) {
-  const o = { anchor:'start', weight:700, opacity:1, ...opts };
-  return `<text x="${x}" y="${y}" fill="${fill}" opacity="${o.opacity}" font-family="${UI}"
+      }
+      function lab(x, y, str, size, fill, sp = 1.4, opts = {}) {
+        const o = { anchor: 'start', weight: 700, opacity: 1, ...opts };
+        return `<text x="${x}" y="${y}" fill="${fill}" opacity="${o.opacity}" font-family="${UI}"
     font-size="${size}" font-weight="${o.weight}" letter-spacing="${sp}"
     text-anchor="${o.anchor}">${esc(str)}</text>`;
-}
-function ghs(cx, cy, r, alert, paper) {
-  return `<g transform="translate(${cx} ${cy})">
-    <g transform="rotate(45)"><rect x="${-r}" y="${-r}" width="${r*2}" height="${r*2}" rx="3"
-      fill="${paper}" stroke="${alert}" stroke-width="${r*0.22}"/></g>
-    <text x="0" y="${r*0.42}" text-anchor="middle" font-family="${UI}" font-size="${r*1.25}"
+      }
+      function ghs(cx, cy, r, alert, paper) {
+        return `<g transform="translate(${cx} ${cy})">
+    <g transform="rotate(45)"><rect x="${-r}" y="${-r}" width="${r * 2}" height="${r * 2}" rx="3"
+      fill="${paper}" stroke="${alert}" stroke-width="${r * 0.22}"/></g>
+    <text x="0" y="${r * 0.42}" text-anchor="middle" font-family="${UI}" font-size="${r * 1.25}"
       font-weight="900" fill="#1b1c19">!</text></g>`;
-}
+      }
 
-/* --- A: stitched multi-wall kraft. Cementitious and casting materials. ---------- */
-function sackA(d) {
-  const { ink, alert } = INKS[d.ink];
-  const kraft = '#c9ae83', shade = '#b3966d', edge = '#3a3128', paper = '#f2efe7';
-  return `<svg viewBox="0 0 720 720" xmlns="http://www.w3.org/2000/svg" role="img"
+      /* --- A: stitched multi-wall kraft. Cementitious and casting materials. ---------- */
+      function sackA(d) {
+        const { ink, alert } = INKS[d.ink];
+        const kraft = '#c9ae83',
+          shade = '#b3966d',
+          edge = '#3a3128',
+          paper = '#f2efe7';
+        return `<svg viewBox="0 0 720 720" xmlns="http://www.w3.org/2000/svg" role="img"
       aria-label="${esc(d.name)} heavy-duty stitched kraft sack">
     <ellipse cx="362" cy="634" rx="248" ry="26" fill="#2a2721" opacity=".13"/>
     <path d="M150 186 154 176 178 200Z" fill="${shade}" stroke="${edge}" stroke-width="5"
@@ -132,15 +289,15 @@ function sackA(d) {
       stroke-linecap="round"/>
 
     ${lab(194, 268, 'QAREFULLY MATERIALS EXCHANGE', 10.5, ink, 1.4)}
-    ${lab(544, 268, d.grade, 12, ink, 1.2, { anchor:'end' })}
+    ${lab(544, 268, d.grade, 12, ink, 1.2, { anchor: 'end' })}
     <path d="M194 280H544" stroke="${ink}" stroke-width="3"/>
 
     <!-- Off-register second plate: characteristic of single-pass sack printing. -->
-    ${cond(190, 356, d.l1, 66, d.w1 + 2, alert, { opacity:.22 })}
+    ${cond(190, 356, d.l1, 66, d.w1 + 2, alert, { opacity: 0.22 })}
     ${cond(188, 354, d.l1, 66, d.w1, ink)}
-    ${d.l2 ? cond(190, 414, d.l2, 66, d.w2 + 2, alert, { opacity:.22 }) : ''}
+    ${d.l2 ? cond(190, 414, d.l2, 66, d.w2 + 2, alert, { opacity: 0.22 }) : ''}
     ${d.l2 ? cond(188, 412, d.l2, 66, d.w2, ink) : ''}
-    ${lab(190, 440, d.sub.toUpperCase(), 11.5, ink, 1.8, { opacity:.75 })}
+    ${lab(190, 440, d.sub.toUpperCase(), 11.5, ink, 1.8, { opacity: 0.75 })}
     <path d="M190 456H556" stroke="${ink}" stroke-width="1.5" opacity=".55"/>
 
     ${ghs(224, 520, 30, alert, paper)}
@@ -148,27 +305,32 @@ function sackA(d) {
       stroke-width="1.5" opacity=".6"/>
     <text x="278" y="511" font-family="${MONO}" font-size="14" font-weight="700"
       fill="${ink}">${esc(d.batch)}</text>
-    ${lab(268, 542, 'PRODUCTION LOT', 9, ink, 1.2, { opacity:.7 })}
+    ${lab(268, 542, 'PRODUCTION LOT', 9, ink, 1.2, { opacity: 0.7 })}
 
-    ${lab(556, 486, 'NET WEIGHT', 10, ink, 1.6, { anchor:'end' })}
-    ${cond(556, 552, d.weight, 74, 152, ink, { anchor:'end' })}
-    ${lab(190, 586, d.hazard.toUpperCase(), 9.5, ink, .9, { opacity:.85 })}
+    ${lab(556, 486, 'NET WEIGHT', 10, ink, 1.6, { anchor: 'end' })}
+    ${cond(556, 552, d.weight, 74, 152, ink, { anchor: 'end' })}
+    ${lab(190, 586, d.hazard.toUpperCase(), 9.5, ink, 0.9, { opacity: 0.85 })}
   </svg>`;
-}
+      }
 
-/* --- B: woven polypropylene, knockout band. Garden and outdoors. --------------- */
-function sackB(d) {
-  const id = 'b' + (++uid);
-  const { ink, alert } = INKS[d.ink];
-  const edge = '#3f3d36', paper = '#f4f2ec';
-  const zStart = 164, zEnd = 556, zN = 16, zStep = (zEnd - zStart) / zN;
-  let zig = `M${zStart} 196`;
-  for (let i = 0; i < zN; i++) {
-    const x = zStart + i * zStep;
-    zig += ` L${x + zStep / 2} 181 L${x + zStep} 196`;
-  }
-  const body = 'M164 214Q148 400 156 594Q158 622 200 624L520 624Q562 622 564 594Q572 400 556 214Z';
-  return `<svg viewBox="0 0 720 720" xmlns="http://www.w3.org/2000/svg" role="img"
+      /* --- B: woven polypropylene, knockout band. Garden and outdoors. --------------- */
+      function sackB(d) {
+        const id = 'b' + ++uid;
+        const { ink, alert } = INKS[d.ink];
+        const edge = '#3f3d36',
+          paper = '#f4f2ec';
+        const zStart = 164,
+          zEnd = 556,
+          zN = 16,
+          zStep = (zEnd - zStart) / zN;
+        let zig = `M${zStart} 196`;
+        for (let i = 0; i < zN; i++) {
+          const x = zStart + i * zStep;
+          zig += ` L${x + zStep / 2} 181 L${x + zStep} 196`;
+        }
+        const body =
+          'M164 214Q148 400 156 594Q158 622 200 624L520 624Q562 622 564 594Q572 400 556 214Z';
+        return `<svg viewBox="0 0 720 720" xmlns="http://www.w3.org/2000/svg" role="img"
       aria-label="${esc(d.name)} heavy-duty woven polypropylene sack">
     <defs>
       <pattern id="weave-${id}" width="9" height="9" patternUnits="userSpaceOnUse">
@@ -193,32 +355,33 @@ function sackB(d) {
       <rect x="120" y="300" width="480" height="132" fill="${ink}"/>
       ${cond(184, 358, d.l1, 50, d.wb1, '#fff')}
       ${d.l2 ? cond(184, 410, d.l2, 50, d.wb2, '#fff') : ''}
-      ${lab(540, 420, d.grade, 11, '#fff', 1.4, { anchor:'end', opacity:.8 })}
+      ${lab(540, 420, d.grade, 11, '#fff', 1.4, { anchor: 'end', opacity: 0.8 })}
       <rect x="120" y="536" width="480" height="20" fill="url(#hatch-${id})"/>
     </g>
 
     ${lab(186, 262, 'QAREFULLY MATERIALS EXCHANGE', 11.5, ink, 1.9)}
-    ${lab(186, 284, d.sub.toUpperCase(), 10, ink, 1.5, { opacity:.6 })}
+    ${lab(186, 284, d.sub.toUpperCase(), 10, ink, 1.5, { opacity: 0.6 })}
 
-    ${lab(186, 460, 'NET WEIGHT', 9.5, ink, 1.4, { opacity:.7 })}
+    ${lab(186, 460, 'NET WEIGHT', 9.5, ink, 1.4, { opacity: 0.7 })}
     ${cond(184, 512, d.weight, 62, 128, ink)}
     <path d="M336 442V522" stroke="${ink}" stroke-width="1.5" opacity=".35"/>
-    ${lab(356, 460, 'LOT', 9.5, ink, 1.4, { opacity:.7 })}
+    ${lab(356, 460, 'LOT', 9.5, ink, 1.4, { opacity: 0.7 })}
     <text x="356" y="486" font-family="${MONO}" font-size="15" font-weight="700"
       fill="${ink}">${esc(d.batch)}</text>
-    ${lab(356, 512, d.yield.toUpperCase(), 9.5, ink, .9, { opacity:.75 })}
+    ${lab(356, 512, d.yield.toUpperCase(), 9.5, ink, 0.9, { opacity: 0.75 })}
 
     ${ghs(226, 590, 24, alert, paper)}
-    ${lab(262, 586, d.hazard.toUpperCase(), 8.5, ink, .8)}
-    ${lab(262, 602, 'PPE REQUIRED — SEE SAFETY DATA SHEET', 7.5, ink, .7, { opacity:.7 })}
+    ${lab(262, 586, d.hazard.toUpperCase(), 8.5, ink, 0.8)}
+    ${lab(262, 602, 'PPE REQUIRED — SEE SAFETY DATA SHEET', 7.5, ink, 0.7, { opacity: 0.7 })}
   </svg>`;
-}
+      }
 
-/* --- F: rigid HDPE keg. Household and cleaning. -------------------------------- */
-function sackF(d) {
-  const { ink, alert } = INKS[d.ink];
-  const edge = '#33403f', shell = '#e7e9e4';
-  return `<svg viewBox="0 0 720 720" xmlns="http://www.w3.org/2000/svg" role="img"
+      /* --- F: rigid HDPE keg. Household and cleaning. -------------------------------- */
+      function sackF(d) {
+        const { ink, alert } = INKS[d.ink];
+        const edge = '#33403f',
+          shell = '#e7e9e4';
+        return `<svg viewBox="0 0 720 720" xmlns="http://www.w3.org/2000/svg" role="img"
       aria-label="${esc(d.name)} rigid corrosive keg">
     <ellipse cx="360" cy="646" rx="182" ry="18" fill="#232a26" opacity=".14"/>
 
@@ -248,96 +411,189 @@ function sackF(d) {
     <text transform="translate(251 546) rotate(-90)" font-family="${UI}" font-size="12"
       font-weight="700" letter-spacing="3.4" fill="#fff">CORROSIVE</text>
 
-    ${lab(284, 348, 'QAREFULLY MATERIALS EXCHANGE', 8.5, ink, 1.3, { opacity:.7 })}
+    ${lab(284, 348, 'QAREFULLY MATERIALS EXCHANGE', 8.5, ink, 1.3, { opacity: 0.7 })}
     ${cond(282, 394, d.l1, 40, d.wf1, ink)}
     ${d.l2 ? cond(282, 434, d.l2, 40, d.wf2, ink) : ''}
-    ${lab(284, 454, d.grade.toUpperCase(), 8.5, ink, 1.1, { opacity:.75 })}
+    ${lab(284, 454, d.grade.toUpperCase(), 8.5, ink, 1.1, { opacity: 0.75 })}
 
     <rect x="284" y="464" width="200" height="40" fill="${alert}"/>
-    ${lab(292, 480, 'DANGER', 9, '#fff', 2, { opacity:.85 })}
-    ${lab(292, 496, d.never.toUpperCase(), 9, '#fff', .7)}
+    ${lab(292, 480, 'DANGER', 9, '#fff', 2, { opacity: 0.85 })}
+    ${lab(292, 496, d.never.toUpperCase(), 9, '#fff', 0.7)}
 
-    ${lab(284, 522, 'DOSE', 8, ink, 1.3, { opacity:.65 })}
-    ${lab(284, 540, d.dose, 10, ink, .3)}
+    ${lab(284, 522, 'DOSE', 8, ink, 1.3, { opacity: 0.65 })}
+    ${lab(284, 540, d.dose, 10, ink, 0.3)}
     <path d="M284 556H484" stroke="${ink}" stroke-width="1.3" opacity=".35"/>
-    ${lab(284, 580, 'LOT ' + d.batch, 9, ink, .8, { opacity:.7 })}
-    ${lab(414, 580, 'NET', 8, ink, 1.3, { anchor:'end', opacity:.65 })}
-    ${cond(484, 582, d.weight, 32, 66, ink, { anchor:'end' })}
+    ${lab(284, 580, 'LOT ' + d.batch, 9, ink, 0.8, { opacity: 0.7 })}
+    ${lab(414, 580, 'NET', 8, ink, 1.3, { anchor: 'end', opacity: 0.65 })}
+    ${cond(484, 582, d.weight, 32, 66, ink, { anchor: 'end' })}
   </svg>`;
-}
+      }
 
-/* --------------------------------------------------------------- content ------ */
-const cement = {
-  name:'Portland Cement', l1:'PORTLAND', l2:'CEMENT', sub:'Trade & creative materials',
-  grade:'CEM I 42.5N', batch:'PC-33-0725', weight:'25 kg', yield:'0.013 m³ / bag',
-  hazard:'Irritant — wear P2 mask, gloves, eye protection', ink:'trade',
-  w1:330, w2:262, wb1:300, wb2:238, wc1:264, wc2:210,
-};
-const plaster = {
-  name:'Plaster of Paris', l1:'PLASTER', l2:'OF PARIS', sub:'Trade & creative materials',
-  grade:'HEMIHYDRATE', batch:'PP-34-0725', weight:'5 kg', yield:'20-30 min set',
-  hazard:'Irritant — hardens on contact with moisture', ink:'trade',
-  w1:250, w2:262, wb1:224, wb2:238, wc1:198, wc2:210,
-};
-const fert = {
-  name:'All-Purpose Fertiliser', l1:'ALL-PURPOSE', l2:'FERTILISER', sub:'Garden & outdoors',
-  grade:'NPK 10-10-10', batch:'GD-27-0725', weight:'10 kg', yield:'200 m² / bag',
-  hazard:'Harmful if swallowed — keep away from children', ink:'garden',
-  w1:352, w2:330, wb1:312, wb2:296, wc1:280, wc2:266,
-};
-const bone = {
-  name:'Bone Meal', l1:'BONE', l2:'MEAL', sub:'Garden & outdoors',
-  grade:'NPK 3-15-0', batch:'GD-28-0725', weight:'2.5 kg', yield:'25 m² / bag',
-  hazard:'Not for consumption — keep sealed away from animals', ink:'garden',
-  w1:180, w2:180, wb1:158, wb2:158, wc1:142, wc2:142,
-};
-const drain = {
-  name:'Drain Unblocker Powder', l1:'DRAIN', l2:'UNBLOCKER', sub:'Household & cleaning',
-  grade:'Sodium hydroxide + aluminium', batch:'HC-44-0725', weight:'5 kg',
-  dose:'50 g, then 250 ml cold water', never:'Hot water · acids · bleach',
-  yield:'Clears one blockage', hazard:'Severe burns — face shield, gloves, ventilation',
-  ink:'clean', wf1:110, wf2:198,
-};
-const oven = {
-  name:'Oven Cleaner Powder', l1:'OVEN', l2:'CLEANER', sub:'Household & cleaning',
-  grade:'Sodium hydroxide + surfactants', batch:'HC-23-0725', weight:'5 kg',
-  dose:'50 g mixed to a paste', never:'Aluminium · acids · bleach',
-  yield:'Covers one oven cavity', hazard:'Severe burns — gloves, goggles, long sleeves',
-  ink:'clean', wf1:88, wf2:174,
-};
+      /* --------------------------------------------------------------- content ------ */
+      const cement = {
+        name: 'Portland Cement',
+        l1: 'PORTLAND',
+        l2: 'CEMENT',
+        sub: 'Trade & creative materials',
+        grade: 'CEM I 42.5N',
+        batch: 'PC-33-0725',
+        weight: '25 kg',
+        yield: '0.013 m³ / bag',
+        hazard: 'Irritant — wear P2 mask, gloves, eye protection',
+        ink: 'trade',
+        w1: 330,
+        w2: 262,
+        wb1: 300,
+        wb2: 238,
+        wc1: 264,
+        wc2: 210,
+      };
+      const plaster = {
+        name: 'Plaster of Paris',
+        l1: 'PLASTER',
+        l2: 'OF PARIS',
+        sub: 'Trade & creative materials',
+        grade: 'HEMIHYDRATE',
+        batch: 'PP-34-0725',
+        weight: '5 kg',
+        yield: '20-30 min set',
+        hazard: 'Irritant — hardens on contact with moisture',
+        ink: 'trade',
+        w1: 250,
+        w2: 262,
+        wb1: 224,
+        wb2: 238,
+        wc1: 198,
+        wc2: 210,
+      };
+      const fert = {
+        name: 'All-Purpose Fertiliser',
+        l1: 'ALL-PURPOSE',
+        l2: 'FERTILISER',
+        sub: 'Garden & outdoors',
+        grade: 'NPK 10-10-10',
+        batch: 'GD-27-0725',
+        weight: '10 kg',
+        yield: '200 m² / bag',
+        hazard: 'Harmful if swallowed — keep away from children',
+        ink: 'garden',
+        w1: 352,
+        w2: 330,
+        wb1: 312,
+        wb2: 296,
+        wc1: 280,
+        wc2: 266,
+      };
+      const bone = {
+        name: 'Bone Meal',
+        l1: 'BONE',
+        l2: 'MEAL',
+        sub: 'Garden & outdoors',
+        grade: 'NPK 3-15-0',
+        batch: 'GD-28-0725',
+        weight: '2.5 kg',
+        yield: '25 m² / bag',
+        hazard: 'Not for consumption — keep sealed away from animals',
+        ink: 'garden',
+        w1: 180,
+        w2: 180,
+        wb1: 158,
+        wb2: 158,
+        wc1: 142,
+        wc2: 142,
+      };
+      const drain = {
+        name: 'Drain Unblocker Powder',
+        l1: 'DRAIN',
+        l2: 'UNBLOCKER',
+        sub: 'Household & cleaning',
+        grade: 'Sodium hydroxide + aluminium',
+        batch: 'HC-44-0725',
+        weight: '5 kg',
+        dose: '50 g, then 250 ml cold water',
+        never: 'Hot water · acids · bleach',
+        yield: 'Clears one blockage',
+        hazard: 'Severe burns — face shield, gloves, ventilation',
+        ink: 'clean',
+        wf1: 110,
+        wf2: 198,
+      };
+      const oven = {
+        name: 'Oven Cleaner Powder',
+        l1: 'OVEN',
+        l2: 'CLEANER',
+        sub: 'Household & cleaning',
+        grade: 'Sodium hydroxide + surfactants',
+        batch: 'HC-23-0725',
+        weight: '5 kg',
+        dose: '50 g mixed to a paste',
+        never: 'Aluminium · acids · bleach',
+        yield: 'Covers one oven cavity',
+        hazard: 'Severe burns — gloves, goggles, long sleeves',
+        ink: 'clean',
+        wf1: 88,
+        wf2: 174,
+      };
 
-const protos = [
-  { tag:'A', title:'Stitched multi-wall kraft', render:sackA, item:cement,
-    why:'Sewn top seam, slumped body, one ink printed straight onto the paper, with a deliberate off-register second plate. The weight slab is the loudest element.',
-    scope:'Trade & Creative Materials — cementitious and casting groups' },
-  { tag:'B', title:'Woven PP, knockout band', render:sackB, item:fert,
-    why:'Heat-sealed pinked top over woven polypropylene, product name reversed out of a full-bleed colour band, hazard hatching along the foot. Strongest at thumbnail size.',
-    scope:'Garden & Outdoors — garden-treatment group' },
-  { tag:'F', title:'Rigid corrosive keg', render:sackF, item:drain,
-    why:'HDPE keg with a ribbed safety cap and tamper ring. Not a sack at all. A full-height corrosion stripe carries the pictogram and the word set vertically, so the hazard is legible before the product name is.',
-    scope:'Household & Cleaning — cleaning group' },
-];
+      const protos = [
+        {
+          tag: 'A',
+          title: 'Stitched multi-wall kraft',
+          render: sackA,
+          item: cement,
+          why: 'Sewn top seam, slumped body, one ink printed straight onto the paper, with a deliberate off-register second plate. The weight slab is the loudest element.',
+          scope: 'Trade & Creative Materials — cementitious and casting groups',
+        },
+        {
+          tag: 'B',
+          title: 'Woven PP, knockout band',
+          render: sackB,
+          item: fert,
+          why: 'Heat-sealed pinked top over woven polypropylene, product name reversed out of a full-bleed colour band, hazard hatching along the foot. Strongest at thumbnail size.',
+          scope: 'Garden & Outdoors — garden-treatment group',
+        },
+        {
+          tag: 'F',
+          title: 'Rigid corrosive keg',
+          render: sackF,
+          item: drain,
+          why: 'HDPE keg with a ribbed safety cap and tamper ring. Not a sack at all. A full-height corrosion stripe carries the pictogram and the word set vertically, so the hazard is legible before the product name is.',
+          scope: 'Household & Cleaning — cleaning group',
+        },
+      ];
 
-document.getElementById('protos').innerHTML = protos.map(p => `
+      document.getElementById('protos').innerHTML = protos
+        .map(
+          (p) => `
   <div class="proto">
     <header><span class="tag">${p.tag}</span><h3>${p.title}</h3></header>
     <p class="why">${p.why}</p>
     <p class="scope">${p.scope}</p>
     <div class="stage">${p.render(p.item)}</div>
-  </div>`).join('');
+  </div>`,
+        )
+        .join('');
 
-const cards = [
-  { r:() => sackA(cement),  cat:'Trade & Creative · A', nm:'Portland Cement · 25 kg' },
-  { r:() => sackB(fert),    cat:'Garden & Outdoors · B', nm:'All-Purpose Fertiliser · 10 kg' },
-  { r:() => sackB(bone),    cat:'Garden & Outdoors · B', nm:'Bone Meal · 2.5 kg' },
-  { r:() => sackF(oven),    cat:'Household & Cleaning · F', nm:'Oven Cleaner · 5 kg' },
-];
+      const cards = [
+        { r: () => sackA(cement), cat: 'Trade & Creative · A', nm: 'Portland Cement · 25 kg' },
+        {
+          r: () => sackB(fert),
+          cat: 'Garden & Outdoors · B',
+          nm: 'All-Purpose Fertiliser · 10 kg',
+        },
+        { r: () => sackB(bone), cat: 'Garden & Outdoors · B', nm: 'Bone Meal · 2.5 kg' },
+        { r: () => sackF(oven), cat: 'Household & Cleaning · F', nm: 'Oven Cleaner · 5 kg' },
+      ];
 
-document.getElementById('cards').innerHTML = cards.map(c => `
+      document.getElementById('cards').innerHTML = cards
+        .map(
+          (c) => `
   <div class="card">
     <div class="thumb">${c.r()}</div>
     <div class="body"><p class="cat">${c.cat}</p><p class="nm">${c.nm}</p></div>
-  </div>`).join('');
-</script>
-</body>
+  </div>`,
+        )
+        .join('');
+    </script>
+  </body>
 </html>

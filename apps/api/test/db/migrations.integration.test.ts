@@ -40,6 +40,7 @@ const expectedVersions = [
   '017',
   '018',
   '019',
+  '020',
 ];
 
 function migrationVersions(db: Database.Database): string[] {
@@ -1579,4 +1580,135 @@ void test('v18 migration creates fresh inventory tables when 015 skipped', (t) =
   // FK check clean
   const fkViolations = db.pragma('foreign_key_check') as unknown[];
   assert.equal(fkViolations.length, 0);
+});
+
+void test('v20 migration retires legacy sort_order < 1 variants once a canonical variant exists', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-v20-'));
+  const db = new Database(join(directory, 'shop.db'));
+  db.pragma('foreign_keys = ON');
+  t.after(() => {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  migrateDatabase(
+    db,
+    migrations.filter((migration) => migration.version < '018'),
+  );
+
+  db.exec(`
+    INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id)
+    VALUES
+      (9001, 'Gains a canonical variant', 'v20 legacy retirement fixture', 5000, 'Test', 20, 'v20-canonical'),
+      (9002, 'Legacy only', 'v20 legacy retirement fixture', 3000, 'Test', 10, 'v20-legacy-only');
+  `);
+
+  // Run up through 018 so the legacy sort_order 0 backfill happens before either product has a
+  // canonical (sort_order >= 1) variant, reproducing the real defect shape.
+  migrateDatabase(
+    db,
+    migrations.filter((migration) => migration.version <= '018'),
+  );
+
+  const legacyVariant9001 = db
+    .prepare('SELECT id FROM product_variants WHERE product_id = 9001 AND sort_order = 0')
+    .get() as { id: number };
+  const legacyVariant9002 = db
+    .prepare('SELECT id FROM product_variants WHERE product_id = 9002 AND sort_order = 0')
+    .get() as { id: number };
+
+  db.exec(`
+    INSERT INTO carts (id) VALUES ('v20-cart');
+    INSERT INTO cart_line_items (cart_id, variant_id, quantity, created_at, updated_at)
+    VALUES ('v20-cart', ${legacyVariant9001.id}, 3, datetime('now'), datetime('now'));
+  `);
+
+  // Product 9001 now gains a real catalog variant while its default_variant_id still points at
+  // the legacy row -- the exact state 020 must repair.
+  const canonicalCreatedAt = '2026-01-01T00:00:00.000Z';
+  db.prepare(
+    `INSERT INTO product_variants
+       (product_id, sku, label, weight_grams, price_cents, stock_count, delivery_class,
+        active, sort_order, created_at, updated_at)
+     VALUES (?, 'V20-CANONICAL-001', 'Canonical pallet', 25000, 6000, 15, 'pallet', 1, 1, ?, ?)`,
+  ).run(9001, canonicalCreatedAt, canonicalCreatedAt);
+
+  migrateDatabase(db);
+
+  assert.deepEqual(migrationVersions(db), expectedVersions);
+
+  // Legacy variant for product 9001 deactivated; row and its identity are retained.
+  assert.deepEqual(
+    db.prepare('SELECT active, sku FROM product_variants WHERE id = ?').get(legacyVariant9001.id),
+    { active: 0, sku: 'LEGACY-9001-001' },
+  );
+
+  // default_variant_id repointed at the surviving canonical variant.
+  const canonicalVariant = db
+    .prepare('SELECT id FROM product_variants WHERE product_id = 9001 AND sort_order = 1')
+    .get() as { id: number };
+  assert.equal(
+    (
+      db.prepare('SELECT default_variant_id FROM products WHERE id = 9001').get() as {
+        default_variant_id: number;
+      }
+    ).default_variant_id,
+    canonicalVariant.id,
+  );
+
+  // Legacy-only product 9002 is untouched: its sole variant stays active and default.
+  assert.deepEqual(
+    db.prepare('SELECT active FROM product_variants WHERE id = ?').get(legacyVariant9002.id),
+    { active: 1 },
+  );
+  assert.equal(
+    (
+      db.prepare('SELECT default_variant_id FROM products WHERE id = 9002').get() as {
+        default_variant_id: number;
+      }
+    ).default_variant_id,
+    legacyVariant9002.id,
+  );
+
+  // FK reference from the cart line survives deactivation -- retired, never deleted.
+  assert.deepEqual(
+    db
+      .prepare('SELECT variant_id, quantity FROM cart_line_items WHERE cart_id = ?')
+      .get('v20-cart'),
+    { variant_id: legacyVariant9001.id, quantity: 3 },
+  );
+
+  const fkViolationsAfter = db.pragma('foreign_key_check') as unknown[];
+  assert.equal(fkViolationsAfter.length, 0);
+
+  // Mapped product 9001 still satisfies the Product contract.
+  const productRow9001 = db.prepare('SELECT * FROM products WHERE id = 9001').get() as ProductRow;
+  const mappedProduct9001 = toProductContract(productRow9001);
+  assert.equal(
+    Value.Check(Product, {
+      ...mappedProduct9001,
+      availability: 'in_stock',
+      backorderable: false,
+      backorderLeadDays: null,
+    }),
+    true,
+  );
+
+  // Idempotent: re-running the migration body directly changes nothing further.
+  const retireMigration = migrations.find((migration) => migration.version === '020')!;
+  assert.doesNotThrow(() => retireMigration.up(db));
+  assert.deepEqual(
+    db.prepare('SELECT active FROM product_variants WHERE id = ?').get(legacyVariant9001.id),
+    { active: 0 },
+  );
+  assert.equal(
+    (
+      db.prepare('SELECT default_variant_id FROM products WHERE id = 9001').get() as {
+        default_variant_id: number;
+      }
+    ).default_variant_id,
+    canonicalVariant.id,
+  );
+  const fkViolationsIdempotent = db.pragma('foreign_key_check') as unknown[];
+  assert.equal(fkViolationsIdempotent.length, 0);
 });

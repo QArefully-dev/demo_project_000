@@ -16,7 +16,7 @@ type PowderMixCartLineItemProps = {
 };
 
 function mixName(item: PowderMixCartItem): string {
-  return item.customLabel ?? 'Custom powder mix';
+  return item.customLabel ?? 'Custom small order';
 }
 
 export function PowderMixCartLineItem({

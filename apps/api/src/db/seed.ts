@@ -200,7 +200,7 @@ export function seedDatabase(db: Database.Database): void {
     );
     const deactivateExtraVariants = db.prepare(`
       UPDATE product_variants SET active = 0, updated_at = @updated_at
-      WHERE product_id = @product_id AND sort_order > @max_sort_order
+      WHERE product_id = @product_id AND (sort_order > @max_sort_order OR sort_order < 1)
     `);
     const insertProductTag = db.prepare(
       'INSERT INTO product_tags (product_id, tag_key) VALUES (?, ?)',

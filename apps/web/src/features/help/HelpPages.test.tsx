@@ -79,7 +79,7 @@ describe('Help pages', () => {
     // Eligibility section
     expect(screen.getByRole('heading', { level: 2, name: 'Eligibility' })).toBeInTheDocument();
     expect(screen.getByText(/30 days/)).toBeInTheDocument();
-    expect(screen.getByText(/Custom Powder blends are excluded/)).toBeInTheDocument();
+    expect(screen.getByText(/Custom Small Order blends are excluded/)).toBeInTheDocument();
     // Workflow section
     expect(screen.getByRole('heading', { level: 2, name: 'How it works' })).toBeInTheDocument();
     expect(screen.getByText(/demo administrator/)).toBeInTheDocument();

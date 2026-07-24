@@ -1,11 +1,19 @@
 import type { Product, ProductWithVariants } from '@shop/contracts/products';
 
-import { BagArtwork } from '@/components/BagArtwork';
+import { PackagingArtwork } from '@/components/packaging/PackagingArtwork';
+import { resolvePackagingSpec, type Vessel } from '@/components/packaging/packagingSpec';
 
 interface ProductMediaProps {
   product: Product | ProductWithVariants;
   className?: string;
 }
+
+const VESSEL_LABEL: Readonly<Record<Vessel, string>> = {
+  'kraft-sack': 'stitched kraft sack',
+  'woven-sack': 'woven sack',
+  keg: 'keg',
+  'food-bag': 'bag',
+};
 
 function genericArtworkDataUri(name: string): string {
   const label = name.replace(/[<&>]/g, '');
@@ -14,19 +22,45 @@ function genericArtworkDataUri(name: string): string {
   )}`;
 }
 
+/**
+ * Renders the packaging vessel appropriate to a product's catalog category. Food-grade products
+ * with `product.packaging` on the wire keep the locked live bag (colours, mark and consumption
+ * badge sourced from that field); non-food categories resolve one of the approved heavy-duty
+ * vessels via {@link resolvePackagingSpec}. Only a product whose category resolves to no vessel
+ * and carries no `packaging` falls back to the generic "packaging unavailable" placeholder.
+ */
 export function ProductMedia({ product, className }: ProductMediaProps) {
+  const defaultVariant =
+    'variants' in product
+      ? product.variants.find((variant) => variant.variantId === product.defaultVariantId)
+      : undefined;
+  const spec = resolvePackagingSpec({ product, variant: defaultVariant });
+
   if (product.packaging) {
     return (
-      <BagArtwork
+      <PackagingArtwork
         name={product.name}
-        category={product.category}
+        spec={{ ...spec, vessel: 'food-bag' }}
+        mark={product.packaging.mark}
         quantity={product.packaging.quantity}
         batchCode={product.packaging.batchCode}
-        mark={product.packaging.mark}
         accent={product.packaging.labelColor}
         powderAccent={product.packaging.powderColor}
         consumptionLabel={product.packaging.consumptionLabel}
-        ariaLabel={`${product.name} powder bag`}
+        ariaLabel={`${product.name} ${VESSEL_LABEL['food-bag']}`}
+        className={className}
+      />
+    );
+  }
+
+  if (spec.vessel !== 'food-bag') {
+    return (
+      <PackagingArtwork
+        name={product.name}
+        spec={spec}
+        mark=""
+        consumptionLabel={null}
+        ariaLabel={`${product.name} ${VESSEL_LABEL[spec.vessel]}`}
         className={className}
       />
     );

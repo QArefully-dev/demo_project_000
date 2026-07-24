@@ -198,3 +198,69 @@ void test('catalog query validation reports deterministic 400 responses and expo
     assert.equal(typeof response.json<{ error?: unknown }>().error, 'string');
   }
 });
+
+void test('legacy sort_order 0 variant reintroduced before seed is retired and product detail stays contract-valid', async (t) => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'shop-product-legacy-variant-'));
+  const db = openDatabase({ path: join(tempDir, 'shop.db') });
+  seedDatabase(db);
+
+  const product = db.prepare('SELECT id, created_at FROM products WHERE id = 31').get() as {
+    id: number;
+    created_at: string;
+  };
+
+  // Reintroduce the pre-020 defect shape: an active sort_order < 1 variant sitting alongside
+  // product 31's real canonical variants, as migration 018's backfill used to leave behind.
+  db.prepare(
+    `INSERT INTO product_variants
+       (product_id, sku, label, weight_grams, price_cents, stock_count, backorderable,
+        backorder_lead_days, delivery_class, active, sort_order, moq_sacks, created_at, updated_at)
+     VALUES (?, 'LEGACY-31-001', 'Legacy garden treatment (Legacy)', 1000, 495, 55, 0,
+             NULL, 'parcel', 1, 0, 1, ?, ?)`,
+  ).run(product.id, product.created_at, product.created_at);
+
+  assert.equal(
+    (
+      db
+        .prepare(
+          'SELECT COUNT(*) AS count FROM product_variants WHERE product_id = ? AND sort_order < 1 AND active = 1',
+        )
+        .get(product.id) as { count: number }
+    ).count,
+    1,
+  );
+
+  // Reseeding is the documented self-heal path (`npm run seed`); it must retire the row again.
+  seedDatabase(db);
+
+  assert.equal(
+    (
+      db
+        .prepare(
+          'SELECT COUNT(*) AS count FROM product_variants WHERE product_id = ? AND sort_order < 1 AND active = 1',
+        )
+        .get(product.id) as { count: number }
+    ).count,
+    0,
+  );
+  assert.deepEqual(
+    db.prepare('SELECT active FROM product_variants WHERE sku = ?').get('LEGACY-31-001'),
+    { active: 0 },
+  );
+
+  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
+  t.after(async () => {
+    await app.close();
+    closeDatabase(db);
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  const response = await app.inject({ method: 'GET', url: '/api/products/31' });
+  assert.equal(response.statusCode, 200);
+  const detail = response.json<ProductWithVariantsType>();
+  assert.equal(Value.Check(ProductWithVariants, detail), true);
+  assert.ok(detail.variants.length >= 1);
+  for (const variant of detail.variants) {
+    assert.ok(variant.sortOrder >= 1, `variant ${variant.sku} has sortOrder ${variant.sortOrder}`);
+  }
+});

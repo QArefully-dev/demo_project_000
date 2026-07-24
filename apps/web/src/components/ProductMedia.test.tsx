@@ -39,7 +39,7 @@ describe('ProductMedia', () => {
   it('renders canonical packaging data as the locked live bag', () => {
     render(<ProductMedia product={product()} />);
 
-    const artwork = screen.getByRole('img', { name: 'Powdered Water powder bag' });
+    const artwork = screen.getByRole('img', { name: 'Powdered Water bag' });
     expect(artwork.tagName).toBe('svg');
     expect(artwork).toHaveTextContent('CONCEPTUAL QUANTITY');
     expect(artwork).toHaveTextContent('NOT FOR CONSUMPTION');
@@ -50,7 +50,7 @@ describe('ProductMedia', () => {
       <ProductMedia product={product({ packaging: { ...packaging, consumptionLabel: null } })} />,
     );
 
-    expect(screen.getByRole('img', { name: 'Powdered Water powder bag' })).not.toHaveTextContent(
+    expect(screen.getByRole('img', { name: 'Powdered Water bag' })).not.toHaveTextContent(
       'NOT FOR CONSUMPTION',
     );
   });
@@ -62,5 +62,22 @@ describe('ProductMedia', () => {
     expect(image).toHaveAttribute('src', expect.stringContaining('data:image/svg+xml,'));
     expect(image).toHaveAttribute('width', '720');
     expect(image).toHaveAttribute('height', '720');
+  });
+
+  it('renders the heavy-duty vessel for a non-food category instead of the fallback', () => {
+    render(
+      <ProductMedia
+        product={product({
+          name: 'Portland Cement',
+          category: 'Trade & Creative Materials',
+          consumptionClassification: 'caution',
+          packaging: undefined,
+        })}
+      />,
+    );
+
+    const artwork = screen.getByRole('img', { name: 'Portland Cement stitched kraft sack' });
+    expect(artwork.tagName).toBe('svg');
+    expect(artwork).toHaveTextContent('QAREFULLY MATERIALS EXCHANGE');
   });
 });

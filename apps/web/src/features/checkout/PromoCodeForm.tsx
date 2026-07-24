@@ -25,7 +25,7 @@ export function PromoCodeForm({
   return (
     <div className="space-y-2">
       <label htmlFor="promoCode" className="text-sm font-medium">
-        Powder promotion
+        Order promotion
       </label>
       <p className="text-xs text-muted-foreground">
         SAVE10 takes 10% off when this cart contains at least five bags.

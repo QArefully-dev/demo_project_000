@@ -123,7 +123,7 @@ export function ProductCard({
       </div>
       <CardContent className="flex flex-1 flex-col gap-2 p-4 pt-4 sm:p-5 sm:pt-4">
         <p className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          Powder type: {product.category}
+          Material · {product.category}
         </p>
         <h3 className="line-clamp-2 min-h-11 text-base font-semibold leading-[1.35] tracking-tight">
           <Link
@@ -173,7 +173,7 @@ export function ProductCard({
               : isAdding
                 ? 'Adding...'
                 : purchasable
-                  ? 'Add powder'
+                  ? 'Add to order'
                   : 'Unavailable'}
           </Button>
           {comparisonControl}

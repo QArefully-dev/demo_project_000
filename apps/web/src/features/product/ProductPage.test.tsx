@@ -180,7 +180,7 @@ describe('ProductPage', () => {
 
     response.resolve(product());
     expect(await screen.findByRole('heading', { name: 'Powdered Water' })).toBeInTheDocument();
-    expect(screen.getByText('Finding similar powders...')).toBeInTheDocument();
+    expect(screen.getByText('Finding similar materials...')).toBeInTheDocument();
   });
 
   it('renders API and not-found failures distinctly', async () => {
@@ -273,7 +273,7 @@ describe('ProductPage', () => {
 
     renderPage();
     await screen.findByRole('heading', { name: 'Powdered Water' });
-    expect(await screen.findByRole('alert')).toHaveTextContent('Could not load similar powders.');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not load similar materials.');
 
     await user.click(screen.getByRole('radio'));
     await user.click(screen.getByRole('button', { name: 'Add to order' }));
@@ -335,7 +335,9 @@ describe('ProductPage', () => {
     productApi.getSimilarProducts.mockResolvedValueOnce([]);
     const { unmount } = renderPage();
     await screen.findByRole('heading', { name: 'Powdered Water' });
-    expect(await screen.findByText('No similar powders available right now.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('No similar materials available right now.'),
+    ).toBeInTheDocument();
     unmount();
 
     productApi.getProduct.mockResolvedValueOnce(product());
@@ -421,7 +423,7 @@ describe('ProductPage', () => {
     expect(await screen.findByText('Product not found')).toBeInTheDocument();
     expect(screen.queryByTestId('bundles-section')).not.toBeInTheDocument();
     expect(screen.queryByTestId('reviews-section')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Similar powders')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Similar materials')).not.toBeInTheDocument();
     expect(productApi.getSimilarProducts).not.toHaveBeenCalled();
   });
 

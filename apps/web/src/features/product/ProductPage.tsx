@@ -95,7 +95,7 @@ export function ProductPage() {
           to="/catalog"
           className="rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          All powders
+          All materials
         </Link>
         <span aria-hidden="true">/</span>
         <Link

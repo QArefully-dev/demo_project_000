@@ -107,7 +107,7 @@ export const returnsArticle = defineHelpArticle({
         },
         {
           id: 'returns-eligibility-products',
-          text: 'Only ordinary catalogue products are eligible. Custom Powder blends are excluded from returns. Only delivered shipment quantities can be returned; backordered, shipped, or failed-delivery items are not eligible.',
+          text: 'Only ordinary catalogue products are eligible. Custom Small Order blends are excluded from returns. Only delivered shipment quantities can be returned; backordered, shipped, or failed-delivery items are not eligible.',
         },
       ],
     },
@@ -210,37 +210,22 @@ export const customPowderArticle = defineHelpArticle({
   group: 'help',
   slug: 'custom-powder',
   path: '/help/custom-powder',
-  title: 'Custom Powder',
-  summary: 'How to select compatible ingredients and build a custom powder blend.',
+  title: 'Custom Small Order',
+  summary: 'Custom Small Order is being rebuilt; the blend builder is temporarily unavailable.',
   blocks: [
     {
       kind: 'paragraph',
       id: 'custom-powder-intro',
-      text: 'Custom Powder lets you blend compatible ingredients from the catalogue into a custom mix. You select the ingredients, percentages, bag size, fineness, and label. The system derives combined ingredient, allergen, usage, and safety information from your selection.',
-    },
-    {
-      kind: 'section',
-      id: 'custom-powder-compatibility',
-      heading: 'Mixing groups and compatibility',
-      paragraphs: [
-        {
-          id: 'custom-powder-compatibility-groups',
-          text: 'Ingredients can only be combined if they share a compatible mixing group. Mixing groups are: Food-grade, Cleaning, Garden treatment, Cementitious materials, Casting materials, Pigments, Theatrical effects, and Absorbents.',
-        },
-        {
-          id: 'custom-powder-compatibility-cross',
-          text: 'Products from different catalogue categories can be mixed if they share a mixing group. For example, protein powder, matcha, and powdered milk can be combined through the Food-grade group. An edible and a cleaning product cannot be mixed together.',
-        },
-      ],
+      text: 'Custom Small Order is being rebuilt for pallet-scale ordering. The blend builder that previously let you combine compatible ingredients into a custom mix is temporarily unavailable while this work is in progress.',
     },
     {
       kind: 'notice',
       id: 'custom-powder-safety',
-      heading: 'Safety and usage labels',
+      heading: 'Existing custom mixes are unaffected',
       paragraphs: [
         {
           id: 'custom-powder-safety-label',
-          text: 'Server-derived usage labels always apply to a custom blend. If any component carries a "Not for consumption" warning, the entire blend is marked accordingly. Never consume a blend that contains a non-food ingredient.',
+          text: 'A custom mix already in your cart or in a past order keeps its server-derived usage label and can still be reviewed, requoted, and removed. If any component carries a "Not for consumption" warning, the entire blend is marked accordingly. Never consume a blend that contains a non-food ingredient.',
         },
         {
           id: 'custom-powder-safety-handling',
@@ -251,15 +236,11 @@ export const customPowderArticle = defineHelpArticle({
     {
       kind: 'section',
       id: 'custom-powder-building',
-      heading: 'Building a blend',
+      heading: 'Building a new blend',
       paragraphs: [
         {
           id: 'custom-powder-building-ingredients',
-          text: 'Select ingredients from the picker sidebar. Assign a percentage to each ingredient — the total must equal 100%. Choose a bag size, fineness level, bag colour scheme, and optional custom label.',
-        },
-        {
-          id: 'custom-powder-building-featured',
-          text: 'A featured blend is shown at the top of the page. Click to load its configuration as a starting point.',
+          text: 'The blend-builder page currently shows a work-in-progress notice instead of the ingredient picker. Check back once Custom Small Order is rebuilt to create a new mix.',
         },
       ],
     },
@@ -324,11 +305,11 @@ export const safetyArticle = defineHelpArticle({
     {
       kind: 'notice',
       id: 'safety-custom-powder',
-      heading: 'Custom Powder blends',
+      heading: 'Custom Small Order blends',
       paragraphs: [
         {
           id: 'safety-custom-powder-rule',
-          text: 'When building a Custom Powder blend, the system derives a combined safety label. If any single ingredient is non-food, the entire blend is marked "Not for consumption". Never consume a blend that contains a non-food ingredient.',
+          text: 'An existing Custom Small Order blend carries a combined safety label derived when it was built. If any single ingredient is non-food, the entire blend is marked "Not for consumption". Never consume a blend that contains a non-food ingredient. The blend builder itself is temporarily unavailable while Custom Small Order is rebuilt.',
         },
       ],
     },

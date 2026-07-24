@@ -18,6 +18,7 @@ import { reviewDepthMigration } from './016_review_depth.js';
 import { returnsRefundsMigration } from './017_returns_refunds.js';
 import { groundedCatalogVariantsMigration } from './018_grounded_catalog_variants.js';
 import { variantMoqMigration } from './019_variant_moq.js';
+import { retireLegacyVariantsMigration } from './020_retire_legacy_variants.js';
 
 export const migrations: readonly Migration[] = [
   initialMigration,
@@ -39,4 +40,5 @@ export const migrations: readonly Migration[] = [
   returnsRefundsMigration,
   groundedCatalogVariantsMigration,
   variantMoqMigration,
+  retireLegacyVariantsMigration,
 ];

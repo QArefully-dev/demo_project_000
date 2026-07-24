@@ -24,6 +24,22 @@ describe('BagArtwork', () => {
     );
     expect(screen.getByText('SUPERCALIFRAGILISTIC')).toBeInTheDocument();
     expect(screen.getByText('TINY TINY')).toBeInTheDocument();
+    expect(screen.getByText('QAREFULLY MATERIALS EXCHANGE')).toBeInTheDocument();
+  });
+
+  it('defaults the accessible label to the bag without the retired "powder" wording', () => {
+    render(
+      <BagArtwork
+        name="Portland Cement"
+        category="Trade & Creative Materials"
+        quantity="25 kg"
+        batchCode="TCM-01"
+        mark="CEM"
+        consumptionLabel={null}
+      />,
+    );
+
+    expect(screen.getByRole('img', { name: 'Portland Cement bag' })).toBeInTheDocument();
   });
 
   it('gives independently rendered painted bags distinct gradient identifiers', () => {

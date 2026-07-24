@@ -135,7 +135,7 @@ describe('ProductCard', () => {
   it('links image and title to the product while leaving wishlist and cart actions separate', () => {
     renderCard();
 
-    expect(screen.getByRole('link', { name: 'Powdered Water powder bag' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Powdered Water bag' })).toHaveAttribute(
       'href',
       '/products/powdered-water-1',
     );
@@ -146,7 +146,7 @@ describe('ProductCard', () => {
     expect(
       screen.getByRole('button', { name: 'Add powdered-water-1 to wishlist' }).closest('a'),
     ).toBeNull();
-    expect(screen.getByRole('button', { name: 'Add powder' }).closest('a')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Add to order' }).closest('a')).toBeNull();
   });
 
   it('disables purchase for unavailable stock and labels low stock', () => {
@@ -182,7 +182,7 @@ describe('ProductCard', () => {
     });
 
     expect(screen.getByText('Available to backorder')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Add powder' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Add to order' })).toBeEnabled();
     expect(screen.queryByText(/14 days/i)).not.toBeInTheDocument();
   });
 
@@ -190,7 +190,7 @@ describe('ProductCard', () => {
     const user = userEvent.setup();
     const onAddToCart = renderCard({}, { onAddToCart: vi.fn().mockResolvedValue(false) });
 
-    await user.click(screen.getByRole('button', { name: 'Add powder' }));
+    await user.click(screen.getByRole('button', { name: 'Add to order' }));
 
     expect(onAddToCart).toHaveBeenCalledWith('powdered-water-1', 1);
     expect(await screen.findByRole('alert')).toHaveTextContent(

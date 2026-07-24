@@ -317,7 +317,7 @@ describe('CatalogPage URL state', () => {
 
     expect(screen.getByText('More filters are unavailable.')).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Powdered Water' })).toBeVisible();
-    expect(screen.getByRole('searchbox', { name: 'Search powders' })).toHaveValue('water');
+    expect(screen.getByRole('searchbox', { name: 'Search materials' })).toHaveValue('water');
   });
 
   it.each([
@@ -395,7 +395,7 @@ describe('CatalogPage URL state', () => {
     vi.useFakeTimers();
     renderCatalog('/catalog');
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search powders' }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search materials' }), {
       target: { value: 'water' },
     });
     await act(async () => {

@@ -71,7 +71,7 @@ describe('ProductGallery', () => {
   it('renders one canonical live packaging artwork without raster thumbnails', () => {
     render(<ProductGallery product={product()} />);
 
-    expect(screen.getByRole('img', { name: 'Powdered Water powder bag' }).tagName).toBe('svg');
+    expect(screen.getByRole('img', { name: 'Powdered Water bag' }).tagName).toBe('svg');
     expect(screen.queryByRole('button', { name: /view image/i })).not.toBeInTheDocument();
   });
 });

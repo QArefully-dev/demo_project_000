@@ -29,7 +29,7 @@ function ProductLabel({
   accent = '#9fb3aa',
   consumptionLabel,
 }: Omit<BagArtworkProps, 'ariaLabel' | 'className' | 'style' | 'powderAccent'>) {
-  const normalizedName = name.trim().toUpperCase() || 'POWDER';
+  const normalizedName = name.trim().toUpperCase() || 'MATERIAL';
   const titleWords = normalizedName.split(/\s+/);
   const splitIndex =
     titleWords.length > 1
@@ -67,7 +67,7 @@ function ProductLabel({
         fontWeight="800"
         letterSpacing="1.5"
       >
-        QAREFULLY POWDER CO.
+        QAREFULLY MATERIALS EXCHANGE
       </text>
       <circle cx="53" cy="91" r="26" fill="#dcecf0" stroke="#fffaf0" strokeWidth="3" />
       <text
@@ -201,7 +201,7 @@ export function BagArtwork({
       viewBox="0 0 720 720"
       role={ariaLabel === '' ? undefined : 'img'}
       aria-hidden={ariaLabel === '' ? true : undefined}
-      aria-label={ariaLabel === '' ? undefined : (ariaLabel ?? `${name} powder bag`)}
+      aria-label={ariaLabel === '' ? undefined : (ariaLabel ?? `${name} bag`)}
       className={className}
       style={style}
       xmlns="http://www.w3.org/2000/svg"

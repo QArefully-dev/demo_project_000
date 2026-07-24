@@ -166,7 +166,7 @@ describe('CheckoutPage', () => {
     const user = userEvent.setup();
     renderCheckout();
 
-    await user.type(screen.getByLabelText('Powder promotion'), 'SAVE10');
+    await user.type(screen.getByLabelText('Order promotion'), 'SAVE10');
     await user.click(screen.getByRole('button', { name: 'Apply' }));
 
     expect(await screen.findByText('$54.99')).toBeInTheDocument();
@@ -310,7 +310,7 @@ describe('CheckoutPage', () => {
     vi.mocked(validatePromo).mockReturnValueOnce(first).mockReturnValueOnce(second);
     const user = userEvent.setup();
     renderCheckout();
-    const promoInput = screen.getByLabelText('Powder promotion');
+    const promoInput = screen.getByLabelText('Order promotion');
 
     await user.type(promoInput, 'SAVE10');
     await user.click(screen.getByRole('button', { name: 'Apply' }));

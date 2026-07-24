@@ -12,7 +12,7 @@ export const faqArticle = {
     {
       kind: 'paragraph',
       id: 'demo-context',
-      text: 'QArefully Materials Exchange is a local QA demo with a credible materials catalogue, Custom Powder blend builder, and simulated commerce.',
+      text: 'QArefully Materials Exchange is a local QA demo with a credible materials catalogue, a Custom Small Order blend feature (currently being rebuilt), and simulated commerce.',
     },
     {
       kind: 'faq',
@@ -71,11 +71,11 @@ export const faqArticle = {
         },
         {
           id: 'custom-powder-history',
-          question: 'Does Custom Powder remember my mixes?',
+          question: 'Does Custom Small Order remember my mixes?',
           answerParagraphs: [
             {
               id: 'custom-powder-history-answer',
-              text: "Custom Powder can save a bounded history of blend configurations in this browser's local storage. Clearing browser storage removes that local history.",
+              text: "The blend builder is temporarily unavailable while Custom Small Order is rebuilt. Any mix already saved to this browser's local storage or an existing order is unaffected; clearing browser storage removes that local history.",
             },
           ],
         },

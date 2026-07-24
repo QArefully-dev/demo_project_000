@@ -425,7 +425,7 @@ describe('ProductPurchasePanel', () => {
 
     await user.click(screen.getByRole('radio'));
     expect(screen.getAllByText(/SKU: PW-001/).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('8 in stock')).toBeInTheDocument();
+    expect(screen.getByText('8 pallets available')).toBeInTheDocument();
     expect(screen.getAllByText('$129.99').length).toBeGreaterThanOrEqual(1);
   });
 

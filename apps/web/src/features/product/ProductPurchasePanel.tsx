@@ -125,10 +125,10 @@ function VariantSelector({
                     <span className="inline-flex items-center gap-1 font-medium text-success">
                       <Check className="size-3.5" />
                       {v.stockCount === 1
-                        ? '1 in stock'
+                        ? '1 pallet available'
                         : v.stockCount <= 5
-                          ? `Only ${v.stockCount} in stock`
-                          : `${v.stockCount} in stock`}
+                          ? `Only ${v.stockCount} pallets available`
+                          : `${v.stockCount} pallets available`}
                     </span>
                   )}
                 </div>
@@ -328,11 +328,11 @@ export function ProductPurchasePanel({
       <div className="mt-5 grid gap-3 rounded-xl border border-border/80 bg-surface-soft p-4 text-sm sm:grid-cols-2">
         <div>
           <p className="font-semibold">Bag format</p>
-          <p className="mt-1 text-muted-foreground">{packSize ?? 'Powder bag'}</p>
+          <p className="mt-1 text-muted-foreground">{packSize ?? 'Sack'}</p>
         </div>
         <div>
-          <p className="font-semibold">Batch handling</p>
-          <p className="mt-1 text-muted-foreground">Finely considered and clearly labelled.</p>
+          <p className="font-semibold">Handling</p>
+          <p className="mt-1 text-muted-foreground">Palletised, shrink-wrapped, batch-labelled.</p>
         </div>
       </div>
       {consumptionLabel && (
@@ -350,11 +350,11 @@ export function ProductPurchasePanel({
       >
         <li className="flex items-center gap-2">
           <Check className="size-4 shrink-0 text-success" aria-hidden="true" />
-          Powder bag linked to this browser cart
+          Lines held in your order for this session
         </li>
         <li className="flex items-center gap-2">
           <Check className="size-4 shrink-0 text-success" aria-hidden="true" />
-          Adjust bag quantities before checkout
+          Adjust pallet quantities before checkout
         </li>
         <li className="flex items-center gap-2">
           <Check className="size-4 shrink-0 text-success" aria-hidden="true" />

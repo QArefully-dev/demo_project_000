@@ -55,14 +55,15 @@ export function OrderConfirmationPage() {
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-6 text-center">
-        <h1 className="text-2xl font-bold text-green-700">Your powders are confirmed.</h1>
+        <h1 className="text-2xl font-bold text-green-700">Your order is confirmed.</h1>
         <p className="text-muted-foreground">
-          QArefully Powder Co. has recorded this simulated order. A receipt is in the Dev Mailbox.
+          QArefully Materials Exchange has recorded this simulated order. A receipt is in the Dev
+          Mailbox.
         </p>
       </div>
       <OrderDetailView order={order} />
       <div className="mt-6 text-center">
-        <Button render={<Link to="/catalog" />}>Shop more powders</Button>
+        <Button render={<Link to="/catalog" />}>Shop more materials</Button>
       </div>
     </div>
   );

@@ -38,7 +38,7 @@ export function OrderDetailView({
     ...order.items.map((line): [string, string] => [`product:${line.lineId}`, line.productName]),
     ...order.mixItems.map((line): [string, string] => [
       `powder_mix:${line.lineId}`,
-      line.customLabel ?? 'Custom powder mix',
+      line.customLabel ?? 'Custom small order',
     ]),
   ]);
 
@@ -100,7 +100,7 @@ export function OrderDetailView({
                 <div key={item.lineId} className="flex items-center justify-between gap-3 text-sm">
                   <div className="flex min-w-0 items-center gap-2">
                     <BagArtwork
-                      name={item.customLabel ?? 'Custom powder mix'}
+                      name={item.customLabel ?? 'Custom small order'}
                       category="Custom mix"
                       quantity={`${item.bagSizeGrams}g`}
                       batchCode={item.priceVersion}
@@ -112,7 +112,7 @@ export function OrderDetailView({
                       className="h-12 w-12 shrink-0"
                     />
                     <span>
-                      {item.customLabel ?? 'Custom powder mix'}{' '}
+                      {item.customLabel ?? 'Custom small order'}{' '}
                       <span className="text-muted-foreground">× {item.quantity}</span>
                       <span className="block text-xs text-muted-foreground">
                         {item.components

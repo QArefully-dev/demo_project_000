@@ -83,9 +83,9 @@ export function ProductDetails({ description, categoryFacts }: ProductDetailsPro
       aria-labelledby="product-details-heading"
       className="rounded-2xl border bg-surface-raised p-6 sm:p-8"
     >
-      <p className="section-eyebrow">Powder facts</p>
+      <p className="section-eyebrow">Material facts</p>
       <h2 id="product-details-heading" className="mt-2 text-2xl font-semibold tracking-tight">
-        What is in this bag
+        What this material contains
       </h2>
       {description.trim() && (
         <p className="mt-4 max-w-3xl leading-7 text-muted-foreground">{description}</p>

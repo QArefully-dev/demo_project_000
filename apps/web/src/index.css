@@ -169,17 +169,6 @@
 }
 
 @layer components {
-  .powderizer-gradient-animated {
-    background-image: var(--powderizer-gradient);
-    background-position: 0% 50%;
-    background-size: var(--powderizer-gradient-size);
-    animation: powderizer-iridescence var(--powderizer-gradient-duration) ease-in-out infinite;
-  }
-
-  .powderizer-banner {
-    color: var(--powderizer-gradient-foreground);
-  }
-
   .powderizer-nav-link {
     background-image: var(--powderizer-gradient);
     background-size: var(--powderizer-gradient-size);
@@ -198,61 +187,6 @@
 
   .powderizer-nav-link:hover {
     background-position: 100% 50%;
-  }
-
-  .powderizer-scheme-option {
-    align-items: center;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    cursor: pointer;
-    display: flex;
-    gap: 0.5rem;
-    min-height: 3rem;
-    padding: 0.5rem;
-    transition:
-      border-color var(--powderizer-motion-duration) ease,
-      box-shadow var(--powderizer-motion-duration) ease,
-      transform var(--powderizer-motion-duration) ease;
-  }
-
-  .powderizer-scheme-option:has(:checked) {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 2px color-mix(in oklch, var(--primary) 28%, transparent);
-  }
-
-  .powderizer-scheme-option:has(:focus-visible) {
-    outline: 2px solid var(--ring);
-    outline-offset: 2px;
-  }
-
-  .powderizer-scheme-swatch {
-    border: 1px solid color-mix(in oklch, var(--foreground) 20%, transparent);
-    border-radius: 999px;
-    flex: 0 0 1.5rem;
-    height: 1.5rem;
-  }
-
-  .powderizer-mix-segment {
-    transition:
-      width var(--powderizer-motion-duration) ease,
-      x var(--powderizer-motion-duration) ease;
-  }
-
-  .powderizer-legend-colour {
-    border: 1px solid color-mix(in oklch, var(--foreground) 22%, transparent);
-    border-radius: 999px;
-    display: inline-block;
-    flex: 0 0 0.75rem;
-    height: 0.75rem;
-    width: 0.75rem;
-  }
-
-  .powderizer-reaction {
-    border-left: 3px solid var(--primary);
-    color: var(--muted-foreground);
-    font-size: 0.875rem;
-    margin: -0.5rem 0 0;
-    padding: 0.5rem 0 0.5rem 0.75rem;
   }
 
   .content-shell {
@@ -381,16 +315,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .powderizer-gradient-animated,
   .powderizer-nav-link {
     animation: none;
     background-position: 50% 50%;
-  }
-
-  .powderizer-scheme-option,
-  .powderizer-mix-segment {
-    animation: none;
-    transition: none;
   }
 
   *,
