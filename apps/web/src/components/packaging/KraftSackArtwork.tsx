@@ -25,6 +25,7 @@ export function KraftSackArtwork({ name, spec, ariaLabel, className }: VesselArt
       aria-hidden={decorative ? true : undefined}
       aria-label={label}
       className={className}
+      data-colour-scheme={spec.schemeKey}
       xmlns="http://www.w3.org/2000/svg"
     >
       <ellipse cx="362" cy="634" rx="248" ry="26" fill="#2a2721" opacity="0.13" />
@@ -70,6 +71,17 @@ export function KraftSackArtwork({ name, spec, ariaLabel, className }: VesselArt
       {spec.grade &&
         cond(544, 268, spec.grade, 12, condWidth(spec.grade, 7, 40, 220), ink, { anchor: 'end' })}
       <path d="M194 280H544" stroke={ink} strokeWidth="3" />
+
+      {/*
+       * Decorative material chip printed in the blank band between the header rule (y=280) and the
+       * title cap line (~y=306); right-aligned under the grade column so it never sits over copy.
+       * cy/r are tuned so the chip's stroked extent (283.25..300.75) clears both the header rule
+       * above and the title cap line plus the decorative fold curve (y~302 at x=548) below, which
+       * the narrow-font fallbacks would otherwise collide with.
+       */}
+      <g aria-hidden="true" data-pigment={spec.pigment}>
+        <circle cx="548" cy="292" r="8" fill={spec.pigment} stroke={ink} strokeWidth="1.5" />
+      </g>
 
       {cond(190, 356, line1, 66, condWidth(line1, 34, 60, 356) + 2, alert, { opacity: 0.22 })}
       {cond(188, 354, line1, 66, condWidth(line1, 34, 60, 356), ink)}

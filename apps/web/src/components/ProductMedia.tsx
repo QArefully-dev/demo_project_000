@@ -1,6 +1,7 @@
 import type { Product, ProductWithVariants } from '@shop/contracts/products';
 
 import { PackagingArtwork } from '@/components/packaging/PackagingArtwork';
+import { resolveCatalogPackagingPalette } from '@/components/packaging/catalogPackagingPalettes';
 import { resolvePackagingSpec, type Vessel } from '@/components/packaging/packagingSpec';
 
 interface ProductMediaProps {
@@ -11,32 +12,28 @@ interface ProductMediaProps {
 type FoodBagArtwork = {
   accent: string;
   powderAccent: string;
+  schemeKey: string;
   mark: string;
   category: string;
   quantity: string;
   batchCode: string;
 };
 
-const FOOD_BAG_DESIGNS: Readonly<
-  Record<string, Omit<FoodBagArtwork, 'batchCode'>>
-> = {
+/** Category metadata only -- colours come from the resolved catalog palette, not from this table. */
+type FoodBagDesign = Pick<FoodBagArtwork, 'mark' | 'category' | 'quantity'>;
+
+const FOOD_BAG_DESIGNS: Readonly<Record<string, FoodBagDesign>> = {
   'Sports Nutrition': {
-    accent: '#547a6e',
-    powderAccent: '#d5e3c0',
     mark: 'SN',
     category: 'Sports Nutrition',
     quantity: '1 kg',
   },
   'Baking & Pantry': {
-    accent: '#a86936',
-    powderAccent: '#f0d7a7',
     mark: 'BP',
     category: 'Baking & Pantry',
     quantity: '1 kg',
   },
   Drinks: {
-    accent: '#287fa6',
-    powderAccent: '#b9e2ee',
     mark: 'DR',
     category: 'Drinks',
     quantity: '1 kg',
@@ -51,16 +48,22 @@ function stableBatchSuffix(value: string): string {
 
 /**
  * Supplies the list API's intentionally omitted food packaging fields from stable display-safe
- * product fields. Unknown categories stay unresolved so the generic fallback remains visible.
+ * product fields. Unknown categories and non-canonical ids stay unresolved so the generic fallback
+ * remains visible; colours come from the deterministic per-category palette.
  */
 export function resolveFoodBagArtwork(
-  product: Pick<Product, 'category' | 'name' | 'imageSetId'>,
+  product: Pick<Product, 'id' | 'category' | 'name' | 'imageSetId'>,
 ): FoodBagArtwork | undefined {
   const design = FOOD_BAG_DESIGNS[product.category];
   if (!design) return undefined;
+  const palette = resolveCatalogPackagingPalette(product);
+  if (!palette) return undefined;
 
   return {
     ...design,
+    accent: palette.ink,
+    powderAccent: palette.pigment,
+    schemeKey: palette.key,
     batchCode: `F-${stableBatchSuffix(`${product.category}:${product.name}:${product.imageSetId}`)}`,
   };
 }
@@ -80,11 +83,11 @@ function genericArtworkDataUri(name: string): string {
 }
 
 /**
- * Renders the packaging vessel appropriate to a product's catalog category. Food-grade products
- * with `product.packaging` on the wire keep the locked live bag (colours, mark and consumption
- * badge sourced from that field); non-food categories resolve one of the approved heavy-duty
- * vessels via {@link resolvePackagingSpec}. Only a product whose category resolves to no vessel
- * and carries no `packaging` falls back to the generic "packaging unavailable" placeholder.
+ * Renders the packaging vessel appropriate to a product's catalog category. Products with
+ * `product.packaging` on the wire keep the locked live bag (colours, mark and consumption badge
+ * sourced from that field); every other product must resolve a catalog palette before a printed
+ * vessel is drawn, so an unknown category or a non-canonical id falls back to the generic
+ * "packaging unavailable" placeholder rather than printing an invented neutral scheme.
  */
 export function ProductMedia({ product, className }: ProductMediaProps) {
   const defaultVariant =
@@ -92,12 +95,21 @@ export function ProductMedia({ product, className }: ProductMediaProps) {
       ? product.variants.find((variant) => variant.variantId === product.defaultVariantId)
       : undefined;
   const spec = resolvePackagingSpec({ product, variant: defaultVariant });
+  const palette = resolveCatalogPackagingPalette(product);
 
   if (product.packaging) {
     return (
       <PackagingArtwork
         name={product.name}
-        spec={{ ...spec, vessel: 'food-bag' }}
+        // Legacy explicit packaging did not come from the palette registry, so the spec must not
+        // advertise a scheme that did not produce the visible colours: the diagnostic key is
+        // dropped and the pigment is the authored powder colour actually drawn (plan step 3.6).
+        spec={{
+          ...spec,
+          vessel: 'food-bag',
+          schemeKey: '',
+          pigment: product.packaging.powderColor,
+        }}
         mark={product.packaging.mark}
         quantity={product.packaging.quantity}
         batchCode={product.packaging.batchCode}
@@ -110,7 +122,10 @@ export function ProductMedia({ product, className }: ProductMediaProps) {
     );
   }
 
-  if (spec.vessel !== 'food-bag') {
+  // A heavy-duty vessel is only printed when a real catalog scheme backs it; without a palette the
+  // spec carries the internal neutral placeholder, which must never reach a rendered sack or keg
+  // (plan invariant 7).
+  if (spec.vessel !== 'food-bag' && palette) {
     return (
       <PackagingArtwork
         name={product.name}
@@ -132,8 +147,12 @@ export function ProductMedia({ product, className }: ProductMediaProps) {
         mark={foodArtwork.mark}
         quantity={foodArtwork.quantity}
         batchCode={foodArtwork.batchCode}
-        accent={foodArtwork.accent}
-        powderAccent={foodArtwork.powderAccent}
+        // Colours come from the single rendered carrier (`spec`) so the food bag can never draw a
+        // scheme other than the one its diagnostics advertise; `foodArtwork` supplies category
+        // metadata and the palette-presence gate.
+        accent={spec.ink.ink}
+        powderAccent={spec.pigment}
+        schemeKey={spec.schemeKey}
         consumptionLabel={null}
         ariaLabel={`${product.name} ${VESSEL_LABEL['food-bag']}`}
         className={className}

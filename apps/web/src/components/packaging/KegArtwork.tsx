@@ -29,6 +29,7 @@ export function KegArtwork({ name, spec, ariaLabel, className }: VesselArtworkPr
       aria-hidden={decorative ? true : undefined}
       aria-label={label}
       className={className}
+      data-colour-scheme={spec.schemeKey}
       xmlns="http://www.w3.org/2000/svg"
     >
       <ellipse cx="360" cy="646" rx="182" ry="18" fill="#232a26" opacity="0.14" />
@@ -111,7 +112,21 @@ export function KegArtwork({ name, spec, ariaLabel, className }: VesselArtworkPr
         </text>
       )}
 
-      {lab(284, 348, spec.brand, 8.5, ink, 1.3, { opacity: 0.7 })}
+      {/*
+       * Decorative material chip in the white label panel's top-right corner, right of the brand
+       * line. Deliberately outside the danger stripe, pictogram and DANGER band, which stay
+       * safety-owned and never take a scheme colour.
+       */}
+      <g aria-hidden="true" data-pigment={spec.pigment}>
+        <circle cx="478" cy="344" r="10" fill={spec.pigment} stroke={ink} strokeWidth="1.5" />
+      </g>
+
+      {/*
+       * Width-bounded: the brand line shares its baseline with the pigment chip (x 467.25..488.75),
+       * and `PACKAGING_BRAND` at its natural width reaches ~x=473, overprinting the chip. 168px ends
+       * the line at x=452, clear of the chip, without moving either element.
+       */}
+      {lab(284, 348, spec.brand, 8.5, ink, 1.3, { opacity: 0.7, width: 168 })}
       {cond(282, 394, line1, 40, condWidth(line1, 20, 50, 200), ink)}
       {line2 && cond(282, 434, line2, 40, condWidth(line2, 20, 50, 200), ink)}
       {spec.grade &&

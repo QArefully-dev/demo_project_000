@@ -6,14 +6,38 @@ import type {
   ProductWithVariants,
 } from '@shop/contracts/products';
 
+import { resolveCatalogPackagingPalette } from './catalogPackagingPalettes';
 import { INKS, titleLines, type InkKey } from './svgText';
 
 export type Vessel = 'food-bag' | 'kraft-sack' | 'woven-sack' | 'keg';
 export type KegTone = 'corrosive' | 'mild';
 
+/**
+ * Colours used when no catalog palette resolves (unknown category, non-canonical id). Deliberately
+ * neutral and internal: it keeps `PackagingSpec` total for hand-authored specs and for the
+ * unresolved spec `ProductMedia` builds before deciding a branch. It never stands in for a category
+ * scheme on a rendered catalog vessel -- `ProductMedia` gates every printed vessel, food and
+ * heavy-duty alike, on a resolved palette and otherwise falls back to the generic artwork.
+ */
+export const NEUTRAL_PACKAGING_SCHEME = {
+  schemeKey: 'neutral',
+  pigment: '#d8d2c4',
+} as const satisfies { schemeKey: string; pigment: string };
+
 export interface PackagingSpec {
   vessel: Vessel;
   tone?: KegTone;
+  /**
+   * Stable kebab-case key of the decorative scheme this spec was printed from. Rendering surfaces
+   * expose it for deterministic inspection; it never affects safety copy.
+   */
+  schemeKey: string;
+  /** Decorative material colour for the vessel's pigment sample. Never a safety colour. */
+  pigment: string;
+  /**
+   * `ink` is decorative and follows the resolved scheme; `alert` is safety-owned and always comes
+   * from the category's {@link INKS} entry, so hazard treatments never vary with a scheme.
+   */
   ink: { ink: string; alert: string };
   brand: string;
   titleLines: string[];
@@ -168,10 +192,17 @@ export function resolvePackagingSpec({ product, variant }: ResolveInput): Packag
   const never = tone === 'corrosive' ? neverFromHazardStatement(hazard) : undefined;
   const yieldText = vessel === 'woven-sack' ? yieldFromFacts(facts) : undefined;
 
+  // Resolved once per spec so every surface (card, gallery, cart, comparison) prints the same
+  // scheme for the same product. Safety `alert` stays on the category ink entry regardless.
+  const palette = resolveCatalogPackagingPalette(product);
+  const categoryInk = inkKey ? INKS[inkKey] : { ink: '#242522', alert: '#b0381a' };
+
   return {
     vessel,
     tone,
-    ink: inkKey ? INKS[inkKey] : { ink: '#242522', alert: '#b0381a' },
+    schemeKey: palette?.key ?? NEUTRAL_PACKAGING_SCHEME.schemeKey,
+    pigment: palette?.pigment ?? NEUTRAL_PACKAGING_SCHEME.pigment,
+    ink: { ink: palette?.ink ?? categoryInk.ink, alert: categoryInk.alert },
     brand: PACKAGING_BRAND,
     titleLines: titleLines(product.name),
     sub: category,

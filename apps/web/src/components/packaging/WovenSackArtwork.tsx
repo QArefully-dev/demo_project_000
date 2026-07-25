@@ -42,6 +42,7 @@ export function WovenSackArtwork({ name, spec, ariaLabel, className }: VesselArt
       aria-hidden={decorative ? true : undefined}
       aria-label={label}
       className={className}
+      data-colour-scheme={spec.schemeKey}
       xmlns="http://www.w3.org/2000/svg"
     >
       <defs>
@@ -97,6 +98,14 @@ export function WovenSackArtwork({ name, spec, ariaLabel, className }: VesselArt
 
       {lab(186, 262, spec.brand, 11.5, ink, 1.9)}
       {lab(186, 284, spec.sub.toUpperCase(), 10, ink, 1.5, { opacity: 0.6 })}
+
+      {/*
+       * Decorative material chip beside the LOT/coverage panel: above the coverage line (y=512) and
+       * right of the LOT code column, inside the sack body but clear of every printed string.
+       */}
+      <g aria-hidden="true" data-pigment={spec.pigment}>
+        <circle cx="536" cy="456" r="10" fill={spec.pigment} stroke={ink} strokeWidth="1.5" />
+      </g>
 
       {lab(186, 460, 'NET WEIGHT', 9.5, ink, 1.4, { opacity: 0.7 })}
       {spec.netWeight &&

@@ -8,6 +8,13 @@ export const NARROW_FONT = "Haettenschweiler,'Arial Narrow',Impact,sans-serif";
 export const UI_FONT = 'Arial,Helvetica,sans-serif';
 export const MONO_FONT = "'Courier New',monospace";
 
+/**
+ * Per-category safety defaults only. `alert` is safety-owned and must never vary with a decorative
+ * colour scheme; `ink` here is the neutral category default used when no catalog palette resolves
+ * (`resolvePackagingSpec` overrides it from `catalogPackagingPalettes` for canonical products).
+ * Do not expand this table into the decorative scheme matrix -- that lives in
+ * `catalogPackagingPalettes.ts`.
+ */
 export const INKS = {
   trade: { ink: '#26292c', alert: '#b0381a' },
   garden: { ink: '#2c5130', alert: '#9d5416' },

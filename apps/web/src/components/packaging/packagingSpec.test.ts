@@ -1,7 +1,10 @@
 import type { Product, ProductWithVariants } from '@shop/contracts/products';
 import { describe, expect, it } from 'vitest';
 
-import { resolvePackagingSpec } from './packagingSpec';
+import { resolveFoodBagArtwork } from '../ProductMedia';
+import { resolveCatalogPackagingPalette } from './catalogPackagingPalettes';
+import { NEUTRAL_PACKAGING_SCHEME, resolvePackagingSpec } from './packagingSpec';
+import { INKS } from './svgText';
 
 /**
  * Fixtures mirror real catalog id/category/mixingGroup/consumptionClassification combinations
@@ -301,5 +304,106 @@ describe('resolvePackagingSpec selector matrix', () => {
       const spec = resolvePackagingSpec({ product: baseProduct({ category }) });
       expect(spec.brand).toBe('QAREFULLY MATERIALS EXCHANGE');
     }
+  });
+});
+
+describe('resolvePackagingSpec decorative scheme', () => {
+  it('varies decorative ink and pigment across a category while the safety alert stays constant', () => {
+    const specs = ['33', '34', '35', '36', '37'].map((id) =>
+      resolvePackagingSpec({
+        product: baseProduct({ id, category: 'Trade & Creative Materials' }),
+      }),
+    );
+
+    expect(new Set(specs.map((spec) => spec.schemeKey)).size).toBe(5);
+    expect(new Set(specs.map((spec) => spec.pigment)).size).toBe(5);
+    expect(new Set(specs.map((spec) => spec.ink.ink)).size).toBe(5);
+    // Safety colour is owned by the category INKS entry and never follows a decorative scheme.
+    expect(new Set(specs.map((spec) => spec.ink.alert))).toEqual(new Set(['#b0381a']));
+  });
+
+  it('pins the known Trade pigment products to their catalog schemes', () => {
+    const spec = resolvePackagingSpec({
+      product: baseProduct({ id: '37', category: 'Trade & Creative Materials' }),
+    });
+    expect(spec.schemeKey).toBe('oxide-red');
+    expect(spec.pigment).toBe('#b5543c');
+    expect(spec.ink.ink).toBe('#623a30');
+  });
+
+  it('resolves the same id through its own category palette', () => {
+    const garden = resolvePackagingSpec({
+      product: baseProduct({ id: '3', category: 'Garden & Outdoors' }),
+    });
+    const household = resolvePackagingSpec({
+      product: baseProduct({ id: '3', category: 'Household & Cleaning' }),
+    });
+
+    expect(garden.schemeKey).toBe('moss-seed');
+    expect(household.schemeKey).toBe('violet-lilac');
+    expect(garden.pigment).not.toBe(household.pigment);
+  });
+
+  it('keeps a single constant safety alert across all five corrosive keg schemes', () => {
+    const specs = ['20', '21', '22', '23', '24'].map((id) =>
+      resolvePackagingSpec({
+        product: baseProduct({
+          id,
+          category: 'Household & Cleaning',
+          consumptionClassification: 'caution',
+        }),
+      }),
+    );
+
+    expect(new Set(specs.map((spec) => spec.schemeKey)).size).toBe(5);
+    expect(new Set(specs.map((spec) => spec.pigment)).size).toBe(5);
+    expect(new Set(specs.map((spec) => spec.ink.ink)).size).toBe(5);
+    // Safety-critical: the keg's danger colour and corrosive tone are owned by the category, so
+    // neither may follow the decorative scheme (plan invariant 6).
+    expect(new Set(specs.map((spec) => spec.ink.alert))).toEqual(new Set([INKS.clean.alert]));
+    expect(new Set(specs.map((spec) => spec.tone))).toEqual(new Set(['corrosive']));
+  });
+
+  it('keeps the neutral internal scheme out of every rendered vessel', () => {
+    const unknownProduct = baseProduct({ category: 'Unmapped Category' });
+    const invalidIdProduct = baseProduct({ id: 'powdered-water-1', category: 'Garden & Outdoors' });
+
+    for (const product of [unknownProduct, invalidIdProduct]) {
+      const spec = resolvePackagingSpec({ product });
+      expect(spec.schemeKey).toBe(NEUTRAL_PACKAGING_SCHEME.schemeKey);
+      expect(spec.pigment).toBe(NEUTRAL_PACKAGING_SCHEME.pigment);
+      // The neutral scheme stays internal: no palette resolves, and `ProductMedia` gates every
+      // printed vessel -- including the non-food woven sack the second fixture selects -- on a
+      // resolved palette, so both fixtures render the generic artwork instead (plan invariant 7).
+      expect(resolveCatalogPackagingPalette(product)).toBeUndefined();
+    }
+
+    const invalidId = resolvePackagingSpec({ product: invalidIdProduct });
+    // The category default ink is retained rather than replaced by an invented colour.
+    expect(invalidId.ink).toEqual({ ink: '#2c5130', alert: '#9d5416' });
+  });
+
+  it('agrees with the food-bag artwork carrier on scheme and pigment', () => {
+    // `ProductMedia` draws the food bag from `spec`; `resolveFoodBagArtwork` still carries the same
+    // palette for category metadata and the palette-presence gate. Pinning the two together keeps
+    // the second carrier from silently drifting away from what is rendered.
+    for (const [id, category] of [
+      ['8', 'Sports Nutrition'],
+      ['2', 'Baking & Pantry'],
+      ['15', 'Drinks'],
+    ] as const) {
+      const product = baseProduct({ id, category });
+      const spec = resolvePackagingSpec({ product });
+      const artwork = resolveFoodBagArtwork(product);
+
+      expect(spec.schemeKey).toBe(artwork?.schemeKey);
+      expect(spec.pigment).toBe(artwork?.powderAccent);
+      expect(spec.ink.ink).toBe(artwork?.accent);
+    }
+  });
+
+  it('is stable across repeated resolutions of the same product', () => {
+    const product = baseProduct({ id: '9', category: 'Sports Nutrition' });
+    expect(resolvePackagingSpec({ product })).toEqual(resolvePackagingSpec({ product }));
   });
 });

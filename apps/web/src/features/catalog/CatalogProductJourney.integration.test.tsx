@@ -85,6 +85,21 @@ const catalogProduct: ProductWithVariants = {
   baseAvailability: 'in_stock',
 };
 
+/**
+ * Two canonical Trade & Creative Materials products. Same category, adjacent canonical ids, so the
+ * per-category palette must give them different schemes on the catalog surface.
+ */
+function tradeProduct(id: string, name: string): ProductWithVariants {
+  return {
+    ...catalogProduct,
+    id,
+    name,
+    slug: name.toLowerCase().replaceAll(' ', '-'),
+    imageSetId: name.toLowerCase().replaceAll(' ', '-'),
+    category: 'Trade & Creative Materials',
+  };
+}
+
 function NavigationControls() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -161,5 +176,59 @@ describe('catalog to product journey', () => {
       ),
     );
     expect(screen.getByRole('heading', { name: 'Pantry Staples' })).toBeVisible();
+  });
+
+  it('keeps two same-category products on different schemes and carries the card scheme into the gallery', async () => {
+    const user = userEvent.setup();
+    const first = tradeProduct('33', 'Portland Cement');
+    const second = tradeProduct('34', 'Plaster of Paris');
+    vi.mocked(useProducts).mockReturnValue({
+      products: [first, second],
+      isLoading: false,
+      error: null,
+      total: 2,
+      currentPage: 1,
+      currentPageSize: 24,
+      refetch: vi.fn().mockResolvedValue(undefined),
+    });
+    vi.mocked(getProduct).mockResolvedValue(first);
+
+    render(
+      <MemoryRouter initialEntries={['/catalog']}>
+        <ComparisonSelectionProvider
+          storage={{ getItem: () => null, setItem: () => undefined, removeItem: () => undefined }}
+        >
+          <NavigationControls />
+          <Routes>
+            <Route path="/catalog" element={<CatalogPage />} />
+            <Route path="/products/:id" element={<ProductPage />} />
+          </Routes>
+        </ComparisonSelectionProvider>
+      </MemoryRouter>,
+    );
+
+    const firstCardScheme = screen
+      .getByRole('img', { name: `${first.name} stitched kraft sack` })
+      .getAttribute('data-colour-scheme');
+    const secondCardScheme = screen
+      .getByRole('img', { name: `${second.name} stitched kraft sack` })
+      .getAttribute('data-colour-scheme');
+
+    expect(firstCardScheme).toMatch(/^[a-z]+(-[a-z]+)+$/);
+    expect(secondCardScheme).toMatch(/^[a-z]+(-[a-z]+)+$/);
+    expect(firstCardScheme).not.toBe(secondCardScheme);
+    // Exact Trade & Creative Materials rows at index `(Number(id) - 1) % 5`: 33 -> 2, 34 -> 3.
+    expect(firstCardScheme).toBe('ultramarine-blue');
+    expect(secondCardScheme).toBe('mineral-green');
+
+    await user.click(within(screen.getByRole('heading', { name: first.name })).getByRole('link'));
+    expect(await screen.findByRole('heading', { name: first.name, level: 1 })).toBeVisible();
+
+    const gallery = screen.getByRole('region', { name: `${first.name} images` });
+    expect(
+      within(gallery)
+        .getByRole('img', { name: `${first.name} stitched kraft sack` })
+        .getAttribute('data-colour-scheme'),
+    ).toBe(firstCardScheme);
   });
 });

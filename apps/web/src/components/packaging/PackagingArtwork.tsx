@@ -2,7 +2,7 @@ import { BagArtwork, type BagArtworkPaint } from '@/components/BagArtwork';
 
 import { KegArtwork } from './KegArtwork';
 import { KraftSackArtwork } from './KraftSackArtwork';
-import type { PackagingSpec } from './packagingSpec';
+import { NEUTRAL_PACKAGING_SCHEME, type PackagingSpec } from './packagingSpec';
 import { WovenSackArtwork } from './WovenSackArtwork';
 
 export interface PackagingArtworkProps {
@@ -15,6 +15,13 @@ export interface PackagingArtworkProps {
   batchCode?: string;
   accent?: string;
   powderAccent?: string;
+  /**
+   * Food-bag vessel only: scheme key exposed as `data-colour-scheme`. The three heavy-duty vessels
+   * take it from `spec.schemeKey`. When omitted the food bag falls back to `spec.schemeKey`, so a
+   * caller passing a resolved spec cannot silently drop the diagnostic key; explicit legacy
+   * `product.packaging` colours pass the neutral sentinel spec and correctly omit the attribute.
+   */
+  schemeKey?: string;
   paint?: BagArtworkPaint;
   consumptionLabel: string | null;
   ariaLabel?: string;
@@ -35,6 +42,7 @@ export function PackagingArtwork({
   batchCode,
   accent,
   powderAccent,
+  schemeKey,
   paint,
   consumptionLabel,
   ariaLabel,
@@ -52,7 +60,11 @@ export function PackagingArtwork({
     case 'keg':
       return <KegArtwork name={name} spec={spec} ariaLabel={ariaLabel} className={className} />;
     case 'food-bag':
-    default:
+    default: {
+      // The neutral sentinel is not a category scheme, so it must not surface as a diagnostic key.
+      const resolvedSchemeKey =
+        schemeKey ??
+        (spec.schemeKey === NEUTRAL_PACKAGING_SCHEME.schemeKey ? undefined : spec.schemeKey);
       return (
         <BagArtwork
           name={name}
@@ -62,11 +74,13 @@ export function PackagingArtwork({
           mark={mark}
           accent={accent}
           powderAccent={powderAccent}
+          schemeKey={resolvedSchemeKey}
           paint={paint}
           consumptionLabel={consumptionLabel}
           ariaLabel={ariaLabel}
           className={className}
         />
       );
+    }
   }
 }

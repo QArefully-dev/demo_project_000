@@ -2,7 +2,7 @@ import { ArrowUpRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 import { PackagingArtwork } from '@/components/packaging/PackagingArtwork';
-import type { PackagingSpec } from '@/components/packaging/packagingSpec';
+import { NEUTRAL_PACKAGING_SCHEME, type PackagingSpec } from '@/components/packaging/packagingSpec';
 import { INKS, titleLines } from '@/components/packaging/svgText';
 import { Button } from '@/components/ui/button';
 
@@ -19,6 +19,9 @@ const BRAND = 'QAREFULLY MATERIALS EXCHANGE';
 
 const foodSpec = (name: string, sub: string, lot: string, netWeight: string): PackagingSpec => ({
   vessel: 'food-bag',
+  // Hand-authored marketing tiles are not canonical catalog products, so they carry the neutral
+  // scheme rather than a category palette entry.
+  ...NEUTRAL_PACKAGING_SCHEME,
   ink: { ink: '#242522', alert: '#b0381a' },
   brand: BRAND,
   titleLines: titleLines(name),
@@ -57,6 +60,7 @@ const tileArtwork: Readonly<Record<string, TileArtwork>> = {
     spec: {
       vessel: 'keg',
       tone: 'corrosive',
+      ...NEUTRAL_PACKAGING_SCHEME,
       ink: INKS.clean,
       brand: BRAND,
       titleLines: titleLines('Laundry Detergent'),
@@ -75,6 +79,7 @@ const tileArtwork: Readonly<Record<string, TileArtwork>> = {
     name: 'Garden Lime',
     spec: {
       vessel: 'woven-sack',
+      ...NEUTRAL_PACKAGING_SCHEME,
       ink: INKS.garden,
       brand: BRAND,
       titleLines: titleLines('Garden Lime'),
@@ -94,6 +99,7 @@ const tileArtwork: Readonly<Record<string, TileArtwork>> = {
     name: 'Portland Cement',
     spec: {
       vessel: 'kraft-sack',
+      ...NEUTRAL_PACKAGING_SCHEME,
       ink: INKS.trade,
       brand: BRAND,
       titleLines: titleLines('Portland Cement'),

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { PackagingArtwork } from './PackagingArtwork';
 import { titleLines } from './svgText';
-import type { PackagingSpec } from './packagingSpec';
+import { NEUTRAL_PACKAGING_SCHEME, type PackagingSpec } from './packagingSpec';
 
 /**
  * `hazard`/`grade`/`yield`/`never` fixtures below use the LONGEST real catalog strings for their
@@ -24,6 +24,7 @@ import type { PackagingSpec } from './packagingSpec';
  */
 const kraftSpec: PackagingSpec = {
   vessel: 'kraft-sack',
+  ...NEUTRAL_PACKAGING_SCHEME,
   ink: { ink: '#26292c', alert: '#b0381a' },
   brand: 'QAREFULLY MATERIALS EXCHANGE',
   titleLines: titleLines('Portland Cement'),
@@ -37,6 +38,7 @@ const kraftSpec: PackagingSpec = {
 
 const wovenSpec: PackagingSpec = {
   vessel: 'woven-sack',
+  ...NEUTRAL_PACKAGING_SCHEME,
   ink: { ink: '#2c5130', alert: '#9d5416' },
   brand: 'QAREFULLY MATERIALS EXCHANGE',
   titleLines: titleLines('All-Purpose Garden Fertilizer'),
@@ -52,6 +54,7 @@ const wovenSpec: PackagingSpec = {
 const kegCorrosiveSpec: PackagingSpec = {
   vessel: 'keg',
   tone: 'corrosive',
+  ...NEUTRAL_PACKAGING_SCHEME,
   ink: { ink: '#1b4a68', alert: '#b0381a' },
   brand: 'QAREFULLY MATERIALS EXCHANGE',
   titleLines: titleLines('Drain Unblocker Powder'),
@@ -68,6 +71,7 @@ const kegCorrosiveSpec: PackagingSpec = {
 const kegMildSpec: PackagingSpec = {
   vessel: 'keg',
   tone: 'mild',
+  ...NEUTRAL_PACKAGING_SCHEME,
   ink: { ink: '#1b4a68', alert: '#b0381a' },
   brand: 'QAREFULLY MATERIALS EXCHANGE',
   titleLines: titleLines('Shoe Deodorising Powder'),
@@ -77,6 +81,38 @@ const kegMildSpec: PackagingSpec = {
   grade: 'Absorbents',
   hazard: 'May cause dust irritation. Avoid getting powder into eyes.',
 };
+
+/**
+ * Resolved-scheme variants of the fixtures above: the neutral fallback is deliberately not a
+ * category scheme, so scheme/pigment rendering is asserted against real palette values.
+ */
+const kraftSchemedSpec: PackagingSpec = {
+  ...kraftSpec,
+  schemeKey: 'oxide-red',
+  pigment: '#b5543c',
+  ink: { ink: '#623a30', alert: kraftSpec.ink.alert },
+};
+
+const wovenSchemedSpec: PackagingSpec = {
+  ...wovenSpec,
+  schemeKey: 'clay-terracotta',
+  pigment: '#c98565',
+  ink: { ink: '#6a4638', alert: wovenSpec.ink.alert },
+};
+
+const kegSchemedSpec: PackagingSpec = {
+  ...kegCorrosiveSpec,
+  schemeKey: 'violet-lilac',
+  pigment: '#c2b8df',
+  ink: { ink: '#4f4770', alert: kegCorrosiveSpec.ink.alert },
+};
+
+/** The single decorative pigment sample a vessel is allowed to render. */
+function pigmentGroup(container: HTMLElement): Element {
+  const marked = container.querySelectorAll('[data-pigment]');
+  expect(marked).toHaveLength(1);
+  return marked[0]!;
+}
 
 /** Finds the `<text>` node whose content matches (case-insensitively), for `textLength` assertions. */
 function findTextNode(container: HTMLElement, content: string): SVGTextElement {
@@ -171,6 +207,7 @@ describe('PackagingArtwork', () => {
         name="Protein Blend"
         spec={{
           vessel: 'food-bag',
+          ...NEUTRAL_PACKAGING_SCHEME,
           ink: { ink: '#242522', alert: '#b0381a' },
           brand: 'QAREFULLY MATERIALS EXCHANGE',
           titleLines: titleLines('Protein Blend'),
@@ -237,5 +274,126 @@ describe('PackagingArtwork', () => {
     expect(new Set(patterns.map((pattern) => pattern.id)).size).toBe(4);
     expect(clipPaths).toHaveLength(2);
     expect(new Set(clipPaths.map((clip) => clip.id)).size).toBe(2);
+  });
+
+  it.each([
+    ['kraft sack', kraftSchemedSpec],
+    ['woven sack', wovenSchemedSpec],
+    ['keg', kegSchemedSpec],
+  ])('exposes the resolved scheme key and one pigment sample on the %s', (_name, spec) => {
+    const { container } = render(
+      <PackagingArtwork name="Sample" spec={spec} mark="" consumptionLabel={null} ariaLabel="" />,
+    );
+
+    const svg = container.querySelector('svg')!;
+    expect(svg).toHaveAttribute('data-colour-scheme', spec.schemeKey);
+
+    const sample = pigmentGroup(container);
+    expect(sample).toHaveAttribute('data-pigment', spec.pigment);
+    expect(sample).toHaveAttribute('aria-hidden', 'true');
+    expect(sample.querySelector('circle')).toHaveAttribute('fill', spec.pigment);
+    // Decorative only: the sample adds no text label and no new accessible node.
+    expect(sample.textContent).toBe('');
+    expect(sample.querySelectorAll('text')).toHaveLength(0);
+  });
+
+  it('keeps the corrosive keg hazard elements on the safety alert colour beside the pigment chip', () => {
+    const { container } = render(
+      <PackagingArtwork
+        name="Drain Unblocker Powder"
+        spec={kegSchemedSpec}
+        mark=""
+        consumptionLabel={null}
+      />,
+    );
+
+    const artwork = screen.getByRole('img', { name: 'Drain Unblocker Powder keg' });
+    expect(artwork).toHaveTextContent('CORROSIVE');
+    expect(artwork).toHaveTextContent('DANGER');
+    // Cap, panel border, danger stripe and DANGER band -- exactly four alert-inked rects, so
+    // recolouring any one of them to the scheme ink or pigment fails here (invariant 6).
+    const alertRects = Array.from(container.querySelectorAll('rect')).filter(
+      (rect) =>
+        rect.getAttribute('fill') === kegSchemedSpec.ink.alert ||
+        rect.getAttribute('stroke') === kegSchemedSpec.ink.alert,
+    );
+    expect(alertRects).toHaveLength(4);
+    // Positive identity checks on the two scheme-sensitive safety shapes.
+    const stripe = container.querySelector('rect[x="222"][width="46"]');
+    expect(stripe).toHaveAttribute('fill', kegSchemedSpec.ink.alert);
+    const dangerBand = container.querySelector('rect[y="464"]');
+    expect(dangerBand).toHaveAttribute('fill', kegSchemedSpec.ink.alert);
+
+    const sample = pigmentGroup(container);
+    expect(sample).toHaveAttribute('data-pigment', kegSchemedSpec.pigment);
+    // The pigment colour is confined to the decorative sample: nothing else on the vessel -- safety
+    // shapes included -- may be painted or stroked with it.
+    const strayPigment = Array.from(container.querySelectorAll('rect, text, path')).filter(
+      (node) =>
+        !sample.contains(node) &&
+        (node.getAttribute('fill') === kegSchemedSpec.pigment ||
+          node.getAttribute('stroke') === kegSchemedSpec.pigment),
+    );
+    expect(strayPigment).toHaveLength(0);
+  });
+
+  it('exposes the scheme key and keeps the powder ellipses on the food bag', () => {
+    const { container } = render(
+      <PackagingArtwork
+        name="Protein Blend"
+        spec={{
+          vessel: 'food-bag',
+          schemeKey: 'plum-berry',
+          pigment: '#d6a6c9',
+          ink: { ink: '#5c426d', alert: '#b0381a' },
+          brand: 'QAREFULLY MATERIALS EXCHANGE',
+          titleLines: titleLines('Protein Blend'),
+          sub: 'Sports Nutrition',
+          lot: 'SN-01',
+          netWeight: '25 kg',
+        }}
+        mark="PRO"
+        accent="#5c426d"
+        powderAccent="#d6a6c9"
+        schemeKey="plum-berry"
+        consumptionLabel={null}
+      />,
+    );
+
+    const svg = container.querySelector('svg')!;
+    expect(svg).toHaveAttribute('data-colour-scheme', 'plum-berry');
+
+    const sample = pigmentGroup(container);
+    expect(sample).toHaveAttribute('data-pigment', '#d6a6c9');
+    expect(sample).toHaveAttribute('fill', '#d6a6c9');
+    // Invariant 8: the pigment sample is decorative on this vessel too.
+    expect(sample).toHaveAttribute('aria-hidden', 'true');
+    // Geometry unchanged: the two locked powder ellipses are still the pigment sample.
+    expect(sample.querySelectorAll('ellipse')).toHaveLength(2);
+  });
+
+  it('omits the scheme key for explicit legacy packaging colours', () => {
+    const { container } = render(
+      <PackagingArtwork
+        name="Protein Blend"
+        spec={{
+          vessel: 'food-bag',
+          ...NEUTRAL_PACKAGING_SCHEME,
+          ink: { ink: '#242522', alert: '#b0381a' },
+          brand: 'QAREFULLY MATERIALS EXCHANGE',
+          titleLines: titleLines('Protein Blend'),
+          sub: 'Sports Nutrition',
+          lot: 'SN-01',
+        }}
+        mark="PRO"
+        accent="#78956c"
+        powderAccent="#cfe0c6"
+        consumptionLabel={null}
+      />,
+    );
+
+    const svg = container.querySelector('svg')!;
+    expect(svg).not.toHaveAttribute('data-colour-scheme');
+    expect(pigmentGroup(container)).toHaveAttribute('data-pigment', '#cfe0c6');
   });
 });
