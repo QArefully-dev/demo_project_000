@@ -4,6 +4,7 @@ export const SACK_WEIGHT_GRAMS = 25_000;
 export const PALLET_WEIGHT_GRAMS = 1_000_000;
 export const SACKS_PER_PALLET = 40;
 export const MOQ_DEFAULT_SACKS = 4;
+export const CUSTOM_BLEND_FEE_CENTS = 2_500;
 
 export const PriceTier = Type.Object(
   {

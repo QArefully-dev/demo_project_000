@@ -26,6 +26,8 @@ const order = {
       productName: 'Immutable product',
       unitPriceCents: 1200,
       quantity: 2,
+      discountableTotalCents: 2400,
+      blendingFeeCents: 0,
       lineTotalCents: 2400,
       inventoryStatus: 'allocated',
       allocatedQuantity: 2,

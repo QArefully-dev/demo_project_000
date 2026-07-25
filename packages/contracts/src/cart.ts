@@ -1,7 +1,9 @@
 import { Type, type Static } from '@sinclair/typebox';
+import { TypeSystem } from '@sinclair/typebox/system';
 import { MoneyCents, Uuid } from './common.js';
 import { Product } from './products.js';
 import { DeliveryClass, DeliverySummary } from './delivery.js';
+import { CartLineConfigKey, CustomBlendSnapshot } from './customBlends.js';
 
 const SafePositiveInteger = Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER });
 const SafeNonNegativeInteger = Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER });
@@ -18,23 +20,48 @@ export const CartLineVariantSnap = Type.Object(
 );
 export type CartLineVariantSnap = Static<typeof CartLineVariantSnap>;
 
-export const CartLine = Type.Object({
-  productId: Type.String({ minLength: 1 }),
-  product: Product,
-  variantSnap: Type.Optional(CartLineVariantSnap),
-  /** Informational base price per tonne, resolved by the server for this variant. */
-  perTonneCents: MoneyCents,
-  /** Current server-resolved pack price after the line quantity's tier discount. */
-  resolvedUnitPriceCents: MoneyCents,
-  quantity: SafePositiveInteger,
-  lineTotalCents: MoneyCents,
+const CartLineFields = Type.Object(
+  {
+    productId: Type.String({ minLength: 1 }),
+    configKey: CartLineConfigKey,
+    product: Product,
+    variantSnap: Type.Optional(CartLineVariantSnap),
+    /** Informational base price per tonne, resolved by the server for this variant. */
+    perTonneCents: MoneyCents,
+    /** Current server-resolved pack price after the line quantity's tier discount. */
+    resolvedUnitPriceCents: MoneyCents,
+    quantity: SafePositiveInteger,
+    materialSubtotalCents: MoneyCents,
+    blendingFeeCents: MoneyCents,
+    discountableTotalCents: MoneyCents,
+    lineTotalCents: MoneyCents,
+    customBlend: Type.Optional(CustomBlendSnapshot),
+  },
+  { additionalProperties: false },
+);
+
+const CartLineConfigPair = TypeSystem.Type<unknown>('CartLineConfigPair', (_options, value) => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const line = value as { configKey?: unknown; customBlend?: { configKey?: unknown } };
+  if (line.configKey === '') return line.customBlend === undefined;
+  return (
+    typeof line.configKey === 'string' &&
+    typeof line.customBlend === 'object' &&
+    line.customBlend !== null &&
+    line.customBlend.configKey === line.configKey
+  );
 });
+
+/** Plain lines use an empty config key; configured lines carry the matching specification key. */
+export const CartLine = Type.Intersect([CartLineFields, CartLineConfigPair()]);
 export type CartLine = Static<typeof CartLine>;
 
 export const Cart = Type.Object({
   id: Uuid,
   items: Type.Array(CartLine),
   subtotalCents: MoneyCents,
+  discountableSubtotalCents: MoneyCents,
+  blendingFeeTotalCents: MoneyCents,
   totalItems: Type.Integer({ minimum: 0 }),
   deliveryPreview: Type.Optional(DeliverySummary),
 });
@@ -59,17 +86,25 @@ export const BelowMoqError = Type.Object(
 );
 export type BelowMoqError = Static<typeof BelowMoqError>;
 
-export const UpdateCartLineBody = Type.Object({
-  productId: Type.String({ minLength: 1 }),
-  variantId: Type.Optional(SafePositiveInteger),
-  quantity: SafeNonNegativeInteger,
-});
+export const UpdateCartLineBody = Type.Object(
+  {
+    productId: Type.String({ minLength: 1 }),
+    variantId: Type.Optional(SafePositiveInteger),
+    configKey: Type.Optional(CartLineConfigKey),
+    quantity: SafeNonNegativeInteger,
+  },
+  { additionalProperties: false },
+);
 export type UpdateCartLineBody = Static<typeof UpdateCartLineBody>;
 
-export const RemoveFromCartBody = Type.Object({
-  productId: Type.String({ minLength: 1 }),
-  variantId: Type.Optional(SafePositiveInteger),
-});
+export const RemoveFromCartBody = Type.Object(
+  {
+    productId: Type.String({ minLength: 1 }),
+    variantId: Type.Optional(SafePositiveInteger),
+    configKey: Type.Optional(CartLineConfigKey),
+  },
+  { additionalProperties: false },
+);
 export type RemoveFromCartBody = Static<typeof RemoveFromCartBody>;
 
 export const CreateCartResponse = Type.Object({ cartId: Uuid });

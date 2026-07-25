@@ -41,10 +41,12 @@ const expectedVersions = [
   '019',
   '020',
   '021',
+  '022',
 ];
 
 /** Every migration up to but excluding `021`, i.e. the schema powderizer still existed in. */
 const prePowderizerRemoval = migrations.filter((migration) => migration.version < '021');
+const preCustomBlendsMigration = migrations.filter((migration) => migration.version < '022');
 
 function migrationVersions(db: Database.Database): string[] {
   return db
@@ -1996,4 +1998,175 @@ void test('v21 migration removes powderizer persistence and rebuilds the tables 
   migrateDatabase(db);
   assert.deepEqual(migrationVersions(db), expectedVersions);
   assert.equal((db.pragma('foreign_key_check') as unknown[]).length, 0);
+});
+
+void test('v22 migration preserves populated 021 cart/order rows and dependent references', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-v22-'));
+  const db = new Database(join(directory, 'shop.db'));
+  db.pragma('foreign_keys = ON');
+  t.after(() => {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  migrateDatabase(db, preCustomBlendsMigration);
+  db.exec(`
+    INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id)
+    VALUES (2201, 'V22 lot', 'V22 fixture', 5000, 'Test', 12, 'v22-lot');
+    INSERT INTO product_variants
+      (id, product_id, sku, label, weight_grams, price_cents, stock_count, delivery_class, active, sort_order, created_at, updated_at)
+    VALUES (2201, 2201, 'V22-LOT-001', 'V22 sack', 25000, 5000, 12, 'freight', 1, 1, '2026-01-01', '2026-01-01');
+    UPDATE products SET default_variant_id = 2201 WHERE id = 2201;
+    INSERT INTO users (id, email, display_name, password_hash, password_salt, role)
+    VALUES (2201, 'v22@example.test', 'V22 user', 'hash', 'salt', 'customer');
+    INSERT INTO carts (id, created_at, updated_at)
+    VALUES ('00000000-0000-4000-8000-000000002201', '2026-07-01T12:00:00.000Z', '2026-07-01T12:00:00.000Z');
+    INSERT INTO cart_line_items (id, cart_id, variant_id, quantity, created_at, updated_at)
+    VALUES (2201, '00000000-0000-4000-8000-000000002201', 2201, 3, '2026-07-01T12:00:00.000Z', '2026-07-02T12:00:00.000Z');
+    INSERT INTO orders
+      (id, customer_name, customer_email, shipping_address, subtotal_cents, total_cents, created_at, lifecycle_status, version)
+    VALUES (2201, 'V22 customer', 'v22-order@example.test', '22 V22 Road', 15000, 15000, '2026-07-01T12:00:00.000Z', 'shipped', 1);
+    INSERT INTO order_line_items
+      (id, order_id, product_id, product_name, product_price_cents, quantity, line_total_cents,
+       variant_id, sku, variant_label, weight_grams, consumption_classification, delivery_class)
+    VALUES (2201, 2201, 2201, 'V22 lot', 5000, 3, 15000,
+            2201, 'V22-LOT-001', 'V22 sack', 25000, 'non-food', 'freight');
+    INSERT INTO order_shipments
+      (id, order_id, shipment_number, status, tracking_reference, version, created_at, updated_at)
+    VALUES (2201, 2201, 1, 'delivered', 'V22-TRACK-01', 1, '2026-07-02T12:00:00.000Z', '2026-07-02T12:00:00.000Z');
+    INSERT INTO order_shipment_items (shipment_id, order_line_item_id, quantity)
+    VALUES (2201, 2201, 3);
+    INSERT INTO order_inventory_allocations
+      (order_line_item_id, variant_id, allocated_quantity, backordered_quantity, cancelled_quantity,
+       stock_debited_quantity, created_at, updated_at)
+    VALUES (2201, 2201, 3, 0, 0, 3, '2026-07-01T12:00:00.000Z', '2026-07-01T12:00:00.000Z');
+    INSERT INTO inventory_stock_movements
+      (id, variant_id, movement_type, quantity_delta, order_id, order_line_item_id, occurred_at)
+    VALUES (2201, 2201, 'checkout_consumed', -3, 2201, 2201, '2026-07-01T12:00:00.000Z');
+    INSERT INTO return_requests
+      (id, order_id, user_id, status, reason, version, requested_at)
+    VALUES (2201, 2201, 2201, 'requested', 'damaged', 0, '2026-07-03T12:00:00.000Z');
+    INSERT INTO return_request_items
+      (id, return_request_id, shipment_id, order_line_item_id, quantity, product_name, delivered_at, window_closes_at)
+    VALUES (2201, 2201, 2201, 2201, 1, 'V22 lot', '2026-07-02T12:00:00.000Z', '2026-08-01T12:00:00.000Z');
+  `);
+
+  migrateDatabase(db);
+  assert.deepEqual(migrationVersions(db), expectedVersions);
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT id, cart_id, variant_id, quantity, created_at, updated_at, config_key, custom_blend_json
+         FROM cart_line_items WHERE id = 2201`,
+      )
+      .get(),
+    {
+      id: 2201,
+      cart_id: '00000000-0000-4000-8000-000000002201',
+      variant_id: 2201,
+      quantity: 3,
+      created_at: '2026-07-01T12:00:00.000Z',
+      updated_at: '2026-07-02T12:00:00.000Z',
+      config_key: '',
+      custom_blend_json: null,
+    },
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT id, order_id, product_id, product_name, product_price_cents, quantity, line_total_cents,
+                variant_id, sku, variant_label, weight_grams, consumption_classification, delivery_class,
+                discountable_total_cents, blending_fee_cents, custom_blend_json
+         FROM order_line_items WHERE id = 2201`,
+      )
+      .get(),
+    {
+      id: 2201,
+      order_id: 2201,
+      product_id: 2201,
+      product_name: 'V22 lot',
+      product_price_cents: 5000,
+      quantity: 3,
+      line_total_cents: 15000,
+      variant_id: 2201,
+      sku: 'V22-LOT-001',
+      variant_label: 'V22 sack',
+      weight_grams: 25000,
+      consumption_classification: 'non-food',
+      delivery_class: 'freight',
+      discountable_total_cents: 15000,
+      blending_fee_cents: 0,
+      custom_blend_json: null,
+    },
+  );
+  for (const [table, column] of [
+    ['order_shipment_items', 'order_line_item_id'],
+    ['order_inventory_allocations', 'order_line_item_id'],
+    ['inventory_stock_movements', 'order_line_item_id'],
+    ['return_request_items', 'order_line_item_id'],
+  ] as const) {
+    assert.deepEqual(
+      db.prepare(`SELECT ${column} FROM ${table} WHERE ${column} = 2201`).get(),
+      { [column]: 2201 },
+      `${table} must retain its order line reference`,
+    );
+  }
+  assert.ok(
+    indexNames(db, 'order_line_items').includes('order_line_items_product_id_order_id_idx'),
+  );
+  assert.equal((db.pragma('foreign_key_check') as unknown[]).length, 0);
+
+  const configKey = 'a'.repeat(64);
+  const customBlendJson = JSON.stringify({ configKey });
+  db.prepare(
+    `INSERT INTO cart_line_items
+      (cart_id, variant_id, quantity, created_at, updated_at, config_key, custom_blend_json)
+     VALUES (?, 2201, 1, '2026-07-03T12:00:00.000Z', '2026-07-03T12:00:00.000Z', ?, ?)`,
+  ).run('00000000-0000-4000-8000-000000002201', configKey, customBlendJson);
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `INSERT INTO cart_line_items
+            (cart_id, variant_id, quantity, created_at, updated_at, config_key, custom_blend_json)
+           VALUES ('00000000-0000-4000-8000-000000002201', 2201, 1, '2026-07-03', '2026-07-03', '', '{}')`,
+        )
+        .run(),
+    /CHECK constraint failed|malformed JSON/,
+  );
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `INSERT INTO cart_line_items
+            (cart_id, variant_id, quantity, created_at, updated_at, config_key, custom_blend_json)
+           VALUES ('00000000-0000-4000-8000-000000002201', 2201, 1, '2026-07-03', '2026-07-03', ?, '{not-json}')`,
+        )
+        .run('b'.repeat(64)),
+    /CHECK constraint failed|malformed JSON/,
+  );
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `INSERT INTO order_line_items
+            (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents,
+             discountable_total_cents, blending_fee_cents, custom_blend_json)
+           VALUES (2201, 2201, 'Invalid', 1, 1, 100, -1, 0, NULL)`,
+        )
+        .run(),
+    /CHECK constraint failed|malformed JSON/,
+  );
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `INSERT INTO order_line_items
+            (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents,
+             discountable_total_cents, blending_fee_cents, custom_blend_json)
+           VALUES (2201, 2201, 'Invalid JSON', 1, 1, 100, 100, 0, '{not-json}')`,
+        )
+        .run(),
+    /CHECK constraint failed|malformed JSON/,
+  );
 });

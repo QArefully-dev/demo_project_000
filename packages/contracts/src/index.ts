@@ -2,6 +2,7 @@ export { CONTRACTS_VERSION } from './version.js';
 export * from './common.js';
 export * from './products.js';
 export * from './pricing.js';
+export * from './customBlends.js';
 export * from './cart.js';
 export * from './auth.js';
 export * from './favourites.js';

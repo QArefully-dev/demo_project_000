@@ -1,5 +1,11 @@
 import type { Cart, CartLineVariantSnap } from '@shop/contracts/cart';
-import { SACK_WEIGHT_GRAMS } from '@shop/contracts/pricing';
+import {
+  CUSTOM_BLEND_FEE_CENTS,
+  CustomBlendSnapshot as CustomBlendSnapshotSchema,
+  SACK_WEIGHT_GRAMS,
+  type CustomBlendSnapshot,
+} from '@shop/contracts';
+import { Value } from '@sinclair/typebox/value';
 import { toProductContract } from '../../mappers/product.js';
 import type { CartLineRow, CartRepository } from './cartRepository.js';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
@@ -8,6 +14,10 @@ import type { AuditWriter } from '../audit/auditService.js';
 import type { InventoryService } from '../inventory/inventoryService.js';
 import { perTonneCents, resolveUnitPriceCents, validateMoq } from '../pricing/pricingRules.js';
 import { quoteCartDelivery } from '../delivery/deliveryRules.js';
+import {
+  calculateCustomBlendLinePricing,
+  normalizeCustomBlendSpec,
+} from '../customBlend/customBlendRules.js';
 
 export interface CartAuditDependencies {
   unitOfWork: UnitOfWork;
@@ -39,6 +49,7 @@ export interface CartService {
     variantId: string,
     quantity: number,
     context?: AuditContext,
+    configKey?: string,
   ):
     | Cart
     | 'CART_NOT_FOUND'
@@ -49,6 +60,27 @@ export interface CartService {
   remove(
     cartId: string,
     variantId: string,
+    context?: AuditContext,
+    configKey?: string,
+  ): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_IN_CART' | 'CART_RESERVED';
+  addConfigured(
+    cartId: string,
+    variantId: string,
+    customBlend: CustomBlendSnapshot,
+    quantity: number | undefined,
+    context?: AuditContext,
+  ):
+    | Cart
+    | 'CART_NOT_FOUND'
+    | 'VARIANT_NOT_FOUND'
+    | 'CART_RESERVED'
+    | 'BELOW_MOQ'
+    | 'INVALID_QUANTITY';
+  replaceConfigured(
+    cartId: string,
+    variantId: string,
+    previousConfigKey: string,
+    customBlend: CustomBlendSnapshot,
     context?: AuditContext,
   ): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_IN_CART' | 'CART_RESERVED';
 }
@@ -92,7 +124,7 @@ export function createCartService(
         }
         return result;
       }),
-    update: (cartId, variantId, quantity, context) =>
+    update: (cartId, variantId, quantity, context, configKey = '') =>
       runCartMutation(auditDependencies, () => {
         requireAuditContext(auditDependencies, context);
         const result = updateItem(
@@ -101,6 +133,7 @@ export function createCartService(
           variantId,
           quantity,
           availabilityDependencies,
+          configKey,
         );
         if (context && auditDependencies && typeof result !== 'string') {
           auditDependencies.audit.append(
@@ -122,10 +155,10 @@ export function createCartService(
         }
         return result;
       }),
-    remove: (cartId, variantId, context) =>
+    remove: (cartId, variantId, context, configKey = '') =>
       runCartMutation(auditDependencies, () => {
         requireAuditContext(auditDependencies, context);
-        const result = removeItem(repository, cartId, variantId, availabilityDependencies);
+        const result = removeItem(repository, cartId, variantId, availabilityDependencies, configKey);
         if (context && auditDependencies && typeof result !== 'string') {
           auditDependencies.audit.append({
             action: 'cart.product_removed',
@@ -133,6 +166,62 @@ export function createCartService(
             productId: Number(variantId),
             context,
           });
+        }
+        return result;
+      }),
+    addConfigured: (cartId, variantId, customBlend, quantity, context) =>
+      runCartMutation(auditDependencies, () => {
+        requireAuditContext(auditDependencies, context);
+        const result = addConfiguredItem(
+          repository,
+          cartId,
+          variantId,
+          customBlend,
+          quantity,
+          availabilityDependencies,
+        );
+        if (context && auditDependencies && typeof result !== 'string') {
+          auditDependencies.audit.append({
+            action: 'cart.product_added',
+            cartId,
+            productId: Number(variantId),
+            quantity:
+              result.items.find(
+                (item) =>
+                  item.variantSnap?.variantId === Number(variantId) &&
+                  item.configKey === customBlend.configKey,
+              )?.quantity ?? 1,
+            context,
+          });
+        }
+        return result;
+      }),
+    replaceConfigured: (cartId, variantId, previousConfigKey, customBlend, context) =>
+      runCartMutation(auditDependencies, () => {
+        requireAuditContext(auditDependencies, context);
+        const result = replaceConfiguredItem(
+          repository,
+          cartId,
+          variantId,
+          previousConfigKey,
+          customBlend,
+          availabilityDependencies,
+        );
+        if (context && auditDependencies && typeof result !== 'string') {
+          const changed = result.items.find(
+            (item) =>
+              item.variantSnap?.variantId === Number(variantId) &&
+              item.configKey === customBlend.configKey,
+          );
+          if (changed) {
+            auditDependencies.audit.append({
+              action: 'cart.product_quantity_changed',
+              cartId,
+              productId: Number(variantId),
+              quantity: changed.quantity,
+              context,
+            });
+          }
         }
         return result;
       }),
@@ -201,7 +290,18 @@ export function getCart(
     availabilityDependencies.clock.now().toISOString(),
   );
   const availableByVariant = new Map(availability?.map((v) => [v.variantId, v.availableToSell]));
-  const items = rows.map((row) => {
+  const customBlends = new Map<number, CustomBlendSnapshot>();
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index]!;
+    if (row.config_key === '') {
+      if (row.custom_blend_json !== null) return undefined;
+      continue;
+    }
+    const customBlend = hydrateCustomBlend(repository, row);
+    if (!customBlend) return undefined;
+    customBlends.set(index, customBlend);
+  }
+  const items = rows.map((row, index) => {
     const productBase = cartLineRowToProductBase(row);
     const available = availableByVariant.get(row.variant_id) ?? 0;
     const variantBackorderable = row.variant_backorderable === 1;
@@ -210,8 +310,18 @@ export function getCart(
       row.quantity,
       row.variant_weight_grams,
     );
+    const customBlend = customBlends.get(index);
+    const pricing = customBlend
+      ? calculateCustomBlendLinePricing(unitPriceCents, row.quantity, customBlend.blendingFeeCents)
+      : {
+          materialSubtotalCents: unitPriceCents * row.quantity,
+          blendingFeeCents: 0,
+          discountableTotalCents: unitPriceCents * row.quantity,
+          lineTotalCents: unitPriceCents * row.quantity,
+        };
     return {
       productId: String(row.product_id),
+      configKey: row.config_key,
       product: toProductContract({
         ...productBase,
         available_to_sell: available,
@@ -222,15 +332,78 @@ export function getCart(
       perTonneCents: perTonneCents(row.price_cents, row.variant_weight_grams),
       resolvedUnitPriceCents: unitPriceCents,
       quantity: row.quantity,
-      lineTotalCents: unitPriceCents * row.quantity,
+      ...pricing,
+      ...(customBlend ? { customBlend } : {}),
     };
   });
   return {
     id: cartId,
     items,
     subtotalCents: items.reduce((total, item) => total + item.lineTotalCents, 0),
+    discountableSubtotalCents: items.reduce(
+      (total, item) => total + item.discountableTotalCents,
+      0,
+    ),
+    blendingFeeTotalCents: items.reduce((total, item) => total + item.blendingFeeCents, 0),
     totalItems: items.reduce((total, item) => total + item.quantity, 0),
     deliveryPreview: quoteCartDelivery({ items }),
+  };
+}
+
+/** Corrupt or retired configured facts invalidate the complete cart before any payment path. */
+function hydrateCustomBlend(
+  repository: CartRepository,
+  row: CartLineRow,
+): CustomBlendSnapshot | undefined {
+  if (!row.custom_blend_json) return undefined;
+  let persisted: CustomBlendSnapshot;
+  try {
+    persisted = Value.Parse(CustomBlendSnapshotSchema, JSON.parse(row.custom_blend_json));
+  } catch {
+    return undefined;
+  }
+  if (persisted.configKey !== row.config_key || persisted.blendingFeeCents !== CUSTOM_BLEND_FEE_CENTS) {
+    return undefined;
+  }
+  let normalized;
+  try {
+    normalized = normalizeCustomBlendSpec(row.variant_id, persisted.ingredients);
+  } catch {
+    return undefined;
+  }
+  if (
+    normalized.configKey !== row.config_key ||
+    normalized.basePercentage !== persisted.basePercentage
+  ) {
+    return undefined;
+  }
+  const factIds = [row.variant_id, ...normalized.ingredients.map((ingredient) => ingredient.variantId)];
+  const facts = repository.listEligibleCustomBlendFacts(factIds);
+  if (facts.length !== factIds.length) return undefined;
+  const byVariantId = new Map(facts.map((fact) => [fact.variant_id, fact]));
+  const base = byVariantId.get(row.variant_id);
+  if (!base || base.mixing_group !== persisted.mixingGroup) return undefined;
+  const ingredients = normalized.ingredients.map((ingredient) => {
+    const fact = byVariantId.get(ingredient.variantId);
+    if (!fact || fact.variant_id === base.variant_id || fact.mixing_group !== base.mixing_group) return undefined;
+    return {
+      variantId: fact.variant_id,
+      productId: String(fact.product_id),
+      productName: fact.product_name,
+      productDescription: fact.product_description,
+      mixingGroup: fact.mixing_group as CustomBlendSnapshot['mixingGroup'],
+      percentage: ingredient.percentage,
+    };
+  });
+  if (ingredients.some((ingredient) => ingredient === undefined)) return undefined;
+  return {
+    configKey: normalized.configKey,
+    basePercentage: normalized.basePercentage,
+    mixingGroup: base.mixing_group as CustomBlendSnapshot['mixingGroup'],
+    ingredients: ingredients as CustomBlendSnapshot['ingredients'],
+    blendingFeeCents: CUSTOM_BLEND_FEE_CENTS,
+    madeToOrder: true,
+    returnable: false,
   };
 }
 
@@ -248,6 +421,7 @@ export function addItem(
   | 'BELOW_MOQ'
   | 'INVALID_QUANTITY' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
+  if (!getCart(repository, cartId, availabilityDependencies)) return 'CART_NOT_FOUND';
   if (repository.isReserved(cartId, availabilityDependencies?.clock.now().toISOString()))
     return 'CART_RESERVED';
   if (!repository.variantExists(variantId)) return 'VARIANT_NOT_FOUND';
@@ -261,6 +435,43 @@ export function addItem(
     return 'BELOW_MOQ';
   }
   repository.addLineQuantity(cartId, variantId, addedQuantity);
+  repository.touch(cartId);
+  return getCart(repository, cartId, availabilityDependencies) ?? 'CART_NOT_FOUND';
+}
+
+export function addConfiguredItem(
+  repository: CartRepository,
+  cartId: string,
+  variantId: string,
+  customBlend: CustomBlendSnapshot,
+  quantity: number | undefined,
+  availabilityDependencies?: CartAvailabilityDependencies,
+):
+  | Cart
+  | 'CART_NOT_FOUND'
+  | 'VARIANT_NOT_FOUND'
+  | 'CART_RESERVED'
+  | 'BELOW_MOQ'
+  | 'INVALID_QUANTITY' {
+  if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
+  if (!getCart(repository, cartId, availabilityDependencies)) return 'CART_NOT_FOUND';
+  if (repository.isReserved(cartId, availabilityDependencies?.clock.now().toISOString())) {
+    return 'CART_RESERVED';
+  }
+  const variant = repository.getVariant(Number(variantId));
+  if (!variant || !repository.variantExists(variantId)) return 'VARIANT_NOT_FOUND';
+  const addedQuantity = quantity ?? minimumMoqQuantity(variant.weight_grams, variant.moq_sacks);
+  if (addedQuantity === undefined) return 'INVALID_QUANTITY';
+  const nextQuantity = repository.lineQuantity(cartId, variantId, customBlend.configKey) + addedQuantity;
+  if (!supportsCartLineArithmetic(variant, nextQuantity)) return 'INVALID_QUANTITY';
+  if (!validateMoq(nextQuantity, variant.weight_grams, variant.moq_sacks)) return 'BELOW_MOQ';
+  repository.addConfiguredLineQuantity(
+    cartId,
+    variantId,
+    customBlend.configKey,
+    JSON.stringify(customBlend),
+    addedQuantity,
+  );
   repository.touch(cartId);
   return getCart(repository, cartId, availabilityDependencies) ?? 'CART_NOT_FOUND';
 }
@@ -309,6 +520,7 @@ export function updateItem(
   variantId: string,
   quantity: number,
   availabilityDependencies?: CartAvailabilityDependencies,
+  configKey = '',
 ):
   | Cart
   | 'CART_NOT_FOUND'
@@ -317,10 +529,11 @@ export function updateItem(
   | 'BELOW_MOQ'
   | 'INVALID_QUANTITY' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
+  if (!getCart(repository, cartId, availabilityDependencies)) return 'CART_NOT_FOUND';
   if (repository.isReserved(cartId, availabilityDependencies?.clock.now().toISOString()))
     return 'CART_RESERVED';
   if (quantity !== 0) {
-    if (repository.lineQuantity(cartId, variantId) === 0) return 'VARIANT_NOT_IN_CART';
+    if (repository.lineQuantity(cartId, variantId, configKey) === 0) return 'VARIANT_NOT_IN_CART';
     const variant = repository.getVariant(Number(variantId));
     if (!variant) return 'VARIANT_NOT_IN_CART';
     if (!supportsCartLineArithmetic(variant, quantity)) return 'INVALID_QUANTITY';
@@ -328,8 +541,8 @@ export function updateItem(
   }
   const changed =
     quantity === 0
-      ? repository.removeLine(cartId, variantId)
-      : repository.updateLine(cartId, variantId, quantity);
+      ? repository.removeLine(cartId, variantId, configKey)
+      : repository.updateLine(cartId, variantId, quantity, configKey);
   if (!changed) return 'VARIANT_NOT_IN_CART';
   repository.touch(cartId);
   return getCart(repository, cartId, availabilityDependencies) ?? 'CART_NOT_FOUND';
@@ -340,11 +553,38 @@ export function removeItem(
   cartId: string,
   variantId: string,
   availabilityDependencies?: CartAvailabilityDependencies,
+  configKey = '',
 ): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_IN_CART' | 'CART_RESERVED' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
+  if (!getCart(repository, cartId, availabilityDependencies)) return 'CART_NOT_FOUND';
   if (repository.isReserved(cartId, availabilityDependencies?.clock.now().toISOString()))
     return 'CART_RESERVED';
-  if (!repository.removeLine(cartId, variantId)) return 'VARIANT_NOT_IN_CART';
+  if (!repository.removeLine(cartId, variantId, configKey)) return 'VARIANT_NOT_IN_CART';
+  repository.touch(cartId);
+  return getCart(repository, cartId, availabilityDependencies) ?? 'CART_NOT_FOUND';
+}
+
+export function replaceConfiguredItem(
+  repository: CartRepository,
+  cartId: string,
+  variantId: string,
+  previousConfigKey: string,
+  customBlend: CustomBlendSnapshot,
+  availabilityDependencies?: CartAvailabilityDependencies,
+): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_IN_CART' | 'CART_RESERVED' {
+  if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
+  if (!getCart(repository, cartId, availabilityDependencies)) return 'CART_NOT_FOUND';
+  if (repository.isReserved(cartId, availabilityDependencies?.clock.now().toISOString())) {
+    return 'CART_RESERVED';
+  }
+  const changed = repository.replaceConfiguredLine(
+    cartId,
+    variantId,
+    previousConfigKey,
+    customBlend.configKey,
+    JSON.stringify(customBlend),
+  );
+  if (!changed) return 'VARIANT_NOT_IN_CART';
   repository.touch(cartId);
   return getCart(repository, cartId, availabilityDependencies) ?? 'CART_NOT_FOUND';
 }

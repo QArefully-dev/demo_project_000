@@ -77,6 +77,12 @@ import type { ReturnService } from './features/returns/returnService.js';
 import { createReturnRepository } from './features/returns/returnRepository.js';
 import { createReturnService } from './features/returns/returnService.js';
 import { createRefundGateway } from './features/returns/refundGateway.js';
+import { createCustomBlendRepository } from './features/customBlend/customBlendRepository.js';
+import {
+  createCustomBlendService,
+  type CustomBlendService,
+} from './features/customBlend/customBlendService.js';
+import customBlendRoutes from './routes/customBlends.js';
 
 export interface AppDependencies {
   db: Database.Database;
@@ -104,6 +110,7 @@ export interface AppServices {
   inventory: InventoryService;
   inventoryUnitOfWork: UnitOfWork;
   returns: ReturnService;
+  customBlends: CustomBlendService;
   clock: Clock;
 }
 
@@ -198,6 +205,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
         return row?.variant_id ?? undefined;
       },
     }),
+    customBlends: createCustomBlendService(createCustomBlendRepository(dependencies.db)),
     clock,
     audit: createAuditReadService(auditRepository),
   };
@@ -250,6 +258,7 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(reviewsRoutes, context);
   await app.register(returnsRoutes, context);
   await app.register(adminReturnsRoutes, context);
+  await app.register(customBlendRoutes, context);
 
   return app;
 }

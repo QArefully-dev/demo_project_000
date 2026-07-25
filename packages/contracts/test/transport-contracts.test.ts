@@ -54,7 +54,14 @@ void test('cart and payment transports require UUID identifiers and bounded card
 });
 
 void test('cart and order transports accept product-only line collections', () => {
-  const emptyCart = { id: uuid, items: [], subtotalCents: 0, totalItems: 0 };
+  const emptyCart = {
+    id: uuid,
+    items: [],
+    subtotalCents: 0,
+    discountableSubtotalCents: 0,
+    blendingFeeTotalCents: 0,
+    totalItems: 0,
+  };
   assert.equal(Value.Check(Cart, emptyCart), true);
   assert.equal(Value.Check(Cart, { ...emptyCart, totalItems: -1 }), false);
 

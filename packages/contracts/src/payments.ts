@@ -11,6 +11,7 @@ import {
 } from './common.js';
 import { PlaceOrderResponse } from './orders.js';
 import { DeliveryClass, DeliverySummary } from './delivery.js';
+import { CustomBlendSnapshot } from './customBlends.js';
 
 export const PaymentBody = Type.Object({
   cartId: Uuid,
@@ -106,8 +107,12 @@ const PersistedCheckoutVariantLine = Type.Object(
     weightGrams: Type.Integer({ minimum: 1 }),
     deliveryClass: DeliveryClass,
     quantity: Type.Integer({ minimum: 1 }),
+    materialSubtotalCents: Type.Optional(MoneyCents),
+    blendingFeeCents: Type.Optional(MoneyCents),
+    discountableTotalCents: Type.Optional(MoneyCents),
     lineTotalCents: MoneyCents,
     consumptionClassification: Type.String(),
+    customBlend: Type.Optional(CustomBlendSnapshot),
   },
   { additionalProperties: false },
 );

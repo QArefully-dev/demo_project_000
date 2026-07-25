@@ -20,6 +20,7 @@ import { groundedCatalogVariantsMigration } from './018_grounded_catalog_variant
 import { variantMoqMigration } from './019_variant_moq.js';
 import { retireLegacyVariantsMigration } from './020_retire_legacy_variants.js';
 import { removePowderizerMigration } from './021_remove_powderizer.js';
+import { customBlendsMigration } from './022_custom_blends.js';
 
 export const migrations: readonly Migration[] = [
   initialMigration,
@@ -43,4 +44,5 @@ export const migrations: readonly Migration[] = [
   variantMoqMigration,
   retireLegacyVariantsMigration,
   removePowderizerMigration,
+  customBlendsMigration,
 ];

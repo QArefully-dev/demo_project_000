@@ -9,6 +9,7 @@ import {
   Uuid,
 } from './common.js';
 import { DeliveryClass, DeliveryMode } from './delivery.js';
+import { CustomBlendSnapshot } from './customBlends.js';
 
 const UtcIsoInstant = Type.String({
   minLength: 24,
@@ -93,11 +94,14 @@ export const OrderLineItem = Type.Object(
     productName: Type.String({ minLength: 1 }),
     unitPriceCents: MoneyCents,
     quantity: Type.Integer({ minimum: 1 }),
+    discountableTotalCents: MoneyCents,
+    blendingFeeCents: MoneyCents,
     lineTotalCents: MoneyCents,
     inventoryStatus: OrderInventoryStatus,
     allocatedQuantity: Type.Integer({ minimum: 0 }),
     backorderedQuantity: Type.Integer({ minimum: 0 }),
     variantSnapshot: Type.Optional(OrderLineVariantSnapshot),
+    customBlend: Type.Optional(CustomBlendSnapshot),
   },
   { additionalProperties: false },
 );
