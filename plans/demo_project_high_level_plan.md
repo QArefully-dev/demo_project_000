@@ -75,7 +75,7 @@ Avoid visible platform complexity:
 - implemented delivery: freight-only seeded lots with simulated freight charge at checkout; `deliveryClass` enum retains `parcel` unused
 - implemented integrity: ordered migrations through `020` (legacy `sort_order < 1` variants retired, never deleted), append-only audit ledger, sanitized admin audit reads
 - seed: 100 deterministic products across 6 categories (Sports Nutrition 20, Baking & Pantry 20, Drinks 15, Household & Cleaning 15, Garden & Outdoors 15, Trade & Creative Materials 15), plus users, promotions, favourites, catalog metadata, curated bundles, and inventory/backorder scenarios
-- placeholder: `Custom Small Order` (`/custom-powder`) renders WIP notice; builder UI deleted, `powderizer` backend/contracts/tables intact and untouched -> scheduled for full retirement, item 11
+- placeholder: `Custom Small Order` (`/custom-powder`) renders WIP notice; builder UI deleted, `powderizer` backend/contracts/tables intact and untouched -> scheduled for full retirement, item 11; its nav slot and colours pass to `Custom Blend`, item 16
 - tests: focused unit, contract, route, SQLite integration, React integration, and accessibility coverage; broad E2E coverage reserved for course
 - completed expansion records, all under `plans/old/`: `powder_shop_catalog_expansion_plan.md`, `inventory_coding_plan.md`, `returns_and_refunds_coding_plan.md`, `order_history_and_lifecycle_coding_plan.md`, `review_depth_coding_plan.md`, `materials_exchange_gap_closure_coding_plan.md`, `catalog_bag_colour_schemes_and_pigments_coding_plan.md`, `heavy_duty_sack_prototypes.html`
 
@@ -161,7 +161,9 @@ Precursor B2B rebrand pass: COMPLETE. Brand/copy, sack/pallet unit model, `£/to
     - remaining, web: delete `features/customSmallOrder/`, routes `/custom-powder` + `/powderizer`, `customPowderItem` nav entry, `PowderMixCartLineItem`, `powderizer-*` CSS, help article/slug `custom-powder`
     - remaining, API: delete `apps/api/src/features/powderizer/**`, `apps/api/test/powderizer/**`, routes `/api/powderizer/*` + `/api/custom-powder/*`, contracts `powderizer` subpath
     - constraint: historical order lines reference mix rows -> retire `powder_mix*` tables and `demand_kind = 'powder_mix'` by ordered migration preserving data, never drop. Same retire-not-delete pattern as migration `020`
-    - frees one nav slot -> consumed by 12
+    - amendment 2026-07-25: no salvage. Delete all `powderizer` code; 16 rebuilds mixing-group compat greenfield
+    - amendment 2026-07-25: `powderizer-nav-link` CSS colours are reused by 16 -> rename, do not delete. Rest of `powderizer-*` CSS still deleted
+    - frees one nav slot -> consumed by 16, not 12
 12. Buy Again / reorder: future
     - one action on any past order -> re-add its lines to cart. Universally recognised, no new domain concept, no explanatory copy
     - reuses orders + cart + inventory + pricing; adds no new mental model
@@ -179,8 +181,19 @@ Precursor B2B rebrand pass: COMPLETE. Brand/copy, sack/pallet unit model, `£/to
     - `notify me when available` on out-of-stock lots
     - one-line concept, real async behavior -> first consumer of the local job queue in 8
     - depends on 8; do not build standalone polling
+16. Custom Blend: future
+    - decision 2026-07-25: APPROVED. Buyer picks base lot -> adds ingredients at ratios -> one configured cart line. Value proposition = "spec the material", not "order small"
+    - distinct from retired 11: anchored to an existing base lot, sold in the 25 kg sack / `£/tonne` unit model. Item 11 rejection reasons (redundant vs MOQ 4 sacks; consumer bag scale) do not transfer
+    - depends on 11: greenfield build, reuses no `powderizer` code. Consumes the nav slot 11 frees
+    - ingredients are references to real catalog lots, drawn from any category, gated by `mixingGroup`. Ingredients displace base material; line weight stays fixed by sack count
+    - rules: ingredients total <= 50%, max 4, each >= 5%, whole percent steps; base is the remainder; blend inherits base lot MOQ
+    - pricing: base `£/tonne` for full line weight plus flat blending charge per line, independent of contents. Ingredient cost not passed through; tier applies to material weight, fee sits outside -> no compounding
+    - ingredients do not draw inventory (always-available blending stock); base lot draws stock normally
+    - blends are non-returnable, made to order; marked at configure, checkout, and order
+    - QA surface: ratio cap and floor boundaries, mixing-group incompatibility, ingredient lot sold out yet specifiable, MOQ floor on a blend line, tier boundary with non-compounding fee, blend excluded from returns while stock lines stay eligible, base lot retired while blend held in cart
+    - detail: `plans/custom_additives_handoff.md`
 
-Items 12-15 replace the retired 11. They compose as one line of work -> order -> save as list -> reorder -> notify. All funnel through the same multi-line cart-add path, so 13-15 are cheap once 12 lands. Together they set up standing/repeat orders under 8 without committing to it now.
+Items 12-15 replace the retired 11. They compose as one line of work -> order -> save as list -> reorder -> notify. All funnel through the same multi-line cart-add path, so 13-15 are cheap once 12 lands. Together they set up standing/repeat orders under 8 without committing to it now. 16 sits outside that chain and takes the nav slot instead of 12; 12-15 remain reachable from order history, account, and catalog surfaces.
 
 ### Sequencing Guidelines
 
@@ -193,7 +206,9 @@ Recommended order:
 3. Pricing and promotions (5). Riskiest money path (stacking, rounding). Run after checkout money path is settled.
 4. Then Async behavior (8), Country localisation (10).
 
-Custom Small Order retirement (11) is independent of the money-path chain -> schedule any time; blocks 12 only by way of the freed nav slot.
+Custom Small Order retirement (11) is independent of the money-path chain -> schedule any time; blocks 16 by way of both the deleted code and the freed nav slot. 11 -> 16 is a hard sequence, not parallel.
+
+Custom Blend (16) touches line pricing (blending fee) and the cart line key -> do not run in parallel with 4 or 5. Schedule after 5, or before 4 if 16 lands first and the money path is left settled.
 
 Reorder chain (12 -> 13 -> 14) sits outside the money path -> safe before or alongside 4 and 5. Build 12 first; 13 and 14 reuse its multi-line cart-add path. Back-in-stock (15) waits on 8.
 
