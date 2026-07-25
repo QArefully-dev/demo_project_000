@@ -72,9 +72,12 @@ describe('HomePage', () => {
     expect(screen.getByText('Supply-ready catalogue')).toBeInTheDocument();
     expect(screen.getByText('Demo ordering')).toBeInTheDocument();
     expect(screen.getByText('No real payment is processed')).toBeInTheDocument();
-    expect(screen.getByLabelText('Live trading update')).toBeInTheDocument();
-    expect(screen.getByText('Coming next')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Live trading' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Order a whole set, save 10%.' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Bundle sets: browse curated bundles' }),
+    ).toHaveAttribute('href', '/bundles');
     expect(screen.getByText('Bestsellers')).toBeInTheDocument();
     expect(screen.getByText('Just in')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Product new')).toBeInTheDocument());

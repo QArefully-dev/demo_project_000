@@ -2,14 +2,15 @@
 
 ## Scope
 
-Local B2B bulk-powder wholesale codebase for QA education and repository-scale agent demos. Non-live runtime; production-grade boundaries.
+Local B2B bulk-materials wholesale codebase (`QArefully Materials Exchange`) for QA education and repository-scale agent demos. Non-live runtime; production-grade boundaries.
 
-- Product: wholesale ordering portal; trade buyers (shops, supermarkets) order powders by pallet, sugar -> cement. Browse -> quote/cart -> bulk checkout -> order
-- Live trading: real-time auctions/bidding on selected pallet lots
+- Product: wholesale ordering portal; trade buyers (shops, supermarkets) order materials by sack/pallet, sugar -> cement. Browse -> cart -> bulk checkout -> order
+- Cart-only; no persisted quote/RFQ object
+- No live trading, auctions, or bidding; rejected direction, do not add
 - Runtime: deterministic, local-first, low setup
 - Engineering: realistic rules; strict validation, auth, migrations, transactions, errors
 
-Direction note: repo originally built as B2C powder retail (`QArefully Powder Co.`). Now pivoting to B2B bulk/wholesale pallet ordering + live trading. Reason: more grounded in real-world commerce -> richer, more realistic QA learning material (concurrency, bidding, bulk pricing, minimum-order rules). Pivot is additive; reuse catalog/domain foundations, do not rewrite storefront.
+Phase note: repo originally B2C powder retail (`QArefully Powder Co.`). Materials Exchange rebrand + gap closure + packaging pigments: complete. Landed brand/copy, sack/pallet unit model, `£/tonne` display, MOQ + qty-break tier engine, heavy-duty vessel artwork, legacy-variant retirement, Custom Small Order placeholder. Current phase: additive expansion per `plans/demo_project_high_level_plan.md`. Reuse catalog/domain foundations; do not rewrite storefront.
 
 ## Context
 
@@ -35,7 +36,10 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
 - Default: modular monolith. Split service only for named distributed-behavior demo.
 - Flow: frontend -> API contracts -> domain -> persistence.
 - Backend owns money, inventory, orders, payments, permissions, delivery classification/charge. Money uses integer minor units.
-- Purchasable identity is variant/SKU-scoped: base product owns merchandising/reviews/favourites/comparison; variant owns SKU, pack, price, stock, weight, delivery class. Cart/inventory/order lines key on variant; contracts retain productId for navigation.
+- Purchasable identity is variant/SKU-scoped: base product owns merchandising/reviews/favourites/comparison; variant owns SKU, pack, price, stock, weight, MOQ, tier ladder, delivery class. Cart/inventory/order lines key on variant; contracts retain productId for navigation.
+- Unit model: purchase unit = 25 kg sack; 40 sacks = 1 t pallet. `packages/contracts/src/pricing.ts` owns `SACK_WEIGHT_GRAMS`, `PALLET_WEIGHT_GRAMS`, `SACKS_PER_PALLET`, `MOQ_DEFAULT_SACKS`, `TIER_LADDER`. Backend derives `perTonneCents` + tier discount from line weight; tiers never compound; MOQ enforced as line-weight floor.
+- Variant `sortOrder` contract-floor is 1; rows below it are retired (`active = 0`), never deleted (migration `020`). Seeded lots are all `deliveryClass 'freight'`; enum retains `parcel`.
+- Packaging artwork is web-side only: resolver keys on category + facts. Contract `ProductPackaging` stays optional and unpopulated by API.
 - Contracts own transport types/schemas; shared data owns canonical static catalog/content.
 - Web never imports API source. Packages/scripts never import app-private source.
 - Backend: thin routes -> workflow services -> repositories owning SQL/row types. One transport mapper per record type.
@@ -49,7 +53,9 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
   - `src/api/`: typed HTTP clients; validate successful responses against shared schemas
   - `src/features/`: page and workflow ownership by domain
   - `src/components/`: shared UI and shell; `src/components/ui/` contains framework primitives
+  - `src/components/packaging/`: vessel artwork (kraft sack, woven sack, HDPE keg), spec resolver, per-category colour/pigment palettes; food bag stays in `src/components/BagArtwork.tsx`
   - `src/hooks/`: cross-feature auth, cart, catalog, favourites state
+  - `src/features/designs/`: `/bag-designs` internal artwork fixture page; outside customer journey
   - tests: colocated `*.test.ts(x)`; browser journeys use `*.integration.test.tsx`
 - `apps/api/`: Fastify API and SQLite runtime
   - `src/app.ts`: composition root; services, plugins, routes
@@ -60,11 +66,13 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
 - `packages/contracts/`: TypeBox transport schemas/types and public subpath exports
 - `packages/catalog/`: canonical product/category/packaging content plus validation
 - `data/`: ignored local SQLite runtime files; default `data/shop.db`
-- `plans/`: active product/course plans; `plans/old/` historical context only
+- `plans/`: `demo_project_high_level_plan.md` = current direction, only active plan; `plans/old/` completed/historical context only
 - `.claude/skills/`: repo-local agent skills; load only when task matches
 - root configs: workspaces/scripts in `package.json`; shared TypeScript, ESLint, Prettier configuration
 
 Dependency direction: `packages/contracts` -> `apps/api` + `apps/web`; `packages/catalog` -> `apps/api`; `apps/api` -> HTTP -> `apps/web`.
+
+Legacy identifiers, intentional, do not rename opportunistically: `powderizer` (API feature, contracts subpath, routes `/api/powderizer/*` + `/api/custom-powder/*`, tables, `demand_kind = 'powder_mix'`), web route `/custom-powder`, help slug `custom-powder`, `powderizer-*` CSS, `PowderMixCartLineItem`. Customer-facing name is `Custom Small Order` -> currently a WIP placeholder page; builder UI deleted, backend intact.
 
 ## Commands
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getBestsellers, getCategories, getProducts } from '@/api/products';
+import { BundleBanner } from '@/components/home/BundleBanner';
 import { CategoryTiles } from '@/components/home/CategoryTiles';
 import { HeroSection } from '@/components/home/HeroSection';
 import { ProductShelf } from '@/components/home/ProductShelf';
@@ -100,20 +101,7 @@ export function HomePage() {
   return (
     <div className="space-y-16 pb-12 lg:space-y-20">
       <HeroSection />
-      <section
-        aria-label="Live trading update"
-        className="grid gap-4 rounded-2xl border-2 border-foreground bg-surface-raised p-6 shadow-sm sm:grid-cols-[auto_1fr] sm:items-center sm:p-8"
-      >
-        <p className="w-fit border border-primary bg-primary/10 px-3 py-1 text-xs font-bold tracking-[0.16em] text-primary uppercase">
-          Coming next
-        </p>
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight">Live trading</h2>
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">
-            Market-linked trading, inventory holds and repeat-order tools are in preparation.
-          </p>
-        </div>
-      </section>
+      <BundleBanner />
       <section
         aria-label="Store assurances"
         className="grid divide-y rounded-2xl border bg-surface-raised text-center shadow-sm sm:grid-cols-3 sm:divide-x sm:divide-y-0"
