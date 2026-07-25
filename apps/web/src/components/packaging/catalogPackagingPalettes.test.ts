@@ -134,7 +134,9 @@ describe('resolveCatalogPackagingPalette', () => {
   });
 
   it('returns undefined for an unknown category', () => {
-    expect(resolveCatalogPackagingPalette({ id: '1', category: 'Powderizer' })).toBeUndefined();
+    expect(
+      resolveCatalogPackagingPalette({ id: '1', category: 'Unlisted Category' }),
+    ).toBeUndefined();
     expect(resolveCatalogPackagingPalette({ id: '1', category: '' })).toBeUndefined();
     expect(resolveCatalogPackagingPalette({ id: '1', category: 'drinks' })).toBeUndefined();
   });

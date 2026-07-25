@@ -1,11 +1,7 @@
 import type { Cart, CartLineVariantSnap } from '@shop/contracts/cart';
-import type { PowderMixCartItem } from '@shop/contracts/powderizer';
 import { SACK_WEIGHT_GRAMS } from '@shop/contracts/pricing';
-import { CATALOG_PRODUCTS } from '@shop/catalog';
 import { toProductContract } from '../../mappers/product.js';
 import type { CartLineRow, CartRepository } from './cartRepository.js';
-import type { PowderMixRepository } from '../powderizer/powderMixRepository.js';
-import { derivePowderMixUsageLabel } from '../powderizer/powderMixRules.js';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
@@ -59,7 +55,6 @@ export interface CartService {
 
 export function createCartService(
   repository: CartRepository,
-  mixes?: PowderMixRepository,
   auditDependencies?: CartAuditDependencies,
   availabilityDependencies?: CartAvailabilityDependencies,
 ): CartService {
@@ -77,20 +72,13 @@ export function createCartService(
         }
         return result;
       }),
-    get: (cartId) => getCart(repository, cartId, mixes, availabilityDependencies),
+    get: (cartId) => getCart(repository, cartId, availabilityDependencies),
     add: (cartId, variantId, quantityOrContext, context) =>
       runCartMutation(auditDependencies, () => {
         const quantity = typeof quantityOrContext === 'number' ? quantityOrContext : undefined;
         const auditContext = typeof quantityOrContext === 'number' ? context : quantityOrContext;
         requireAuditContext(auditDependencies, auditContext);
-        const result = addItem(
-          repository,
-          cartId,
-          variantId,
-          quantity,
-          mixes,
-          availabilityDependencies,
-        );
+        const result = addItem(repository, cartId, variantId, quantity, availabilityDependencies);
         if (auditContext && auditDependencies && typeof result !== 'string') {
           auditDependencies.audit.append({
             action: 'cart.product_added',
@@ -112,7 +100,6 @@ export function createCartService(
           cartId,
           variantId,
           quantity,
-          mixes,
           availabilityDependencies,
         );
         if (context && auditDependencies && typeof result !== 'string') {
@@ -138,7 +125,7 @@ export function createCartService(
     remove: (cartId, variantId, context) =>
       runCartMutation(auditDependencies, () => {
         requireAuditContext(auditDependencies, context);
-        const result = removeItem(repository, cartId, variantId, mixes, availabilityDependencies);
+        const result = removeItem(repository, cartId, variantId, availabilityDependencies);
         if (context && auditDependencies && typeof result !== 'string') {
           auditDependencies.audit.append({
             action: 'cart.product_removed',
@@ -169,39 +156,6 @@ export function createCart(repository: CartRepository): { cartId: string } {
   return { cartId };
 }
 
-function toPowderMixCartItem(
-  row: ReturnType<PowderMixRepository['listForCart']>[number],
-): PowderMixCartItem {
-  return {
-    mixId: row.id,
-    components: row.components.map((component) => ({
-      productId: String(component.product_id),
-      productName: component.product_name,
-      percentage: component.percentage,
-      allocatedGrams: component.allocated_grams,
-    })),
-    bagSizeGrams: row.bag_size_grams as PowderMixCartItem['bagSizeGrams'],
-    fineness: row.fineness,
-    bagColourScheme: row.bag_colour_scheme,
-    customLabel: row.custom_label,
-    priceVersion: row.price_version,
-    unitPriceCents: row.quoted_unit_price_cents,
-    quantity: row.quantity,
-    lineTotalCents: row.quoted_unit_price_cents * row.quantity,
-    usageLabel: derivePowderMixUsageLabel(
-      row.components.map((component) => {
-        const canonicalProduct = CATALOG_PRODUCTS.find(
-          (product) => product.id === component.product_id,
-        );
-        const isNonFood = canonicalProduct?.baseFacts.consumptionClassification !== 'food';
-        return {
-          consumptionWarning: isNonFood ? ('Not for consumption' as const) : null,
-        };
-      }),
-    ),
-  };
-}
-
 function cartLineRowToProductBase(row: CartLineRow) {
   return {
     id: row.product_id,
@@ -214,8 +168,6 @@ function cartLineRowToProductBase(row: CartLineRow) {
     slug: row.product_slug,
     compare_at_price_cents: row.product_compare_at_price_cents,
     sales_count: row.product_sales_count,
-    mixable: row.product_mixable,
-    mix_unit_grams: row.product_mix_unit_grams,
     active: row.product_active,
     created_at: row.product_created_at,
     consumption_classification: row.product_consumption_classification,
@@ -239,7 +191,6 @@ function toVariantSnap(row: CartLineRow): CartLineVariantSnap {
 export function getCart(
   repository: CartRepository,
   cartId: string,
-  mixes?: PowderMixRepository,
   availabilityDependencies?: CartAvailabilityDependencies,
 ): Cart | undefined {
   if (!repository.exists(cartId)) return undefined;
@@ -274,14 +225,12 @@ export function getCart(
       lineTotalCents: unitPriceCents * row.quantity,
     };
   });
-  const mixItems = mixes?.listForCart(cartId).map(toPowderMixCartItem) ?? [];
   return {
     id: cartId,
     items,
-    mixItems,
-    subtotalCents: [...items, ...mixItems].reduce((total, item) => total + item.lineTotalCents, 0),
-    totalItems: [...items, ...mixItems].reduce((total, item) => total + item.quantity, 0),
-    deliveryPreview: quoteCartDelivery({ items, mixItems }),
+    subtotalCents: items.reduce((total, item) => total + item.lineTotalCents, 0),
+    totalItems: items.reduce((total, item) => total + item.quantity, 0),
+    deliveryPreview: quoteCartDelivery({ items }),
   };
 }
 
@@ -290,7 +239,6 @@ export function addItem(
   cartId: string,
   variantId: string,
   quantity?: number,
-  mixes?: PowderMixRepository,
   availabilityDependencies?: CartAvailabilityDependencies,
 ):
   | Cart
@@ -314,7 +262,7 @@ export function addItem(
   }
   repository.addLineQuantity(cartId, variantId, addedQuantity);
   repository.touch(cartId);
-  return getCart(repository, cartId, mixes, availabilityDependencies) ?? 'CART_NOT_FOUND';
+  return getCart(repository, cartId, availabilityDependencies) ?? 'CART_NOT_FOUND';
 }
 
 function minimumMoqQuantity(weightGrams: number, moqSacks: number): number | undefined {
@@ -360,7 +308,6 @@ export function updateItem(
   cartId: string,
   variantId: string,
   quantity: number,
-  mixes?: PowderMixRepository,
   availabilityDependencies?: CartAvailabilityDependencies,
 ):
   | Cart
@@ -385,14 +332,13 @@ export function updateItem(
       : repository.updateLine(cartId, variantId, quantity);
   if (!changed) return 'VARIANT_NOT_IN_CART';
   repository.touch(cartId);
-  return getCart(repository, cartId, mixes, availabilityDependencies) ?? 'CART_NOT_FOUND';
+  return getCart(repository, cartId, availabilityDependencies) ?? 'CART_NOT_FOUND';
 }
 
 export function removeItem(
   repository: CartRepository,
   cartId: string,
   variantId: string,
-  mines?: PowderMixRepository,
   availabilityDependencies?: CartAvailabilityDependencies,
 ): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_IN_CART' | 'CART_RESERVED' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
@@ -400,5 +346,5 @@ export function removeItem(
     return 'CART_RESERVED';
   if (!repository.removeLine(cartId, variantId)) return 'VARIANT_NOT_IN_CART';
   repository.touch(cartId);
-  return getCart(repository, cartId, mines, availabilityDependencies) ?? 'CART_NOT_FOUND';
+  return getCart(repository, cartId, availabilityDependencies) ?? 'CART_NOT_FOUND';
 }

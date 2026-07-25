@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto';
 import { OrderDomainError } from './orderErrors.js';
 
 export interface AllocatedLine {
-  lineKind: 'product' | 'powder_mix';
   lineId: string;
   quantity: number;
 }
@@ -37,7 +36,7 @@ export function assertCompleteAllocation(
   if (shipments.length === 0) throw new OrderDomainError('INVALID_ALLOCATION');
   const ordered = new Map<string, number>();
   for (const line of orderedLines) {
-    const key = `${line.lineKind}:${line.lineId}`;
+    const key = line.lineId;
     if (!Number.isSafeInteger(line.quantity) || line.quantity <= 0 || ordered.has(key)) {
       throw new OrderDomainError('INVALID_ALLOCATION');
     }
@@ -48,7 +47,7 @@ export function assertCompleteAllocation(
     if (shipment.lines.length === 0) throw new OrderDomainError('INVALID_ALLOCATION');
     const inShipment = new Set<string>();
     for (const line of shipment.lines) {
-      const key = `${line.lineKind}:${line.lineId}`;
+      const key = line.lineId;
       if (!Number.isSafeInteger(line.quantity) || line.quantity <= 0 || !ordered.has(key)) {
         throw new OrderDomainError('INVALID_ALLOCATION');
       }

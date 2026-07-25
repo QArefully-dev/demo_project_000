@@ -31,10 +31,10 @@ export const DeliveryQuoteInputLine = Type.Object(
 );
 export type DeliveryQuoteInputLine = Static<typeof DeliveryQuoteInputLine>;
 
+/** Delivery quote request. Weight is derived solely from cart lines. */
 export const DeliveryQuoteInput = Type.Object(
   {
     lines: Type.Array(DeliveryQuoteInputLine),
-    customMixWeightGrams: Type.Optional(Type.Integer({ minimum: 0 })),
   },
   { additionalProperties: false },
 );

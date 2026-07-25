@@ -143,9 +143,9 @@ export function seedDatabase(db: Database.Database): void {
   const seed = db.transaction(() => {
     const upsertProduct = db.prepare(`
       INSERT INTO products
-        (id, name, description, price_cents, category, backorderable, backorder_lead_days, image_set_id, slug, compare_at_price_cents, sales_count, mixable, mix_unit_grams, active, created_at, consumption_classification, mixing_group, details_json)
+        (id, name, description, price_cents, category, backorderable, backorder_lead_days, image_set_id, slug, compare_at_price_cents, sales_count, active, created_at, consumption_classification, mixing_group, details_json)
       VALUES
-        (@id, @name, @description, @price_cents, @category, @backorderable, @backorder_lead_days, @image_set_id, @slug, @compare_at_price_cents, @sales_count, @mixable, @mix_unit_grams, @active, @created_at, @consumption_classification, @mixing_group, @details_json)
+        (@id, @name, @description, @price_cents, @category, @backorderable, @backorder_lead_days, @image_set_id, @slug, @compare_at_price_cents, @sales_count, @active, @created_at, @consumption_classification, @mixing_group, @details_json)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         description = excluded.description,
@@ -157,8 +157,6 @@ export function seedDatabase(db: Database.Database): void {
         slug = excluded.slug,
         compare_at_price_cents = excluded.compare_at_price_cents,
         sales_count = excluded.sales_count,
-        mixable = excluded.mixable,
-        mix_unit_grams = excluded.mix_unit_grams,
         active = excluded.active,
         created_at = excluded.created_at,
         consumption_classification = excluded.consumption_classification,
@@ -249,10 +247,6 @@ export function seedDatabase(db: Database.Database): void {
       const createdAt = product.createdAt;
       const detailsJson = JSON.stringify(product.categoryFacts);
 
-      // Determine base product-level mixable status (all non-food products remain mixable for powderizer compatibility)
-      const isMixable = true;
-      const defaultWeight = defaultVariant?.weightGrams ?? 0;
-
       upsertProduct.run({
         id: product.id,
         name: product.name,
@@ -267,8 +261,6 @@ export function seedDatabase(db: Database.Database): void {
         slug: product.slug,
         compare_at_price_cents: defaultVariant?.compareAtPriceCents ?? null,
         sales_count: 0,
-        mixable: isMixable ? 1 : 0,
-        mix_unit_grams: isMixable ? defaultWeight || 1000 : null,
         active: product.visibility === 'public' ? 1 : 0,
         created_at: createdAt,
         consumption_classification: product.consumptionClassification,

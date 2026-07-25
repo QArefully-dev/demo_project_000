@@ -46,7 +46,6 @@ function createOrder(
         lineTotalCents: 500,
       },
     ],
-    mixItems: [],
     createdAt: '2026-07-19T00:00:00.000Z',
   });
 }
@@ -141,7 +140,7 @@ void test('order routes enforce customer ownership and admin lifecycle authority
   const packPayload = {
     version: 0,
     idempotencyKey: '021ae3a0-354e-44be-8ae0-263c3e835bcf',
-    shipments: [{ lines: [{ lineKind: 'product', lineId, quantity: 1 }] }],
+    shipments: [{ lines: [{ lineId, quantity: 1 }] }],
   };
   assert.equal(
     (

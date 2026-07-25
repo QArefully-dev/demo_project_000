@@ -1,6 +1,5 @@
 import type Database from 'better-sqlite3';
 import type {
-  NormalizedOrderPowderMixItem,
   Order,
   OrderDetailResponse,
   OrderLifecycleEvent,
@@ -11,10 +10,6 @@ import type {
   OrderSummary,
   ShipmentStatus,
 } from '@shop/contracts/orders';
-import {
-  DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
-  parsePowderMixOrderItemSnapshot,
-} from '@shop/contracts/powderizer';
 import type { CreateOrderParams, LifecycleEventInput, PersistedShipment } from './orderTypes.js';
 
 interface OrderRow {
@@ -48,10 +43,6 @@ interface ProductLineRow {
   weight_grams?: number | null;
   consumption_classification?: string | null;
   delivery_class?: string | null;
-}
-interface MixLineRow {
-  id: number;
-  snapshot_json: string;
 }
 interface ShipmentRow {
   id: number;
@@ -101,9 +92,7 @@ export interface OrderRepository extends OrderAccessRepository {
   ): { id: number; status: OrderStatus; version: number; cancelledAt: string | null } | undefined;
   getShipment(shipmentId: number): PersistedShipment | undefined;
   listShipments(orderId: number): PersistedShipment[];
-  listAllocatableLines(
-    orderId: number,
-  ): Array<{ lineKind: 'product' | 'powder_mix'; lineId: string; quantity: number }>;
+  listAllocatableLines(orderId: number): Array<{ lineId: string; quantity: number }>;
   hasOutstandingBackorder(orderId: number): boolean;
   insertShipment(input: {
     orderId: number;
@@ -111,12 +100,7 @@ export interface OrderRepository extends OrderAccessRepository {
     trackingReference: string | null;
     createdAt: string;
   }): number;
-  insertShipmentLine(input: {
-    shipmentId: number;
-    lineId: number;
-    lineKind: 'product' | 'powder_mix';
-    quantity: number;
-  }): void;
+  insertShipmentLine(input: { shipmentId: number; lineId: number; quantity: number }): void;
   updateShipmentStatus(input: {
     shipmentId: number;
     expectedVersion: number;
@@ -137,22 +121,7 @@ export interface OrderRepository extends OrderAccessRepository {
   ): { orderId: number; requestFingerprint: string } | undefined;
 }
 
-function parseMixSnapshot(value: string): NormalizedOrderPowderMixItem {
-  try {
-    const parsed = parsePowderMixOrderItemSnapshot(JSON.parse(value));
-    return parsed.snapshotVersion === 1
-      ? {
-          ...parsed,
-          bagColourScheme: DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
-          usageLabel: 'Check ingredient labels',
-        }
-      : parsed;
-  } catch {
-    throw new Error('Invalid order mix snapshot');
-  }
-}
-
-function mapOrder(row: OrderRow, items: ProductLineRow[], mixes: MixLineRow[]): Order {
+function mapOrder(row: OrderRow, items: ProductLineRow[]): Order {
   return {
     id: String(row.id),
     status: row.lifecycle_status,
@@ -190,10 +159,6 @@ function mapOrder(row: OrderRow, items: ProductLineRow[], mixes: MixLineRow[]): 
             }
           : undefined,
     })),
-    mixItems: mixes.map((mix) => ({
-      ...parseMixSnapshot(mix.snapshot_json),
-      lineId: String(mix.id),
-    })),
     subtotalCents: row.subtotal_cents,
     discountCents: row.discount_cents,
     totalCents: row.total_cents,
@@ -207,7 +172,7 @@ function mapOrder(row: OrderRow, items: ProductLineRow[], mixes: MixLineRow[]): 
 
 function mapShipment(
   row: ShipmentRow,
-  lines: Array<{ line_kind: 'product' | 'powder_mix'; line_id: number; quantity: number }>,
+  lines: Array<{ line_id: number; quantity: number }>,
 ): OrderShipment {
   return {
     id: String(row.id),
@@ -216,7 +181,6 @@ function mapShipment(
     trackingReference: row.tracking_reference,
     version: row.version,
     lines: lines.map((line) => ({
-      lineKind: line.line_kind,
       lineId: String(line.line_id),
       quantity: line.quantity,
     })),
@@ -235,8 +199,8 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
          FROM orders WHERE id = ?`,
       )
       .get(orderId) as OrderRow | undefined;
-  const loadLines = (orderId: number) => ({
-    items: db
+  const loadLineItems = (orderId: number) =>
+    db
       .prepare(
         `SELECT line.id, line.product_id, line.product_name, line.product_price_cents,
            line.quantity, line.line_total_cents,
@@ -247,13 +211,7 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
          LEFT JOIN order_inventory_allocations allocation ON allocation.order_line_item_id = line.id
          WHERE line.order_id = ? ORDER BY line.id ASC`,
       )
-      .all(orderId) as ProductLineRow[],
-    mixes: db
-      .prepare(
-        'SELECT id, snapshot_json FROM order_powder_mix_items WHERE order_id = ? ORDER BY id ASC',
-      )
-      .all(orderId) as MixLineRow[],
-  });
+      .all(orderId) as ProductLineRow[];
   const loadShipments = (orderId: number): ShipmentRow[] =>
     db
       .prepare(
@@ -263,16 +221,15 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
   const findDetail = (orderId: number): OrderDetailResponse | undefined => {
     const row = loadOrder(orderId);
     if (!row) return undefined;
-    const lines = loadLines(orderId);
+    const items = loadLineItems(orderId);
     const shipments = loadShipments(orderId);
     const shipmentLines = db
       .prepare(
-        `SELECT shipment_id, order_line_item_id, order_powder_mix_item_id, quantity FROM order_shipment_items WHERE shipment_id IN (SELECT id FROM order_shipments WHERE order_id = ?) ORDER BY shipment_id ASC, order_line_item_id ASC, order_powder_mix_item_id ASC`,
+        `SELECT shipment_id, order_line_item_id, quantity FROM order_shipment_items WHERE shipment_id IN (SELECT id FROM order_shipments WHERE order_id = ?) ORDER BY shipment_id ASC, order_line_item_id ASC`,
       )
       .all(orderId) as Array<{
       shipment_id: number;
-      order_line_item_id: number | null;
-      order_powder_mix_item_id: number | null;
+      order_line_item_id: number;
       quantity: number;
     }>;
     const events = db
@@ -281,25 +238,13 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
       )
       .all(orderId) as EventRow[];
     return {
-      ...mapOrder(row, lines.items, lines.mixes),
+      ...mapOrder(row, items),
       shipments: shipments.map((shipment) =>
         mapShipment(
           shipment,
           shipmentLines
             .filter((line) => line.shipment_id === shipment.id)
-            .map((line) =>
-              line.order_line_item_id === null
-                ? {
-                    line_kind: 'powder_mix',
-                    line_id: line.order_powder_mix_item_id!,
-                    quantity: line.quantity,
-                  }
-                : {
-                    line_kind: 'product',
-                    line_id: line.order_line_item_id,
-                    quantity: line.quantity,
-                  },
-            ),
+            .map((line) => ({ line_id: line.order_line_item_id, quantity: line.quantity })),
         ),
       ),
       events: events.map((event) => ({
@@ -364,10 +309,6 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
           item.variantSnapshot?.consumptionClassification ?? null,
           item.variantSnapshot?.deliveryClass ?? null,
         );
-      const addMix = db.prepare(
-        'INSERT INTO order_powder_mix_items (order_id, snapshot_json) VALUES (?, ?)',
-      );
-      for (const mix of params.mixItems) addMix.run(orderId, JSON.stringify(mix));
       db.prepare(
         `INSERT INTO order_lifecycle_events (order_id, event_type, title, occurred_at) VALUES (?, 'order_created', 'Order created', ?)`,
       ).run(orderId, params.createdAt);
@@ -376,8 +317,7 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
     findById(orderId) {
       const row = loadOrder(orderId);
       if (!row) return undefined;
-      const lines = loadLines(orderId);
-      return mapOrder(row, lines.items, lines.mixes);
+      return mapOrder(row, loadLineItems(orderId));
     },
     findDetailById: findDetail,
     findOwnedDetail(orderId, userId) {
@@ -391,8 +331,7 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
       const items = db
         .prepare(
           `SELECT o.id, o.lifecycle_status, o.version, o.total_cents, o.created_at,
-          COALESCE((SELECT SUM(quantity) FROM order_line_items WHERE order_id = o.id), 0) +
-          COALESCE((SELECT SUM(CAST(json_extract(snapshot_json, '$.quantity') AS INTEGER)) FROM order_powder_mix_items WHERE order_id = o.id), 0) AS total_items,
+          COALESCE((SELECT SUM(quantity) FROM order_line_items WHERE order_id = o.id), 0) AS total_items,
           EXISTS(SELECT 1 FROM order_inventory_allocations allocation
             JOIN order_line_items line ON line.id = allocation.order_line_item_id
             WHERE line.order_id = o.id AND allocation.backordered_quantity > 0) AS has_backorder
@@ -466,31 +405,16 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
       }));
     },
     listAllocatableLines(orderId) {
-      const product = db
-        .prepare(
-          `SELECT line.id, COALESCE(allocation.allocated_quantity, line.quantity) AS quantity
+      return (
+        db
+          .prepare(
+            `SELECT line.id, COALESCE(allocation.allocated_quantity, line.quantity) AS quantity
            FROM order_line_items line
            LEFT JOIN order_inventory_allocations allocation ON allocation.order_line_item_id = line.id
            WHERE line.order_id = ? ORDER BY line.id`,
-        )
-        .all(orderId) as Array<{ id: number; quantity: number }>;
-      const mix = db
-        .prepare(
-          'SELECT id, snapshot_json FROM order_powder_mix_items WHERE order_id = ? ORDER BY id',
-        )
-        .all(orderId) as MixLineRow[];
-      return [
-        ...product.map((line) => ({
-          lineKind: 'product' as const,
-          lineId: String(line.id),
-          quantity: line.quantity,
-        })),
-        ...mix.map((line) => ({
-          lineKind: 'powder_mix' as const,
-          lineId: String(line.id),
-          quantity: parseMixSnapshot(line.snapshot_json).quantity,
-        })),
-      ];
+          )
+          .all(orderId) as Array<{ id: number; quantity: number }>
+      ).map((line) => ({ lineId: String(line.id), quantity: line.quantity }));
     },
     hasOutstandingBackorder(orderId) {
       return !!db
@@ -510,15 +434,10 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
           .run(orderId, shipmentNumber, trackingReference, createdAt, createdAt).lastInsertRowid,
       );
     },
-    insertShipmentLine({ shipmentId, lineId, lineKind, quantity }) {
-      if (lineKind === 'product')
-        db.prepare(
-          'INSERT INTO order_shipment_items (shipment_id, order_line_item_id, quantity) VALUES (?, ?, ?)',
-        ).run(shipmentId, lineId, quantity);
-      else
-        db.prepare(
-          'INSERT INTO order_shipment_items (shipment_id, order_powder_mix_item_id, quantity) VALUES (?, ?, ?)',
-        ).run(shipmentId, lineId, quantity);
+    insertShipmentLine({ shipmentId, lineId, quantity }) {
+      db.prepare(
+        'INSERT INTO order_shipment_items (shipment_id, order_line_item_id, quantity) VALUES (?, ?, ?)',
+      ).run(shipmentId, lineId, quantity);
     },
     updateShipmentStatus({ shipmentId, expectedVersion, status, updatedAt }) {
       return (

@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { Cart, CreateCartResponse } from '@shop/contracts/cart';
-import { ErrorResponse } from '@shop/contracts/common';
 import { Value } from '@sinclair/typebox/value';
 import { buildApp } from '../../src/app.js';
 import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
@@ -17,9 +16,6 @@ import {
   removeItem,
   updateItem,
 } from '../../src/features/cart/cartService.js';
-import { createProductRepository } from '../../src/features/catalog/productRepository.js';
-import { createPowderMixRepository } from '../../src/features/powderizer/powderMixRepository.js';
-import { createPowderizerService } from '../../src/features/powderizer/powderizerService.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createPromoRepository } from '../../src/features/promos/promoRepository.js';
 import { validatePromo } from '../../src/features/promos/promoService.js';
@@ -70,7 +66,6 @@ void test('cart service coordinates cart repository and promo eligibility', (t) 
   );
   assert.equal(removeItem(carts, cartId, variant1).totalItems, 0);
   assert.deepEqual(getCart(carts, cartId)?.items, []);
-  assert.deepEqual(getCart(carts, cartId)?.mixItems, []);
 });
 
 void test('cart blocks new inactive selections but retains existing lines', (t) => {
@@ -144,7 +139,7 @@ void test('cart reads batch available-to-sell and ignores only expired prepared 
   const variant2 = defaultVariantId(db, 2);
   const variant3 = defaultVariantId(db, 3);
   const inventory = createInventoryService({ repository: createInventoryRepository(db) });
-  const service = createCartService(carts, undefined, undefined, {
+  const service = createCartService(carts, undefined, {
     inventory,
     clock: { now: () => now },
   });
@@ -158,8 +153,8 @@ void test('cart reads batch available-to-sell and ignores only expired prepared 
   ).run();
   db.prepare(
     `INSERT INTO inventory_reservations
-      (payment_idempotency_key, variant_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
-     VALUES ('cart-availability', ?, 'product', 1, 0, '2026-07-19T12:01:00.000Z', ?)`,
+      (payment_idempotency_key, variant_id, reserved_quantity, backordered_quantity, expires_at, created_at)
+     VALUES ('cart-availability', ?, 1, 0, '2026-07-19T12:01:00.000Z', ?)`,
   ).run(variant1, now.toISOString());
   assert.equal(service.get(cartId)?.items[0]?.product.stock, 0);
   assert.equal(service.get(cartId)?.items[0]?.product.availability, 'out_of_stock');
@@ -184,101 +179,8 @@ void test('cart reads batch available-to-sell and ignores only expired prepared 
   assert.equal(service.add(cartId, variant3), 'CART_RESERVED');
 });
 
-void test('cart reads persisted mixes as first-class lines and promos count bag quantity', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-mix-cart-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  db.prepare("UPDATE products SET mixing_group = 'food-grade' WHERE id IN (1, 2, 3, 4, 5)").run();
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
-  const carts = createCartRepository(db);
-  const variant3 = defaultVariantId(db, 3);
-  const mixes = createPowderMixRepository(db);
-  const powderizer = createPowderizerService({
-    unitOfWork: createUnitOfWork(db),
-    carts,
-    products: createProductRepository(db),
-    mixes,
-  });
-  const { cartId } = createCart(carts);
-  const mixId = powderizer.create(cartId, {
-    components: [
-      { productId: '1', percentage: 50 },
-      { productId: '2', percentage: 50 },
-    ],
-    bagSizeGrams: 500,
-    fineness: 'fine',
-    bagColourScheme: 'ultraviolet-cyan',
-    customLabel: 'Breakfast blend',
-  });
-  assert.equal(typeof mixId, 'string');
-  if (typeof mixId !== 'string') throw new Error('Expected mix ID');
-  assert.equal(powderizer.updateQuantity(cartId, mixId, 5), undefined);
-  assert.equal(addItem(carts, cartId, variant3).id, cartId);
-
-  const cart = getCart(carts, cartId, mixes);
-  assert.ok(cart);
-  assert.equal(cart.items.length, 1);
-  assert.equal(cart.mixItems.length, 1);
-  assert.deepEqual(cart.mixItems[0], {
-    mixId,
-    components: [
-      { productId: '1', productName: 'All-Purpose Flour', percentage: 50, allocatedGrams: 250 },
-      { productId: '2', productName: 'dry Sugar', percentage: 50, allocatedGrams: 250 },
-    ],
-    bagSizeGrams: 500,
-    fineness: 'fine',
-    bagColourScheme: 'ultraviolet-cyan',
-    customLabel: 'Breakfast blend',
-    priceVersion: 'powderizer-v1',
-    unitPriceCents: 472,
-    quantity: 5,
-    lineTotalCents: 2360,
-    usageLabel: 'Consumable powder',
-  });
-  assert.equal(cart.totalItems, 9);
-  assert.equal(cart.subtotalCents, 2360 + cart.items[0].lineTotalCents);
-  assert.equal(
-    validatePromo(
-      { code: 'SAVE10', cartId, userId: null, now: new Date('2026-07-14T10:00:00.000Z') },
-      { carts, mixes, promos: createPromoRepository(db) },
-    ).valid,
-    true,
-  );
-
-  const fiveIngredientCartId = createCart(carts).cartId;
-  assert.equal(
-    typeof powderizer.create(fiveIngredientCartId, {
-      components: [
-        { productId: '1', percentage: 20 },
-        { productId: '2', percentage: 20 },
-        { productId: '3', percentage: 20 },
-        { productId: '4', percentage: 20 },
-        { productId: '5', percentage: 20 },
-      ],
-      bagSizeGrams: 500,
-      fineness: 'standard',
-    }),
-    'string',
-  );
-  assert.equal(
-    validatePromo(
-      {
-        code: 'SAVE10',
-        cartId: fiveIngredientCartId,
-        userId: null,
-        now: new Date('2026-07-14T10:00:00.000Z'),
-      },
-      { carts, mixes, promos: createPromoRepository(db) },
-    ).errorCode,
-    'MIN_ITEMS',
-  );
-});
-
-void test('cart HTTP response preserves product lines and adds mixItems', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-mix-cart-http-'));
+void test('cart HTTP response returns product lines with a server-quoted delivery preview', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-http-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
   seedDatabase(db);
   const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
@@ -290,7 +192,7 @@ void test('cart HTTP response preserves product lines and adds mixItems', async 
   const created = await app.inject({ method: 'POST', url: '/api/cart' });
   const cartId = Value.Parse(CreateCartResponse, created.json()).cartId;
   db.prepare(
-    "UPDATE product_variants SET delivery_class = 'parcel', weight_grams = 99500, moq_sacks = 1 WHERE id = 6",
+    "UPDATE product_variants SET delivery_class = 'parcel', weight_grams = 100000, moq_sacks = 1 WHERE id = 6",
   ).run();
   const product = await app.inject({
     method: 'POST',
@@ -298,27 +200,10 @@ void test('cart HTTP response preserves product lines and adds mixItems', async 
     payload: { productId: '3', variantId: 6 },
   });
   assert.equal(product.statusCode, 200);
-  assert.deepEqual(Value.Parse(Cart, product.json()).mixItems, []);
-
-  const createdMix = await app.inject({
-    method: 'POST',
-    url: `/api/cart/${cartId}/mixes`,
-    payload: {
-      components: [
-        { productId: '1', percentage: 50 },
-        { productId: '2', percentage: 50 },
-      ],
-      bagSizeGrams: 500,
-      fineness: 'standard',
-    },
-  });
-  assert.equal(createdMix.statusCode, 200);
-  const cart = Value.Parse(Cart, createdMix.json());
+  const cart = Value.Parse(Cart, product.json());
   assert.equal(cart.items.length, 1);
-  assert.equal(cart.mixItems.length, 1);
-  assert.equal(cart.mixItems[0].lineTotalCents, 472);
-  assert.equal(cart.totalItems, 2);
-  assert.equal(cart.subtotalCents, cart.items[0].lineTotalCents + 472);
+  assert.equal(cart.totalItems, 1);
+  assert.equal(cart.subtotalCents, cart.items[0].lineTotalCents);
   assert.deepEqual(cart.deliveryPreview, {
     mode: 'freight',
     chargeCents: 999,
@@ -480,86 +365,6 @@ void test('cart HTTP validates quantities and targets exact variant cart lines',
   );
 });
 
-void test('every mix mutation rejects a reserved cart', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-mix-cart-reserved-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
-
-  const carts = createCartRepository(db);
-  const cartId = createCart(carts).cartId;
-  const created = await app.inject({
-    method: 'POST',
-    url: `/api/cart/${cartId}/mixes`,
-    payload: {
-      components: [
-        { productId: '1', percentage: 50 },
-        { productId: '2', percentage: 50 },
-      ],
-      bagSizeGrams: 500,
-      fineness: 'standard',
-    },
-  });
-  assert.equal(created.statusCode, 200);
-  const mixId = Value.Parse(Cart, created.json()).mixItems[0]?.mixId;
-  if (!mixId) throw new Error('Expected mix ID');
-
-  const paymentKey = crypto.randomUUID();
-  db.prepare(
-    `INSERT INTO payments
-      (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand)
-     VALUES (?, 'cart-mix-reserved', 'pending', 1, '4242', 'Visa')`,
-  ).run(paymentKey);
-  carts.reserve(cartId, paymentKey, new Date().toISOString());
-
-  const mutations = [
-    app.inject({
-      method: 'POST',
-      url: `/api/cart/${cartId}/mixes`,
-      payload: {
-        components: [
-          { productId: '1', percentage: 50 },
-          { productId: '2', percentage: 50 },
-        ],
-        bagSizeGrams: 500,
-        fineness: 'standard',
-      },
-    }),
-    app.inject({
-      method: 'PATCH',
-      url: `/api/cart/${cartId}/mixes/${mixId}`,
-      payload: {
-        components: [
-          { productId: '1', percentage: 50 },
-          { productId: '2', percentage: 50 },
-        ],
-        bagSizeGrams: 500,
-        fineness: 'fine',
-      },
-    }),
-    app.inject({
-      method: 'PATCH',
-      url: `/api/cart/${cartId}/mixes/${mixId}/quantity`,
-      payload: { quantity: 2 },
-    }),
-    app.inject({ method: 'POST', url: `/api/cart/${cartId}/mixes/${mixId}/requote` }),
-    app.inject({ method: 'DELETE', url: `/api/cart/${cartId}/mixes/${mixId}` }),
-  ];
-
-  for (const response of await Promise.all(mutations)) {
-    assert.equal(response.statusCode, 409);
-    assert.equal(
-      Value.Parse(ErrorResponse, response.json()).error,
-      'Cart is reserved for checkout',
-    );
-  }
-});
-
 void test('audited cart mutations emit one allowlisted event per committed change', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-cart-audit-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
@@ -575,7 +380,7 @@ void test('audited cart mutations emit one allowlisted event per committed chang
     repository: createAuditRepository(db),
     clock: { now: () => new Date('2026-07-18T12:00:00.000Z') },
   });
-  const service = createCartService(carts, undefined, {
+  const service = createCartService(carts, {
     unitOfWork: createUnitOfWork(db),
     audit: writer,
   });
@@ -663,7 +468,7 @@ void test('cart audit failure rolls back mutation and cart touch transaction', (
       throw new Error('audit unavailable');
     },
   };
-  const service = createCartService(carts, undefined, {
+  const service = createCartService(carts, {
     unitOfWork: createUnitOfWork(db),
     audit: failingAudit,
   });

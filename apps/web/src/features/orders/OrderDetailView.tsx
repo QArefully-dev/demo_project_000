@@ -1,9 +1,7 @@
-import { BagArtwork } from '@/components/BagArtwork';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { powderMixBagSchemePresentation } from '@/components/powderMixBagScheme';
 import { formatMoney } from '@/lib/formatMoney';
 import type { OrderDetailResponse } from '@shop/contracts/orders';
 import type { LegacyRef } from 'react';
@@ -34,13 +32,9 @@ export function OrderDetailView({
   onRequestCancellation,
   cancelTriggerRef,
 }: Props) {
-  const namesByLineId = new Map<string, string>([
-    ...order.items.map((line): [string, string] => [`product:${line.lineId}`, line.productName]),
-    ...order.mixItems.map((line): [string, string] => [
-      `powder_mix:${line.lineId}`,
-      line.customLabel ?? 'Custom small order',
-    ]),
-  ]);
+  const namesByLineId = new Map<string, string>(
+    order.items.map((line): [string, string] => [line.lineId, line.productName]),
+  );
 
   return (
     <section className="space-y-6" aria-label={`Order ${order.id}`}>
@@ -94,41 +88,6 @@ export function OrderDetailView({
                 <span className="shrink-0">{formatMoney(item.lineTotalCents)}</span>
               </div>
             ))}
-            {order.mixItems.map((item) => {
-              const scheme = powderMixBagSchemePresentation(item.bagColourScheme);
-              return (
-                <div key={item.lineId} className="flex items-center justify-between gap-3 text-sm">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <BagArtwork
-                      name={item.customLabel ?? 'Custom small order'}
-                      category="Custom mix"
-                      quantity={`${item.bagSizeGrams}g`}
-                      batchCode={item.priceVersion}
-                      mark="MIX"
-                      paint={scheme.paint}
-                      powderAccent={scheme.paint.colors[1]}
-                      consumptionLabel={null}
-                      ariaLabel=""
-                      className="h-12 w-12 shrink-0"
-                    />
-                    <span>
-                      {item.customLabel ?? 'Custom small order'}{' '}
-                      <span className="text-muted-foreground">× {item.quantity}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {item.components
-                          .map(({ productName, percentage }) => `${productName} ${percentage}%`)
-                          .join(' · ')}{' '}
-                        · {item.bagSizeGrams}g · {item.fineness}
-                      </span>
-                      <span className="block text-xs font-medium">
-                        {scheme.label} · {item.usageLabel}
-                      </span>
-                    </span>
-                  </div>
-                  <span className="shrink-0">{formatMoney(item.lineTotalCents)}</span>
-                </div>
-              );
-            })}
           </div>
           <Separator />
           <div className="space-y-2">
@@ -202,9 +161,8 @@ export function OrderDetailView({
                   aria-label={`Shipment ${shipment.shipmentNumber} items`}
                 >
                   {shipment.lines.map((line) => (
-                    <li key={`${line.lineKind}-${line.lineId}`}>
-                      {namesByLineId.get(`${line.lineKind}:${line.lineId}`) ?? 'Purchased item'} ×{' '}
-                      {line.quantity}
+                    <li key={line.lineId}>
+                      {namesByLineId.get(line.lineId) ?? 'Purchased item'} × {line.quantity}
                     </li>
                   ))}
                 </ul>

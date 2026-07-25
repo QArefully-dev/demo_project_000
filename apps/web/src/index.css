@@ -54,18 +54,20 @@
 }
 
 :root {
-  /* Frozen Powderizer contract: gradient, gradient-size, foreground, motion-duration, gradient-duration. */
-  --powderizer-gradient: linear-gradient(
+  /* Reserved for high-level plan item 16 (Custom Blend): the sole intended consumer of
+     these tokens and of .custom-blend-nav-link. Frozen contract: gradient, gradient-size,
+     foreground, motion-duration, gradient-duration. Colours and keyframes preserved verbatim. */
+  --custom-blend-gradient: linear-gradient(
     110deg,
     oklch(0.88 0.09 210),
     oklch(0.84 0.12 315),
     oklch(0.9 0.11 92),
     oklch(0.86 0.1 185)
   );
-  --powderizer-gradient-size: 240% 240%;
-  --powderizer-gradient-foreground: oklch(0.24 0.035 285);
-  --powderizer-motion-duration: 180ms;
-  --powderizer-gradient-duration: 12s;
+  --custom-blend-gradient-size: 240% 240%;
+  --custom-blend-gradient-foreground: oklch(0.24 0.035 285);
+  --custom-blend-motion-duration: 180ms;
+  --custom-blend-gradient-duration: 12s;
   --background: oklch(0.985 0.012 80);
   --foreground: oklch(0.23 0.025 62);
   --card: oklch(0.995 0.006 80);
@@ -106,14 +108,14 @@
 }
 
 .dark {
-  --powderizer-gradient: linear-gradient(
+  --custom-blend-gradient: linear-gradient(
     110deg,
     oklch(0.38 0.09 210),
     oklch(0.36 0.12 315),
     oklch(0.4 0.1 92),
     oklch(0.38 0.1 185)
   );
-  --powderizer-gradient-foreground: oklch(0.97 0.012 80);
+  --custom-blend-gradient-foreground: oklch(0.97 0.012 80);
   --background: oklch(0.2 0.025 60);
   --foreground: oklch(0.97 0.012 80);
   --card: oklch(0.245 0.03 60);
@@ -169,23 +171,23 @@
 }
 
 @layer components {
-  .powderizer-nav-link {
-    background-image: var(--powderizer-gradient);
-    background-size: var(--powderizer-gradient-size);
-    color: var(--powderizer-gradient-foreground);
+  .custom-blend-nav-link {
+    background-image: var(--custom-blend-gradient);
+    background-size: var(--custom-blend-gradient-size);
+    color: var(--custom-blend-gradient-foreground);
     transition:
-      background-position var(--powderizer-motion-duration) ease,
-      box-shadow var(--powderizer-motion-duration) ease;
-    animation: powderizer-iridescence var(--powderizer-gradient-duration) ease-in-out infinite;
+      background-position var(--custom-blend-motion-duration) ease,
+      box-shadow var(--custom-blend-motion-duration) ease;
+    animation: custom-blend-iridescence var(--custom-blend-gradient-duration) ease-in-out infinite;
   }
 
-  .powderizer-nav-link[aria-current='page'] {
+  .custom-blend-nav-link[aria-current='page'] {
     box-shadow: inset 0 0 0 2px
-      color-mix(in oklch, var(--powderizer-gradient-foreground) 72%, transparent);
+      color-mix(in oklch, var(--custom-blend-gradient-foreground) 72%, transparent);
     font-weight: 700;
   }
 
-  .powderizer-nav-link:hover {
+  .custom-blend-nav-link:hover {
     background-position: 100% 50%;
   }
 
@@ -294,7 +296,7 @@
   }
 }
 
-@keyframes powderizer-iridescence {
+@keyframes custom-blend-iridescence {
   0%,
   100% {
     background-position: 0% 50%;
@@ -315,7 +317,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .powderizer-nav-link {
+  .custom-blend-nav-link {
     animation: none;
     background-position: 50% 50%;
   }

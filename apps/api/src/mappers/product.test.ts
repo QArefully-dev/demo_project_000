@@ -18,8 +18,6 @@ const canonicalRow: ProductRow = {
   slug: 'all-purpose-flour',
   compare_at_price_cents: null,
   sales_count: 8,
-  mixable: 1,
-  mix_unit_grams: 1000,
   active: 1,
   created_at: '2025-01-01T00:00:00.000Z',
   consumption_classification: 'food',

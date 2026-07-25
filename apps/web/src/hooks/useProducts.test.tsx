@@ -46,7 +46,6 @@ function response(name: string): VariantProductList {
         backorderLeadDays: null,
         tags: [],
         specificationGroups: [],
-        mixable: false,
         variants: [
           {
             variantId: 1,
@@ -164,10 +163,9 @@ describe('useProducts', () => {
     const trade = deferred<VariantProductList>();
     vi.mocked(getProducts).mockReturnValueOnce(pantry.promise).mockReturnValueOnce(trade.promise);
 
-    const { result, rerender } = renderHook(
-      ({ category }) => useProducts({ category }),
-      { initialProps: { category: 'Baking & Pantry' } },
-    );
+    const { result, rerender } = renderHook(({ category }) => useProducts({ category }), {
+      initialProps: { category: 'Baking & Pantry' },
+    });
 
     await act(async () => {
       pantry.resolve(response('Pantry Flour'));
@@ -194,7 +192,9 @@ describe('useProducts', () => {
   it('clears current cards before a manual refetch resolves', async () => {
     const initial = deferred<VariantProductList>();
     const refreshed = deferred<VariantProductList>();
-    vi.mocked(getProducts).mockReturnValueOnce(initial.promise).mockReturnValueOnce(refreshed.promise);
+    vi.mocked(getProducts)
+      .mockReturnValueOnce(initial.promise)
+      .mockReturnValueOnce(refreshed.promise);
 
     const { result } = renderHook(() => useProducts({ category: 'Trade & Creative Materials' }));
 

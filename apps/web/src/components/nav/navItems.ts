@@ -27,14 +27,6 @@ export const wishlistItem: NavItem = {
   enabled: true,
 };
 
-export const customPowderItem: NavItem = {
-  key: 'customPowder',
-  label: 'Custom Small Order',
-  icon: 'FlaskConical',
-  enabled: true,
-  className: 'powderizer-nav-link',
-};
-
 export const bundlesItem: NavItem = {
   key: 'bundles',
   label: 'Bundles',
@@ -46,6 +38,5 @@ export const navItems: Record<string, NavItem> = {
   search: searchItem,
   account: accountItem,
   wishlist: wishlistItem,
-  customPowder: customPowderItem,
   bundles: bundlesItem,
 };

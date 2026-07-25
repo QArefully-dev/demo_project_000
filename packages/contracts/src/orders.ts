@@ -8,11 +8,6 @@ import {
   ShippingAddress,
   Uuid,
 } from './common.js';
-import {
-  DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
-  PowderMixOrderItemSnapshotV1,
-  PowderMixOrderItemSnapshotV2,
-} from './powderizer.js';
 import { DeliveryClass, DeliveryMode } from './delivery.js';
 
 const UtcIsoInstant = Type.String({
@@ -65,10 +60,6 @@ export const TrackingEventCode = Type.Union([
 ]);
 export type TrackingEventCode = Static<typeof TrackingEventCode>;
 
-/** Distinguishes independently-numbered product and Powderizer purchase-line tables. */
-export const OrderLineKind = Type.Union([Type.Literal('product'), Type.Literal('powder_mix')]);
-export type OrderLineKind = Static<typeof OrderLineKind>;
-
 export const OrderInventoryStatus = Type.Union([
   Type.Literal('allocated'),
   Type.Literal('partially_backordered'),
@@ -112,42 +103,12 @@ export const OrderLineItem = Type.Object(
 );
 export type OrderLineItem = Static<typeof OrderLineItem>;
 
-const NormalizedOrderPowderMixItemSnapshotV1 = Type.Object(
-  {
-    ...Type.Omit(PowderMixOrderItemSnapshotV1, ['snapshotVersion']).properties,
-    bagColourScheme: Type.Literal(DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME),
-    usageLabel: Type.Literal('Check ingredient labels'),
-    snapshotVersion: Type.Literal(1),
-  },
-  { additionalProperties: false },
-);
-export const NormalizedOrderPowderMixItem = Type.Union([
-  NormalizedOrderPowderMixItemSnapshotV1,
-  PowderMixOrderItemSnapshotV2,
-]);
-export type NormalizedOrderPowderMixItem = Static<typeof NormalizedOrderPowderMixItem>;
-
-const OrderPowderMixLineItemV1 = Type.Object(
-  { ...NormalizedOrderPowderMixItemSnapshotV1.properties, lineId: PositiveIntegerString },
-  { additionalProperties: false },
-);
-const OrderPowderMixLineItemV2 = Type.Object(
-  { ...PowderMixOrderItemSnapshotV2.properties, lineId: PositiveIntegerString },
-  { additionalProperties: false },
-);
-export const OrderPowderMixLineItem = Type.Union([
-  OrderPowderMixLineItemV1,
-  OrderPowderMixLineItemV2,
-]);
-export type OrderPowderMixLineItem = Static<typeof OrderPowderMixLineItem>;
-
 export const Order = Type.Object(
   {
     id: PositiveIntegerString,
     status: OrderStatus,
     version: NonNegativeVersion,
     items: Type.Array(OrderLineItem),
-    mixItems: Type.Array(OrderPowderMixLineItem),
     subtotalCents: MoneyCents,
     discountCents: MoneyCents,
     totalCents: MoneyCents,
@@ -194,9 +155,9 @@ export const OrderListResponse = Type.Object(
 );
 export type OrderListResponse = Static<typeof OrderListResponse>;
 
+/** Allocation of one order line item to a shipment. `lineId` always names an order line item. */
 export const OrderShipmentLine = Type.Object(
   {
-    lineKind: OrderLineKind,
     lineId: PositiveIntegerString,
     quantity: Type.Integer({ minimum: 1 }),
   },

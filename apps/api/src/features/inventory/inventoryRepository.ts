@@ -1,10 +1,9 @@
 import type Database from 'better-sqlite3';
-import type { InventoryDemandKind, InventoryProduct } from './inventoryTypes.js';
+import type { InventoryProduct } from './inventoryTypes.js';
 
 interface ReservationRow {
   payment_idempotency_key: string;
   variant_id: number;
-  demand_kind: InventoryDemandKind;
   reserved_quantity: number;
   backordered_quantity: number;
   expires_at: string | null;
@@ -27,7 +26,6 @@ export interface InventoryRepository {
     paymentIdempotencyKey: string;
     reservations: readonly {
       variantId: number;
-      demandKind: InventoryDemandKind;
       reservedQuantity: number;
       backorderedQuantity: number;
     }[];
@@ -127,15 +125,14 @@ export function createInventoryRepository(db: Database.Database): InventoryRepos
     insertReservations({ paymentIdempotencyKey, reservations, expiresAt, createdAt }) {
       const insert = db.prepare(
         `INSERT INTO inventory_reservations
-          (payment_idempotency_key, variant_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          (payment_idempotency_key, variant_id, reserved_quantity, backordered_quantity, expires_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       );
       for (const reservation of reservations) {
         if (reservation.reservedQuantity === 0 && reservation.backorderedQuantity === 0) continue;
         insert.run(
           paymentIdempotencyKey,
           reservation.variantId,
-          reservation.demandKind,
           reservation.reservedQuantity,
           reservation.backorderedQuantity,
           expiresAt,
@@ -146,9 +143,9 @@ export function createInventoryRepository(db: Database.Database): InventoryRepos
     listReservations(paymentIdempotencyKey) {
       return db
         .prepare(
-          `SELECT payment_idempotency_key, variant_id, demand_kind, reserved_quantity, backordered_quantity, expires_at
+          `SELECT payment_idempotency_key, variant_id, reserved_quantity, backordered_quantity, expires_at
          FROM inventory_reservations WHERE payment_idempotency_key = ?
-         ORDER BY variant_id ASC, demand_kind ASC`,
+         ORDER BY variant_id ASC`,
         )
         .all(paymentIdempotencyKey) as ReservationRow[];
     },

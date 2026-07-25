@@ -27,8 +27,6 @@ export interface ProductRow {
   slug: string;
   compare_at_price_cents: number | null;
   sales_count: number;
-  mixable?: number;
-  mix_unit_grams?: number | null;
   active: number;
   created_at: string;
   consumption_classification: string;
@@ -78,9 +76,6 @@ export interface ProductRepository {
   listBestsellers(limit?: number, now?: string): CustomerProductRow[];
   listByIds(ids: readonly number[], now?: string): CustomerProductRow[];
   listActiveCandidatesExcluding(sourceId: number, now?: string): CustomerProductRow[];
-  listEligibleMixProducts(): ProductRow[];
-  listActiveMixProducts(productIds: readonly number[]): ProductRow[];
-  listMixProducts(productIds: readonly number[]): ProductRow[];
   findAllVariants(productId: number): VariantRow[];
   findVariantById(variantId: number): VariantRow | undefined;
   findVariantsByIds(variantIds: readonly number[]): VariantRow[];
@@ -298,31 +293,6 @@ export function createProductRepository(db: Database.Database): ProductRepositor
         )
         .all(currentTime(now), sourceId) as ProductRow[];
       return hydrateCustomerRows(rows);
-    },
-    listEligibleMixProducts() {
-      return db
-        .prepare(
-          `SELECT * FROM products
-           WHERE active = 1 AND mixable = 1 AND mix_unit_grams IS NOT NULL AND mix_unit_grams > 0
-           ORDER BY id ASC`,
-        )
-        .all() as ProductRow[];
-    },
-    listActiveMixProducts(productIds) {
-      if (productIds.length === 0) return [];
-      const placeholders = productIds.map(() => '?').join(', ');
-      return db
-        .prepare(
-          `SELECT * FROM products WHERE active = 1 AND id IN (${placeholders}) ORDER BY id ASC`,
-        )
-        .all(...productIds) as ProductRow[];
-    },
-    listMixProducts(productIds) {
-      if (productIds.length === 0) return [];
-      const placeholders = productIds.map(() => '?').join(', ');
-      return db
-        .prepare(`SELECT * FROM products WHERE id IN (${placeholders}) ORDER BY id ASC`)
-        .all(...productIds) as ProductRow[];
     },
     findAllVariants(productId) {
       return db

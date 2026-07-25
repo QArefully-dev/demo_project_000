@@ -29,7 +29,21 @@ function validateMigrations(available: readonly Migration[], applied: readonly s
   }
 }
 
-/** Apply each unrecorded migration once. Each schema change and ledger entry share one transaction. */
+/**
+ * Apply each unrecorded migration once. Each schema change and ledger entry share one transaction.
+ *
+ * Foreign key enforcement is suspended for the duration of the run and restored afterwards, which
+ * is SQLite's documented procedure for schema changes (`lang_altertable.html`, "Making Other Kinds
+ * Of Table Schema Changes"). Changing a column set means rebuilding the table, and rebuilding a
+ * parent table drops rows its children reference: with enforcement live, `ON DELETE CASCADE` would
+ * silently take the children with it, and the pragma cannot be toggled from inside a migration
+ * because it is a no-op within a transaction. Integrity is not traded away — every migration runs
+ * `PRAGMA foreign_key_check` over the whole database inside its own transaction, before that
+ * transaction commits. `foreign_key_check` reports violations regardless of the `foreign_keys`
+ * setting, so the suspension does not blind it. A violation therefore rolls back both the offending
+ * schema change and its ledger row, leaving the failure deterministic and repeatable rather than
+ * committed and invisible on the next run.
+ */
 export function migrateDatabase(
   db: Database.Database,
   availableMigrations: readonly Migration[] = migrations,
@@ -48,12 +62,33 @@ export function migrateDatabase(
   validateMigrations(availableMigrations, applied);
 
   const recorded = new Set(applied);
-  for (const migration of availableMigrations) {
-    if (recorded.has(migration.version)) continue;
+  const pending = availableMigrations.filter((migration) => !recorded.has(migration.version));
+  if (pending.length === 0) return;
 
-    db.transaction(() => {
-      migration.up(db);
-      db.prepare('INSERT INTO schema_migrations (version) VALUES (?)').run(migration.version);
-    })();
+  const foreignKeysWereEnabled = Boolean(db.pragma('foreign_keys', { simple: true }));
+  if (foreignKeysWereEnabled) {
+    db.pragma('foreign_keys = OFF');
+    if (db.pragma('foreign_keys', { simple: true })) {
+      throw new Error(
+        'Cannot migrate: foreign key enforcement could not be suspended. Migrations must not run inside an open transaction.',
+      );
+    }
+  }
+
+  try {
+    for (const migration of pending) {
+      db.transaction(() => {
+        migration.up(db);
+        db.prepare('INSERT INTO schema_migrations (version) VALUES (?)').run(migration.version);
+        const violations = db.pragma('foreign_key_check') as unknown[];
+        if (violations.length > 0) {
+          throw new Error(
+            `Foreign key violations after migration ${migration.version}: ${JSON.stringify(violations)}`,
+          );
+        }
+      })();
+    }
+  } finally {
+    if (foreignKeysWereEnabled) db.pragma('foreign_keys = ON');
   }
 }

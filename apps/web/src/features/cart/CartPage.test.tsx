@@ -24,7 +24,6 @@ const cart: Cart = {
         availability: 'in_stock',
         backorderable: false,
         backorderLeadDays: null,
-        mixable: false,
         slug: 'test-material',
         salesCount: 0,
         createdAt: '2026-07-14T00:00:00.000Z',
@@ -45,7 +44,6 @@ const cart: Cart = {
       lineTotalCents: 1000,
     },
   ],
-  mixItems: [],
   subtotalCents: 1000,
   totalItems: 1,
   deliveryPreview: {
@@ -64,8 +62,6 @@ function renderCart(error: string | null = null) {
     error,
     updateQuantity: vi.fn(),
     removeItem: vi.fn(),
-    updateMixQuantity: vi.fn(),
-    removeMix: vi.fn(),
     retryCart: vi.fn(),
     isActionPending: vi.fn(),
   } as unknown as ReturnType<typeof useCart>);

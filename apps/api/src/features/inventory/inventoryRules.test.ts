@@ -6,11 +6,11 @@ import {
   splitInventoryReservation,
 } from './inventoryRules.js';
 
-void test('hard mix demand wins before backorderable ordinary demand', () => {
+void test('backorderable demand reserves available stock and backorders the remainder', () => {
   const split = splitInventoryReservation(
     [
-      { variantId: 2, quantity: 3, demandKind: 'product' },
-      { variantId: 2, quantity: 2, demandKind: 'powder_mix' },
+      { variantId: 2, quantity: 3 },
+      { variantId: 2, quantity: 2 },
     ],
     [
       {
@@ -25,31 +25,42 @@ void test('hard mix demand wins before backorderable ordinary demand', () => {
   assert.deepEqual(split, [
     {
       variantId: 2,
-      quantity: 2,
-      demandKind: 'powder_mix',
-      reservedQuantity: 2,
-      backorderedQuantity: 0,
-    },
-    {
-      variantId: 2,
-      quantity: 3,
-      demandKind: 'product',
-      reservedQuantity: 2,
+      quantity: 5,
+      reservedQuantity: 4,
       backorderedQuantity: 1,
     },
   ]);
 });
 
+void test('non-backorderable demand beyond availability is rejected outright', () => {
+  assert.throws(
+    () =>
+      splitInventoryReservation(
+        [{ variantId: 7, quantity: 3 }],
+        [
+          {
+            variantId: 7,
+            stockCount: 2,
+            availableToSell: 2,
+            backorderable: false,
+            backorderLeadDays: null,
+          },
+        ],
+      ),
+    /insufficient stock/i,
+  );
+});
+
 void test('demand ordering and expiry boundary are deterministic', () => {
   assert.deepEqual(
     aggregateInventoryDemand([
-      { variantId: 3, quantity: 1, demandKind: 'product' },
-      { variantId: 2, quantity: 1, demandKind: 'powder_mix' },
-      { variantId: 3, quantity: 2, demandKind: 'product' },
+      { variantId: 3, quantity: 1 },
+      { variantId: 2, quantity: 1 },
+      { variantId: 3, quantity: 2 },
     ]),
     [
-      { variantId: 2, quantity: 1, demandKind: 'powder_mix' },
-      { variantId: 3, quantity: 3, demandKind: 'product' },
+      { variantId: 2, quantity: 1 },
+      { variantId: 3, quantity: 3 },
     ],
   );
   assert.equal(

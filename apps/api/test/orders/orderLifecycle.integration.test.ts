@@ -40,7 +40,6 @@ void test('order lifecycle repository creates initial immutable event', (t) => {
         lineTotalCents: 500,
       },
     ],
-    mixItems: [],
     createdAt: '2026-07-19T00:00:00.000Z',
   });
   const detail = repository.findDetailById(orderId);
@@ -102,7 +101,6 @@ void test('lifecycle commands are idempotent, versioned, audited, and transactio
           lineTotalCents: 500,
         },
       ],
-      mixItems: [],
       createdAt: '2026-07-19T00:00:00.000Z',
     });
   const context = {
@@ -117,7 +115,7 @@ void test('lifecycle commands are idempotent, versioned, audited, and transactio
     version: 0,
     idempotencyKey: 'pack-key',
     context,
-    shipments: [{ lines: [{ lineKind: 'product', lineId, quantity: 1 }] }],
+    shipments: [{ lines: [{ lineId, quantity: 1 }] }],
   });
   assert.equal(packed.status, 'packed');
   assert.equal(
@@ -126,7 +124,7 @@ void test('lifecycle commands are idempotent, versioned, audited, and transactio
       version: 0,
       idempotencyKey: 'pack-key',
       context,
-      shipments: [{ lines: [{ lineKind: 'product', lineId, quantity: 1 }] }],
+      shipments: [{ lines: [{ lineId, quantity: 1 }] }],
     }).version,
     1,
   );
@@ -137,9 +135,7 @@ void test('lifecycle commands are idempotent, versioned, audited, and transactio
         version: 0,
         idempotencyKey: 'pack-key',
         context,
-        shipments: [
-          { trackingReference: 'changed', lines: [{ lineKind: 'product', lineId, quantity: 1 }] },
-        ],
+        shipments: [{ trackingReference: 'changed', lines: [{ lineId, quantity: 1 }] }],
       }),
     { name: 'OrderDomainError', code: 'IDEMPOTENCY_CONFLICT' },
   );
@@ -158,9 +154,7 @@ void test('lifecycle commands are idempotent, versioned, audited, and transactio
         version: 0,
         idempotencyKey: 'backorder-pack-key',
         context,
-        shipments: [
-          { lines: [{ lineKind: 'product', lineId: String(backorderedLineId), quantity: 1 }] },
-        ],
+        shipments: [{ lines: [{ lineId: String(backorderedLineId), quantity: 1 }] }],
       }),
     { name: 'OrderDomainError', code: 'OUTSTANDING_BACKORDER' },
   );
@@ -270,7 +264,7 @@ void test('lifecycle commands are idempotent, versioned, audited, and transactio
         version: 0,
         idempotencyKey: 'rollback-key',
         context,
-        shipments: [{ lines: [{ lineKind: 'product', lineId: rollbackLineId, quantity: 1 }] }],
+        shipments: [{ lines: [{ lineId: rollbackLineId, quantity: 1 }] }],
       }),
     );
     assert.equal(repository.findDetailById(rollbackOrderId)?.status, 'processing');

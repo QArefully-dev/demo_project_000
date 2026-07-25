@@ -28,37 +28,37 @@ void test('requires complete non-duplicated shipment allocation', () => {
   assert.doesNotThrow(() =>
     assertCompleteAllocation(
       [
-        { lineKind: 'product', lineId: '1', quantity: 2 },
-        { lineKind: 'powder_mix', lineId: '1', quantity: 1 },
+        { lineId: '1', quantity: 2 },
+        { lineId: '2', quantity: 1 },
       ],
       [
         {
           lines: [
-            { lineKind: 'product', lineId: '1', quantity: 1 },
-            { lineKind: 'powder_mix', lineId: '1', quantity: 1 },
+            { lineId: '1', quantity: 1 },
+            { lineId: '2', quantity: 1 },
           ],
         },
-        { lines: [{ lineKind: 'product', lineId: '1', quantity: 1 }] },
+        { lines: [{ lineId: '1', quantity: 1 }] },
       ],
     ),
   );
   assert.throws(
     () =>
       assertCompleteAllocation(
-        [{ lineKind: 'product', lineId: '1', quantity: 2 }],
-        [{ lines: [{ lineKind: 'product', lineId: '1', quantity: 1 }] }],
+        [{ lineId: '1', quantity: 2 }],
+        [{ lines: [{ lineId: '1', quantity: 1 }] }],
       ),
     OrderDomainError,
   );
   assert.throws(
     () =>
       assertCompleteAllocation(
-        [{ lineKind: 'product', lineId: '1', quantity: 1 }],
+        [{ lineId: '1', quantity: 1 }],
         [
           {
             lines: [
-              { lineKind: 'product', lineId: '1', quantity: 1 },
-              { lineKind: 'product', lineId: '1', quantity: 1 },
+              { lineId: '1', quantity: 1 },
+              { lineId: '1', quantity: 1 },
             ],
           },
         ],
@@ -70,12 +70,12 @@ void test('requires complete non-duplicated shipment allocation', () => {
 void test('fingerprint is canonical, deep, operation-scoped, and payload-sensitive', () => {
   assert.equal(
     lifecycleFingerprint('pack', {
-      shipments: [{ lines: [{ lineId: '1', lineKind: 'product', quantity: 1 }] }],
+      shipments: [{ lines: [{ lineId: '1', quantity: 1 }] }],
       version: 0,
     }),
     lifecycleFingerprint('pack', {
       version: 0,
-      shipments: [{ lines: [{ quantity: 1, lineKind: 'product', lineId: '1' }] }],
+      shipments: [{ lines: [{ quantity: 1, lineId: '1' }] }],
     }),
   );
   assert.notEqual(

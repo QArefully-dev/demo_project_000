@@ -42,17 +42,12 @@ export function quoteDelivery(lines: readonly DeliveryLine[]): DeliverySummary {
 }
 
 /** Maps current cart lines to the same server-side delivery quote used at checkout. */
-export function quoteCartDelivery(cart: Pick<Cart, 'items' | 'mixItems'>): DeliverySummary {
-  return quoteDelivery([
-    ...cart.items.map((item) => ({
+export function quoteCartDelivery(cart: Pick<Cart, 'items'>): DeliverySummary {
+  return quoteDelivery(
+    cart.items.map((item) => ({
       deliveryClass: item.variantSnap?.deliveryClass ?? 'parcel',
       unitWeightGrams: item.variantSnap?.weightGrams ?? 1000,
       quantity: item.quantity,
     })),
-    ...cart.mixItems.map((item) => ({
-      deliveryClass: 'parcel' as const,
-      unitWeightGrams: item.bagSizeGrams,
-      quantity: item.quantity,
-    })),
-  ]);
+  );
 }

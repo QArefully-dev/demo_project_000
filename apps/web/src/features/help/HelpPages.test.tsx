@@ -108,7 +108,7 @@ describe('Help pages', () => {
     expect(details).not.toBeNull();
     expect(details?.firstElementChild?.tagName).toBe('SUMMARY');
     expect(details?.querySelector(':scope > summary')).toHaveTextContent('Is this a real shop?');
-    expect(container.querySelectorAll('details > summary')).toHaveLength(6);
+    expect(container.querySelectorAll('details > summary')).toHaveLength(5);
   });
 
   it.each([

@@ -12,8 +12,6 @@ import authRoutes from './routes/auth.js';
 import favouritesRoutes from './routes/favourites.js';
 import paymentRoutes from './routes/payments.js';
 import mailboxRoutes from './routes/mailbox.js';
-import powderizerRoutes from './routes/powderizer.js';
-import customPowderRoutes from './routes/customPowder.js';
 import bundleRoutes from './routes/bundles.js';
 import { createAuthService, type AuthService, type Clock } from './features/auth/authService.js';
 import { createSessionRepository } from './features/auth/sessionRepository.js';
@@ -60,12 +58,6 @@ import {
   createAuditWriter,
   type AuditReadService,
 } from './features/audit/auditService.js';
-import { createPowderMixRepository } from './features/powderizer/powderMixRepository.js';
-import {
-  createPowderizerService,
-  type PowderizerService,
-} from './features/powderizer/powderizerService.js';
-import { PowderMixDomainError } from './features/powderizer/powderizerTypes.js';
 import auditRoutes from './routes/audit.js';
 import { createBundleRepository } from './features/bundles/bundleRepository.js';
 import { createBundleService, type BundleService } from './features/bundles/bundleService.js';
@@ -107,7 +99,6 @@ export interface AppServices {
   checkout: CheckoutService;
   audit: AuditReadService;
   favourites: FavouritesService;
-  powderizer: PowderizerService;
   bundles: BundleService;
   reviews: ReviewService;
   inventory: InventoryService;
@@ -125,7 +116,6 @@ function createAppServices(dependencies: AppDependencies): AppServices {
   const promos = createPromoRepository(dependencies.db);
   const orders = createOrderRepository(dependencies.db);
   const products = createProductRepository(dependencies.db);
-  const mixes = createPowderMixRepository(dependencies.db);
   const unitOfWork = createUnitOfWork(dependencies.db);
   const inventory = createInventoryService({
     repository: createInventoryRepository(dependencies.db),
@@ -156,8 +146,8 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     }),
     mailbox,
     products: createProductService(products, { clock }),
-    carts: createCartService(carts, mixes, { unitOfWork, audit }, { inventory, clock }),
-    promos: createPromoService({ promos, carts, mixes, clock }),
+    carts: createCartService(carts, { unitOfWork, audit }, { inventory, clock }),
+    promos: createPromoService({ promos, carts, clock }),
     orders: createOrderService({ repository: orders, unitOfWork, clock, audit, inventory }),
     orderAccess: createOrderAccessService({
       repository: orders,
@@ -173,23 +163,14 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       mailbox,
       gateway: simulatedPaymentGateway,
       clock,
-      mixes,
       products,
       audit,
       inventory,
     }),
     favourites: createFavouritesService(createFavouritesRepository(dependencies.db)),
-    powderizer: createPowderizerService({
-      unitOfWork,
-      carts,
-      products,
-      mixes,
-      utcDateProvider: () => clock.now(),
-    }),
     bundles: createBundleService({
       bundles: createBundleRepository(dependencies.db),
       carts,
-      mixes,
       unitOfWork,
       audit,
       availability: { inventory, clock },
@@ -231,10 +212,6 @@ export async function buildApp(dependencies: AppDependencies) {
   const context: AppContext = { services: createAppServices(dependencies) };
 
   app.setErrorHandler((error: FastifyError, _request, reply) => {
-    if (error instanceof PowderMixDomainError) {
-      reply.code(400).send({ code: error.code, error: error.message, field: error.field });
-      return;
-    }
     if (error.validation) {
       reply.code(400).send({
         error: error.message,
@@ -268,8 +245,6 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(favouritesRoutes, context);
   await app.register(paymentRoutes, context);
   await app.register(mailboxRoutes, context);
-  await app.register(powderizerRoutes, context);
-  await app.register(customPowderRoutes, context);
   await app.register(bundleRoutes, context);
   await app.register(auditRoutes, context);
   await app.register(reviewsRoutes, context);

@@ -5,7 +5,6 @@ import type {
   ShipmentStatus,
   TrackingEventCode,
 } from '@shop/contracts/orders';
-import type { PowderMixOrderItem } from '@shop/contracts/powderizer';
 
 export interface CreateOrderLineVariantSnapshot {
   variantId: number;
@@ -33,7 +32,6 @@ export interface CreateOrderParams {
     lineTotalCents: number;
     variantSnapshot?: CreateOrderLineVariantSnapshot;
   }>;
-  mixItems: PowderMixOrderItem[];
   deliveryMode?: 'parcel' | 'freight';
   deliveryChargeCents?: number;
   deliveryWeightGrams?: number;

@@ -58,7 +58,6 @@ function createBackorder(
         lineTotalCents: 500 * quantity,
       },
     ],
-    mixItems: [],
     createdAt,
   });
   const lineId = Number(repository.findDetailById(orderId)?.items[0]?.lineId);

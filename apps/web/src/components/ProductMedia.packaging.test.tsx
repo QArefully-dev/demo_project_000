@@ -35,7 +35,6 @@ const product: Product = {
   backorderLeadDays: null,
   tags: [],
   specificationGroups: [],
-  mixable: false,
 };
 
 /** Mirrors a list response, which intentionally omits `packaging`. */

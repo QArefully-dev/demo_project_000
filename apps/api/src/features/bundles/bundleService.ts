@@ -7,14 +7,12 @@ import type { CartRepository } from '../cart/cartRepository.js';
 import type { InventoryService } from '../inventory/inventoryService.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
-import type { PowderMixRepository } from '../powderizer/powderMixRepository.js';
 import type { BundleComponentRow, BundleRepository, BundleRow } from './bundleRepository.js';
 import type { VariantRow } from '../catalog/productRepository.js';
 
 export interface BundleServiceDependencies {
   bundles: BundleRepository;
   carts: CartRepository;
-  mixes: PowderMixRepository;
   unitOfWork: UnitOfWork;
   audit: AuditWriter;
   availability?: BundleAvailabilityDependencies;
@@ -251,10 +249,7 @@ export function createBundleService(dependencies: BundleServiceDependencies): Bu
           quantity: bundle.components.reduce((total, component) => total + component.quantity, 0),
           context,
         });
-        return (
-          getCart(dependencies.carts, cartId, dependencies.mixes, dependencies.availability) ??
-          'CART_NOT_FOUND'
-        );
+        return getCart(dependencies.carts, cartId, dependencies.availability) ?? 'CART_NOT_FOUND';
       });
     },
   };

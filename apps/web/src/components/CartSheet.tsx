@@ -5,7 +5,6 @@ import { Separator } from '@/components/ui/separator';
 import { LoadingSpinner } from './LoadingSpinner';
 import { ErrorMessage } from './ErrorMessage';
 import { CartLineItem } from './CartLineItem';
-import { PowderMixCartLineItem } from '@/features/cart/PowderMixCartLineItem';
 import { formatMoney } from '@/lib/formatMoney';
 import { useCartContext } from '@/hooks/CartContext';
 import { Link } from 'react-router-dom';
@@ -27,8 +26,6 @@ export function CartSheet() {
     error,
     updateQuantity,
     removeItem,
-    updateMixQuantity,
-    removeMix,
     retryCart,
     isActionPending,
   } = useCartContext();
@@ -103,19 +100,6 @@ export function CartSheet() {
                   </p>
                 )}
               </div>
-            ))}
-          {!isInitializing &&
-            !isLoading &&
-            cart &&
-            cart.mixItems.map((item) => (
-              <PowderMixCartLineItem
-                key={item.mixId}
-                item={item}
-                isUpdating={isActionPending(`mix:${item.mixId}`, 'mix-update')}
-                isRemoving={isActionPending(`mix:${item.mixId}`, 'mix-remove')}
-                onUpdateQuantity={updateMixQuantity}
-                onRemove={removeMix}
-              />
             ))}
         </div>
         {!isInitializing && cart && cart.totalItems > 0 && (

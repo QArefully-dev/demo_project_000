@@ -28,7 +28,6 @@ const baseProduct = (overrides: Partial<Product> = {}): Product => ({
   available: true,
   tags: [],
   specificationGroups: [],
-  mixable: false,
   availability: 'in_stock',
   backorderable: false,
   backorderLeadDays: null,

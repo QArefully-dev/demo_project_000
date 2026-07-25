@@ -13,7 +13,6 @@ import {
   type Migration,
 } from '../../src/db/index.js';
 import { migrations } from '../../src/db/migrations/index.js';
-import { createPowderMixRepository } from '../../src/features/powderizer/powderMixRepository.js';
 import { toProductContract } from '../../src/mappers/product.js';
 import type { ProductRow } from '../../src/features/catalog/productRepository.js';
 import { Product } from '@shop/contracts/products';
@@ -41,13 +40,42 @@ const expectedVersions = [
   '018',
   '019',
   '020',
+  '021',
 ];
+
+/** Every migration up to but excluding `021`, i.e. the schema powderizer still existed in. */
+const prePowderizerRemoval = migrations.filter((migration) => migration.version < '021');
 
 function migrationVersions(db: Database.Database): string[] {
   return db
     .prepare('SELECT version FROM schema_migrations ORDER BY version')
     .all()
     .map((row) => (row as { version: string }).version);
+}
+
+function tableExists(db: Database.Database, table: string): boolean {
+  return Boolean(
+    db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table),
+  );
+}
+
+function columnNames(db: Database.Database, table: string): string[] {
+  return (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map(
+    (column) => column.name,
+  );
+}
+
+function indexNames(db: Database.Database, table: string): string[] {
+  return (db.prepare(`PRAGMA index_list(${table})`).all() as { name: string }[])
+    .map((index) => index.name)
+    .sort();
+}
+
+function primaryKeyColumns(db: Database.Database, table: string): string[] {
+  return (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string; pk: number }[])
+    .filter((column) => column.pk > 0)
+    .sort((a, b) => a.pk - b.pk)
+    .map((column) => column.name);
 }
 
 function createLegacyFixture(db: Database.Database): void {
@@ -228,7 +256,6 @@ void test('migrations create a fresh schema, record every version, and remain id
     'orders_user_created_at_id_idx',
     'order_shipments_order_number_idx',
     'order_shipment_items_order_line_item_idx',
-    'order_shipment_items_order_mix_item_idx',
     'order_lifecycle_events_order_occurred_id_idx',
     'order_lifecycle_events_shipment_occurred_id_idx',
     'order_access_grants_expires_at_idx',
@@ -286,20 +313,19 @@ void test('migrations create a fresh schema, record every version, and remain id
       { name: index },
     );
   }
-  assert.deepEqual(
-    db
-      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'powder_mixes'")
-      .get(),
-    { name: 'powder_mixes' },
-  );
-  assert.equal(
-    db
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'powder_mix_stock_reservations'",
-      )
-      .get(),
-    undefined,
-  );
+  // Migration 021 removed the powderizer feature outright: a fresh schema has no trace of it.
+  for (const table of [
+    'powder_mixes',
+    'powder_mix_components',
+    'order_powder_mix_items',
+    'powder_mix_stock_reservations',
+  ]) {
+    assert.equal(tableExists(db, table), false, `${table} should not exist after 021`);
+  }
+  assert.equal(columnNames(db, 'products').includes('mixable'), false);
+  assert.equal(columnNames(db, 'products').includes('mix_unit_grams'), false);
+  assert.equal(columnNames(db, 'inventory_reservations').includes('demand_kind'), false);
+  assert.equal(columnNames(db, 'order_shipment_items').includes('order_powder_mix_item_id'), false);
   for (const table of [
     'inventory_reservations',
     'order_inventory_allocations',
@@ -563,20 +589,39 @@ void test('migrations upgrade the legacy schema without losing known data', (t) 
   assert.deepEqual(migrationVersions(db), expectedVersions);
   assert.deepEqual(
     db
-      .prepare(
-        'SELECT name, image_set_id, slug, mixable, mix_unit_grams, active, created_at FROM products WHERE id = 99',
-      )
+      .prepare('SELECT name, image_set_id, slug, active, created_at FROM products WHERE id = 99')
       .get(),
     {
       name: 'Legacy powder',
       image_set_id: 'legacy-product-99',
       slug: '',
-      mixable: 0,
-      mix_unit_grams: null,
       active: 1,
       created_at: '2024-12-31 23:59:59',
     },
   );
+  // The 021 products rebuild carries the legacy row across intact, minus the mixing columns.
+  assert.deepEqual(columnNames(db, 'products'), [
+    'id',
+    'name',
+    'description',
+    'price_cents',
+    'category',
+    'stock_count',
+    'image_url',
+    'created_at',
+    'slug',
+    'compare_at_price_cents',
+    'sales_count',
+    'image_set_id',
+    'active',
+    'backorderable',
+    'backorder_lead_days',
+    'consumption_classification',
+    'mixing_group',
+    'details_json',
+    'default_variant_id',
+    'blend_source_variant_id',
+  ]);
   const legacyRow = db.prepare('SELECT * FROM products WHERE id = 99').get() as ProductRow;
   const legacyProduct = toProductContract(legacyRow);
   assert.equal(legacyProduct.createdAt, '2024-12-31T23:59:59.000Z');
@@ -671,16 +716,9 @@ void test('inventory migration copies legacy mix reservations into unified lease
      VALUES ('legacy-terminal', 99, 1)`,
   ).run();
 
-  migrateDatabase(db);
+  migrateDatabase(db, prePowderizerRemoval);
 
-  assert.equal(
-    db
-      .prepare(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'powder_mix_stock_reservations'",
-      )
-      .get(),
-    undefined,
-  );
+  assert.equal(tableExists(db, 'powder_mix_stock_reservations'), false);
   assert.deepEqual(
     db
       .prepare(
@@ -713,9 +751,24 @@ void test('inventory migration copies legacy mix reservations into unified lease
       .get('legacy-prepared'),
     { reservation_expires_at: '2026-07-19T12:20:00.000Z' },
   );
+
+  // 021 removes the demand kind entirely; the mix lease it carried goes with it.
+  migrateDatabase(db);
+  assert.equal(columnNames(db, 'inventory_reservations').includes('demand_kind'), false);
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM inventory_reservations').get() as { count: number })
+      .count,
+    0,
+  );
+  assert.deepEqual(
+    db
+      .prepare('SELECT reservation_expires_at FROM payments WHERE idempotency_key = ?')
+      .get('legacy-prepared'),
+    { reservation_expires_at: '2026-07-19T12:20:00.000Z' },
+  );
 });
 
-void test('lifecycle migration preserves pre-existing order lines and mix snapshots', (t) => {
+void test('lifecycle migration preserves pre-existing order lines, and 021 drops mix snapshots', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-lifecycle-upgrade-'));
   const db = new Database(join(directory, 'shop.db'));
   db.pragma('foreign_keys = ON');
@@ -754,6 +807,12 @@ void test('lifecycle migration preserves pre-existing order lines and mix snapsh
     snapshotJson,
   );
 
+  migrateDatabase(db, prePowderizerRemoval);
+  assert.deepEqual(
+    db.prepare('SELECT snapshot_json FROM order_powder_mix_items WHERE order_id = ?').get(orderId),
+    { snapshot_json: snapshotJson },
+  );
+
   migrateDatabase(db);
 
   assert.deepEqual(
@@ -789,10 +848,7 @@ void test('lifecycle migration preserves pre-existing order lines and mix snapsh
       line_total_cents: 2500,
     },
   );
-  assert.deepEqual(
-    db.prepare('SELECT snapshot_json FROM order_powder_mix_items WHERE order_id = ?').get(orderId),
-    { snapshot_json: snapshotJson },
-  );
+  assert.equal(tableExists(db, 'order_powder_mix_items'), false);
   assert.deepEqual(
     db
       .prepare('SELECT event_type, occurred_at FROM order_lifecycle_events WHERE order_id = ?')
@@ -820,10 +876,6 @@ void test('order lifecycle constraints reject invalid data and lifecycle-event u
      VALUES (1, 1, 'Product', 1000, 1, 1000)`,
   ).run();
   db.prepare(
-    `INSERT INTO order_powder_mix_items (order_id, snapshot_json)
-     VALUES (1, '{"snapshotVersion":2}')`,
-  ).run();
-  db.prepare(
     `INSERT INTO order_shipments
       (order_id, shipment_number, status, tracking_reference, created_at, updated_at)
      VALUES (1, 1, 'packed', 'SIM-001', '2026-07-19T12:00:00.000Z', '2026-07-19T12:00:00.000Z')`,
@@ -837,17 +889,8 @@ void test('order lifecycle constraints reject invalid data and lifecycle-event u
     () => db.prepare("UPDATE orders SET lifecycle_status = 'invalid' WHERE id = 1").run(),
     /CHECK constraint failed/,
   );
-  assert.throws(
-    () =>
-      db
-        .prepare(
-          `INSERT INTO order_shipment_items
-            (shipment_id, order_line_item_id, order_powder_mix_item_id, quantity)
-           VALUES (1, 1, 1, 1)`,
-        )
-        .run(),
-    /CHECK constraint failed/,
-  );
+  // After 021 a shipment line always names a product line: the either/or CHECK is gone and
+  // order_line_item_id is NOT NULL.
   assert.throws(
     () =>
       db
@@ -856,7 +899,7 @@ void test('order lifecycle constraints reject invalid data and lifecycle-event u
            VALUES (1, 1)`,
         )
         .run(),
-    /CHECK constraint failed/,
+    /NOT NULL constraint failed/,
   );
   assert.throws(
     () =>
@@ -904,21 +947,24 @@ void test('order lifecycle constraints reject invalid data and lifecycle-event u
     `INSERT INTO order_shipment_items (shipment_id, order_line_item_id, quantity)
      VALUES (1, 1, 1)`,
   ).run();
-  db.prepare(
-    `INSERT INTO order_shipment_items (shipment_id, order_powder_mix_item_id, quantity)
-     VALUES (1, 1, 1)`,
-  ).run();
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `INSERT INTO order_shipment_items (shipment_id, order_line_item_id, quantity)
+           VALUES (1, 1, 1)`,
+        )
+        .run(),
+    /UNIQUE constraint failed/,
+  );
   assert.deepEqual(
     db
       .prepare(
-        `SELECT order_line_item_id, order_powder_mix_item_id, quantity
-         FROM order_shipment_items WHERE shipment_id = 1 ORDER BY order_line_item_id IS NULL, order_line_item_id`,
+        `SELECT order_line_item_id, quantity
+         FROM order_shipment_items WHERE shipment_id = 1 ORDER BY order_line_item_id`,
       )
       .all(),
-    [
-      { order_line_item_id: 1, order_powder_mix_item_id: null, quantity: 1 },
-      { order_line_item_id: null, order_powder_mix_item_id: 1, quantity: 1 },
-    ],
+    [{ order_line_item_id: 1, quantity: 1 }],
   );
   const createdEventId = Number(
     db
@@ -1031,7 +1077,12 @@ void test('powderizer expansion upgrades 008 mixes with default scheme and rejec
      VALUES ('legacy-mix', 'legacy-mix-cart', 1, 500, 'standard', NULL, 'powderizer-v1', 1000, 'now', 'now')`,
   ).run();
 
-  migrateDatabase(db);
+  // 009's backfill and CHECK are asserted at the version that owns them; the powderizer repository
+  // that used to drive this case was deleted with the feature, so the assertions run on raw SQL.
+  migrateDatabase(
+    db,
+    migrations.filter((migration) => migration.version <= '009'),
+  );
   assert.deepEqual(
     db.prepare('SELECT bag_colour_scheme FROM powder_mixes WHERE id = ?').get('legacy-mix'),
     { bag_colour_scheme: 'ultraviolet-cyan' },
@@ -1045,44 +1096,23 @@ void test('powderizer expansion upgrades 008 mixes with default scheme and rejec
         .run(),
     /CHECK constraint failed/,
   );
-
-  const mixes = createPowderMixRepository(db);
-  mixes.create({
-    id: 'new-mix',
-    cartId: 'legacy-mix-cart',
-    quantity: 1,
-    bagSizeGrams: 500,
-    fineness: 'standard',
-    bagColourScheme: 'solar-flare',
-    customLabel: null,
-    priceVersion: 'powderizer-v1',
-    quotedUnitPriceCents: 1000,
-    allocations: [],
-  });
-  assert.equal(mixes.find('legacy-mix-cart', 'new-mix')?.bag_colour_scheme, 'solar-flare');
-  assert.equal(
-    mixes.replace('new-mix', {
-      bagSizeGrams: 500,
-      fineness: 'standard',
-      bagColourScheme: 'deep-space',
-      customLabel: null,
-      priceVersion: 'powderizer-v1',
-      quotedUnitPriceCents: 1000,
-      allocations: [],
-    }),
-    true,
-  );
-  assert.equal(mixes.find('legacy-mix-cart', 'new-mix')?.bag_colour_scheme, 'deep-space');
-
-  db.pragma('ignore_check_constraints = ON');
   db.prepare(
-    "UPDATE powder_mixes SET bag_colour_scheme = 'brown-paper' WHERE id = 'legacy-mix'",
+    `INSERT INTO powder_mixes
+      (id, cart_id, quantity, bag_size_grams, fineness, bag_colour_scheme, custom_label,
+       price_version, quoted_unit_price_cents, created_at, updated_at)
+     VALUES ('new-mix', 'legacy-mix-cart', 1, 500, 'standard', 'solar-flare', NULL,
+             'powderizer-v1', 1000, 'now', 'now')`,
   ).run();
-  db.pragma('ignore_check_constraints = OFF');
-  assert.throws(
-    () => mixes.find('legacy-mix-cart', 'legacy-mix'),
-    /Invalid persisted powder mix bag colour scheme/,
+  assert.deepEqual(
+    db.prepare('SELECT bag_colour_scheme FROM powder_mixes WHERE id = ?').get('new-mix'),
+    { bag_colour_scheme: 'solar-flare' },
   );
+
+  // The whole feature then leaves in 021.
+  migrateDatabase(db);
+  assert.deepEqual(migrationVersions(db), expectedVersions);
+  assert.equal(tableExists(db, 'powder_mixes'), false);
+  assert.equal(tableExists(db, 'powder_mix_components'), false);
 });
 
 void test('v017 migration creates return tables and extends inventory movements', (t) => {
@@ -1303,14 +1333,14 @@ void test('v18 migration backfills variants, rebuilds tables, and preserves data
   const cartLineCountBefore = (
     db.prepare('SELECT COUNT(*) AS count FROM cart_line_items').get() as { count: number }
   ).count;
-  const productCountBefore = (
+  const productRowCountBefore = (
     db.prepare('SELECT COUNT(*) AS count FROM products').get() as { count: number }
   ).count;
   const mixCountBefore = (
     db.prepare('SELECT COUNT(*) AS count FROM powder_mixes').get() as { count: number }
   ).count;
 
-  migrateDatabase(db);
+  migrateDatabase(db, prePowderizerRemoval);
 
   assert.deepEqual(
     db.prepare('SELECT moq_sacks FROM product_variants WHERE product_id = ?').get(51),
@@ -1326,10 +1356,13 @@ void test('v18 migration backfills variants, rebuilds tables, and preserves data
     ).count,
     0,
   );
-  assert.equal(
-    (db.prepare('SELECT COUNT(*) AS count FROM product_variants').get() as { count: number }).count,
-    productCountBefore,
-  );
+  // 018 backfills exactly one default variant per product, so the variant count starts equal to
+  // the pre-migration product count. Tracked separately from here on: the two tables are distinct
+  // invariants and a later migration could move one without the other.
+  const variantRowCountAfterV18 = (
+    db.prepare('SELECT COUNT(*) AS count FROM product_variants').get() as { count: number }
+  ).count;
+  assert.equal(variantRowCountAfterV18, productRowCountBefore);
 
   // Verify product 51's variant
   const variant51 = db
@@ -1457,19 +1490,42 @@ void test('v18 migration backfills variants, rebuilds tables, and preserves data
   const fkViolations = db.pragma('foreign_key_check') as unknown[];
   assert.equal(fkViolations.length, 0);
 
-  // Idempotency: running migration again doesn't corrupt
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM powder_mixes').get() as { count: number }).count,
+    mixCountBefore,
+  );
+
+  // 021 lands on top of the same fixture: the mixes go, everything else stays.
   migrateDatabase(db);
+  assert.deepEqual(migrationVersions(db), expectedVersions);
+  assert.equal(tableExists(db, 'powder_mixes'), false);
+  assert.equal(tableExists(db, 'powder_mix_components'), false);
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM product_variants').get() as { count: number }).count,
-    productCountBefore,
+    variantRowCountAfterV18,
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM products').get() as { count: number }).count,
+    productRowCountBefore,
   );
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }).count,
     orderCountBefore,
   );
   assert.equal(
-    (db.prepare('SELECT COUNT(*) AS count FROM powder_mixes').get() as { count: number }).count,
-    mixCountBefore,
+    (db.prepare('SELECT COUNT(*) AS count FROM payments').get() as { count: number }).count,
+    paymentCountBefore,
+  );
+
+  // Idempotency: running migration again doesn't corrupt
+  migrateDatabase(db);
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM product_variants').get() as { count: number }).count,
+    variantRowCountAfterV18,
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }).count,
+    orderCountBefore,
   );
   const fkViolations2 = db.pragma('foreign_key_check') as unknown[];
   assert.equal(fkViolations2.length, 0);
@@ -1711,4 +1767,233 @@ void test('v20 migration retires legacy sort_order < 1 variants once a canonical
   );
   const fkViolationsIdempotent = db.pragma('foreign_key_check') as unknown[];
   assert.equal(fkViolationsIdempotent.length, 0);
+});
+
+void test('v21 migration removes powderizer persistence and rebuilds the tables it touched', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-v21-'));
+  const db = new Database(join(directory, 'shop.db'));
+  db.pragma('foreign_keys = ON');
+  t.after(() => {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  migrateDatabase(db, prePowderizerRemoval);
+
+  // Fixture spans every surface 021 touches: a product with mixing columns, a mix-bearing order
+  // with both allocation kinds on one shipment, and both reservation demand kinds on one payment.
+  db.exec(`
+    INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id, mixable, mix_unit_grams)
+    VALUES (901, 'V21 lot', 'v21 fixture', 5000, 'Test', 12, 'v21-lot', 1, 25000);
+    INSERT INTO product_variants
+      (id, product_id, sku, label, weight_grams, price_cents, stock_count, delivery_class, active, sort_order, created_at, updated_at)
+    VALUES (901, 901, 'V21-LOT-001', 'V21 sack', 25000, 5000, 12, 'freight', 1, 1, '2026-01-01', '2026-01-01');
+    UPDATE products SET default_variant_id = 901 WHERE id = 901;
+    INSERT INTO users (id, email, display_name, password_hash, password_salt, role)
+    VALUES (901, 'v21@example.test', 'V21 user', 'hash', 'salt', 'customer');
+    INSERT INTO orders
+      (id, customer_name, customer_email, shipping_address, subtotal_cents, total_cents, created_at, lifecycle_status, version)
+    VALUES (901, 'V21 customer', 'v21@example.test', '9 V21 Road', 5000, 5000, '2026-07-01T12:00:00.000Z', 'shipped', 1);
+    INSERT INTO order_line_items
+      (id, order_id, product_id, product_name, product_price_cents, quantity, line_total_cents, variant_id)
+    VALUES (901, 901, 901, 'V21 lot', 5000, 1, 5000, 901);
+    INSERT INTO order_powder_mix_items (id, order_id, snapshot_json)
+    VALUES (901, 901, '{"snapshotVersion":2}');
+    INSERT INTO order_shipments
+      (id, order_id, shipment_number, status, tracking_reference, version, created_at, updated_at)
+    VALUES (901, 901, 1, 'shipped', 'V21-TRACK-01', 1, '2026-07-01T12:00:00.000Z', '2026-07-01T12:00:00.000Z');
+    INSERT INTO order_shipment_items (shipment_id, order_line_item_id, quantity) VALUES (901, 901, 1);
+    INSERT INTO order_shipment_items (shipment_id, order_powder_mix_item_id, quantity) VALUES (901, 901, 1);
+    INSERT INTO payments
+      (order_id, idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand, created_at)
+    VALUES (901, 'v21-payment', 'v21-fingerprint', 'succeeded', 5000, '4242', 'Visa', '2026-07-01T12:00:00.000Z');
+    INSERT INTO inventory_reservations
+      (payment_idempotency_key, variant_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
+    VALUES ('v21-payment', 901, 'product', 3, 0, NULL, '2026-07-01T12:00:00.000Z'),
+           ('v21-payment', 901, 'powder_mix', 2, 0, NULL, '2026-07-01T12:00:00.000Z');
+    INSERT INTO carts (id) VALUES ('v21-cart');
+    INSERT INTO powder_mixes
+      (id, cart_id, quantity, bag_size_grams, fineness, bag_colour_scheme, custom_label,
+       price_version, quoted_unit_price_cents, created_at, updated_at)
+    VALUES ('v21-mix', 'v21-cart', 1, 500, 'standard', 'solar-flare', NULL, 'powderizer-v1', 1000, 'now', 'now');
+    INSERT INTO powder_mix_components (mix_id, product_id, percentage, allocated_grams)
+    VALUES ('v21-mix', 901, 100, 500);
+    -- Children of products that cascade on delete. The products rebuild drops the parent table, so
+    -- these are exactly the rows a broken FK suspension would silently take with it while the
+    -- products count still came out right.
+    INSERT INTO reviews (id, product_id, user_id, rating, body, status)
+    VALUES (901, 901, 901, 5, 'V21 fixture review body, long enough to pass the length check.', 'published');
+    -- review_rating_aggregates is filled by the 016 triggers on the insert above, not by hand.
+    INSERT INTO favourites (id, user_id, product_id) VALUES (901, 901, 901);
+    INSERT INTO catalog_tags (key, label) VALUES ('v21-tag', 'V21 tag');
+    INSERT INTO product_tags (product_id, tag_key) VALUES (901, 'v21-tag');
+    INSERT INTO product_specifications (product_id, specification_key, value_key, display_value)
+    VALUES (901, 'v21-spec', 'v21-value', 'V21 value');
+  `);
+
+  const productSequenceBefore = db
+    .prepare("SELECT seq FROM sqlite_sequence WHERE name = 'products'")
+    .pluck()
+    .get();
+  const productCountBefore = (
+    db.prepare('SELECT COUNT(*) AS count FROM products').get() as { count: number }
+  ).count;
+
+  migrateDatabase(db);
+  assert.deepEqual(migrationVersions(db), expectedVersions);
+
+  for (const table of [
+    'powder_mixes',
+    'powder_mix_components',
+    'order_powder_mix_items',
+    'powder_mix_stock_reservations',
+  ]) {
+    assert.equal(tableExists(db, table), false, `${table} should be dropped by 021`);
+  }
+
+  // order_shipment_items: product allocation survives, mix allocation is gone, indexes rebuilt.
+  assert.deepEqual(columnNames(db, 'order_shipment_items'), [
+    'shipment_id',
+    'order_line_item_id',
+    'quantity',
+  ]);
+  assert.deepEqual(indexNames(db, 'order_shipment_items'), [
+    'order_shipment_items_order_line_item_idx',
+    'sqlite_autoindex_order_shipment_items_1',
+  ]);
+  assert.deepEqual(db.prepare('SELECT * FROM order_shipment_items').all(), [
+    { shipment_id: 901, order_line_item_id: 901, quantity: 1 },
+  ]);
+  assert.throws(
+    () =>
+      db.prepare('INSERT INTO order_shipment_items (shipment_id, quantity) VALUES (901, 1)').run(),
+    /NOT NULL constraint failed/,
+  );
+
+  // inventory_reservations: demand_kind gone, PK narrowed, mix lease dropped, indexes rebuilt.
+  assert.deepEqual(columnNames(db, 'inventory_reservations'), [
+    'payment_idempotency_key',
+    'variant_id',
+    'reserved_quantity',
+    'backordered_quantity',
+    'expires_at',
+    'created_at',
+  ]);
+  assert.deepEqual(primaryKeyColumns(db, 'inventory_reservations'), [
+    'payment_idempotency_key',
+    'variant_id',
+  ]);
+  assert.deepEqual(indexNames(db, 'inventory_reservations'), [
+    'inventory_reservations_payment_idx',
+    'inventory_reservations_variant_expiry_idx',
+    'sqlite_autoindex_inventory_reservations_1',
+  ]);
+  assert.deepEqual(
+    db
+      .prepare(
+        'SELECT payment_idempotency_key, variant_id, reserved_quantity FROM inventory_reservations',
+      )
+      .all(),
+    [{ payment_idempotency_key: 'v21-payment', variant_id: 901, reserved_quantity: 3 }],
+  );
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `INSERT INTO inventory_reservations
+             (payment_idempotency_key, variant_id, reserved_quantity, backordered_quantity, created_at)
+           VALUES ('v21-payment', 901, 1, 0, '2026-07-01T12:00:00.000Z')`,
+        )
+        .run(),
+    /UNIQUE constraint failed/,
+  );
+
+  // products: mixing columns dropped, rows preserved, indexes/triggers/sequence restored.
+  assert.equal(columnNames(db, 'products').includes('mixable'), false);
+  assert.equal(columnNames(db, 'products').includes('mix_unit_grams'), false);
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM products').get() as { count: number }).count,
+    productCountBefore,
+  );
+  assert.deepEqual(
+    db
+      .prepare('SELECT id, name, stock_count, default_variant_id FROM products WHERE id = 901')
+      .get(),
+    { id: 901, name: 'V21 lot', stock_count: 12, default_variant_id: 901 },
+  );
+  assert.deepEqual(indexNames(db, 'products'), [
+    'products_active_created_at_id_idx',
+    'products_active_price_cents_id_idx',
+  ]);
+  assert.deepEqual(
+    (
+      db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'products'")
+        .all() as { name: string }[]
+    )
+      .map((row) => row.name)
+      .sort(),
+    [
+      'products_backorder_insert_valid',
+      'products_backorder_update_valid',
+      'products_stock_count_insert_valid',
+      'products_stock_count_update_valid',
+    ],
+  );
+  assert.throws(
+    () => db.prepare('UPDATE products SET stock_count = -1 WHERE id = 901').run(),
+    /products.stock_count must be a nonnegative integer/,
+  );
+  assert.equal(
+    db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'products'").pluck().get(),
+    productSequenceBefore,
+  );
+
+  // The products rebuild must not cascade-wipe the tables hanging off products. Asserted per table
+  // because the products row count alone stays correct even when every child is gone.
+  for (const [table, expected] of [
+    ['reviews', 1],
+    ['review_rating_aggregates', 1],
+    ['favourites', 1],
+    ['product_tags', 1],
+    ['product_specifications', 1],
+  ] as const) {
+    assert.equal(
+      (
+        db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE product_id = 901`).get() as {
+          count: number;
+        }
+      ).count,
+      expected,
+      `${table} rows for product 901 must survive the products rebuild`,
+    );
+  }
+  assert.deepEqual(
+    db
+      .prepare('SELECT product_id, published_count, rating_sum FROM review_rating_aggregates')
+      .all(),
+    [{ product_id: 901, published_count: 1, rating_sum: 5 }],
+  );
+
+  assert.equal((db.pragma('foreign_key_check') as unknown[]).length, 0);
+
+  // Re-applying the migration body directly is a no-op.
+  const removal = migrations.find((migration) => migration.version === '021')!;
+  assert.doesNotThrow(() => removal.up(db));
+  assert.deepEqual(columnNames(db, 'order_shipment_items'), [
+    'shipment_id',
+    'order_line_item_id',
+    'quantity',
+  ]);
+  assert.equal(columnNames(db, 'products').includes('mixable'), false);
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM products').get() as { count: number }).count,
+    productCountBefore,
+  );
+  assert.equal((db.pragma('foreign_key_check') as unknown[]).length, 0);
+
+  // And the whole chain is idempotent through the runner too.
+  migrateDatabase(db);
+  assert.deepEqual(migrationVersions(db), expectedVersions);
+  assert.equal((db.pragma('foreign_key_check') as unknown[]).length, 0);
 });

@@ -1,9 +1,6 @@
-export type InventoryDemandKind = 'product' | 'powder_mix';
-
 export interface InventoryDemand {
   variantId: number;
   quantity: number;
-  demandKind: InventoryDemandKind;
 }
 
 export interface InventoryProduct {

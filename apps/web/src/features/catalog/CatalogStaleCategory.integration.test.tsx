@@ -63,7 +63,6 @@ function response(name: string, category: string): VariantProductList {
         backorderLeadDays: null,
         tags: [],
         specificationGroups: [],
-        mixable: false,
         variants: [
           {
             variantId: 1,

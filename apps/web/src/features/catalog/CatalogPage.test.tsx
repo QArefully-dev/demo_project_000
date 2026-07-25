@@ -55,7 +55,6 @@ const catalogProduct: ProductWithVariants = {
   available: true,
   tags: [],
   specificationGroups: [],
-  mixable: false,
   variants: [
     {
       variantId: 1,

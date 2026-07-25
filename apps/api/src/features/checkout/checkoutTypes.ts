@@ -7,7 +7,6 @@ import type { PaymentGateway } from '../payments/paymentGateway.js';
 import type { PaymentRepository } from '../payments/paymentRepository.js';
 import type { PromoRepository } from '../promos/promoRepository.js';
 import type { OrderRepository } from '../orders/orderRepository.js';
-import type { PowderMixRepository } from '../powderizer/powderMixRepository.js';
 import type { ProductRepository } from '../catalog/productRepository.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
@@ -35,12 +34,6 @@ export type CheckoutResult =
       promoError?: string;
       promoErrorCode?: string;
     }
-  | {
-      success: false;
-      error: 'MIX_REQUOTE_REQUIRED';
-      mixes: Array<{ mixId: string; oldUnitPriceCents: number; newUnitPriceCents: number }>;
-    }
-  | { success: false; error: 'MIX_STOCK_UNAVAILABLE'; mixIds: string[]; productIds: string[] }
   | { success: false; error: 'RESERVATION_EXPIRED'; reservationExpiresAt: string }
   | { success: false; error: 'INSUFFICIENT_STOCK'; productIds: string[] };
 
@@ -67,7 +60,6 @@ export interface CheckoutDependencies {
   mailbox: MailboxRepository;
   gateway: PaymentGateway;
   clock: Clock;
-  mixes: PowderMixRepository;
   products: ProductRepository;
   audit: AuditWriter;
   inventory: InventoryService;

@@ -146,14 +146,12 @@ void test('isWithinReturnWindow: one day after delivery -> still within window',
 const makeAllocation = (
   shipmentId: string,
   orderLineItemId: string,
-  lineKind: 'product' | 'powder_mix',
   deliveredQuantity: number,
   status = 'delivered',
 ): DeliveredAllocation => ({
   shipmentId,
   shipmentStatus: status,
   orderLineItemId,
-  lineKind,
   deliveredQuantity,
 });
 
@@ -161,7 +159,7 @@ void test('assertEligibleSelections accepts valid single selection', () => {
   const selections: EligibilitySelection[] = [
     { shipmentId: '1', orderLineItemId: '10', quantity: 2 },
   ];
-  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 'product', 5)];
+  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 5)];
 
   assert.doesNotThrow(() => assertEligibleSelections(selections, allocations, []));
 });
@@ -170,7 +168,7 @@ void test('assertEligibleSelections accepts partial quantity', () => {
   const selections: EligibilitySelection[] = [
     { shipmentId: '1', orderLineItemId: '10', quantity: 3 },
   ];
-  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 'product', 5)];
+  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 5)];
 
   assert.doesNotThrow(() => assertEligibleSelections(selections, allocations, []));
 });
@@ -179,7 +177,7 @@ void test('assertEligibleSelections accepts full quantity', () => {
   const selections: EligibilitySelection[] = [
     { shipmentId: '1', orderLineItemId: '10', quantity: 5 },
   ];
-  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 'product', 5)];
+  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 5)];
 
   assert.doesNotThrow(() => assertEligibleSelections(selections, allocations, []));
 });
@@ -189,7 +187,7 @@ void test('assertEligibleSelections rejects duplicate selection keys', () => {
     { shipmentId: '1', orderLineItemId: '10', quantity: 1 },
     { shipmentId: '1', orderLineItemId: '10', quantity: 2 },
   ];
-  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 'product', 5)];
+  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 5)];
 
   assert.throws(() => assertEligibleSelections(selections, allocations, []), ReturnDomainError);
 });
@@ -198,7 +196,7 @@ void test('assertEligibleSelections rejects zero quantity', () => {
   const selections: EligibilitySelection[] = [
     { shipmentId: '1', orderLineItemId: '10', quantity: 0 },
   ];
-  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 'product', 5)];
+  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 5)];
 
   assert.throws(() => assertEligibleSelections(selections, allocations, []), ReturnDomainError);
 });
@@ -207,16 +205,7 @@ void test('assertEligibleSelections rejects non-safe integer', () => {
   const selections: EligibilitySelection[] = [
     { shipmentId: '1', orderLineItemId: '10', quantity: 1.5 },
   ];
-  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 'product', 5)];
-
-  assert.throws(() => assertEligibleSelections(selections, allocations, []), ReturnDomainError);
-});
-
-void test('assertEligibleSelections rejects powder_mix items', () => {
-  const selections: EligibilitySelection[] = [
-    { shipmentId: '1', orderLineItemId: '10', quantity: 1 },
-  ];
-  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 'powder_mix', 5)];
+  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 5)];
 
   assert.throws(() => assertEligibleSelections(selections, allocations, []), ReturnDomainError);
 });
@@ -225,7 +214,7 @@ void test('assertEligibleSelections rejects non-delivered shipment', () => {
   const selections: EligibilitySelection[] = [
     { shipmentId: '1', orderLineItemId: '10', quantity: 1 },
   ];
-  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 'product', 5, 'shipped')];
+  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 5, 'shipped')];
 
   assert.throws(() => assertEligibleSelections(selections, allocations, []), ReturnDomainError);
 });
@@ -234,7 +223,7 @@ void test('assertEligibleSelections rejects quantity exceeding delivery', () => 
   const selections: EligibilitySelection[] = [
     { shipmentId: '1', orderLineItemId: '10', quantity: 6 },
   ];
-  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 'product', 5)];
+  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 5)];
 
   assert.throws(() => assertEligibleSelections(selections, allocations, []), ReturnDomainError);
 });
@@ -243,7 +232,7 @@ void test('assertEligibleSelections respects active reservations', () => {
   const selections: EligibilitySelection[] = [
     { shipmentId: '1', orderLineItemId: '10', quantity: 3 },
   ];
-  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 'product', 5)];
+  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 5)];
   const reservations: ActiveReservation[] = [
     { shipmentId: '1', orderLineItemId: '10', reservedQuantity: 2 },
   ];
@@ -263,7 +252,7 @@ void test('assertEligibleSelections aggregates multiple reservations for same li
   const selections: EligibilitySelection[] = [
     { shipmentId: '1', orderLineItemId: '10', quantity: 1 },
   ];
-  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 'product', 5)];
+  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 5)];
   const reservations: ActiveReservation[] = [
     { shipmentId: '1', orderLineItemId: '10', reservedQuantity: 2 },
     { shipmentId: '1', orderLineItemId: '10', reservedQuantity: 2 },
@@ -286,8 +275,8 @@ void test('assertEligibleSelections accepts mixed shipments', () => {
     { shipmentId: '2', orderLineItemId: '20', quantity: 1 },
   ];
   const allocations: DeliveredAllocation[] = [
-    makeAllocation('1', '10', 'product', 5),
-    makeAllocation('2', '20', 'product', 3),
+    makeAllocation('1', '10', 5),
+    makeAllocation('2', '20', 3),
   ];
 
   assert.doesNotThrow(() => assertEligibleSelections(selections, allocations, []));
@@ -297,7 +286,7 @@ void test('assertEligibleSelections rejects unknown allocation', () => {
   const selections: EligibilitySelection[] = [
     { shipmentId: '99', orderLineItemId: '10', quantity: 1 },
   ];
-  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 'product', 5)];
+  const allocations: DeliveredAllocation[] = [makeAllocation('1', '10', 5)];
 
   assert.throws(() => assertEligibleSelections(selections, allocations, []), ReturnDomainError);
 });
@@ -340,8 +329,8 @@ void test('returnFingerprint differs by payload value', () => {
 void test('allocateOrderDiscountByLine: even split', () => {
   // $100 subtotal, $10 discount, two $50 lines
   const lines: DiscountLine[] = [
-    { kind: 'product', lineId: '1', grossTotalCents: 5000 },
-    { kind: 'product', lineId: '2', grossTotalCents: 5000 },
+    { lineId: '1', grossTotalCents: 5000 },
+    { lineId: '2', grossTotalCents: 5000 },
   ];
   const result = allocateOrderDiscountByLine(10000, 1000, lines);
   assert.equal(result.length, 2);
@@ -359,15 +348,15 @@ void test('allocateOrderDiscountByLine: largest remainder allocation', () => {
   // Use $100 subtotal, $1 discount = hard to split with remainders
   // Instead: $99 subtotal, $10 discount, three $33 lines -> floor gives 3,3,3 = 9, remainder 1
   const lines: DiscountLine[] = [
-    { kind: 'product', lineId: '1', grossTotalCents: 3300 },
-    { kind: 'product', lineId: '2', grossTotalCents: 3300 },
-    { kind: 'product', lineId: '3', grossTotalCents: 3300 },
+    { lineId: '1', grossTotalCents: 3300 },
+    { lineId: '2', grossTotalCents: 3300 },
+    { lineId: '3', grossTotalCents: 3300 },
   ];
   const result = allocateOrderDiscountByLine(9900, 1000, lines);
   const sum = result.reduce((s, r) => s + r.allocatedDiscountCents, 0);
   assert.equal(sum, 1000);
   // Each gets at least floor(1000*3300/9900)=333, plus one extra (334) for line with largest remainder
-  // Tie: all remainders equal (1000*3300/9900 = 333.333...), product kind, numeric ID
+  // Tie: all remainders equal (1000*3300/9900 = 333.333...), numeric ID
   const sorted = result.sort((a, b) => parseInt(a.lineId, 10) - parseInt(b.lineId, 10));
   // line 1 gets the extra cent (smallest numeric ID)
   assert.equal(sorted[0]!.allocatedDiscountCents, 334);
@@ -375,25 +364,8 @@ void test('allocateOrderDiscountByLine: largest remainder allocation', () => {
   assert.equal(sorted[2]!.allocatedDiscountCents, 333);
 });
 
-void test('allocateOrderDiscountByLine: product before powder_mix tiebreak', () => {
-  // $60 subtotal, $1.01 discount, one product line $30, one powder_mix line $30
-  // floor(101*3000/6000) = floor(50.5) = 50 each, remainder 1 cent -> product gets it
-  const lines: DiscountLine[] = [
-    { kind: 'powder_mix', lineId: '1', grossTotalCents: 3000 },
-    { kind: 'product', lineId: '2', grossTotalCents: 3000 },
-  ];
-  const result = allocateOrderDiscountByLine(6000, 101, lines);
-  const sum = result.reduce((s, r) => s + r.allocatedDiscountCents, 0);
-  assert.equal(sum, 101);
-
-  const productLine = result.find((r) => r.kind === 'product')!;
-  const powderLine = result.find((r) => r.kind === 'powder_mix')!;
-  assert.equal(productLine.allocatedDiscountCents, 51);
-  assert.equal(powderLine.allocatedDiscountCents, 50);
-});
-
 void test('allocateOrderDiscountByLine: zero discount', () => {
-  const lines: DiscountLine[] = [{ kind: 'product', lineId: '1', grossTotalCents: 5000 }];
+  const lines: DiscountLine[] = [{ lineId: '1', grossTotalCents: 5000 }];
   const result = allocateOrderDiscountByLine(5000, 0, lines);
   assert.equal(result.length, 1);
   assert.equal(result[0]!.allocatedDiscountCents, 0);
@@ -405,14 +377,14 @@ void test('allocateOrderDiscountByLine: empty lines', () => {
 });
 
 void test('allocateOrderDiscountByLine: zero subtotal', () => {
-  const lines: DiscountLine[] = [{ kind: 'product', lineId: '1', grossTotalCents: 0 }];
+  const lines: DiscountLine[] = [{ lineId: '1', grossTotalCents: 0 }];
   const result = allocateOrderDiscountByLine(0, 100, lines);
   assert.equal(result.length, 0);
 });
 
 void test('allocateOrderDiscountByLine: discount exceeds subtotal', () => {
   // discount cannot exceed subtotal in practice, but allocation should still work
-  const lines: DiscountLine[] = [{ kind: 'product', lineId: '1', grossTotalCents: 5000 }];
+  const lines: DiscountLine[] = [{ lineId: '1', grossTotalCents: 5000 }];
   const result = allocateOrderDiscountByLine(5000, 10000, lines);
   const sum = result.reduce((s, r) => s + r.allocatedDiscountCents, 0);
   assert.equal(sum, 10000);
@@ -422,10 +394,10 @@ void test('allocateOrderDiscountByLine: discount exceeds subtotal', () => {
 void test('allocateOrderDiscountByLine: full order exactness', () => {
   // 4 lines at different proportions
   const lines: DiscountLine[] = [
-    { kind: 'product', lineId: '1', grossTotalCents: 1000 },
-    { kind: 'product', lineId: '2', grossTotalCents: 2000 },
-    { kind: 'product', lineId: '3', grossTotalCents: 3000 },
-    { kind: 'product', lineId: '4', grossTotalCents: 4000 },
+    { lineId: '1', grossTotalCents: 1000 },
+    { lineId: '2', grossTotalCents: 2000 },
+    { lineId: '3', grossTotalCents: 3000 },
+    { lineId: '4', grossTotalCents: 4000 },
   ];
   // subtotal=10000, discount=1000 (10%)
   const result = allocateOrderDiscountByLine(10000, 1000, lines);

@@ -87,21 +87,6 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
         case 'IDEMPOTENT_CONFLICT':
           sendConflict(reply, 'Payment already submitted with different data');
           return;
-        case 'MIX_REQUOTE_REQUIRED':
-          reply.code(409).send({
-            code: 'MIX_REQUOTE_REQUIRED',
-            error: 'Mix price changed. Requote required.',
-            mixes: result.mixes,
-          });
-          return;
-        case 'MIX_STOCK_UNAVAILABLE':
-          reply.code(409).send({
-            code: 'MIX_STOCK_UNAVAILABLE',
-            error: 'Mix ingredients are no longer in stock.',
-            mixIds: result.mixIds,
-            productIds: result.productIds,
-          });
-          return;
         case 'RESERVATION_EXPIRED':
           reply.code(409).send({
             error: 'RESERVATION_EXPIRED',

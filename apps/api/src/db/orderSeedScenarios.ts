@@ -1,4 +1,3 @@
-import type { PowderMixOrderItemSnapshotV2 } from '@shop/contracts/powderizer';
 import { CATALOG_PRODUCTS } from '@shop/catalog';
 import type Database from 'better-sqlite3';
 
@@ -12,9 +11,8 @@ export const DEMO_ORDER_SCENARIO_KEYS = [
 
 type ScenarioKey = (typeof DEMO_ORDER_SCENARIO_KEYS)[number];
 type ProductLine = { productId: number; quantity: number };
-type ShipmentLine =
-  | { kind: 'product'; index: number; quantity: number }
-  | { kind: 'powder_mix'; index: number; quantity: number };
+/** Allocation of one product line (by index into `productLines`) to one shipment. */
+type ShipmentLine = { index: number; quantity: number };
 type ScenarioEvent = {
   type:
     | 'order_created'
@@ -37,7 +35,6 @@ type Scenario = {
   status: 'processing' | 'packed' | 'shipped' | 'delivered' | 'delivery_failed';
   version: number;
   productLines: ProductLine[];
-  mixItems?: PowderMixOrderItemSnapshotV2[];
   shipments?: Array<{
     status: 'packed' | 'shipped' | 'delivered' | 'delivery_failed';
     trackingReference: string;
@@ -47,24 +44,6 @@ type Scenario = {
     lines: ShipmentLine[];
   }>;
   events: ScenarioEvent[];
-};
-
-const DEMO_MIX: PowderMixOrderItemSnapshotV2 = {
-  mixId: '00000000-0000-4000-8000-000000000101',
-  components: [
-    { productId: '1', productName: 'Protein Powder', percentage: 60, allocatedGrams: 300 },
-    { productId: '27', productName: 'Campfire', percentage: 40, allocatedGrams: 200 },
-  ],
-  bagSizeGrams: 500,
-  fineness: 'standard',
-  customLabel: 'Alice split mix',
-  priceVersion: 'powderizer-v1',
-  unitPriceCents: 2400,
-  quantity: 1,
-  lineTotalCents: 2400,
-  bagColourScheme: 'solar-flare',
-  usageLabel: 'Not for consumption',
-  snapshotVersion: 2,
 };
 
 const SCENARIOS: readonly Scenario[] = [
@@ -82,7 +61,7 @@ const SCENARIOS: readonly Scenario[] = [
         createdAt: '2026-07-14T16:00:00.000Z',
         updatedAt: '2026-07-14T16:00:00.000Z',
         version: 0,
-        lines: [{ kind: 'product', index: 0, quantity: 1 }],
+        lines: [{ index: 0, quantity: 1 }],
       },
     ],
     events: [
@@ -112,8 +91,13 @@ const SCENARIOS: readonly Scenario[] = [
     createdAt: '2026-07-14T09:00:00.000Z',
     status: 'shipped',
     version: 4,
-    productLines: [{ productId: 1, quantity: 2 }],
-    mixItems: [DEMO_MIX],
+    // Two lots, three sacks, split across two shipments: the first sack of lot 1 ships and
+    // lands, the second sack plus lot 2 are still in transit. Partial-allocation QA coverage
+    // depends on line 0 appearing in both shipments.
+    productLines: [
+      { productId: 1, quantity: 2 },
+      { productId: 27, quantity: 1 },
+    ],
     shipments: [
       {
         status: 'delivered',
@@ -121,7 +105,7 @@ const SCENARIOS: readonly Scenario[] = [
         createdAt: '2026-07-14T10:00:00.000Z',
         updatedAt: '2026-07-16T12:00:00.000Z',
         version: 3,
-        lines: [{ kind: 'product', index: 0, quantity: 1 }],
+        lines: [{ index: 0, quantity: 1 }],
       },
       {
         status: 'shipped',
@@ -130,8 +114,8 @@ const SCENARIOS: readonly Scenario[] = [
         updatedAt: '2026-07-16T09:00:00.000Z',
         version: 2,
         lines: [
-          { kind: 'product', index: 0, quantity: 1 },
-          { kind: 'powder_mix', index: 0, quantity: 1 },
+          { index: 0, quantity: 1 },
+          { index: 1, quantity: 1 },
         ],
       },
     ],
@@ -201,7 +185,7 @@ const SCENARIOS: readonly Scenario[] = [
         createdAt: '2026-07-13T10:00:00.000Z',
         updatedAt: '2026-07-14T15:00:00.000Z',
         version: 2,
-        lines: [{ kind: 'product', index: 0, quantity: 1 }],
+        lines: [{ index: 0, quantity: 1 }],
       },
     ],
     events: [
@@ -240,7 +224,7 @@ const SCENARIOS: readonly Scenario[] = [
         createdAt: '2026-07-12T10:00:00.000Z',
         updatedAt: '2026-07-13T16:00:00.000Z',
         version: 2,
-        lines: [{ kind: 'product', index: 0, quantity: 1 }],
+        lines: [{ index: 0, quantity: 1 }],
       },
     ],
     events: [
@@ -297,9 +281,6 @@ export function seedOrderScenarios(db: Database.Database): void {
   const findVariantByProduct = db.prepare(
     'SELECT id, sku, label, weight_grams, delivery_class FROM product_variants WHERE product_id = ? AND sort_order = 1 AND active = 1 LIMIT 1',
   );
-  const insertMixLine = db.prepare(
-    'INSERT INTO order_powder_mix_items (order_id, snapshot_json) VALUES (?, ?)',
-  );
   const insertShipment = db.prepare(`
     INSERT INTO order_shipments
       (order_id, shipment_number, status, tracking_reference, version, created_at, updated_at)
@@ -307,9 +288,6 @@ export function seedOrderScenarios(db: Database.Database): void {
   `);
   const insertProductAllocation = db.prepare(
     'INSERT INTO order_shipment_items (shipment_id, order_line_item_id, quantity) VALUES (?, ?, ?)',
-  );
-  const insertMixAllocation = db.prepare(
-    'INSERT INTO order_shipment_items (shipment_id, order_powder_mix_item_id, quantity) VALUES (?, ?, ?)',
   );
   const insertEvent = db.prepare(`
     INSERT INTO order_lifecycle_events
@@ -330,9 +308,10 @@ export function seedOrderScenarios(db: Database.Database): void {
       ...line,
       product: product(line.productId),
     }));
-    const subtotalCents =
-      productLines.reduce((sum, line) => sum + line.product.price_cents * line.quantity, 0) +
-      (scenario.mixItems ?? []).reduce((sum, mix) => sum + mix.lineTotalCents, 0);
+    const subtotalCents = productLines.reduce(
+      (sum, line) => sum + line.product.price_cents * line.quantity,
+      0,
+    );
 
     // Delivery: all seeded orders use parcel
     const deliveryMode = 'parcel';
@@ -385,9 +364,6 @@ export function seedOrderScenarios(db: Database.Database): void {
         ).lastInsertRowid,
       );
     });
-    const mixLineIds = (scenario.mixItems ?? []).map((mix) =>
-      Number(insertMixLine.run(orderId, JSON.stringify(mix)).lastInsertRowid),
-    );
     const shipmentIds = new Map<number, number>();
     for (const [index, shipment] of (scenario.shipments ?? []).entries()) {
       const shipmentNumber = index + 1;
@@ -404,9 +380,7 @@ export function seedOrderScenarios(db: Database.Database): void {
       );
       shipmentIds.set(shipmentNumber, shipmentId);
       for (const line of shipment.lines) {
-        if (line.kind === 'product')
-          insertProductAllocation.run(shipmentId, productLineIds[line.index], line.quantity);
-        else insertMixAllocation.run(shipmentId, mixLineIds[line.index], line.quantity);
+        insertProductAllocation.run(shipmentId, productLineIds[line.index], line.quantity);
       }
     }
     for (const event of scenario.events) {

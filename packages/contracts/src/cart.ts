@@ -1,7 +1,6 @@
 import { Type, type Static } from '@sinclair/typebox';
-import { MoneyCents, PositiveIntegerString, Uuid } from './common.js';
+import { MoneyCents, Uuid } from './common.js';
 import { Product } from './products.js';
-import { PowderMixCartItem } from './powderizer.js';
 import { DeliveryClass, DeliverySummary } from './delivery.js';
 
 const SafePositiveInteger = Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER });
@@ -35,7 +34,6 @@ export type CartLine = Static<typeof CartLine>;
 export const Cart = Type.Object({
   id: Uuid,
   items: Type.Array(CartLine),
-  mixItems: Type.Array(PowderMixCartItem),
   subtotalCents: MoneyCents,
   totalItems: Type.Integer({ minimum: 0 }),
   deliveryPreview: Type.Optional(DeliverySummary),
@@ -81,23 +79,3 @@ export const CartIdAndProductIdParam = Type.Object({
   cartId: Uuid,
   productId: Type.String({ minLength: 1 }),
 });
-
-export const MixingGroupMismatchError = Type.Object(
-  {
-    code: Type.Literal('MIXING_GROUP_MISMATCH'),
-    error: Type.String({ minLength: 1, maxLength: 500 }),
-    conflictingProductIds: Type.Array(PositiveIntegerString, { minItems: 2, maxItems: 5 }),
-    groupInfo: Type.Array(
-      Type.Object(
-        {
-          productId: PositiveIntegerString,
-          mixingGroup: Type.Union([Type.String(), Type.Null()]),
-        },
-        { additionalProperties: false },
-      ),
-      { minItems: 2, maxItems: 5 },
-    ),
-  },
-  { additionalProperties: false },
-);
-export type MixingGroupMismatchError = Static<typeof MixingGroupMismatchError>;

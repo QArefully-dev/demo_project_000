@@ -25,40 +25,6 @@ function checkoutConflict(error: unknown): CheckoutConflict | null {
   ) {
     return { code: 'INSUFFICIENT_STOCK', productIds: response.productIds };
   }
-  if (
-    response.code === 'MIX_REQUOTE_REQUIRED' &&
-    Array.isArray(response.mixes) &&
-    response.mixes.every(
-      (mix) =>
-        typeof mix === 'object' &&
-        mix !== null &&
-        typeof (mix as Record<string, unknown>).mixId === 'string' &&
-        typeof (mix as Record<string, unknown>).oldUnitPriceCents === 'number' &&
-        typeof (mix as Record<string, unknown>).newUnitPriceCents === 'number',
-    )
-  ) {
-    return {
-      code: 'MIX_REQUOTE_REQUIRED',
-      mixes: response.mixes as Array<{
-        mixId: string;
-        oldUnitPriceCents: number;
-        newUnitPriceCents: number;
-      }>,
-    };
-  }
-  if (
-    response.code === 'MIX_STOCK_UNAVAILABLE' &&
-    Array.isArray(response.mixIds) &&
-    Array.isArray(response.productIds) &&
-    response.mixIds.every((id) => typeof id === 'string') &&
-    response.productIds.every((id) => typeof id === 'string')
-  ) {
-    return {
-      code: 'MIX_STOCK_UNAVAILABLE',
-      mixIds: response.mixIds,
-      productIds: response.productIds,
-    };
-  }
   return null;
 }
 
@@ -109,7 +75,7 @@ export function usePaymentSubmission({
     } catch (error) {
       const conflict = checkoutConflict(error);
       if (conflict) {
-        dispatch({ type: 'mix-conflict', conflict, idempotencyKey: createIdempotencyKey() });
+        dispatch({ type: 'conflict', conflict, idempotencyKey: createIdempotencyKey() });
         return;
       }
       dispatch({

@@ -19,9 +19,9 @@ void test('anonymous comparison preserves requested order and safely reports una
   db.prepare(
     `INSERT INTO products
       (id, name, description, price_cents, category, stock_count, image_set_id, slug,
-       compare_at_price_cents, sales_count, mixable, mix_unit_grams, active, created_at)
+       compare_at_price_cents, sales_count, active, created_at)
      VALUES (99, 'Local comparison powder', 'Persisted local metadata', 999, 'Performance', 3,
-       NULL, 'local-comparison-powder', NULL, 0, 0, NULL, 1, '2026-07-01T00:00:00.000Z')`,
+       NULL, 'local-comparison-powder', NULL, 0, 1, '2026-07-01T00:00:00.000Z')`,
   ).run();
   db.prepare('INSERT INTO catalog_tags (key, label) VALUES (?, ?)').run(
     'comparison-local',

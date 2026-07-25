@@ -37,7 +37,6 @@ function product(id: string) {
     stock: 5,
     slug: id,
     salesCount: 0,
-    mixable: false,
     createdAt: '2026-07-14T00:00:00.000Z',
     available: true,
     availability: 'in_stock' as const,

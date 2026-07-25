@@ -69,16 +69,6 @@ export const faqArticle = {
             },
           ],
         },
-        {
-          id: 'custom-powder-history',
-          question: 'Does Custom Small Order remember my mixes?',
-          answerParagraphs: [
-            {
-              id: 'custom-powder-history-answer',
-              text: "The blend builder is temporarily unavailable while Custom Small Order is rebuilt. Any mix already saved to this browser's local storage or an existing order is unaffected; clearing browser storage removes that local history.",
-            },
-          ],
-        },
       ],
     },
   ],

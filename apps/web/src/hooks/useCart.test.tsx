@@ -4,7 +4,6 @@ import type { Cart } from '@shop/contracts/cart';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
 import * as cartApi from '@/api/cart';
-import * as powderizerApi from '@/api/powderizer';
 import * as bundlesApi from '@/api/bundles';
 import { clearCartId, getCartId, setCartId } from '@/lib/cartStorage';
 import { CartProvider, useCartContext } from './CartContext';
@@ -15,11 +14,6 @@ vi.mock('@/api/cart', () => ({
   getCart: vi.fn(),
   removeFromCart: vi.fn(),
   updateCartItem: vi.fn(),
-}));
-vi.mock('@/api/powderizer', () => ({
-  removePowderMix: vi.fn(),
-  requotePowderMix: vi.fn(),
-  updatePowderMixQuantity: vi.fn(),
 }));
 vi.mock('@/api/bundles', () => ({
   addBundleToCart: vi.fn(),
@@ -49,7 +43,6 @@ function cart(id: string, productIds: string[] = []): Cart {
         imageSetId: productId,
         category: 'Pantry',
         stock: 10,
-        mixable: false,
         slug: productId,
         salesCount: 0,
         createdAt: '2026-07-14T00:00:00.000Z',
@@ -64,7 +57,6 @@ function cart(id: string, productIds: string[] = []): Cart {
       resolvedUnitPriceCents: 100,
       lineTotalCents: 100,
     })),
-    mixItems: [],
     totalItems: productIds.length,
     subtotalCents: productIds.length * 100,
   };
@@ -97,7 +89,6 @@ function cartWithProductVariants(id: string): Cart {
       resolvedUnitPriceCents: variant.lineTotalCents / variant.quantity,
       lineTotalCents: variant.lineTotalCents,
     })),
-    mixItems: [],
     subtotalCents: 1400,
     totalItems: 5,
   };
@@ -403,27 +394,6 @@ describe('useCart', () => {
     });
     expect(await firstAction).toBe(true);
     expect(result.current.pendingActions).toEqual({});
-  });
-
-  it('tracks custom mix mutations with a mix-specific pending key', async () => {
-    setCartId('cart');
-    const response = deferred<Cart>();
-    vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
-    vi.mocked(powderizerApi.updatePowderMixQuantity).mockReturnValueOnce(response.promise);
-    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
-    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
-
-    let action!: Promise<boolean>;
-    act(() => {
-      action = result.current.updateMixQuantity('mix-1', 2);
-    });
-    expect(result.current.isActionPending('mix:mix-1', 'mix-update')).toBe(true);
-    await act(async () => {
-      response.resolve(cart('cart'));
-      await response.promise;
-    });
-    expect(await action).toBe(true);
-    expect(powderizerApi.updatePowderMixQuantity).toHaveBeenCalledWith('cart', 'mix-1', 2);
   });
 
   it('does not let an older mutation response overwrite a newer cart response', async () => {

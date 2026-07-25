@@ -38,7 +38,6 @@ const product = {
   backorderLeadDays: null,
   slug: 'protein-powder',
   salesCount: 10,
-  mixable: true,
   ...productMetadata,
 };
 

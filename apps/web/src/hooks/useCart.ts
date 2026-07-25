@@ -2,13 +2,11 @@ import { useCallback, useEffect, useReducer, useRef } from 'react';
 import type { Cart } from '@shop/contracts/cart';
 import * as api from '../api/cart';
 import * as bundlesApi from '../api/bundles';
-import * as powderizerApi from '../api/powderizer';
 import { ApiError, isMissingCartError } from '../api/client';
 import { clearCartId, getCartId } from '../lib/cartStorage';
 import { createCartClient } from './cartClient';
 
-export type CartAction =
-  'add' | 'bundle-add' | 'update' | 'remove' | 'mix-update' | 'mix-remove' | 'mix-requote';
+export type CartAction = 'add' | 'bundle-add' | 'update' | 'remove';
 
 type CartStatus = 'initializing' | 'ready' | 'refreshing' | 'error';
 
@@ -251,36 +249,6 @@ export function useCart() {
       ),
     [runCartAction],
   );
-  const updateMixQuantity = useCallback(
-    (mixId: string, quantity: number) =>
-      runCartAction(
-        'mix-update',
-        `mix:${mixId}`,
-        (cartId) => powderizerApi.updatePowderMixQuantity(cartId, mixId, quantity),
-        false,
-      ),
-    [runCartAction],
-  );
-  const removeMix = useCallback(
-    (mixId: string) =>
-      runCartAction(
-        'mix-remove',
-        `mix:${mixId}`,
-        (cartId) => powderizerApi.removePowderMix(cartId, mixId),
-        false,
-      ),
-    [runCartAction],
-  );
-  const requoteMix = useCallback(
-    (mixId: string) =>
-      runCartAction(
-        'mix-requote',
-        `mix:${mixId}`,
-        (cartId) => powderizerApi.requotePowderMix(cartId, mixId),
-        false,
-      ),
-    [runCartAction],
-  );
 
   const clearCart = useCallback(() => {
     clearCartId();
@@ -312,9 +280,6 @@ export function useCart() {
     addBundle,
     updateQuantity,
     removeItem,
-    updateMixQuantity,
-    removeMix,
-    requoteMix,
     refreshCart,
     retryCart,
     clearCart,

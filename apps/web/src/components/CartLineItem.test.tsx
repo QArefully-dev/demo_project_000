@@ -17,7 +17,6 @@ const item: CartLine = {
     availability: 'in_stock',
     backorderable: false,
     backorderLeadDays: null,
-    mixable: false,
     slug: 'test-material',
     salesCount: 0,
     createdAt: '2026-07-14T00:00:00.000Z',

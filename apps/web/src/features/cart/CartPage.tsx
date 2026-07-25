@@ -4,7 +4,6 @@ import { Separator } from '@/components/ui/separator';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { CartLineItem } from '@/components/CartLineItem';
-import { PowderMixCartLineItem } from './PowderMixCartLineItem';
 import { formatMoney } from '@/lib/formatMoney';
 import { useCartContext } from '@/hooks/CartContext';
 
@@ -24,8 +23,6 @@ export function CartPage() {
     error,
     updateQuantity,
     removeItem,
-    updateMixQuantity,
-    removeMix,
     retryCart,
     isActionPending,
   } = useCartContext();
@@ -74,16 +71,6 @@ export function CartPage() {
                 </p>
               )}
             </div>
-          ))}
-          {cart.mixItems.map((item) => (
-            <PowderMixCartLineItem
-              key={item.mixId}
-              item={item}
-              isUpdating={isActionPending(`mix:${item.mixId}`, 'mix-update')}
-              isRemoving={isActionPending(`mix:${item.mixId}`, 'mix-remove')}
-              onUpdateQuantity={updateMixQuantity}
-              onRemove={removeMix}
-            />
           ))}
           <Separator className="my-4" />
           <div className="space-y-2">

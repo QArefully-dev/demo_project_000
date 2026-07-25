@@ -205,48 +205,6 @@ export const packSizesArticle = defineHelpArticle({
   ],
 });
 
-export const customPowderArticle = defineHelpArticle({
-  id: 'custom-powder',
-  group: 'help',
-  slug: 'custom-powder',
-  path: '/help/custom-powder',
-  title: 'Custom Small Order',
-  summary: 'Custom Small Order is being rebuilt; the blend builder is temporarily unavailable.',
-  blocks: [
-    {
-      kind: 'paragraph',
-      id: 'custom-powder-intro',
-      text: 'Custom Small Order is being rebuilt for pallet-scale ordering. The blend builder that previously let you combine compatible ingredients into a custom mix is temporarily unavailable while this work is in progress.',
-    },
-    {
-      kind: 'notice',
-      id: 'custom-powder-safety',
-      heading: 'Existing custom mixes are unaffected',
-      paragraphs: [
-        {
-          id: 'custom-powder-safety-label',
-          text: 'A custom mix already in your cart or in a past order keeps its server-derived usage label and can still be reviewed, requoted, and removed. If any component carries a "Not for consumption" warning, the entire blend is marked accordingly. Never consume a blend that contains a non-food ingredient.',
-        },
-        {
-          id: 'custom-powder-safety-handling',
-          text: 'Non-food blends such as cement, plaster, pigments, or cleaning mixtures require personal protective equipment during handling. Follow the individual product warnings for each ingredient in your blend.',
-        },
-      ],
-    },
-    {
-      kind: 'section',
-      id: 'custom-powder-building',
-      heading: 'Building a new blend',
-      paragraphs: [
-        {
-          id: 'custom-powder-building-ingredients',
-          text: 'The blend-builder page currently shows a work-in-progress notice instead of the ingredient picker. Check back once Custom Small Order is rebuilt to create a new mix.',
-        },
-      ],
-    },
-  ],
-});
-
 export const safetyArticle = defineHelpArticle({
   id: 'powder-safety',
   group: 'help',
@@ -302,17 +260,6 @@ export const safetyArticle = defineHelpArticle({
         },
       ],
     },
-    {
-      kind: 'notice',
-      id: 'safety-custom-powder',
-      heading: 'Custom Small Order blends',
-      paragraphs: [
-        {
-          id: 'safety-custom-powder-rule',
-          text: 'An existing Custom Small Order blend carries a combined safety label derived when it was built. If any single ingredient is non-food, the entire blend is marked "Not for consumption". Never consume a blend that contains a non-food ingredient. The blend builder itself is temporarily unavailable while Custom Small Order is rebuilt.',
-        },
-      ],
-    },
   ],
 });
 
@@ -320,6 +267,5 @@ export const serviceArticles = [
   shippingArticle,
   returnsArticle,
   packSizesArticle,
-  customPowderArticle,
   safetyArticle,
 ] as const satisfies readonly HelpArticle<'help', string>[];

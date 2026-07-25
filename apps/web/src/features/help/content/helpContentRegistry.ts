@@ -6,7 +6,6 @@ import {
   shippingArticle,
   returnsArticle,
   packSizesArticle,
-  customPowderArticle,
   safetyArticle,
 } from './serviceArticles';
 
@@ -29,7 +28,6 @@ export const helpArticles = [
   shippingArticle,
   returnsArticle,
   packSizesArticle,
-  customPowderArticle,
   safetyArticle,
   storageArticle,
 ] as const satisfies readonly HelpArticle<'help'>[];
@@ -46,7 +44,6 @@ export const productFactLinks = {
   powderSafety: toContentLink(safetyArticle),
   storage: toContentLink(storageArticle),
   packSizes: toContentLink(packSizesArticle),
-  customPowder: toContentLink(customPowderArticle),
 } as const;
 
 export const productCommerceLinks = {

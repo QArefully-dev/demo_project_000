@@ -1,12 +1,10 @@
 import { getCart } from '../cart/cartService.js';
 import type { Cart } from '@shop/contracts/cart';
-import type { PowderMixCartItem } from '@shop/contracts/powderizer';
 import { validateCard, type ValidCard } from '../payments/cardValidation.js';
 import { createSafeFingerprint, type PaymentRecord } from '../payments/paymentRepository.js';
 import { validatePromo } from '../promos/promoService.js';
 import { createCheckoutQuote } from './checkoutQuote.js';
 import { finalizeAuthorizedCheckout } from './checkoutFinalizer.js';
-import { prepareMixes } from './checkoutMixPreparation.js';
 import { InventoryError } from '../inventory/inventoryTypes.js';
 import { validateMoq } from '../pricing/pricingRules.js';
 import type { PreGatewayFailureCode } from '../audit/auditEvent.js';
@@ -33,26 +31,11 @@ function preGatewayFailureCode(result: CheckoutResult): PreGatewayFailureCode {
       case 'CART_NOT_FOUND':
       case 'CART_EMPTY':
       case 'PROMO_INVALID':
-      case 'MIX_REQUOTE_REQUIRED':
-      case 'MIX_STOCK_UNAVAILABLE':
       case 'CHECKOUT_FAILED':
         return result.error;
     }
   }
   return 'CHECKOUT_FAILED';
-}
-
-function withPreparedMixes(cart: Cart, mixItems: PowderMixCartItem[]): Cart {
-  const subtotalCents = [...cart.items, ...mixItems].reduce(
-    (total, item) => total + item.lineTotalCents,
-    0,
-  );
-  return {
-    ...cart,
-    mixItems,
-    subtotalCents,
-    totalItems: [...cart.items, ...mixItems].reduce((total, item) => total + item.quantity, 0),
-  };
 }
 
 function replay(
@@ -97,7 +80,7 @@ function prepare(
       createdAt: dependencies.clock.now().toISOString(),
     });
     if (!reservation.reserved) return replay(reservation.payment, fingerprint, dependencies);
-    const cart = getCart(dependencies.carts, params.cartId, dependencies.mixes);
+    const cart = getCart(dependencies.carts, params.cartId);
     if (!cart)
       return failPreparation(
         params.idempotencyKey,
@@ -143,15 +126,6 @@ function prepare(
         dependencies,
       );
     const validPromo = promo?.valid ? promo.promoCode : undefined;
-    const mixPreparation = prepareMixes(params.cartId, dependencies);
-    if ('error' in mixPreparation)
-      return failPreparation(
-        params.idempotencyKey,
-        mixPreparation,
-        params.auditContext,
-        dependencies,
-      );
-    const preparedCart = withPreparedMixes(cart, mixPreparation.mixItems);
     const createdAt = dependencies.clock.now().toISOString();
     if (!dependencies.carts.reserve(params.cartId, params.idempotencyKey, createdAt)) {
       return failPreparation(
@@ -185,21 +159,10 @@ function prepare(
     try {
       inventoryAllocations = dependencies.inventory.reserveCheckout({
         paymentIdempotencyKey: params.idempotencyKey,
-        demands: [
-          ...preparedCart.items.map((item) => ({
-            variantId: item.variantSnap?.variantId ?? 0,
-            quantity: item.quantity,
-            demandKind: 'product' as const,
-          })),
-          ...mixPreparation.requirements.map((requirement) => {
-            const defaultVariant = dependencies.products.findDefaultVariant(requirement.productId);
-            return {
-              variantId: defaultVariant?.id ?? 0,
-              quantity: requirement.bagEquivalents,
-              demandKind: 'powder_mix' as const,
-            };
-          }),
-        ],
+        demands: cart.items.map((item) => ({
+          variantId: item.variantSnap?.variantId ?? 0,
+          quantity: item.quantity,
+        })),
         now: createdAt,
         expiresAt: reservationExpiresAt,
       });
@@ -221,7 +184,7 @@ function prepare(
       throw error;
     }
     const quote = createCheckoutQuote({
-      cart: preparedCart,
+      cart,
       checkout: params,
       promo: validPromo,
       createdAt,

@@ -1,5 +1,8 @@
 import type { Cart } from '@shop/contracts/cart';
-import type { PersistedCheckoutQuoteV5 } from '@shop/contracts/payments';
+import {
+  CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION,
+  type PersistedCheckoutQuoteV6,
+} from '@shop/contracts/payments';
 import { calculateDiscount, type ValidPromo } from '../promos/promoService.js';
 import type { PersistedCheckoutQuote } from '../payments/paymentRepository.js';
 import type { CheckoutParams } from './checkoutTypes.js';
@@ -21,7 +24,7 @@ export function createCheckoutQuote(params: {
       })
     : 0;
 
-  const variantLines: PersistedCheckoutQuoteV5['variantLines'] = params.cart.items.map((item) => {
+  const variantLines: PersistedCheckoutQuoteV6['variantLines'] = params.cart.items.map((item) => {
     const snap = item.variantSnap;
     return {
       productId: item.productId,
@@ -37,29 +40,11 @@ export function createCheckoutQuote(params: {
     };
   });
 
-  const orderMixSnapshots = params.cart.mixItems.map((item) => ({
-    ...item,
-    snapshotVersion: 2 as const,
-  }));
-
-  const mixLines: PersistedCheckoutQuoteV5['mixLines'] = params.cart.mixItems.map((item) => {
-    const bagWeight = item.bagSizeGrams;
-    const totalWeight = bagWeight * item.quantity;
-    return {
-      mixId: item.mixId,
-      unitPriceCents: item.unitPriceCents,
-      quantity: item.quantity,
-      lineTotalCents: item.lineTotalCents,
-      deliveryClass: 'parcel',
-      weightGrams: totalWeight,
-    };
-  });
-
   const deliverySummary = quoteCartDelivery(params.cart);
   const totalCents = params.cart.subtotalCents - discountCents + deliverySummary.chargeCents;
 
   return {
-    version: 5,
+    version: CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION,
     cartId: params.cart.id,
     customer: {
       name: params.checkout.customerName.trim(),
@@ -73,16 +58,12 @@ export function createCheckoutQuote(params: {
     totalCents,
     lines: [],
     variantLines,
-    mixLines,
-    orderMixSnapshots,
     deliverySummary,
-    inventoryAllocations: params.inventoryAllocations
-      .filter((allocation) => allocation.demandKind === 'product')
-      .map((allocation) => ({
-        productId: String(allocation.variantId),
-        reservedQuantity: allocation.reservedQuantity,
-        backorderedQuantity: allocation.backorderedQuantity,
-      })),
+    inventoryAllocations: params.inventoryAllocations.map((allocation) => ({
+      productId: String(allocation.variantId),
+      reservedQuantity: allocation.reservedQuantity,
+      backorderedQuantity: allocation.backorderedQuantity,
+    })),
     createdAt: params.createdAt,
   };
 }

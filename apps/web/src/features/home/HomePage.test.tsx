@@ -41,7 +41,6 @@ function product(id: string): Product {
     backorderLeadDays: null,
     tags: [],
     specificationGroups: [],
-    mixable: false,
   };
 }
 

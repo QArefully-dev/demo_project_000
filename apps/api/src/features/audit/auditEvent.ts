@@ -58,8 +58,6 @@ export const PRE_GATEWAY_FAILURE_CODES = [
   'CART_EMPTY',
   'PROMO_INVALID',
   'CARD_INVALID',
-  'MIX_REQUOTE_REQUIRED',
-  'MIX_STOCK_UNAVAILABLE',
   'CHECKOUT_FAILED',
 ] as const;
 
@@ -117,7 +115,6 @@ export type AuditEventInput =
       orderId: number;
       totalCents: number;
       itemCount: number;
-      mixItemCount: number;
     })
   | (WithContext & { action: 'order.shipment_packed'; orderId: number; shipmentCount: number })
   | (WithContext & { action: 'order.cancelled'; orderId: number })
@@ -383,7 +380,6 @@ export function buildAuditEvent(input: AuditEventInput): BuiltAuditEvent {
       metadata = {
         totalCents: requireNonNegativeSafeInteger(input.totalCents, 'totalCents'),
         itemCount: requireNonNegativeSafeInteger(input.itemCount, 'itemCount'),
-        mixItemCount: requireNonNegativeSafeInteger(input.mixItemCount, 'mixItemCount'),
       };
       break;
     case 'order.shipment_packed':

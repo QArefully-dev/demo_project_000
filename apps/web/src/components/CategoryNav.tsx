@@ -1,7 +1,7 @@
 import { useLocation, useSearchParams, Link } from 'react-router-dom';
 import { useCategories } from '@/hooks/useCategories';
 import { cn } from '@/lib/utils';
-import { bundlesItem, customPowderItem } from './nav/navItems';
+import { bundlesItem } from './nav/navItems';
 
 /**
  * Functional category filter navigation.
@@ -44,13 +44,6 @@ export function CategoryNav() {
             {category}
           </Link>
         ))}
-      <Link
-        to="/custom-powder"
-        aria-current={pathname === '/custom-powder' ? 'page' : undefined}
-        className={cn(linkClassName(pathname === '/custom-powder'), customPowderItem.className)}
-      >
-        {customPowderItem.label}
-      </Link>
       <Link
         to="/bundles"
         aria-current={pathname === '/bundles' ? 'page' : undefined}

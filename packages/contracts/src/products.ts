@@ -93,8 +93,6 @@ export const Product = Type.Object(
     slug: Type.String(),
     compareAtPriceCents: Type.Optional(MoneyCents),
     salesCount: Type.Integer({ minimum: 0 }),
-    mixable: Type.Boolean(),
-    mixUnitGrams: Type.Optional(Type.Integer({ minimum: 1 })),
     createdAt: UtcIsoInstant,
     available: Type.Boolean(),
     tags: Type.Array(ProductTag, { maxItems: 16 }),

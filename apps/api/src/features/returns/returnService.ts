@@ -160,7 +160,6 @@ export function createReturnService(deps: ReturnServiceDeps): ReturnService {
           shipmentId: line.shipmentId,
           shipmentStatus: 'delivered',
           orderLineItemId: line.orderLineItemId,
-          lineKind: 'product' as const,
           deliveredQuantity: line.deliveredQuantity,
         }));
         const activeReservations = overview.eligibleLines
@@ -380,19 +379,11 @@ export function createReturnService(deps: ReturnServiceDeps): ReturnService {
         const orderDetail = orderRepository.findDetailById(orderId);
         if (!orderDetail) throw new ReturnDomainError(ReturnErrorCode.RETURN_DATA_CORRUPT);
 
-        // Build discount lines from ALL purchased lines (ordinary + powder)
-        const discountLines = [
-          ...orderDetail.items.map((item) => ({
-            kind: 'product' as const,
-            lineId: item.lineId,
-            grossTotalCents: item.lineTotalCents,
-          })),
-          ...orderDetail.mixItems.map((mix) => ({
-            kind: 'powder_mix' as const,
-            lineId: mix.lineId,
-            grossTotalCents: mix.lineTotalCents,
-          })),
-        ];
+        // Build discount lines from every purchased order line
+        const discountLines = orderDetail.items.map((item) => ({
+          lineId: item.lineId,
+          grossTotalCents: item.lineTotalCents,
+        }));
 
         // Allocate whole-order discount
         const discountAllocations = allocateOrderDiscountByLine(

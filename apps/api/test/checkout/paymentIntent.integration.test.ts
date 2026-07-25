@@ -23,7 +23,7 @@ const createdAt = '2026-07-14T10:00:00.000Z';
 
 function quote(cartId: string, totalCents = 1200): PersistedCheckoutQuote {
   return {
-    version: 1,
+    version: 6,
     cartId,
     customer: {
       name: 'Checkout test',
@@ -35,15 +35,28 @@ function quote(cartId: string, totalCents = 1200): PersistedCheckoutQuote {
     subtotalCents: totalCents,
     discountCents: 0,
     totalCents,
-    lines: [
+    lines: [],
+    variantLines: [
       {
         productId: '1',
+        variantId: 1,
         productName: 'Test product',
+        variantLabel: '25 kg sack',
         unitPriceCents: totalCents,
+        weightGrams: 25_000,
+        deliveryClass: 'freight',
         quantity: 1,
         lineTotalCents: totalCents,
+        consumptionClassification: 'non-food',
       },
     ],
+    deliverySummary: {
+      mode: 'freight',
+      chargeCents: 0,
+      weightGrams: 25_000,
+      reason: 'A freight-class item requires freight delivery',
+    },
+    inventoryAllocations: [{ productId: '1', reservedQuantity: 1, backorderedQuantity: 0 }],
     createdAt,
   };
 }

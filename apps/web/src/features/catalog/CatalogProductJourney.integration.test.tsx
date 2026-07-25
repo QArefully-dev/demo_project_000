@@ -57,7 +57,6 @@ const catalogProduct: ProductWithVariants = {
   backorderLeadDays: null,
   tags: [],
   specificationGroups: [],
-  mixable: false,
   variants: [
     {
       variantId: 1,

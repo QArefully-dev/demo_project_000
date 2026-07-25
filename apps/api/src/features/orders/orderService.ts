@@ -135,15 +135,11 @@ export function createOrderService(
             createdAt: occurredAt,
           });
           shipment.lines.forEach((line) => {
-            const found = lines.find(
-              (candidate) =>
-                candidate.lineKind === line.lineKind && candidate.lineId === line.lineId,
-            );
+            const found = lines.find((candidate) => candidate.lineId === line.lineId);
             if (!found) throw new OrderDomainError('INVALID_ALLOCATION');
             dependencies.repository.insertShipmentLine({
               shipmentId,
               lineId: Number(line.lineId),
-              lineKind: found.lineKind,
               quantity: line.quantity,
             });
           });

@@ -1,6 +1,5 @@
 import type { CartRepository } from '../cart/cartRepository.js';
 import { getCart } from '../cart/cartService.js';
-import type { PowderMixRepository } from '../powderizer/powderMixRepository.js';
 import type { Clock } from '../auth/authService.js';
 import type { PromoRecord, PromoRepository } from './promoRepository.js';
 
@@ -33,7 +32,6 @@ export interface PromoService {
 export function createPromoService(dependencies: {
   promos: PromoRepository;
   carts: CartRepository;
-  mixes: PowderMixRepository;
   clock: Clock;
 }): PromoService {
   return {
@@ -61,7 +59,6 @@ export function validatePromo(
   dependencies: {
     promos: PromoRepository;
     carts: CartRepository;
-    mixes?: PowderMixRepository;
   },
 ): PromoValidation {
   const promo = dependencies.promos.findByCode(params.code);
@@ -88,7 +85,7 @@ export function validatePromo(
       promo.maxRedemptions
   )
     return invalid('This promo code has reached its usage limit', 'USAGE_LIMIT');
-  const cart = getCart(dependencies.carts, params.cartId, dependencies.mixes);
+  const cart = getCart(dependencies.carts, params.cartId);
   if (!cart) return invalid('Cart not found', 'INVALID');
   if (cart.totalItems < promo.minItemCount)
     return invalid(

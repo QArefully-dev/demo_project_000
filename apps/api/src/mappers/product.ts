@@ -103,8 +103,6 @@ export function toProductContract(row: ProductRow | CustomerProductRow): Product
     slug: row.slug ?? '',
     compareAtPriceCents: row.compare_at_price_cents ?? undefined,
     salesCount: row.sales_count ?? 0,
-    mixable: row.mixable === 1,
-    mixUnitGrams: row.mix_unit_grams ?? undefined,
     createdAt: toUtcIsoInstant(row.created_at),
     available: row.active === 1 && (stock > 0 || backorderable),
     tags,

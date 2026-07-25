@@ -71,7 +71,6 @@ const product = (overrides: Partial<ProductWithVariants> = {}): ProductWithVaria
   available: overrides.available ?? true,
   tags: overrides.tags ?? [],
   specificationGroups: overrides.specificationGroups ?? [],
-  mixable: overrides.mixable ?? false,
   variants: overrides.variants ?? [defaultVariant],
   defaultVariantId: overrides.defaultVariantId ?? 1,
   categoryFacts: overrides.categoryFacts ?? defaultFacts,

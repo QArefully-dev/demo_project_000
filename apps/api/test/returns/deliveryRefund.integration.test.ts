@@ -16,7 +16,6 @@ import { createOrderRepository } from '../../src/features/orders/orderRepository
 import { createMailboxRepository } from '../../src/features/mailbox/mailboxRepository.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { simulatedPaymentGateway } from '../../src/features/payments/paymentGateway.js';
-import { createPowderMixRepository } from '../../src/features/powderizer/powderMixRepository.js';
 import { createProductRepository } from '../../src/features/catalog/productRepository.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
@@ -34,7 +33,6 @@ function checkoutService(db: import('better-sqlite3').Database, now?: () => Date
     mailbox: createMailboxRepository(db),
     gateway: simulatedPaymentGateway,
     clock: { now: now ?? (() => new Date()) },
-    mixes: createPowderMixRepository(db),
     products: createProductRepository(db),
     audit: createAuditWriter({
       repository: createAuditRepository(db),

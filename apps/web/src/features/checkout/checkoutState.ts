@@ -3,15 +3,7 @@ export type CardField = 'cardNumber' | 'cardExpiry' | 'cardCvc';
 export type Field = ContactField | CardField;
 export type FieldErrors = Partial<Record<Field, string>>;
 
-export type MixCheckoutConflict =
-  | {
-      code: 'MIX_REQUOTE_REQUIRED';
-      mixes: Array<{ mixId: string; oldUnitPriceCents: number; newUnitPriceCents: number }>;
-    }
-  | { code: 'MIX_STOCK_UNAVAILABLE'; mixIds: string[]; productIds: string[] };
-
 export type CheckoutConflict =
-  | MixCheckoutConflict
   | { code: 'RESERVATION_EXPIRED'; reservationExpiresAt: string }
   | { code: 'INSUFFICIENT_STOCK'; productIds: string[] };
 
@@ -30,7 +22,7 @@ export type CheckoutState = {
   paymentError: string | null;
   idempotencyKey: string;
   cartRecoveryMessage: string | null;
-  mixConflict: CheckoutConflict | null;
+  conflict: CheckoutConflict | null;
 };
 
 export type CheckoutEvent =
@@ -51,7 +43,7 @@ export type CheckoutEvent =
   | { type: 'promo-removed'; idempotencyKey: string }
   | { type: 'quote-changed'; idempotencyKey: string }
   | { type: 'cart-recovered'; message: string }
-  | { type: 'mix-conflict'; conflict: CheckoutConflict; idempotencyKey: string }
+  | { type: 'conflict'; conflict: CheckoutConflict; idempotencyKey: string }
   | { type: 'submission-started' }
   | { type: 'submission-failed'; error: string }
   | { type: 'submission-finished' };
@@ -79,7 +71,7 @@ export function initialCheckoutState(): CheckoutState {
     paymentError: null,
     idempotencyKey: createIdempotencyKey(),
     cartRecoveryMessage: null,
-    mixConflict: null,
+    conflict: null,
   };
 }
 
@@ -152,15 +144,15 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         promoTotalCents: null,
         promoError: null,
         promoValidating: false,
-        mixConflict: null,
+        conflict: null,
         idempotencyKey: event.idempotencyKey,
       };
     case 'cart-recovered':
       return { ...state, cartRecoveryMessage: event.message };
-    case 'mix-conflict':
+    case 'conflict':
       return {
         ...state,
-        mixConflict: event.conflict,
+        conflict: event.conflict,
         paymentError: null,
         idempotencyKey: event.idempotencyKey,
       };
@@ -174,17 +166,10 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
 }
 
 type QuoteItem = { productId: string; quantity: number; lineTotalCents: number };
-type QuoteMixItem = {
-  mixId: string;
-  priceVersion: string;
-  quantity: number;
-  lineTotalCents: number;
-};
 type QuoteCart = {
   id: string;
   subtotalCents: number;
   items: QuoteItem[];
-  mixItems: QuoteMixItem[];
 };
 
 /** Stable against rendering and cart-item ordering. */
@@ -193,13 +178,7 @@ export function createCartQuoteKey(cart: QuoteCart | null): string | null {
   const lines = [...cart.items]
     .sort((left, right) => left.productId.localeCompare(right.productId))
     .map(({ productId, quantity, lineTotalCents }) => `${productId}:${quantity}:${lineTotalCents}`);
-  const mixLines = [...cart.mixItems]
-    .sort((left, right) => left.mixId.localeCompare(right.mixId))
-    .map(
-      ({ mixId, priceVersion, quantity, lineTotalCents }) =>
-        `${mixId}:${priceVersion}:${quantity}:${lineTotalCents}`,
-    );
-  return `${cart.id}:${cart.subtotalCents}:${lines.join('|')}:${mixLines.join('|')}`;
+  return `${cart.id}:${cart.subtotalCents}:${lines.join('|')}`;
 }
 
 export function selectAppliedPromo(state: CheckoutState, quoteKey: string | null): string | null {

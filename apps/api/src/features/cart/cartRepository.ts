@@ -13,8 +13,6 @@ export interface CartLineRow {
   product_slug: string;
   product_compare_at_price_cents: number | null;
   product_sales_count: number;
-  product_mixable?: number;
-  product_mix_unit_grams?: number | null;
   product_active: number;
   product_created_at: string;
   product_consumption_classification: string;
@@ -71,7 +69,6 @@ export function createCartRepository(db: Database.Database): CartRepository {
             p.image_set_id AS product_image_set_id, p.slug AS product_slug,
             p.compare_at_price_cents AS product_compare_at_price_cents,
             p.sales_count AS product_sales_count,
-            p.mixable AS product_mixable, p.mix_unit_grams AS product_mix_unit_grams,
             p.active AS product_active, p.created_at AS product_created_at,
             p.consumption_classification AS product_consumption_classification,
             p.default_variant_id AS product_default_variant_id,

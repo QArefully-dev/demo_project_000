@@ -1,16 +1,7 @@
-import type { PersistedCheckoutQuoteV5, PersistedCheckoutQuoteV4 } from '@shop/contracts/payments';
 import { parsePersistedCheckoutQuote } from '../payments/paymentRepository.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { CreateOrderLineVariantSnapshot } from '../orders/orderTypes.js';
 import type { CheckoutDependencies, CheckoutResult } from './checkoutTypes.js';
-
-function isV5(quote: unknown): quote is PersistedCheckoutQuoteV5 {
-  return (quote as { version: number }).version === 5;
-}
-
-function isV4(quote: unknown): quote is PersistedCheckoutQuoteV4 {
-  return (quote as { version: number }).version === 4;
-}
 
 /** Finalizes only an already-authorized intent; rollback leaves it resumable. */
 export function finalizeAuthorizedCheckout(
@@ -26,34 +17,25 @@ export function finalizeAuthorizedCheckout(
     const quote = parsePersistedCheckoutQuote(payment.quoteJson);
     const createdAt = dependencies.clock.now().toISOString();
 
-    const orderItems = isV5(quote)
-      ? quote.variantLines.map((v) => {
-          const variant = dependencies.products.findVariantById(v.variantId);
-          const variantSnapshot: CreateOrderLineVariantSnapshot = {
-            variantId: v.variantId,
-            sku: variant?.sku ?? `SKU-${v.productId}-${v.variantId}`,
-            label: v.variantLabel,
-            weightGrams: v.weightGrams,
-            consumptionClassification: v.consumptionClassification as
-              'food' | 'non-food' | 'caution',
-            deliveryClass: v.deliveryClass,
-          };
-          return {
-            productId: v.productId,
-            productName: v.productName,
-            unitPriceCents: v.unitPriceCents,
-            quantity: v.quantity,
-            lineTotalCents: v.lineTotalCents,
-            variantSnapshot,
-          };
-        })
-      : quote.lines.map((line) => ({
-          productId: line.productId,
-          productName: line.productName,
-          unitPriceCents: line.unitPriceCents,
-          quantity: line.quantity,
-          lineTotalCents: line.lineTotalCents,
-        }));
+    const orderItems = quote.variantLines.map((v) => {
+      const variant = dependencies.products.findVariantById(v.variantId);
+      const variantSnapshot: CreateOrderLineVariantSnapshot = {
+        variantId: v.variantId,
+        sku: variant?.sku ?? `SKU-${v.productId}-${v.variantId}`,
+        label: v.variantLabel,
+        weightGrams: v.weightGrams,
+        consumptionClassification: v.consumptionClassification as 'food' | 'non-food' | 'caution',
+        deliveryClass: v.deliveryClass,
+      };
+      return {
+        productId: v.productId,
+        productName: v.productName,
+        unitPriceCents: v.unitPriceCents,
+        quantity: v.quantity,
+        lineTotalCents: v.lineTotalCents,
+        variantSnapshot,
+      };
+    });
 
     const orderId = dependencies.orders.create({
       customerName: quote.customer.name,
@@ -65,39 +47,31 @@ export function finalizeAuthorizedCheckout(
       totalCents: quote.totalCents,
       userId: quote.userId,
       items: orderItems,
-      mixItems: isV5(quote) ? quote.orderMixSnapshots : quote.version === 1 ? [] : quote.mixLines,
-      deliveryMode: isV5(quote) ? quote.deliverySummary.mode : undefined,
-      deliveryChargeCents: isV5(quote) ? quote.deliverySummary.chargeCents : undefined,
-      deliveryWeightGrams: isV5(quote) ? quote.deliverySummary.weightGrams : undefined,
+      deliveryMode: quote.deliverySummary.mode,
+      deliveryChargeCents: quote.deliverySummary.chargeCents,
+      deliveryWeightGrams: quote.deliverySummary.weightGrams,
       createdAt,
     });
 
     const order = dependencies.orders.findById(orderId);
     if (!order) throw new Error('Created order could not be hydrated');
 
-    const hasAllocations =
-      isV4(quote) || isV5(quote) || (quote.version !== 1 && quote.mixLines.length > 0);
-    if (hasAllocations) {
-      dependencies.inventory.commitReservation({
-        paymentIdempotencyKey: idempotencyKey,
-        orderId,
-        ordinaryLines:
-          isV4(quote) || isV5(quote)
-            ? order.items.map((line) => {
-                const variantId =
-                  line.variantSnapshot?.variantId ??
-                  dependencies.products.findDefaultVariant(Number(line.productId))?.id ??
-                  0;
-                return {
-                  orderLineItemId: Number(line.lineId),
-                  variantId,
-                  quantity: line.quantity,
-                };
-              })
-            : [],
-        occurredAt: createdAt,
-      });
-    }
+    dependencies.inventory.commitReservation({
+      paymentIdempotencyKey: idempotencyKey,
+      orderId,
+      ordinaryLines: order.items.map((line) => {
+        const variantId =
+          line.variantSnapshot?.variantId ??
+          dependencies.products.findDefaultVariant(Number(line.productId))?.id ??
+          0;
+        return {
+          orderLineItemId: Number(line.lineId),
+          variantId,
+          quantity: line.quantity,
+        };
+      }),
+      occurredAt: createdAt,
+    });
 
     if (quote.promoCode)
       dependencies.promos.commitReservation({ paymentIdempotencyKey: idempotencyKey, orderId });
@@ -105,7 +79,7 @@ export function finalizeAuthorizedCheckout(
       recipient: quote.customer.email,
       subject: `QArefully Powder Co. — order #${orderId} confirmed`,
       body: `Your QArefully Powder Co. order #${orderId} has been recorded. ${
-        isV5(quote) && quote.deliverySummary.mode === 'freight'
+        quote.deliverySummary.mode === 'freight'
           ? `Freight delivery: $${quote.deliverySummary.chargeCents / 100}. `
           : ''
       }Total: $${quote.totalCents / 100}. This was a simulated payment; no card was charged.`,
@@ -135,14 +109,7 @@ export function finalizeAuthorizedCheckout(
       context: auditContext,
       orderId,
       totalCents: quote.totalCents,
-      itemCount: isV5(quote)
-        ? quote.variantLines.reduce((total, item) => total + item.quantity, 0)
-        : quote.lines.reduce((total, item) => total + item.quantity, 0),
-      mixItemCount: isV5(quote)
-        ? quote.orderMixSnapshots.reduce((total, item) => total + item.quantity, 0)
-        : quote.version === 1
-          ? 0
-          : quote.mixLines.reduce((total, item) => total + item.quantity, 0),
+      itemCount: quote.variantLines.reduce((total, item) => total + item.quantity, 0),
     });
     dependencies.audit.append({
       action: 'payment.succeeded',

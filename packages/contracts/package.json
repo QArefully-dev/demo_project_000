@@ -50,10 +50,6 @@
       "types": "./dist/mailbox.d.ts",
       "import": "./dist/mailbox.js"
     },
-    "./powderizer": {
-      "types": "./dist/powderizer.d.ts",
-      "import": "./dist/powderizer.js"
-    },
     "./audit": {
       "types": "./dist/audit.d.ts",
       "import": "./dist/audit.js"
@@ -77,10 +73,6 @@
     "./delivery": {
       "types": "./dist/delivery.d.ts",
       "import": "./dist/delivery.js"
-    },
-    "./customPowder": {
-      "types": "./dist/customPowder.d.ts",
-      "import": "./dist/customPowder.js"
     }
   },
   "dependencies": {

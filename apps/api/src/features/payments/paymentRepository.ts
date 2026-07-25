@@ -4,12 +4,7 @@ import { parsePersistedCheckoutQuote as parseContractPersistedCheckoutQuote } fr
 import type { PersistedCheckoutQuote } from '@shop/contracts/payments';
 import type { ValidCard } from './cardValidation.js';
 
-export type {
-  PersistedCheckoutQuote,
-  PersistedCheckoutQuoteV1,
-  PersistedCheckoutQuoteV2,
-  PersistedCheckoutQuoteV3,
-} from '@shop/contracts/payments';
+export type { PersistedCheckoutQuote, PersistedCheckoutQuoteV6 } from '@shop/contracts/payments';
 
 export type IntentPaymentStatus =
   | 'prepared'

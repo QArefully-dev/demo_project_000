@@ -26,8 +26,6 @@ function product(id: number, overrides: Partial<CustomerProductRow> = {}): Custo
     slug: `product-${id}`,
     compare_at_price_cents: null,
     sales_count: 0,
-    mixable: 0,
-    mix_unit_grams: null,
     active: 1,
     created_at: '2026-01-01T00:00:00.000Z',
     tags: [],

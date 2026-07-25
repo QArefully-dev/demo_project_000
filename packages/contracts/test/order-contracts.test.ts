@@ -32,7 +32,6 @@ const order = {
       backorderedQuantity: 0,
     },
   ],
-  mixItems: [],
   subtotalCents: 2400,
   discountCents: 0,
   totalCents: 2400,
@@ -45,7 +44,7 @@ const order = {
       status: 'packed',
       trackingReference: 'SIM-001',
       version: 0,
-      lines: [{ lineKind: 'product', lineId: '11', quantity: 2 }],
+      lines: [{ lineId: '11', quantity: 2 }],
       createdAt: occurredAt,
       updatedAt: occurredAt,
     },
@@ -77,7 +76,7 @@ void test('order detail accepts lifecycle and split-shipment line allocation dat
           id: '12',
           shipmentNumber: 2,
           trackingReference: null,
-          lines: [{ lineKind: 'product', lineId: '11', quantity: 1 }],
+          lines: [{ lineId: '11', quantity: 1 }],
         },
       ],
     }),
@@ -106,7 +105,7 @@ void test('lifecycle mutation payloads enforce UUID keys, bounds, and allowed tr
       shipments: [
         {
           trackingReference: 'SIM-002',
-          lines: [{ lineKind: 'product', lineId: '11', quantity: 2 }],
+          lines: [{ lineId: '11', quantity: 2 }],
         },
       ],
     }),
@@ -116,7 +115,7 @@ void test('lifecycle mutation payloads enforce UUID keys, bounds, and allowed tr
     Value.Check(PackOrderBody, {
       version: 0,
       idempotencyKey: uuid,
-      shipments: [{ lines: [{ lineKind: 'product', lineId: '11', quantity: 0 }] }],
+      shipments: [{ lines: [{ lineId: '11', quantity: 0 }] }],
     }),
     false,
   );
@@ -124,7 +123,7 @@ void test('lifecycle mutation payloads enforce UUID keys, bounds, and allowed tr
     Value.Check(PackOrderBody, {
       version: 0,
       idempotencyKey: uuid,
-      shipments: [{ lines: [{ lineId: '11', quantity: 1 }] }],
+      shipments: [{ lines: [{ lineId: '11', quantity: 1, lineKind: 'product' }] }],
     }),
     false,
   );
