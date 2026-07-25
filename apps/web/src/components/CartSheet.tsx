@@ -131,6 +131,7 @@ export function CartSheet() {
             <Button
               className="w-full"
               variant="outline"
+              nativeButton={false}
               render={<Link to="/cart" onClick={() => setOpen(false)} />}
             >
               Review order

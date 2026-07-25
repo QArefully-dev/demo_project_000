@@ -63,7 +63,9 @@ export function OrderConfirmationPage() {
       </div>
       <OrderDetailView order={order} />
       <div className="mt-6 text-center">
-        <Button render={<Link to="/catalog" />}>Shop more materials</Button>
+        <Button nativeButton={false} render={<Link to="/catalog" />}>
+          Shop more materials
+        </Button>
       </div>
     </div>
   );

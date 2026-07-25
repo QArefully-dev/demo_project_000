@@ -66,7 +66,7 @@ export function OrderHistoryPage() {
           <CardContent className="py-12 text-center">
             <p className="font-medium">No orders yet</p>
             <p className="mt-1 text-sm text-muted-foreground">Completed orders will appear here.</p>
-            <Button className="mt-4" render={<Link to="/catalog" />}>
+            <Button className="mt-4" nativeButton={false} render={<Link to="/catalog" />}>
               Browse materials
             </Button>
           </CardContent>

@@ -90,22 +90,6 @@ export default tseslint.config(
       ],
     },
   },
-  // Legacy untouched baseline during materials-exchange rebrand:
-  // apps/web/src/features/powderizer/PowderizerHistoryPage.test.tsx, apps/web/src/features/powderizer/PowderizerSummary.tsx.
-  {
-    files: ['apps/web/src/features/powderizer/PowderizerHistoryPage.test.tsx'],
-    rules: {
-      '@typescript-eslint/no-unsafe-return': 'off',
-      '@typescript-eslint/no-unsafe-assignment': 'off',
-      '@typescript-eslint/no-unsafe-member-access': 'off',
-    },
-  },
-  {
-    files: ['apps/web/src/features/powderizer/PowderizerSummary.tsx'],
-    rules: {
-      '@typescript-eslint/no-unused-vars': 'off',
-    },
-  },
   {
     ignores: ['**/dist/**', '**/node_modules/**', '**/*.config.*', '.claude/skills/**'],
   },

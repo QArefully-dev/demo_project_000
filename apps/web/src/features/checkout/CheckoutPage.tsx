@@ -40,7 +40,9 @@ export function CheckoutPage() {
           </p>
         )}
         <p className="text-muted-foreground">Your order is empty</p>
-        <Button render={<Link to="/catalog" />}>Browse materials</Button>
+        <Button nativeButton={false} render={<Link to="/catalog" />}>
+          Browse materials
+        </Button>
       </div>
     );
   }

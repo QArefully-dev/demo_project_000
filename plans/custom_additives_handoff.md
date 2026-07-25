@@ -12,17 +12,13 @@ Buyer picks base lot -> adds ingredients at ratios -> one configured cart line.
 Ingredients displace base material; line weight fixed by sack count.
 Value proposition: spec the material. NOT "order small" (that was retired item 11).
 
-## Item 11 supersession
+## Item 11 completion
 
-Item 11 (`Custom Small Order retirement`) decision stands and hardens: delete all `powderizer` code.
-No salvage. Mixing-group compat rule rewritten greenfield against new model, not lifted from `powderMixRules.ts`.
+Item 11 complete. Retired mixing code, transport, routes, help, persistence, and generated output are physically deleted by migration `021`.
+No salvage. Mixing-group compatibility is greenfield against the new model.
 
-Delete per item 11 list -> `apps/api/src/features/powderizer/**`, `apps/api/test/powderizer/**`, routes `/api/powderizer/*` + `/api/custom-powder/*`, contracts `powderizer` subpath, `apps/web/src/features/customSmallOrder/`, web routes `/custom-powder` + `/powderizer`, `PowderMixCartLineItem`, help article/slug `custom-powder`.
-
-Amendments to item 11 text:
-- CSS: `powderizer-nav-link` colours are KEPT and reused by Custom Blend nav entry -> rename, do not delete. Rest of `powderizer-*` CSS still deleted.
-- Nav slot: freed slot is consumed by Custom Blend, NOT by item 12 (Buy Again). Item 11 line "frees one nav slot -> consumed by 12" and item 12 text both need correcting.
-- Preserve `powder_mix*` tables + `demand_kind = 'powder_mix'` rows by ordered migration, never drop (unchanged).
+- CSS: `.custom-blend-nav-link` tokens and keyframes are retained for Custom Blend.
+- Nav slot: retired entry's slot is reserved for Custom Blend, not item 12 (Buy Again).
 
 Custom Blend is a new high-level-plan item (suggest item 16).
 
@@ -77,7 +73,7 @@ Cart / checkout / order display:
 Packaging artwork:
 - single fixed custom-spec livery for every blend (industrial: charcoal ground, spec band, batch marking). Not buyer-chosen, not composition-derived
 - vessel SHAPE still resolved by category as today (kraft sack, food bag, woven PP sack, HDPE keg)
-- deliberate contrast with retired `powderMixBagScheme.ts` 5 buyer-selected neon gradients -> same "special scheme for blended items" idea, professional execution
+- deliberate contrast with retired buyer-selected neon gradients -> same special-scheme idea, professional execution
 
 Cart editing:
 - blend spec IS editable after add -> edit action on line reopens configurator preloaded, save replaces line
@@ -96,7 +92,7 @@ Returns:
 - promo item-count: blend line sacks count toward `SAVE10` five-item gate as normal sacks (assume yes; confirm — course behavior is protected)
 - price staleness / requote behavior for a configured line held in cart across a price move
 - internal feature/directory name: match customer-facing `Custom Blend`, or keep `Custom Ingredients`. Note: repo just deleted a feature whose internal name diverged from its customer name
-- replacement help article for deleted `custom-powder` slug
+- Custom Blend help article
 
 ## Deferred to planner — technical, user declined to decide
 
@@ -113,13 +109,10 @@ Ingredient allowlist storage. Suggestion only:
 ## Code facts verified during session
 
 - `cart_line_items` currently `UNIQUE (cart_id, variant_id)`; cart addresses lines by variant id, not line id
-- `seed.ts:252` hardcodes `const isMixable = true` for all 100 products -> `products.mixable` carries no information
-- `products.mixable` + `products.mix_unit_grams` become fully dead once powderizer goes -> columns, not rows, so retire-not-delete does not apply; drop them
-- latest migration is `020` -> Custom Blend lands at `021`
+- latest migration is `021`; Custom Blend requires a new migration after it
 - catalog already contains every named example ingredient -> `Silica Sand`, `Portland Cement`, `Hydrated Lime`, `Dry Pigment - Iron Oxide Red`, `Whey Protein Isolate`, `Pea Protein Isolate`
 - Baking & Pantry lots are ingredient-shaped (`Powdered Sugar`, `Cocoa Powder`, `Vital Wheat Gluten`, `Cornstarch`, `Instant Yeast`)
 - Drinks (15 finished mixes) and Household & Cleaning (15 finished cleaner powders) have NO same-category ingredients -> reason cross-category eligibility was required
-- `/custom-powder` is linked from `CheckoutPage.tsx` and `PowderMixCartLineItem.tsx`, plus help slug + faq article -> all removed with item 11
 
 ## QA surface
 
@@ -133,15 +126,15 @@ Ingredient allowlist storage. Suggestion only:
 - blend line excluded from returns while stock lines in same order remain eligible
 - edit blend in cart -> spec replaced, quantity preserved
 - base lot retired (`active = 0`) while blend held in cart
-- historical `powder_mix` order rows still parse after migration `021`
+- fresh reset reaches migration `021` with no retired mixing persistence
 
 ## Constraints carried in
 
 - backend owns money, stock, ratio validation. Money in integer minor units
 - must read from UI alone, no explanatory copy -> rule that killed item 11
-- historical order snapshots keep parsing; retire rows, never delete (migration `020` pattern)
+- persisted checkout quote remains V6; no legacy quote parser path
 - deterministic seed/reset; no new dependency without justification
-- legacy identifier freeze applies only where load-bearing -> retired `powder_mix*` tables and `demand_kind = 'powder_mix'` rows. New feature takes new honest names
+- use new, feature-specific identifiers; do not restore retired names
 
 ## Verification
 

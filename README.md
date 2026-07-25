@@ -99,17 +99,6 @@ Variant examples: `Whey Protein Isolate — 1 kg (SKU: SN-WHEY-1000)`, `Cement M
 
 Most variants ship as standard parcel. Heavy variants or orders exceeding a combined weight threshold are classified as freight with a simulated freight charge applied at checkout. Cart and checkout display parcel or freight labels per item.
 
-### Custom Powder
-
-The Custom Powder feature (canonical route `/custom-powder`, legacy `/powderizer` redirect preserved) lets you blend compatible catalogue ingredients into a custom mix:
-
-- **Mixing groups**: Food-grade, Cleaning, Garden treatment, Cementitious materials, Casting materials, Pigments, Theatrical effects, Absorbents
-- **Compatibility**: products sharing a compatible mixing group can be blended; cross-category mixing is allowed when groups match (e.g. protein with matcha via Food-grade)
-- **Blend building**: select ingredients, assign percentages totalling 100%, choose bag size, fineness, colour scheme, and optional label
-- **Featured blend**: a starting configuration shown at the top of the page
-- **Safety**: server-derived usage label always applies; any non-food ingredient makes the entire blend "Not for consumption"
-- **Returns**: Custom Powder blends are excluded from the returns workflow
-
 ### User Credentials
 
 | Email               | Password      | Role     |

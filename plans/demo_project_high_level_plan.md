@@ -73,9 +73,8 @@ Avoid visible platform complexity:
 - implemented customer journey: composed product detail, comparison entry points, help and policy center
 - implemented packaging artwork: web-side resolver on category + facts -> food bag, stitched kraft sack, woven PP sack, rigid HDPE keg; deterministic per-category colour schemes and pigment accents; `/bag-designs` fixture page
 - implemented delivery: freight-only seeded lots with simulated freight charge at checkout; `deliveryClass` enum retains `parcel` unused
-- implemented integrity: ordered migrations through `020` (legacy `sort_order < 1` variants retired, never deleted), append-only audit ledger, sanitized admin audit reads
+- implemented integrity: ordered migrations through `021` (`sort_order < 1` variants retired in `020`; obsolete Custom Small Order schema physically removed in `021`), append-only audit ledger, sanitized admin audit reads
 - seed: 100 deterministic products across 6 categories (Sports Nutrition 20, Baking & Pantry 20, Drinks 15, Household & Cleaning 15, Garden & Outdoors 15, Trade & Creative Materials 15), plus users, promotions, favourites, catalog metadata, curated bundles, and inventory/backorder scenarios
-- placeholder: `Custom Small Order` (`/custom-powder`) renders WIP notice; builder UI deleted, `powderizer` backend/contracts/tables intact and untouched -> scheduled for full retirement, item 11; its nav slot and colours pass to `Custom Blend`, item 16
 - tests: focused unit, contract, route, SQLite integration, React integration, and accessibility coverage; broad E2E coverage reserved for course
 - completed expansion records, all under `plans/old/`: `powder_shop_catalog_expansion_plan.md`, `inventory_coding_plan.md`, `returns_and_refunds_coding_plan.md`, `order_history_and_lifecycle_coding_plan.md`, `review_depth_coding_plan.md`, `materials_exchange_gap_closure_coding_plan.md`, `catalog_bag_colour_schemes_and_pigments_coding_plan.md`, `heavy_duty_sack_prototypes.html`
 
@@ -98,7 +97,7 @@ Avoid visible platform complexity:
 
 Grow through depth behind familiar store actions. Prefer modular monolith until distributed behavior serves named demo.
 
-Domain shape, as built: domains are directories under `apps/api/src/features/` (`catalog`, `pricing`, `promos`, `inventory`, `checkout`, `orders`, `payments`, `delivery`, `returns`, `reviews`, `auth`, `audit`, `cart`, `bundles`, `favourites`, `mailbox`, `passwordReset`, `powderizer`). Workspace packages stay limited to `contracts` (transport) and `catalog` (canonical static content). Promote a domain to its own workspace package only when a second consumer needs it; do not pre-split.
+Domain shape, as built: domains are directories under `apps/api/src/features/` (`catalog`, `pricing`, `promos`, `inventory`, `checkout`, `orders`, `payments`, `delivery`, `returns`, `reviews`, `auth`, `audit`, `cart`, `bundles`, `favourites`, `mailbox`, `passwordReset`). Workspace packages stay limited to `contracts` (transport) and `catalog` (canonical static content). Promote a domain to its own workspace package only when a second consumer needs it; do not pre-split.
 
 Each domain may contain:
 
@@ -154,16 +153,11 @@ Precursor B2B rebrand pass: COMPLETE. Brand/copy, sack/pallet unit model, `£/to
     - behavior: region-aware availability, order validation, seeded scenarios, and deterministic time-zone boundaries
     - architecture: shared domain core -> explicit region config -> localized API and UI behavior
     - scope: localisation-ready content and boundaries only in this baseline; translation and multi-currency belong to a dedicated future plan
-11. Custom Small Order retirement: future
-    - decision 2026-07-25: RETIRE. Rebuild rejected, decision closed, do not reopen
-    - reason: storefront MOQ is 4 sacks (100 kg) per line and `TIER_LADDER` starts at 1 t / 0% -> sub-pallet ordering is already the default path; a feature whose value is "order small" is redundant. Full-pallet MOQ + mixed-pallet/pallet-fit alternatives rejected as over-engineered -> shop must read without explanation for a worldwide QA audience
-    - legacy backend unusable regardless: `powderMixRules.ts` bag sizes 250/500/1000 g plus packaging fee -> consumer scale, irreconcilable with the 25 kg sack / `£/tonne` model
-    - remaining, web: delete `features/customSmallOrder/`, routes `/custom-powder` + `/powderizer`, `customPowderItem` nav entry, `PowderMixCartLineItem`, `powderizer-*` CSS, help article/slug `custom-powder`
-    - remaining, API: delete `apps/api/src/features/powderizer/**`, `apps/api/test/powderizer/**`, routes `/api/powderizer/*` + `/api/custom-powder/*`, contracts `powderizer` subpath
-    - constraint: historical order lines reference mix rows -> retire `powder_mix*` tables and `demand_kind = 'powder_mix'` by ordered migration preserving data, never drop. Same retire-not-delete pattern as migration `020`
-    - amendment 2026-07-25: no salvage. Delete all `powderizer` code; 16 rebuilds mixing-group compat greenfield
-    - amendment 2026-07-25: `powderizer-nav-link` CSS colours are reused by 16 -> rename, do not delete. Rest of `powderizer-*` CSS still deleted
-    - frees one nav slot -> consumed by 16, not 12
+11. Custom Small Order retirement: completed
+    - decision closed: consumer-scale custom ordering conflicted with the 25 kg sack / `£/tonne` model and was redundant beside the 4-sack MOQ
+    - removed end-to-end: UI, routes, API, contracts, tests, help content, and obsolete styling
+    - migration `021` physically removes obsolete schema. Earlier migrations remain immutable history; local SQLite is disposable
+    - frees one nav slot for 16; retained `.custom-blend-nav-link` CSS is reserved for its greenfield UI
 12. Buy Again / reorder: future
     - one action on any past order -> re-add its lines to cart. Universally recognised, no new domain concept, no explanatory copy
     - reuses orders + cart + inventory + pricing; adds no new mental model
@@ -184,7 +178,7 @@ Precursor B2B rebrand pass: COMPLETE. Brand/copy, sack/pallet unit model, `£/to
 16. Custom Blend: future
     - decision 2026-07-25: APPROVED. Buyer picks base lot -> adds ingredients at ratios -> one configured cart line. Value proposition = "spec the material", not "order small"
     - distinct from retired 11: anchored to an existing base lot, sold in the 25 kg sack / `£/tonne` unit model. Item 11 rejection reasons (redundant vs MOQ 4 sacks; consumer bag scale) do not transfer
-    - depends on 11: greenfield build, reuses no `powderizer` code. Consumes the nav slot 11 frees
+    - 11 complete -> greenfield build. Reuses no retired code; consumes its freed nav slot and preserved `.custom-blend-nav-link` CSS. Nav entry remains absent until this item lands
     - ingredients are references to real catalog lots, drawn from any category, gated by `mixingGroup`. Ingredients displace base material; line weight stays fixed by sack count
     - rules: ingredients total <= 50%, max 4, each >= 5%, whole percent steps; base is the remainder; blend inherits base lot MOQ
     - pricing: base `£/tonne` for full line weight plus flat blending charge per line, independent of contents. Ingredient cost not passed through; tier applies to material weight, fee sits outside -> no compounding
@@ -206,7 +200,7 @@ Recommended order:
 3. Pricing and promotions (5). Riskiest money path (stacking, rounding). Run after checkout money path is settled.
 4. Then Async behavior (8), Country localisation (10).
 
-Custom Small Order retirement (11) is independent of the money-path chain -> schedule any time; blocks 16 by way of both the deleted code and the freed nav slot. 11 -> 16 is a hard sequence, not parallel.
+Custom Small Order retirement (11) is complete. Its freed nav slot and preserved Custom Blend CSS are reserved for 16.
 
 Custom Blend (16) touches line pricing (blending fee) and the cart line key -> do not run in parallel with 4 or 5. Schedule after 5, or before 4 if 16 lands first and the money path is left settled.
 
@@ -285,7 +279,7 @@ Keep suite focused, stable, fast, and obvious. Test only critical happy paths, i
 
 Target: 150k+ meaningful authored LOC. Report production and test LOC separately.
 
-Measured 2026-07-25 (`apps/**` + `packages/**`, `*.ts|*.tsx|*.css|*.sql`, excluding `node_modules`, `dist`, `coverage`): production ~38.3k across 303 files; test ~22.9k across 116 files; total ~61k. Roughly 40% of target -> expansion items 4-15 carry the remaining growth.
+Measured 2026-07-25 (`apps/**` + `packages/**`, `*.ts|*.tsx|*.css|*.sql`, excluding `node_modules`, `dist`, `coverage`): production ~35.6k across 291 files; test ~20.7k across 110 files; total ~56.3k. Roughly 38% of target -> expansion items 4-10 and 12-16 carry remaining growth.
 
 Suggested allocation:
 

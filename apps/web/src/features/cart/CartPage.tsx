@@ -50,7 +50,7 @@ export function CartPage() {
       {!cart || cart.totalItems === 0 ? (
         <div className="py-12 text-center space-y-4">
           <p className="text-muted-foreground">Your order is empty</p>
-          <Button variant="outline" render={<Link to="/" />}>
+          <Button variant="outline" nativeButton={false} render={<Link to="/" />}>
             Browse materials
           </Button>
         </div>
@@ -103,10 +103,15 @@ export function CartPage() {
             )}
           </div>
           <div className="flex gap-3 pt-4">
-            <Button variant="outline" className="flex-1" render={<Link to="/" />}>
+            <Button
+              variant="outline"
+              className="flex-1"
+              nativeButton={false}
+              render={<Link to="/" />}
+            >
               Continue sourcing
             </Button>
-            <Button className="flex-1" render={<Link to="/checkout" />}>
+            <Button className="flex-1" nativeButton={false} render={<Link to="/checkout" />}>
               Continue to checkout
             </Button>
           </div>

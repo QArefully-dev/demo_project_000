@@ -29,7 +29,7 @@ Read task-relevant plans only. Ignore old status, evidence, handoff, completed o
 - Support Windows and macOS; no Docker, cloud service, account, API key, or post-install network.
 - Keep one install flow, one dev command, deterministic seed/reset.
 - Keep simulated integrations local and controllable; retain production boundaries.
-- Local SQLite is disposable. No stored row has preservation value; recovery from any migration problem is `rm data/shop.db` -> `npm run reset`. This licenses destructive migrations, not lax ones — see Architecture and Change Rules.
+- Local SQLite is disposable. No stored row has preservation value; recovery from any migration problem is `rm apps/api/data/shop.db` -> `npm run reset`. This licenses destructive migrations, not lax ones — see Architecture and Change Rules.
 
 ## Architecture
 
@@ -47,6 +47,7 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
 - Backend: thin routes -> workflow services -> repositories owning SQL/row types. One transport mapper per record type.
 - Composition root owns database, clock, IDs, config, adapters. Imports perform no listen, seed, migration, or persistent-resource opening.
 - Use ordered versioned migrations, append-only, forward-only; surface unknown migration errors. Never edit or renumber a landed migration; undo forward with a new one.
+- Migration runner (`apps/api/src/db/migrate.ts`) suspends foreign keys around migration loop and runs `PRAGMA foreign_key_check` per migration. Table rebuilds use runner; never toggle `foreign_keys` inside migration transaction.
 - Data preservation is a per-task decision, not a default. A migration may drop tables, columns, and rows when the plan says the feature is gone; it must still be correct, transactional, idempotent, and FK-clean (`PRAGMA foreign_key_check`, indexes recreated). Retire-not-delete stays the default for catalog rows referenced by orders (variant `sortOrder`, migration `020`).
 - Transaction owner covers full business invariant.
 
@@ -68,16 +69,12 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
   - `test/`: SQLite and `app.inject()` integration tests grouped by domain
 - `packages/contracts/`: TypeBox transport schemas/types and public subpath exports
 - `packages/catalog/`: canonical product/category/packaging content plus validation
-- `data/`: ignored local SQLite runtime files; default `data/shop.db`
-- `plans/`: `demo_project_high_level_plan.md` = current direction; `powderizer_removal_coding_plan.md` = item 11, execution-ready; `custom_additives_handoff.md` = item 16 product input, blocked on item 11; `plans/old/` completed/historical context only
+- `apps/api/data/`: ignored local SQLite runtime files; default `apps/api/data/shop.db`
+- `plans/`: `demo_project_high_level_plan.md` = current direction; `custom_additives_handoff.md` = item 16 product input; `plans/old/powderizer_removal_coding_plan.md` = completed item 11; `plans/old/` = completed/historical context
 - `.claude/skills/`: repo-local agent skills; load only when task matches
 - root configs: workspaces/scripts in `package.json`; shared TypeScript, ESLint, Prettier configuration
 
 Dependency direction: `packages/contracts` -> `apps/api` + `apps/web`; `packages/catalog` -> `apps/api`; `apps/api` -> HTTP -> `apps/web`.
-
-Legacy identifiers, intentional, do not rename opportunistically: `powderizer` (API feature, contracts subpath, routes `/api/powderizer/*` + `/api/custom-powder/*`, tables, `demand_kind = 'powder_mix'`), web route `/custom-powder`, help slug `custom-powder`, `powderizer-*` CSS, `PowderMixCartLineItem`. Customer-facing name is `Custom Small Order` -> currently a WIP placeholder page; builder UI deleted, backend intact.
-
-Powderizer is scheduled for full physical deletion by `plans/powderizer_removal_coding_plan.md` (high-level plan item 11) -> do not rename, extend, or build on it; delete it only under that plan. Delete this paragraph and the identifier list above when that plan lands.
 
 ## Commands
 
