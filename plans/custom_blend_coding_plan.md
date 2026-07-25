@@ -1,6 +1,6 @@
 # Custom Blend Coding Plan
 
-Status: proposed
+Status: in progress; G2 accepted; G3+ deferred by user
 Source: `plans/custom_additives_handoff.md` -> `Custom Blend — Planner Handoff`
 High-level source: `plans/demo_project_high_level_plan.md` -> `16. Custom Blend`
 Repository baseline: `materials_exchange_refactor` at `1b34184b3388a9659071d42d52673b777b2e2711`, inspected 2026-07-25
@@ -16,6 +16,25 @@ Repository baseline: `materials_exchange_refactor` at `1b34184b3388a9659071d42d5
 - blocker: relevant uncommitted or untracked implementation inputs absent from source `HEAD` -> stop for commit or baseline choice
 - integration: no merge, rebase, cherry-pick, copy-back, branch removal, or worktree cleanup
 - completion reply: absolute worktree path + implementation branch + source branch + base revision; state user owns merge
+
+## Execution Checkpoint — 2026-07-25
+
+- stop point: `G2` accepted; do not start `P6`-`P10` without user direction
+- source checkout: `C:\Users\iwano\Desktop\repos\demo_project_000`
+- source branch/revision: `materials_exchange_refactor` at `3c9034dc81838f22ca462e640552fb14a08781d3`
+- implementation worktree: `C:\Users\iwano\Desktop\repos\demo_project_000-worktrees\custom-blend-20260725`
+- implementation branch/base: `codex/custom-blend-20260725` at `3c9034dc81838f22ca462e640552fb14a08781d3`
+- implementation commit: `c6bee704f42333e0013fc0a3ab95e56fdce20fbd`
+- remote/upstream: `origin/codex/custom-blend-20260725` -> `https://github.com/QArefully/demo_project_000.git`; push completed; implementation worktree clean
+- G0: accepted; Node `v22.23.1`; source/worktree clean-input gates passed
+- G1: accepted after P1-R1, P2-R2, P3-R3
+- G2: accepted after P4-R4, P5-R5
+- evidence: `E-P1-CONTRACTS` 84 tests passed; `E-P2-MIGRATION` 19 passed; `E-P3-RULES` 6 passed; `E-P4-OPTIONS` 3 passed; `E-P5-CART` 12 passed
+- high findings closed: unsafe money/cart identity pairing; options validation serialization; corrupt configured-cart mutation rollback
+- advisory open: `R2-TEST-001` — add direct migration coverage for configured-line uniqueness and valid-JSON/config-key mismatch
+- deferred integration: API typecheck remains blocked by P7-owned `orderRepository` mapping of P1-required `blendingFeeCents` and `discountableTotalCents`; no G3+ packet started
+- resumption prerequisite: this source-checkout plan checkpoint is uncommitted; commit it or explicitly select it as the next runtime baseline before another worktree operation
+- merge: user owns merge; retain branch/worktree
 
 ## Objective
 
