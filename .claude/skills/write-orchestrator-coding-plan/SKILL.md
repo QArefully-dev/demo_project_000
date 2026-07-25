@@ -235,17 +235,16 @@ Schedule tests at deliberate points:
 
 Reviewer default: inspect exact assigned change set, invariants, contracts, and supplied relevant evidence without writes or test runs. Reviewer runs command only when assignment names command or evidence is missing/stale and verdict cannot finish through inspection. Never rerun full suite for review confidence alone.
 
-Review gate passes only after `verdict=pass`, or after every requested finding closes through worker fix plus targeted verification. Downstream dependency launch waits for gate. Do not require reviewer return after fix unless review target or acceptance criteria changed materially; completion/convergence review covers integrated result.
+Review gate passes after `verdict=pass`, or every requested finding closes through fresh-worker fix plus targeted verification. Downstream dependency launch waits for gate. Never re-review worker fix for code-reviewer finding.
 
-Issue flow: `stable reviewer finding ID -> worker-targeted fix directive with finding ID -> worker targeted verification -> orchestrator records closure change set/evidence -> next task`. Reviewer-targeted `fix` corrects report or protocol only. Do not send implementation fix back to originating reviewer. Final convergence or completion gate catches remaining regression; avoid reviewer-worker-reviewer loops.
+Issue flow: `stable reviewer finding ID -> fresh worker assignment + fix directive -> targeted verification -> orchestrator records closure -> next task`. Reviewer-targeted `fix` corrects report or protocol only. Never return implementation fix to reviewer.
 
 Fix worker selection:
 
-- default: route finding to originating implementation worker with `action=fix` directive referencing current packet and assignment revision. Reviewer supplies independent perspective; originating worker retains design and invariant context. Do not launch replacement solely for fresh context.
-- fresh replacement worker: use when finding exposes flawed architecture or security model, fix crosses packet ownership, originating worker fix attempt fails, or originating worker unavailable.
-- fresh replacement bootstrap: reissue full `worker_assignment_v1` with incremented `assignment_revision`, then send `action=fix` directive containing stable finding IDs, relevant finding facts, current change set, affected paths, and verification delta. Never send directive-only to context lacking active assignment.
-- context projection: current assignment + fix directive + relevant checkpoint and evidence only. Exclude full reviewer report, transcript, closed findings, global ledger, and unrelated packet state.
-- closure: worker freshness does not replace targeted verification or final convergence/completion gate.
+- every code-reviewer finding: assign to fresh worker
+- bootstrap: full `worker_assignment_v1` with incremented `assignment_revision` -> `action=fix` directive with stable finding IDs, finding facts, current change set, affected paths, verification delta
+- context: assignment + fix directive + relevant checkpoint/evidence only; exclude full reviewer report, transcript, closed findings, global ledger, unrelated state
+- closure: fresh worker runs targeted verification; no re-review
 
 ## Output Format
 
@@ -416,9 +415,9 @@ Repeat review assignment for every implementation packet by default. State expli
 6. Validate `G0`; project role-minimum context plus worktree context into assignments.
 7. Launch fresh/minimal worker contexts for `P1 || P2` inside worktree.
 8. Accept each report; update checkpoint/evidence; launch packet reviewer against exact settled change set before downstream consumption.
-9. Route stable findings through worker fix directives; close after targeted evidence. Validate each packet review gate.
+9. Route stable findings to fresh workers; close after targeted evidence. Do not re-review fixes. Validate each packet review gate.
 10. Validate reviewed fan-in `G1`; only then launch `S1` and run fan-in tests once.
-11. Review `S1` as separate integration target; close findings through worker fix plus targeted evidence.
+11. Review `S1` as separate integration target; close findings through fresh-worker fix plus targeted evidence. Do not re-review fixes.
 12. Validate convergence review gate and `G2`; run final suite once after fixes settle.
 13. Leave implementation branch and worktree intact. Reply with absolute worktree path, implementation branch, source branch, and base revision. State user owns merge.
 
@@ -510,7 +509,7 @@ Before saving plan, confirm:
 - runtime creates one dedicated worktree from current source branch `HEAD` before implementation writes
 - every implementation, review, fix, and verification action runs inside recorded worktree
 - source checkout receives no implementation changes and runtime performs no merge-back or worktree cleanup
-- reviewer findings close after worker fix and targeted verification; no return review loop
+- reviewer findings close after fresh-worker fix and targeted verification; no return review loop
 - migrations, contracts, transactions, auth, error paths covered where relevant
 - final integration and regression gate present
 - completion reply reports retained absolute worktree path, implementation branch, source branch, and base revision; user owns merge
