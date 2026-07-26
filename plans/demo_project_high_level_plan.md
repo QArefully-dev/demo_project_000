@@ -1,6 +1,6 @@
 # Demo Project High-Level Plan
 
-Status: current product direction. Last refresh 2026-07-25 @ `2c08ae3` (branch `materials_exchange_refactor`).
+Status: current product direction. Last refresh 2026-07-26 @ `f63e9bf` (branch `materials_exchange_refactor`).
 
 ## Direction Change
 
@@ -10,7 +10,7 @@ Reason: original consumer-shop idea works but B2B bulk trade is more grounded in
 
 Pivot is additive, not rewrite. Reuse catalog/pricing/inventory/checkout/orders foundations. Reframe UI + rules toward trade buyer; retain production boundaries.
 
-Phase status: rebrand pass COMPLETE. Three passes landed and merged -> B2B rebrand, gap closure, catalog colour schemes and pigments. Current phase: expansion per `Future Expansion Order` below.
+Phase status: rebrand pass COMPLETE. Three passes landed and merged -> B2B rebrand, gap closure, catalog colour schemes and pigments. First expansion item after the pivot also landed: Custom Blend (16). Current phase: expansion per `Future Expansion Order` below.
 
 ## Purpose
 
@@ -43,6 +43,7 @@ Extended familiar journeys:
 - search, filter, sort, paginate
 - select variant (SKU, pack/pallet size, weight, delivery class)
 - bulk pricing tiers + minimum order quantity per lot
+- configure a custom blend on a base lot -> one cart line
 - apply promotion or trade discount
 - save trade delivery sites and payment preference metadata
 - track, cancel, or return order
@@ -70,13 +71,15 @@ Avoid visible platform complexity:
 - implemented commerce: auth, catalog, cart, inventory, promotions, checkout, simulated payment, orders, returns and refunds, favourites, account, dev mailbox
 - implemented catalog depth: 100 products across 6 categories, typed specifications and tags, advanced filters and stable sorts, product variants with SKU/price/weight/stock, comparison, similar products, curated bundles, customer reviews with helpfulness and abuse reporting
 - implemented B2B unit and pricing model: 25 kg sack purchase unit, 40 sacks = 1 t pallet, per-variant `moqSacks` floor, qty-break `TIER_LADDER` (1 t 0%, 5 t 5%, 10 t 10%, non-compounding), derived `perTonneCents` for `£/tonne` display; constants owned by `packages/contracts/src/pricing.ts`, rules by `apps/api/src/features/pricing/`
+- implemented Custom Blend: `/custom-blend` configurator -> base lot plus 1-4 catalog-lot ingredients at whole-percent ratios (each 5-50%, total <= 50%, base is remainder), `mixingGroup` compatibility gate, `configKey` blend identity on cart and order lines, flat `CUSTOM_BLEND_FEE_CENTS` per line outside the tier-discountable subtotal, ingredients drawing no inventory, blend lines excluded from returns while cancellation stays unchanged
 - implemented customer journey: composed product detail, comparison entry points, help and policy center
 - implemented packaging artwork: web-side resolver on category + facts -> food bag, stitched kraft sack, woven PP sack, rigid HDPE keg; deterministic per-category colour schemes and pigment accents; `/bag-designs` fixture page
 - implemented delivery: freight-only seeded lots with simulated freight charge at checkout; `deliveryClass` enum retains `parcel` unused
-- implemented integrity: ordered migrations through `021` (`sort_order < 1` variants retired in `020`; obsolete Custom Small Order schema physically removed in `021`), append-only audit ledger, sanitized admin audit reads
-- seed: 100 deterministic products across 6 categories (Sports Nutrition 20, Baking & Pantry 20, Drinks 15, Household & Cleaning 15, Garden & Outdoors 15, Trade & Creative Materials 15), plus users, promotions, favourites, catalog metadata, curated bundles, and inventory/backorder scenarios
+- implemented integrity: ordered migrations through `022` (`sort_order < 1` variants retired in `020`; obsolete Custom Small Order schema physically removed in `021`; custom blend tables plus cart/order line rebuild in `022`), append-only audit ledger, sanitized admin audit reads
+- seed: 100 deterministic products across 6 categories (Sports Nutrition 20, Baking & Pantry 20, Drinks 15, Household & Cleaning 15, Garden & Outdoors 15, Trade & Creative Materials 15), each carrying a nullable `mixingGroup` from a fixed set of eight (`food-grade`, `cleaning`, `garden-treatment`, `cementitious-materials`, `casting-materials`, `pigments`, `theatrical-effects`, `absorbents`) validated in `packages/catalog`, plus users, promotions, favourites, catalog metadata, curated bundles, and inventory/backorder scenarios
 - tests: focused unit, contract, route, SQLite integration, React integration, and accessibility coverage; broad E2E coverage reserved for course
-- completed expansion records, all under `plans/old/`: `powder_shop_catalog_expansion_plan.md`, `inventory_coding_plan.md`, `returns_and_refunds_coding_plan.md`, `order_history_and_lifecycle_coding_plan.md`, `review_depth_coding_plan.md`, `materials_exchange_gap_closure_coding_plan.md`, `catalog_bag_colour_schemes_and_pigments_coding_plan.md`, `heavy_duty_sack_prototypes.html`
+- completed expansion records under `plans/old/`: `powder_shop_catalog_expansion_plan.md`, `inventory_coding_plan.md`, `returns_and_refunds_coding_plan.md`, `order_history_and_lifecycle_coding_plan.md`, `review_depth_coding_plan.md`, `materials_exchange_gap_closure_coding_plan.md`, `catalog_bag_colour_schemes_and_pigments_coding_plan.md`, `powderizer_removal_coding_plan.md`, `heavy_duty_sack_prototypes.html`
+- completed, still at `plans/` root pending archive: `custom_blend_coding_plan.md`, `custom_additives_handoff.md`
 
 ## Hard Constraints
 
@@ -97,7 +100,7 @@ Avoid visible platform complexity:
 
 Grow through depth behind familiar store actions. Prefer modular monolith until distributed behavior serves named demo.
 
-Domain shape, as built: domains are directories under `apps/api/src/features/` (`catalog`, `pricing`, `promos`, `inventory`, `checkout`, `orders`, `payments`, `delivery`, `returns`, `reviews`, `auth`, `audit`, `cart`, `bundles`, `favourites`, `mailbox`, `passwordReset`). Workspace packages stay limited to `contracts` (transport) and `catalog` (canonical static content). Promote a domain to its own workspace package only when a second consumer needs it; do not pre-split.
+Domain shape, as built: domains are directories under `apps/api/src/features/` (`catalog`, `pricing`, `promos`, `inventory`, `checkout`, `orders`, `payments`, `delivery`, `returns`, `reviews`, `auth`, `audit`, `cart`, `bundles`, `favourites`, `mailbox`, `passwordReset`, `customBlend`). Workspace packages stay limited to `contracts` (transport) and `catalog` (canonical static content). Promote a domain to its own workspace package only when a second consumer needs it; do not pre-split.
 
 Each domain may contain:
 
@@ -133,6 +136,7 @@ Precursor B2B rebrand pass: COMPLETE. Brand/copy, sack/pallet unit model, `£/to
 5. Pricing and promotions: partial
    - completed: percentage and fixed discounts, start/end scheduling, item/subtotal gates, global and per-user limits, reservation-safe redemption
    - completed: MOQ + qty-break tier engine replacing flat variant price; later work extends it, does not replace it
+   - completed: discountable subtotal split, so the Custom Blend fee (16) is excluded from promo and tier maths; extend this split, do not bypass it
    - remaining: category offers, stacking (promo on top of tier discount), tier-boundary and MOQ edge-case depth, clearance/spot-priced lot presentation
    - dropped (B2B pivot): gift cards, loyalty points
    - rejected, do not re-add: RFQ/persisted quotes, trade-account net-price tiering, login-to-see-price
@@ -175,19 +179,23 @@ Precursor B2B rebrand pass: COMPLETE. Brand/copy, sack/pallet unit model, `£/to
     - `notify me when available` on out-of-stock lots
     - one-line concept, real async behavior -> first consumer of the local job queue in 8
     - depends on 8; do not build standalone polling
-16. Custom Blend: future
-    - decision 2026-07-25: APPROVED. Buyer picks base lot -> adds ingredients at ratios -> one configured cart line. Value proposition = "spec the material", not "order small"
+16. Custom Blend: completed
+    - decision 2026-07-25 APPROVED, landed 2026-07-26. Buyer picks base lot -> adds ingredients at ratios -> one configured cart line. Value proposition = "spec the material", not "order small"
     - distinct from retired 11: anchored to an existing base lot, sold in the 25 kg sack / `£/tonne` unit model. Item 11 rejection reasons (redundant vs MOQ 4 sacks; consumer bag scale) do not transfer
-    - 11 complete -> greenfield build. Reuses no retired code; consumes its freed nav slot and preserved `.custom-blend-nav-link` CSS. Nav entry remains absent until this item lands
+    - built greenfield after 11. Reuses no retired code; took the freed nav slot and the preserved `.custom-blend-nav-link` treatment, now live on the `Custom Blend` nav entry
     - ingredients are references to real catalog lots, drawn from any category, gated by `mixingGroup`. Ingredients displace base material; line weight stays fixed by sack count
-    - rules: ingredients total <= 50%, max 4, each >= 5%, whole percent steps; base is the remainder; blend inherits base lot MOQ
-    - pricing: base `£/tonne` for full line weight plus flat blending charge per line, independent of contents. Ingredient cost not passed through; tier applies to material weight, fee sits outside -> no compounding
-    - ingredients do not draw inventory (always-available blending stock); base lot draws stock normally
-    - blends are non-returnable, made to order; marked at configure, checkout, and order
-    - QA surface: ratio cap and floor boundaries, mixing-group incompatibility, ingredient lot sold out yet specifiable, MOQ floor on a blend line, tier boundary with non-compounding fee, blend excluded from returns while stock lines stay eligible, base lot retired while blend held in cart
-    - detail: `plans/custom_additives_handoff.md`
+    - rules as built: 1-4 ingredients, each 5-50%, total <= 50%, whole percent steps; base is the remainder; blend inherits base lot MOQ
+    - pricing as built: base `£/tonne` for full line weight plus flat `CUSTOM_BLEND_FEE_CENTS` per line, independent of contents. Ingredient cost not passed through; tier applies to the material subtotal, fee sits outside the discountable subtotal -> no compounding, and promotions never discount the fee
+    - ingredients draw no inventory (always-available blending stock); base lot draws stock normally
+    - blends are non-returnable, made to order; marked at configure, cart, checkout, and order. Cancellation terms unchanged
+    - line identity: canonical ingredient ordering -> hashed `configKey` distinguishes blend lines from stock lines and from each other; shared by web (`lib/cartLineIdentity.ts`) and API
+    - schema: migration `022` adds custom blend tables and rebuilds cart/order line items to carry blend identity and fee
+    - QA surface, live: ratio cap and floor boundaries, mixing-group incompatibility, ingredient lot sold out yet specifiable, MOQ floor on a blend line, tier boundary with non-compounding fee, blend excluded from returns while stock lines stay eligible, base lot retired while blend held in cart
+    - records: `plans/custom_blend_coding_plan.md` (implementation), `plans/custom_additives_handoff.md` (product input)
 
-Items 12-15 replace the retired 11. They compose as one line of work -> order -> save as list -> reorder -> notify. All funnel through the same multi-line cart-add path, so 13-15 are cheap once 12 lands. Together they set up standing/repeat orders under 8 without committing to it now. 16 sits outside that chain and takes the nav slot instead of 12; 12-15 remain reachable from order history, account, and catalog surfaces.
+Items 12-15 replace the retired 11. They compose as one line of work -> order -> save as list -> reorder -> notify. All funnel through the same multi-line cart-add path, so 13-15 are cheap once 12 lands. Together they set up standing/repeat orders under 8 without committing to it now. 16 sat outside that chain and has consumed the nav slot; 12-15 remain reachable from order history, account, and catalog surfaces without new nav entries.
+
+Landed 16 constrains later work: cart and order lines now key on variant plus `configKey`, and line totals separate a discountable material subtotal from a non-discountable blending fee. Items 4, 5, and 12-14 must respect both -> multi-line cart-add paths carry blend identity, and promotion/tier maths applies to the material subtotal only.
 
 ### Sequencing Guidelines
 
@@ -200,9 +208,7 @@ Recommended order:
 3. Pricing and promotions (5). Riskiest money path (stacking, rounding). Run after checkout money path is settled.
 4. Then Async behavior (8), Country localisation (10).
 
-Custom Small Order retirement (11) is complete. Its freed nav slot and preserved Custom Blend CSS are reserved for 16.
-
-Custom Blend (16) touches line pricing (blending fee) and the cart line key -> do not run in parallel with 4 or 5. Schedule after 5, or before 4 if 16 lands first and the money path is left settled.
+Custom Small Order retirement (11) and Custom Blend (16) are both complete. 16 landed before 4 and 5, taking 11's freed nav slot and Custom Blend CSS, and left the money path settled and verified -> the ordering conflict it posed against 4 and 5 is resolved.
 
 Reorder chain (12 -> 13 -> 14) sits outside the money path -> safe before or alongside 4 and 5. Build 12 first; 13 and 14 reuse its multi-line cart-add path. Back-in-stock (15) waits on 8.
 
@@ -210,7 +216,7 @@ Parallelization rules:
 
 - Safe: 7 + 9 concurrently, with the shared user/session lane owned by one side only.
 - Sequential dependency: 7 (delivery-site/address model) -> 4 (saved delivery sites at checkout). Not parallel. Same for 7 (company accounts, approver roles) -> 4 if order-approval thresholds gate checkout.
-- Must not run in parallel: 4 and 5 both mutate the server-side total path (freight charge, tier discounts, MOQ validation, rounding); concurrent edits invite the boundary and rounding bugs flagged in the QA surface. Serialize them.
+- Must not run in parallel: 4 and 5 both mutate the server-side total path (freight charge, tier discounts, MOQ validation, blending-fee exclusion, rounding); concurrent edits invite the boundary and rounding bugs flagged in the QA surface. Serialize them.
 - Defer 10 until 4 and 5 stabilize the money path; it touches currency, availability, and policy across nearly everything.
 
 ## Agentic AI and QA Surface
@@ -222,6 +228,9 @@ High-value scenarios:
 - quantity crosses a qty-break tier boundary mid-cart -> per-unit and `£/tonne` figures must both move
 - MOQ floor rejects a line at exactly one sack below minimum; passes at exactly minimum
 - `perTonneCents` rounding drifts against line total on non-round weights
+- blend ratios sit exactly at a boundary (one ingredient at 50%, four at 5%, total at 51%)
+- promotion or tier discount leaks onto the non-discountable blending fee
+- two cart lines share a base lot but differ by one ingredient percent -> must stay separate `configKey` lines
 - price changes while item remains in cart
 - concurrent purchases compete for final stock
 - duplicate payment submission uses idempotency key
@@ -243,6 +252,7 @@ Unit scope:
 - frontend five-item promo gate
 - money and discount rounding
 - MOQ floor and qty-break tier selection; `perTonneCents` derivation
+- blend ratio validation, canonical `configKey` derivation, and blending-fee exclusion from the discountable subtotal
 - promotion eligibility and discount calculation
 - order transition guards
 - inventory quantity and reservation rules
@@ -279,7 +289,7 @@ Keep suite focused, stable, fast, and obvious. Test only critical happy paths, i
 
 Target: 150k+ meaningful authored LOC. Report production and test LOC separately.
 
-Measured 2026-07-25 (`apps/**` + `packages/**`, `*.ts|*.tsx|*.css|*.sql`, excluding `node_modules`, `dist`, `coverage`): production ~35.6k across 291 files; test ~20.7k across 110 files; total ~56.3k. Roughly 38% of target -> expansion items 4-10 and 12-16 carry remaining growth.
+Measured 2026-07-26 (`apps/**` + `packages/**`, `*.ts|*.tsx|*.css|*.sql`, excluding `node_modules`, `dist`, `coverage`): production ~40.5k across 302 files; test ~26.3k across 121 files; total ~66.8k. Roughly 45% of target -> expansion items 4-10 and 12-15 carry remaining growth.
 
 Suggested allocation:
 
@@ -316,6 +326,8 @@ Current implementation: product media is rendered as deterministic in-app SVG ve
 - stitched kraft sack: Trade & Creative Materials
 
 Five colour schemes per category, distributed deterministically across that category's products. Brand string on every vessel: `QAREFULLY MATERIALS EXCHANGE`. Resolution is web-side only; contract `ProductPackaging` stays unpopulated by the API.
+
+Custom Blend (16) is the one exception to per-category colour resolution: blends print a single fixed charcoal livery with a `CUSTOM BLEND` spec band, reusing the base lot's vessel shape. Deliberate — composition must not be readable from the packaging, so no ingredient, percentage, or mixing group may reach a colour.
 
 Raster pipeline below remains the target shape if stored renditions are ever introduced; it is not currently built:
 
