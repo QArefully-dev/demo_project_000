@@ -34,9 +34,9 @@ export function CustomBlendBanner() {
             <p className="mt-2 text-lg font-semibold tracking-tight">CUSTOM</p>
             <p className="text-lg font-semibold tracking-tight">BLEND</p>
             <div className="mt-4 flex justify-center gap-1.5">
-              <span className="size-2 rounded-full bg-cyan-300" />
-              <span className="size-2 rounded-full bg-fuchsia-300" />
-              <span className="size-2 rounded-full bg-lime-300" />
+              <span className="custom-blend-legend-dot" />
+              <span className="custom-blend-legend-dot" />
+              <span className="custom-blend-legend-dot" />
             </div>
           </div>
           <p className="mt-3 text-center text-[9px] font-semibold tracking-[0.16em] text-background/65 uppercase">

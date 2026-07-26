@@ -64,11 +64,35 @@ export type CustomBlendEvent =
   | { type: 'ingredient-removed'; variantId: number }
   | { type: 'percentage-changed'; variantId: number; percentage: number };
 
-/** Default share for a newly picked ingredient: fill the remaining budget, within bounds. */
-function defaultPercentageFor(state: CustomBlendState): number | null {
+/**
+ * Percentages for the draft after adding `variantId`.
+ *
+ * Two paths, because the first pick alone consumes the whole 50% budget:
+ * - budget left at or above the 5% floor -> the new ingredient takes it (capped at 50%) and every
+ *   existing ingredient keeps its percentage, so manual tuning survives a later pick.
+ * - budget exhausted -> rebalance existing and new evenly across the 50% budget. Without this the
+ *   add silently no-ops and a second ingredient can never be picked.
+ *
+ * Both paths keep the invariants: whole percentages, each 5%..50%, total <= 50%.
+ */
+function ingredientsWithAddition(
+  state: CustomBlendState,
+  variantId: number,
+): CustomBlendDraftIngredient[] {
   const remaining = MAX_INGREDIENT_TOTAL - ingredientTotalPercentage(state);
-  if (remaining < MIN_INGREDIENT_PERCENTAGE) return null;
-  return Math.max(MIN_INGREDIENT_PERCENTAGE, Math.min(MAX_INGREDIENT_PERCENTAGE, remaining));
+  if (remaining >= MIN_INGREDIENT_PERCENTAGE) {
+    return [
+      ...state.ingredients,
+      { variantId, percentage: Math.min(MAX_INGREDIENT_PERCENTAGE, remaining) },
+    ];
+  }
+
+  const variantIds = [...state.ingredients.map((ingredient) => ingredient.variantId), variantId];
+  const balanced = balanceEvenlyPercentages(variantIds);
+  return variantIds.map((id) => ({
+    variantId: id,
+    percentage: balanced.get(id) ?? MIN_INGREDIENT_PERCENTAGE,
+  }));
 }
 
 function clampedPercentageForIngredient(
@@ -128,11 +152,9 @@ export function customBlendReducer(
         };
       }
       if (state.ingredients.length >= MAX_INGREDIENTS) return state;
-      const percentage = defaultPercentageFor(state);
-      if (percentage === null) return state;
       return {
         ...state,
-        ingredients: [...state.ingredients, { variantId: event.variantId, percentage }],
+        ingredients: ingredientsWithAddition(state, event.variantId),
       };
     }
     case 'ingredient-removed':

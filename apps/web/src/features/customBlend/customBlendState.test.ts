@@ -81,10 +81,64 @@ describe('customBlendReducer', () => {
     ]);
   });
 
-  it('does not add an ingredient when the remaining budget is below the 5% floor', () => {
+  it('rebalances every ingredient evenly when the remaining budget is below the 5% floor', () => {
     const state = stateWith({ ingredients: ingredients(50) });
     const next = customBlendReducer(state, { type: 'ingredient-toggled', variantId: 700 });
-    expect(next).toBe(state);
+    expect(next.ingredients).toEqual([
+      { variantId: 600, percentage: 25 },
+      { variantId: 700, percentage: 25 },
+    ]);
+  });
+
+  it('adds a second, third and fourth ingredient from an empty draft', () => {
+    const first = customBlendReducer(stateWith(), { type: 'ingredient-toggled', variantId: 600 });
+    expect(first.ingredients).toEqual([{ variantId: 600, percentage: 50 }]);
+
+    const second = customBlendReducer(first, { type: 'ingredient-toggled', variantId: 601 });
+    expect(second.ingredients).toEqual([
+      { variantId: 600, percentage: 25 },
+      { variantId: 601, percentage: 25 },
+    ]);
+
+    const third = customBlendReducer(second, { type: 'ingredient-toggled', variantId: 602 });
+    expect(third.ingredients).toEqual([
+      { variantId: 600, percentage: 17 },
+      { variantId: 601, percentage: 17 },
+      { variantId: 602, percentage: 16 },
+    ]);
+
+    const fourth = customBlendReducer(third, { type: 'ingredient-toggled', variantId: 603 });
+    expect(fourth.ingredients).toEqual([
+      { variantId: 600, percentage: 13 },
+      { variantId: 601, percentage: 13 },
+      { variantId: 602, percentage: 12 },
+      { variantId: 603, percentage: 12 },
+    ]);
+    expect(customBlendValidation(fourth).isValid).toBe(true);
+  });
+
+  it('keeps tuned percentages when budget remains for the new ingredient', () => {
+    const tuned = stateWith({ ingredients: ingredients(20) });
+    const next = customBlendReducer(tuned, { type: 'ingredient-toggled', variantId: 601 });
+    expect(next.ingredients).toEqual([
+      { variantId: 600, percentage: 20 },
+      { variantId: 601, percentage: 30 },
+    ]);
+  });
+
+  it('re-adds an ingredient after it is toggled off', () => {
+    const two = customBlendReducer(
+      customBlendReducer(stateWith(), { type: 'ingredient-toggled', variantId: 600 }),
+      { type: 'ingredient-toggled', variantId: 601 },
+    );
+    const removed = customBlendReducer(two, { type: 'ingredient-toggled', variantId: 601 });
+    expect(removed.ingredients).toEqual([{ variantId: 600, percentage: 25 }]);
+
+    const readded = customBlendReducer(removed, { type: 'ingredient-toggled', variantId: 602 });
+    expect(readded.ingredients).toEqual([
+      { variantId: 600, percentage: 25 },
+      { variantId: 602, percentage: 25 },
+    ]);
   });
 
   it('toggles a selected ingredient back off', () => {

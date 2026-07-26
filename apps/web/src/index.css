@@ -54,33 +54,33 @@
 }
 
 :root {
-  /* Reserved for high-level plan item 16 (Custom Blend): the sole intended consumer of
-     these tokens and of .custom-blend-nav-link. Frozen contract: gradient, gradient-size,
-     foreground, motion-duration, gradient-duration. Colours and keyframes preserved verbatim. */
+  /* Tokens own the live Custom Blend surface and .custom-blend-nav-link. Contract names
+     frozen: gradient, gradient-size, foreground, motion-duration, gradient-duration.
+     Palette derives from the site warm tokens (terracotta 36, ochre 78, green 122). */
   --custom-blend-gradient: linear-gradient(
     110deg,
-    oklch(0.88 0.09 210),
-    oklch(0.84 0.12 315),
-    oklch(0.9 0.11 92),
-    oklch(0.86 0.1 185)
+    oklch(0.93 0.06 45),
+    oklch(0.92 0.07 78),
+    oklch(0.91 0.08 122),
+    oklch(0.94 0.05 60)
   );
   --custom-blend-gradient-size: 240% 240%;
-  --custom-blend-gradient-foreground: oklch(0.24 0.035 285);
+  --custom-blend-gradient-foreground: oklch(0.26 0.04 55);
   --custom-blend-motion-duration: 180ms;
   --custom-blend-gradient-duration: 12s;
-  --custom-blend-surface: oklch(0.975 0.028 230 / 88%);
-  --custom-blend-border: oklch(0.53 0.11 250 / 42%);
+  --custom-blend-surface: oklch(0.975 0.018 78 / 88%);
+  --custom-blend-border: oklch(0.55 0.09 58 / 40%);
   --custom-blend-gradient-border: linear-gradient(
     110deg,
-    oklch(0.68 0.12 210),
-    oklch(0.66 0.14 315),
-    oklch(0.72 0.13 92),
-    oklch(0.68 0.12 185)
+    oklch(0.62 0.15 36),
+    oklch(0.72 0.13 78),
+    oklch(0.66 0.12 128),
+    oklch(0.6 0.12 48)
   );
-  --custom-blend-segment-1: oklch(0.67 0.14 210);
-  --custom-blend-segment-2: oklch(0.65 0.16 315);
-  --custom-blend-segment-3: oklch(0.75 0.15 92);
-  --custom-blend-segment-4: oklch(0.66 0.13 185);
+  --custom-blend-segment-1: oklch(0.62 0.16 36);
+  --custom-blend-segment-2: oklch(0.78 0.13 78);
+  --custom-blend-segment-3: oklch(0.62 0.12 132);
+  --custom-blend-segment-4: oklch(0.45 0.09 40);
   --background: oklch(0.985 0.012 80);
   --foreground: oklch(0.23 0.025 62);
   --card: oklch(0.995 0.006 80);
@@ -123,25 +123,25 @@
 .dark {
   --custom-blend-gradient: linear-gradient(
     110deg,
-    oklch(0.38 0.09 210),
-    oklch(0.36 0.12 315),
-    oklch(0.4 0.1 92),
-    oklch(0.38 0.1 185)
+    oklch(0.36 0.07 40),
+    oklch(0.35 0.08 72),
+    oklch(0.35 0.07 122),
+    oklch(0.37 0.06 50)
   );
   --custom-blend-gradient-foreground: oklch(0.97 0.012 80);
-  --custom-blend-surface: oklch(0.29 0.045 250 / 88%);
-  --custom-blend-border: oklch(0.76 0.1 250 / 48%);
+  --custom-blend-surface: oklch(0.29 0.035 62 / 88%);
+  --custom-blend-border: oklch(0.8 0.07 72 / 45%);
   --custom-blend-gradient-border: linear-gradient(
     110deg,
-    oklch(0.64 0.12 210),
-    oklch(0.65 0.14 315),
-    oklch(0.72 0.12 92),
-    oklch(0.65 0.11 185)
+    oklch(0.68 0.14 36),
+    oklch(0.78 0.12 78),
+    oklch(0.7 0.11 128),
+    oklch(0.66 0.11 48)
   );
-  --custom-blend-segment-1: oklch(0.72 0.13 210);
-  --custom-blend-segment-2: oklch(0.71 0.15 315);
-  --custom-blend-segment-3: oklch(0.81 0.14 92);
-  --custom-blend-segment-4: oklch(0.72 0.12 185);
+  --custom-blend-segment-1: oklch(0.7 0.15 36);
+  --custom-blend-segment-2: oklch(0.83 0.12 78);
+  --custom-blend-segment-3: oklch(0.7 0.12 132);
+  --custom-blend-segment-4: oklch(0.56 0.09 40);
   --background: oklch(0.2 0.025 60);
   --foreground: oklch(0.97 0.012 80);
   --card: oklch(0.245 0.03 60);
@@ -224,7 +224,7 @@
   .custom-blend-tile {
     border: 1px solid var(--custom-blend-border);
     background: var(--custom-blend-surface);
-    box-shadow: 0 0.75rem 1.5rem oklch(0.2 0.04 260 / 10%);
+    box-shadow: 0 0.75rem 1.5rem oklch(0.28 0.05 60 / 12%);
     transition:
       border-color var(--custom-blend-motion-duration) ease,
       box-shadow var(--custom-blend-motion-duration) ease,
@@ -233,7 +233,7 @@
 
   .custom-blend-tile:hover {
     border-color: var(--custom-blend-gradient-foreground);
-    box-shadow: 0 1rem 2rem oklch(0.2 0.04 260 / 16%);
+    box-shadow: 0 1rem 2rem oklch(0.28 0.05 60 / 18%);
     transform: translateY(-0.125rem);
   }
 
@@ -303,7 +303,7 @@
   }
 
   .custom-blend-banner:hover {
-    box-shadow: 0 1rem 2rem oklch(0.2 0.04 260 / 16%);
+    box-shadow: 0 1rem 2rem oklch(0.28 0.05 60 / 18%);
     transform: translateY(-0.125rem);
   }
 
