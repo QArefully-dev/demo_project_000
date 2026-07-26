@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getBestsellers, getCategories, getProducts } from '@/api/products';
 import { BundleBanner } from '@/components/home/BundleBanner';
 import { CategoryTiles } from '@/components/home/CategoryTiles';
+import { CustomBlendBanner } from '@/components/home/CustomBlendBanner';
 import { HeroSection } from '@/components/home/HeroSection';
 import { ProductShelf } from '@/components/home/ProductShelf';
 import { PromoBanner } from '@/components/home/PromoBanner';
@@ -127,6 +128,7 @@ export function HomePage() {
         error={categoriesError}
         onRetry={() => setCategoriesRetry((attempt) => attempt + 1)}
       />
+      <CustomBlendBanner />
       <ProductShelf
         eyebrow="Most requested by name"
         title="Bestsellers"

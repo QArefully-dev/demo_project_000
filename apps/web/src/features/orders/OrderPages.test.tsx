@@ -216,6 +216,18 @@ describe('customer order UI', () => {
             configKey,
             basePercentage: 75,
             mixingGroup: 'mineral',
+            basePresentation: {
+              category: 'Trade & Creative Materials',
+              consumptionClassification: 'non-food',
+              categoryFacts: {
+                texture: 'Fine powder',
+                colour: 'White',
+                source: 'Mineral',
+                intendedUse: 'Construction',
+                storage: 'Cool dry',
+                consumptionClassification: 'non-food',
+              },
+            },
             ingredients: [
               {
                 variantId: 601,
@@ -241,13 +253,62 @@ describe('customer order UI', () => {
       </MemoryRouter>,
     );
 
-    expect(
-      await screen.findByText(/Custom blend: Oat powder — 25% Chalk Filler/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/75% Oat powder — 25% Chalk Filler/)).toBeInTheDocument();
+    expect(screen.getByText('Custom blend')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-blend-livery')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute('data-vessel', 'kraft-sack');
+    expect(screen.getByText('Mineral')).toBeInTheDocument();
     expect(screen.getByText(/Base material: \$10.00 · Blending fee: \$25.00/)).toBeInTheDocument();
     expect(
       screen.getByText(/Made to order\. Custom blends cannot be returned/),
     ).toBeInTheDocument();
+  });
+
+  it('uses a neutral Custom Blend presentation for legacy order snapshots', async () => {
+    vi.mocked(getOrder).mockResolvedValue({
+      ...detail,
+      items: [
+        {
+          ...detail.items[0]!,
+          blendingFeeCents: 2500,
+          lineTotalCents: 3500,
+          customBlend: {
+            configKey: 'd'.repeat(64),
+            basePercentage: 75,
+            mixingGroup: 'mineral',
+            ingredients: [
+              {
+                variantId: 601,
+                productId: '11',
+                productName: 'Chalk Filler',
+                productDescription: 'Filler',
+                mixingGroup: 'mineral',
+                percentage: 25,
+              },
+            ],
+            blendingFeeCents: 2500,
+            madeToOrder: true,
+            returnable: false,
+          },
+        },
+      ],
+    });
+    render(
+      <MemoryRouter initialEntries={['/orders/12']}>
+        <Routes>
+          <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByTestId('custom-blend-livery')).toHaveAttribute(
+      'data-vessel',
+      'neutral',
+    );
+    expect(screen.getByTestId('custom-blend-livery')).not.toHaveAttribute(
+      'data-vessel',
+      'food-bag',
+    );
   });
 
   it('shows order allocation state without an estimated delivery date', async () => {

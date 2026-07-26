@@ -137,8 +137,8 @@ describe('CartSheet', () => {
     await openSheet(user);
 
     // Both compositions reach the screen: neither line is collapsed into or overwritten by the other.
-    expect(await screen.findByText('Pallet material — 20% Chalk Filler')).toBeInTheDocument();
-    expect(screen.getByText('Pallet material — 20% Silica Flour')).toBeInTheDocument();
+    expect(await screen.findByText('80% Pallet material — 20% Chalk Filler')).toBeInTheDocument();
+    expect(screen.getByText('80% Pallet material — 20% Silica Flour')).toBeInTheDocument();
 
     const duplicateKeyWarnings = consoleError.mock.calls.filter((call) =>
       call.some((argument) => String(argument).includes('same key')),
@@ -152,7 +152,7 @@ describe('CartSheet', () => {
     expect(isActionPending).toHaveBeenCalledWith('1', 'remove', 1, CONFIG_KEY_A);
     expect(isActionPending).toHaveBeenCalledWith('1', 'remove', 1, CONFIG_KEY_B);
 
-    const lineB = screen.getByText('Pallet material — 20% Silica Flour').closest('div.py-3');
+    const lineB = screen.getByText('80% Pallet material — 20% Silica Flour').closest('div.py-3');
     expect(lineB).not.toBeNull();
     await user.click(
       within(lineB as HTMLElement).getByRole('button', { name: 'Increase quantity' }),

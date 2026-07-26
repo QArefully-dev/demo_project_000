@@ -74,7 +74,7 @@ describe('CategoryNav', () => {
 
     expect(styles).toContain('--custom-blend-gradient-duration: 12s;');
     expect(styles).toMatch(
-      /@media \(prefers-reduced-motion: reduce\) \{\s+\.custom-blend-nav-link \{\s+animation: none;/,
+      /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.custom-blend-nav-link \{\s+animation: none;/,
     );
   });
 });

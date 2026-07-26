@@ -8,6 +8,9 @@ export interface CustomBlendFactRow {
   product_id: number;
   product_name: string;
   product_description: string;
+  category: string;
+  consumption_classification: string;
+  details_json: string | null;
   mixing_group: string;
   variant_id: number;
   sku: string;
@@ -33,6 +36,9 @@ const factColumns = `
   p.id AS product_id,
   p.name AS product_name,
   p.description AS product_description,
+  p.category,
+  p.consumption_classification,
+  p.details_json,
   p.mixing_group,
   pv.id AS variant_id,
   pv.sku,

@@ -146,7 +146,7 @@ describe('CartLineItem', () => {
 
     expect(screen.getByText('Pallet material')).toBeInTheDocument();
     expect(
-      screen.getByText('Pallet material — 15% Chalk Filler, 5% Silica Flour'),
+      screen.getByText('80% Pallet material — 15% Chalk Filler, 5% Silica Flour'),
     ).toBeInTheDocument();
     expect(screen.getByText('Base material: $20.00')).toBeInTheDocument();
     expect(screen.getByText('Blending fee: $25.00')).toBeInTheDocument();

@@ -212,6 +212,8 @@ void test('a mixed order snapshots the blend and keeps its ordinary sibling retu
     assert.equal(blendLine.customBlend?.blendingFeeCents, CUSTOM_BLEND_FEE_CENTS);
     assert.equal(blendLine.customBlend?.madeToOrder, true);
     assert.equal(blendLine.customBlend?.returnable, false);
+    assert.ok(blendLine.customBlend?.basePresentation?.category);
+    assert.equal(blendLine.customBlend?.basePresentation?.consumptionClassification, 'food');
     assert.deepEqual(
       blendLine.customBlend?.ingredients.map((ingredient) => ingredient.variantId),
       [lots.ingredient.variantId],
@@ -490,10 +492,16 @@ void test('an unreadable Custom Blend snapshot fails the order read closed', asy
   const order = await orderDetail(app, bobCookie, orderId);
   const blendLine = findBlendLine(order.items);
 
-  // Schema-valid JSON object, domain-invalid snapshot: the database CHECK passes, so only the
-  // repository parser stands between corrupt storage and a wrong financial record.
+  // Schema-invalid presentation metadata must not degrade into a guessed food bag on an
+  // otherwise valid financial snapshot.
   db.prepare('UPDATE order_line_items SET custom_blend_json = ? WHERE id = ?').run(
-    JSON.stringify({ configKey: 'not-a-digest', ingredients: [] }),
+    JSON.stringify({
+      ...blendLine.customBlend,
+      basePresentation: {
+        ...blendLine.customBlend?.basePresentation,
+        unexpected: true,
+      },
+    }),
     Number(blendLine.lineId),
   );
 

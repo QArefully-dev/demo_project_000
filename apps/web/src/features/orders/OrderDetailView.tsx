@@ -4,9 +4,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { formatMoney } from '@/lib/formatMoney';
 import type { OrderDetailResponse } from '@shop/contracts/orders';
+import type { Product } from '@shop/contracts/products';
 import type { LegacyRef } from 'react';
 import {
   CUSTOM_BLEND_MADE_TO_ORDER_NOTE,
+  CustomBlendPackaging,
   customBlendCompositionLabel,
 } from '@/features/customBlend/CustomBlendPackaging';
 import { formatOrderDate, orderStatusLabel } from './orderPresentation';
@@ -27,6 +29,32 @@ function statusVariant(status: string): 'default' | 'secondary' | 'destructive' 
 
 function deliveryModeLabel(mode: string): string {
   return mode === 'freight' ? 'Freight' : 'Parcel';
+}
+
+function orderPackagingProduct(item: OrderDetailResponse['items'][number]): Product {
+  const presentation = item.customBlend?.basePresentation;
+  return {
+    id: item.productId,
+    name: item.productName,
+    description: '',
+    priceCents: item.unitPriceCents,
+    imageSetId: `order-${item.productId}`,
+    category: presentation?.category ?? '',
+    stock: 0,
+    availability: 'out_of_stock',
+    backorderable: false,
+    backorderLeadDays: null,
+    slug: `order-${item.productId}`,
+    salesCount: 0,
+    createdAt: '1970-01-01T00:00:00.000Z',
+    available: false,
+    tags: [],
+    specificationGroups: [],
+    consumptionClassification:
+      presentation?.consumptionClassification ?? item.variantSnapshot?.consumptionClassification,
+    mixingGroup: item.customBlend?.mixingGroup,
+    ...(presentation ? { categoryFacts: presentation.categoryFacts } : {}),
+  };
 }
 
 export function OrderDetailView({
@@ -62,7 +90,17 @@ export function OrderDetailView({
           <div className="space-y-3" aria-label="Purchased items">
             {order.items.map((item) => (
               <div key={item.lineId} className="flex items-center justify-between gap-4 text-sm">
-                <span className="min-w-0">
+                {item.customBlend && (
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+                    <CustomBlendPackaging
+                      product={orderPackagingProduct(item)}
+                      variant={item.variantSnapshot}
+                      blend={item.customBlend}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                )}
+                <span className="min-w-0 flex-1">
                   {item.productName}{' '}
                   <span className="text-muted-foreground">× {item.quantity}</span>
                   {item.variantSnapshot && (
@@ -73,8 +111,12 @@ export function OrderDetailView({
                   )}
                   {item.customBlend && (
                     <span className="block text-xs text-muted-foreground" data-testid="order-blend">
-                      Custom blend:{' '}
-                      {customBlendCompositionLabel(item.productName, item.customBlend)}
+                      <Badge variant="outline" className="mb-0.5 w-fit text-[10px]">
+                        Custom blend
+                      </Badge>
+                      <span className="block">
+                        {customBlendCompositionLabel(item.productName, item.customBlend)}
+                      </span>
                       <span className="block">
                         Base material: {formatMoney(item.discountableTotalCents)} · Blending fee:{' '}
                         {formatMoney(item.blendingFeeCents)}
@@ -105,7 +147,7 @@ export function OrderDetailView({
             ))}
           </div>
           {hasCustomBlend && (
-            <p className="rounded-md border border-amber-500/40 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <p className="custom-blend-notice rounded-md px-3 py-2 text-xs">
               {CUSTOM_BLEND_MADE_TO_ORDER_NOTE}
             </p>
           )}

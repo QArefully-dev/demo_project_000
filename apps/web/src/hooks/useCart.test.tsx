@@ -299,7 +299,7 @@ describe('useCart', () => {
     await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
 
     const body = { baseVariantId: 501, ingredients: [{ variantId: 601, percentage: 30 }] };
-    let action!: Promise<boolean>;
+    let action!: Promise<Cart | false>;
     act(() => {
       action = result.current.addCustomBlend(body);
     });
@@ -310,7 +310,7 @@ describe('useCart', () => {
       response.resolve(cart('cart', ['9']));
       await response.promise;
     });
-    expect(await action).toBe(true);
+    expect(await action).toEqual(cart('cart', ['9']));
     expect(result.current.isActionPending('blend:501')).toBe(false);
   });
 
@@ -328,7 +328,7 @@ describe('useCart', () => {
       configKey,
       ingredients: [{ variantId: 601, percentage: 30 }],
     };
-    let action!: Promise<boolean>;
+    let action!: Promise<Cart | false>;
     act(() => {
       action = result.current.replaceCustomBlend(body);
     });
@@ -339,7 +339,7 @@ describe('useCart', () => {
       response.resolve(cart('cart', ['9']));
       await response.promise;
     });
-    expect(await action).toBe(true);
+    expect(await action).toEqual(cart('cart', ['9']));
   });
 
   it('does not retry a blend replace against a recovered replacement cart', async () => {

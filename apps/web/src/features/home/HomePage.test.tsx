@@ -77,7 +77,16 @@ describe('HomePage', () => {
     expect(
       screen.getByRole('link', { name: 'Bundle sets: browse curated bundles' }),
     ).toHaveAttribute('href', '/bundles');
+    const customBlendBanner = screen.getByRole('heading', {
+      name: 'Build material to your spec.',
+    });
+    expect(
+      screen.getByRole('link', { name: 'Custom Blend: configure your blend' }),
+    ).toHaveAttribute('href', '/custom-blend');
     expect(screen.getByText('Bestsellers')).toBeInTheDocument();
+    expect(customBlendBanner.compareDocumentPosition(screen.getByText('Bestsellers'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
     expect(screen.getByText('Just in')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Product new')).toBeInTheDocument());
     expect(screen.getByText('This collection is temporarily unavailable.')).toBeInTheDocument();

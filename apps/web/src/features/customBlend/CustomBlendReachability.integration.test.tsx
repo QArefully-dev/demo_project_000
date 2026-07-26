@@ -43,6 +43,16 @@ function option(
     productId: String(variantId),
     productName,
     productDescription: `${productName} description`,
+    category: 'Trade & Creative Materials',
+    consumptionClassification: 'non-food',
+    categoryFacts: {
+      texture: 'Fine powder',
+      colour: 'Grey',
+      source: 'Test source',
+      intendedUse: 'Testing',
+      storage: 'Dry and cool',
+      consumptionClassification: 'non-food',
+    },
     mixingGroup: 'mineral',
     variant: {
       variantId,
@@ -128,7 +138,8 @@ describe('custom blend reachability', () => {
     ).toBeInTheDocument();
   });
 
-  it('honours a baseVariantId deep link by opening straight into the ingredient step', async () => {
+  it('honours a baseVariantId deep link and keeps sold-out ingredients selectable', async () => {
+    const user = userEvent.setup();
     renderApp('/custom-blend?baseVariantId=501');
 
     expect(
@@ -138,9 +149,12 @@ describe('custom blend reachability', () => {
       expect(getCustomBlendOptions).toHaveBeenCalledWith(501, expect.anything());
     });
 
-    // A sold-out ingredient is offered, not suppressed: a blend is made to order.
+    // Inventory is advisory in Custom Blend; server-side validation remains authoritative.
     expect(screen.getByText('Out of stock')).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: 'Silica Flour' })).toBeEnabled();
+    const ingredient = screen.getByRole('checkbox', { name: 'Silica Flour' });
+    expect(ingredient).toBeEnabled();
+    await user.click(ingredient);
+    expect(ingredient).toBeChecked();
   });
 
   it('rejects an unusable baseVariantId instead of rendering a broken configurator', async () => {
