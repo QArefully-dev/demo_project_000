@@ -1,6 +1,6 @@
 # Custom Blend Coding Plan
 
-Status: in progress; G2 accepted; G3+ deferred by user
+Status: complete; G0-G4 accepted; feature code-complete in worktree; user owns merge
 Source: `plans/custom_additives_handoff.md` -> `Custom Blend — Planner Handoff`
 High-level source: `plans/demo_project_high_level_plan.md` -> `16. Custom Blend`
 Repository baseline: `materials_exchange_refactor` at `1b34184b3388a9659071d42d52673b777b2e2711`, inspected 2026-07-25
@@ -17,24 +17,25 @@ Repository baseline: `materials_exchange_refactor` at `1b34184b3388a9659071d42d5
 - integration: no merge, rebase, cherry-pick, copy-back, branch removal, or worktree cleanup
 - completion reply: absolute worktree path + implementation branch + source branch + base revision; state user owns merge
 
-## Execution Checkpoint — 2026-07-25
+## Execution Checkpoint — 2026-07-26
 
-- stop point: `G2` accepted; do not start `P6`-`P10` without user direction
+- stop point: `G4` accepted; feature code-complete; all packets P1-P10 and reviews R1-R10 closed
 - source checkout: `C:\Users\iwano\Desktop\repos\demo_project_000`
 - source branch/revision: `materials_exchange_refactor` at `3c9034dc81838f22ca462e640552fb14a08781d3`
 - implementation worktree: `C:\Users\iwano\Desktop\repos\demo_project_000-worktrees\custom-blend-20260725`
 - implementation branch/base: `codex/custom-blend-20260725` at `3c9034dc81838f22ca462e640552fb14a08781d3`
-- implementation commit: `c6bee704f42333e0013fc0a3ab95e56fdce20fbd`
-- remote/upstream: `origin/codex/custom-blend-20260725` -> `https://github.com/QArefully/demo_project_000.git`; push completed; implementation worktree clean
+- implementation commit: `c6bee704f42333e0013fc0a3ab95e56fdce20fbd` (P1-P5/G2 foundation); P6-P10 remain uncommitted in worktree working tree (47 modified + 12 new files)
+- remote/upstream: `origin/codex/custom-blend-20260725` -> `https://github.com/QArefully/demo_project_000.git`; foundation push completed; P6-P10 not pushed
 - G0: accepted; Node `v22.23.1`; source/worktree clean-input gates passed
 - G1: accepted after P1-R1, P2-R2, P3-R3
 - G2: accepted after P4-R4, P5-R5
-- evidence: `E-P1-CONTRACTS` 84 tests passed; `E-P2-MIGRATION` 19 passed; `E-P3-RULES` 6 passed; `E-P4-OPTIONS` 3 passed; `E-P5-CART` 12 passed
-- high findings closed: unsafe money/cart identity pairing; options validation serialization; corrupt configured-cart mutation rollback
-- advisory open: `R2-TEST-001` — add direct migration coverage for configured-line uniqueness and valid-JSON/config-key mismatch
-- deferred integration: API typecheck remains blocked by P7-owned `orderRepository` mapping of P1-required `blendingFeeCents` and `discountableTotalCents`; no G3+ packet started
-- resumption prerequisite: this source-checkout plan checkpoint is uncommitted; commit it or explicitly select it as the next runtime baseline before another worktree operation
-- merge: user owns merge; retain branch/worktree
+- G3: accepted after P6-R6, P7-R7 (backend lane) and P8-R8, P9-R9 (web lane)
+- G4: accepted after P10-R10; live browser journey accepted in lieu of persisted PNGs (tooling/network constraint, user-approved)
+- evidence: `E-P1-CONTRACTS` 84 passed; `E-P2-MIGRATION` 19 passed; `E-P3-RULES` 6 passed; `E-P4-OPTIONS` 3 passed; `E-P5-CART` 12 passed; final `npm run verify` exit 0 (API 17 unit + 143 integration; web 435; contracts 84; catalog 36); web integration 11/11; `npm run reset` clean
+- findings closed: G0-G2 high (money/cart identity, options serialization, corrupt-cart rollback); R8-STATE-001 critical (edit-mode unexitable -> URL sole target owner); R9 x3 high (missing cart disclosure, two-blends-one-variant coverage, tautological livery test); R10-COPY-001 high (success-screen cancellation clause); FIX-LINT-001 (5 pre-existing eslint errors incl. config-key hash `any`-erosion, fixed at source)
+- advisory open: `R2-TEST-001` — direct migration coverage for configured-line uniqueness and JSON/config-key mismatch; web `*.integration.test.tsx` (e.g. `CustomBlendReachability`) runs under `npm run smoke` only, not `npm run verify`
+- local-DB note: pre-branch `shop.db` requires `rm apps/api/data/shop.db` -> `npm run reset` (seed is `INSERT OR IGNORE`; won't repair zeroed `discountable_total_cents`)
+- merge: user owns merge; branch/worktree retained intact; no merge/rebase/cherry-pick/copy-back/cleanup performed
 
 ## Objective
 
