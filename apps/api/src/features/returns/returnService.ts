@@ -379,15 +379,24 @@ export function createReturnService(deps: ReturnServiceDeps): ReturnService {
         const orderDetail = orderRepository.findDetailById(orderId);
         if (!orderDetail) throw new ReturnDomainError(ReturnErrorCode.RETURN_DATA_CORRUPT);
 
-        // Build discount lines from every purchased order line
+        // Build discount lines from every purchased order line. The base is the discountable
+        // total, not the line total: a blending fee is a service charge that never earned the
+        // promotion, so it must not weight a line's share of the whole-order discount.
         const discountLines = orderDetail.items.map((item) => ({
           lineId: item.lineId,
-          grossTotalCents: item.lineTotalCents,
+          grossTotalCents: item.discountableTotalCents,
         }));
+
+        // Denominator mirrors the checkout-time promotion base (sum of discountable line totals),
+        // which equals the order subtotal whenever no line carries a fee.
+        const discountableSubtotalCents = discountLines.reduce(
+          (total, line) => total + line.grossTotalCents,
+          0,
+        );
 
         // Allocate whole-order discount
         const discountAllocations = allocateOrderDiscountByLine(
-          orderDetail.subtotalCents,
+          discountableSubtotalCents,
           orderDetail.discountCents,
           discountLines,
         );
@@ -437,7 +446,8 @@ export function createReturnService(deps: ReturnServiceDeps): ReturnService {
           const priorQty = priorByLineId.get(lineId) ?? 0;
           const newQty = priorQty + reqItem.quantity;
 
-          const lineGross = orderItem.lineTotalCents;
+          // Refundable value excludes any blending fee: the service was performed and is kept.
+          const lineGross = orderItem.discountableTotalCents;
           const purchasedQty = orderItem.quantity;
 
           const { deltaRefundCents } = calculateCumulativeRefundDelta({

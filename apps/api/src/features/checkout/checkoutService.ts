@@ -1,5 +1,7 @@
 import { getCart } from '../cart/cartService.js';
 import type { Cart } from '@shop/contracts/cart';
+import { CUSTOM_BLEND_FEE_CENTS } from '@shop/contracts';
+import { normalizeCustomBlendSpec } from '../customBlend/customBlendRules.js';
 import { validateCard, type ValidCard } from '../payments/cardValidation.js';
 import { createSafeFingerprint, type PaymentRecord } from '../payments/paymentRepository.js';
 import { validatePromo } from '../promos/promoService.js';
@@ -84,7 +86,21 @@ function prepare(
     if (!cart)
       return failPreparation(
         params.idempotencyKey,
-        { success: false, error: 'CART_NOT_FOUND' },
+        // An existing cart that will not resolve was invalidated by its configured lines: the read
+        // path refuses to price a blend whose facts are gone. Report that, not a missing cart.
+        {
+          success: false,
+          error: dependencies.carts.exists(params.cartId)
+            ? 'CUSTOM_BLEND_INVALID'
+            : 'CART_NOT_FOUND',
+        },
+        params.auditContext,
+        dependencies,
+      );
+    if (!customBlendLinesRemainEligible(cart, dependencies))
+      return failPreparation(
+        params.idempotencyKey,
+        { success: false, error: 'CUSTOM_BLEND_INVALID' },
         params.auditContext,
         dependencies,
       );
@@ -202,6 +218,51 @@ function prepare(
       throw new Error('Checkout intent quote persistence failed');
     }
     return { quoteTotalCents: quote.totalCents, card };
+  });
+}
+
+/**
+ * Re-resolves every configured line against live catalog facts inside the preparation
+ * transaction, before any reservation or gateway call. Checkout owns this gate rather than
+ * trusting the cart read path: a lot retired between configuration and payment must stop the
+ * charge, and it must stop it with no inventory mutation and no money movement.
+ */
+function customBlendLinesRemainEligible(cart: Cart, dependencies: CheckoutDependencies): boolean {
+  return cart.items.every((item) => {
+    const blend = item.customBlend;
+    if (!blend) return item.configKey === '' && item.blendingFeeCents === 0;
+    const baseVariantId = item.variantSnap?.variantId;
+    if (baseVariantId === undefined) return false;
+    if (
+      blend.configKey !== item.configKey ||
+      blend.blendingFeeCents !== CUSTOM_BLEND_FEE_CENTS ||
+      item.blendingFeeCents !== CUSTOM_BLEND_FEE_CENTS ||
+      item.discountableTotalCents !== item.materialSubtotalCents ||
+      item.materialSubtotalCents + item.blendingFeeCents !== item.lineTotalCents
+    ) {
+      return false;
+    }
+    let normalized;
+    try {
+      normalized = normalizeCustomBlendSpec(baseVariantId, blend.ingredients);
+    } catch {
+      return false;
+    }
+    if (
+      normalized.configKey !== item.configKey ||
+      normalized.basePercentage !== blend.basePercentage
+    ) {
+      return false;
+    }
+    const factVariantIds = [
+      baseVariantId,
+      ...normalized.ingredients.map((ingredient) => ingredient.variantId),
+    ];
+    const facts = dependencies.carts.listEligibleCustomBlendFacts(factVariantIds);
+    if (facts.length !== factVariantIds.length) return false;
+    const base = facts.find((fact) => fact.variant_id === baseVariantId);
+    if (!base || base.mixing_group !== blend.mixingGroup) return false;
+    return facts.every((fact) => fact.mixing_group === base.mixing_group);
   });
 }
 

@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
 import * as cartApi from '@/api/cart';
 import * as bundlesApi from '@/api/bundles';
+import * as customBlendsApi from '@/api/customBlends';
 import { clearCartId, getCartId, setCartId } from '@/lib/cartStorage';
 import { CartProvider, useCartContext } from './CartContext';
 
@@ -17,6 +18,10 @@ vi.mock('@/api/cart', () => ({
 }));
 vi.mock('@/api/bundles', () => ({
   addBundleToCart: vi.fn(),
+}));
+vi.mock('@/api/customBlends', () => ({
+  createCustomBlend: vi.fn(),
+  replaceCustomBlend: vi.fn(),
 }));
 
 function deferred<T>() {
@@ -34,6 +39,7 @@ function cart(id: string, productIds: string[] = []): Cart {
     id,
     items: productIds.map((productId) => ({
       productId,
+      configKey: '' as const,
       quantity: 1,
       product: {
         id: productId,
@@ -55,10 +61,15 @@ function cart(id: string, productIds: string[] = []): Cart {
       },
       perTonneCents: 4000,
       resolvedUnitPriceCents: 100,
+      materialSubtotalCents: 100,
+      blendingFeeCents: 0,
+      discountableTotalCents: 100,
       lineTotalCents: 100,
     })),
     totalItems: productIds.length,
     subtotalCents: productIds.length * 100,
+    discountableSubtotalCents: productIds.length * 100,
+    blendingFeeTotalCents: 0,
   };
 }
 
@@ -87,9 +98,14 @@ function cartWithProductVariants(id: string): Cart {
       },
       quantity: variant.quantity,
       resolvedUnitPriceCents: variant.lineTotalCents / variant.quantity,
+      materialSubtotalCents: variant.lineTotalCents,
+      blendingFeeCents: 0,
+      discountableTotalCents: variant.lineTotalCents,
       lineTotalCents: variant.lineTotalCents,
     })),
     subtotalCents: 1400,
+    discountableSubtotalCents: 1400,
+    blendingFeeTotalCents: 0,
     totalItems: 5,
   };
 }
@@ -272,6 +288,116 @@ describe('useCart', () => {
     });
     expect(await sackRemoval).toBe(true);
     expect(await palletRemoval).toBe(true);
+  });
+
+  it('uses a blend-specific pending key when adding a custom blend', async () => {
+    setCartId('cart');
+    const response = deferred<Cart>();
+    vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
+    vi.mocked(customBlendsApi.createCustomBlend).mockReturnValueOnce(response.promise);
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    const body = { baseVariantId: 501, ingredients: [{ variantId: 601, percentage: 30 }] };
+    let action!: Promise<boolean>;
+    act(() => {
+      action = result.current.addCustomBlend(body);
+    });
+    expect(result.current.isActionPending('blend:501', 'blend-add')).toBe(true);
+    expect(customBlendsApi.createCustomBlend).toHaveBeenCalledWith('cart', body);
+
+    await act(async () => {
+      response.resolve(cart('cart', ['9']));
+      await response.promise;
+    });
+    expect(await action).toBe(true);
+    expect(result.current.isActionPending('blend:501')).toBe(false);
+  });
+
+  it('replaces a configured line under a config-key-scoped pending key', async () => {
+    setCartId('cart');
+    const configKey = 'a'.repeat(64);
+    const response = deferred<Cart>();
+    vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
+    vi.mocked(customBlendsApi.replaceCustomBlend).mockReturnValueOnce(response.promise);
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    const body = {
+      baseVariantId: 501,
+      configKey,
+      ingredients: [{ variantId: 601, percentage: 30 }],
+    };
+    let action!: Promise<boolean>;
+    act(() => {
+      action = result.current.replaceCustomBlend(body);
+    });
+    expect(result.current.isActionPending(`blend:501:${configKey}`, 'blend-replace')).toBe(true);
+    expect(customBlendsApi.replaceCustomBlend).toHaveBeenCalledWith('cart', body);
+
+    await act(async () => {
+      response.resolve(cart('cart', ['9']));
+      await response.promise;
+    });
+    expect(await action).toBe(true);
+  });
+
+  it('does not retry a blend replace against a recovered replacement cart', async () => {
+    setCartId('old-cart');
+    vi.mocked(cartApi.getCart)
+      .mockResolvedValueOnce(cart('old-cart'))
+      .mockResolvedValueOnce(cart('new-cart'));
+    vi.mocked(cartApi.createCart).mockResolvedValueOnce({ cartId: 'new-cart' });
+    vi.mocked(customBlendsApi.replaceCustomBlend).mockRejectedValueOnce(
+      new ApiError('Cart not found', 404),
+    );
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    await act(async () =>
+      expect(
+        await result.current.replaceCustomBlend({
+          baseVariantId: 501,
+          configKey: 'a'.repeat(64),
+          ingredients: [{ variantId: 601, percentage: 30 }],
+        }),
+      ).toBe(false),
+    );
+
+    expect(customBlendsApi.replaceCustomBlend).toHaveBeenCalledTimes(1);
+    expect(result.current.error).toBe(
+      'Your previous cart was no longer available. A new cart is ready.',
+    );
+  });
+
+  it('separates a configured line from its plain counterpart by config key', async () => {
+    setCartId('cart');
+    const configKey = 'b'.repeat(64);
+    const plain = deferred<Cart>();
+    const configured = deferred<Cart>();
+    vi.mocked(cartApi.getCart).mockResolvedValueOnce(cartWithProductVariants('cart'));
+    vi.mocked(cartApi.updateCartItem)
+      .mockReturnValueOnce(plain.promise)
+      .mockReturnValueOnce(configured.promise);
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    act(() => {
+      void result.current.updateQuantity('1', 5, 101);
+      void result.current.updateQuantity('1', 9, 101, configKey);
+    });
+
+    expect(cartApi.updateCartItem).toHaveBeenNthCalledWith(1, 'cart', '1', 5, 101);
+    expect(cartApi.updateCartItem).toHaveBeenNthCalledWith(2, 'cart', '1', 9, 101, configKey);
+    expect(result.current.isActionPending('1', 'update', 101)).toBe(true);
+    expect(result.current.isActionPending('1', 'update', 101, configKey)).toBe(true);
+
+    await act(async () => {
+      plain.resolve(cartWithProductVariants('cart'));
+      configured.resolve(cartWithProductVariants('cart'));
+      await Promise.all([plain.promise, configured.promise]);
+    });
+    expect(result.current.pendingActions).toEqual({});
   });
 
   it('uses a bundle-specific pending key and adds the bundle to the active cart', async () => {

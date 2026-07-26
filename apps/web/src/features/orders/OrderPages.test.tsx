@@ -30,6 +30,8 @@ const detail: OrderDetailResponse = {
       productName: 'Oat powder',
       unitPriceCents: 1000,
       quantity: 1,
+      discountableTotalCents: 1000,
+      blendingFeeCents: 0,
       lineTotalCents: 1000,
       inventoryStatus: 'partially_backordered',
       allocatedQuantity: 1,
@@ -41,6 +43,8 @@ const detail: OrderDetailResponse = {
       productName: 'Pea powder',
       unitPriceCents: 1200,
       quantity: 1,
+      discountableTotalCents: 1200,
+      blendingFeeCents: 0,
       lineTotalCents: 1200,
       inventoryStatus: 'allocated',
       allocatedQuantity: 1,
@@ -195,6 +199,54 @@ describe('customer order UI', () => {
       screen.getByText(
         'Order #12 was cancelled. Simulated fulfilment has stopped; unshipped allocated stock was released and no refund was issued.',
       ),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps blend composition, the fee split, and the made-to-order terms on the order record', async () => {
+    const configKey = 'c'.repeat(64);
+    vi.mocked(getOrder).mockResolvedValue({
+      ...detail,
+      items: [
+        {
+          ...detail.items[0]!,
+          discountableTotalCents: 1000,
+          blendingFeeCents: 2500,
+          lineTotalCents: 3500,
+          customBlend: {
+            configKey,
+            basePercentage: 75,
+            mixingGroup: 'mineral',
+            ingredients: [
+              {
+                variantId: 601,
+                productId: '11',
+                productName: 'Chalk Filler',
+                productDescription: 'Filler',
+                mixingGroup: 'mineral',
+                percentage: 25,
+              },
+            ],
+            blendingFeeCents: 2500,
+            madeToOrder: true,
+            returnable: false,
+          },
+        },
+      ],
+    });
+    render(
+      <MemoryRouter initialEntries={['/orders/12']}>
+        <Routes>
+          <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText(/Custom blend: Oat powder — 25% Chalk Filler/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Base material: \$10.00 · Blending fee: \$25.00/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Made to order\. Custom blends cannot be returned/),
     ).toBeInTheDocument();
   });
 

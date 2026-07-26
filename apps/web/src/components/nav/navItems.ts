@@ -34,9 +34,22 @@ export const bundlesItem: NavItem = {
   enabled: true,
 };
 
+/**
+ * Custom Blend owns the reserved iridescent nav treatment. `className` carries the frozen
+ * `.custom-blend-nav-link` contract from `index.css`; `CategoryNav` is its single consumer.
+ */
+export const customBlendItem: NavItem = {
+  key: 'customBlend',
+  label: 'Custom Blend',
+  icon: 'Blend',
+  enabled: true,
+  className: 'custom-blend-nav-link',
+};
+
 export const navItems: Record<string, NavItem> = {
   search: searchItem,
   account: accountItem,
   wishlist: wishlistItem,
   bundles: bundlesItem,
+  customBlend: customBlendItem,
 };

@@ -429,6 +429,7 @@ void test('CartLineVariantSnap validates variant details', () => {
 void test('CartLine requires server-resolved pack and base tonne prices', () => {
   const line = {
     productId: '1',
+    configKey: '',
     product,
     variantSnap: {
       variantId: 1,
@@ -440,6 +441,9 @@ void test('CartLine requires server-resolved pack and base tonne prices', () => 
     perTonneCents: 5_000_000,
     resolvedUnitPriceCents: 2_375,
     quantity: 10,
+    materialSubtotalCents: 23_750,
+    blendingFeeCents: 0,
+    discountableTotalCents: 23_750,
     lineTotalCents: 23_750,
   };
   assert.equal(Value.Check(CartLine, line), true);

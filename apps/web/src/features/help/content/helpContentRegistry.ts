@@ -7,6 +7,7 @@ import {
   returnsArticle,
   packSizesArticle,
   safetyArticle,
+  customBlendArticle,
 } from './serviceArticles';
 
 type ContentLink = Readonly<{
@@ -28,6 +29,7 @@ export const helpArticles = [
   shippingArticle,
   returnsArticle,
   packSizesArticle,
+  customBlendArticle,
   safetyArticle,
   storageArticle,
 ] as const satisfies readonly HelpArticle<'help'>[];

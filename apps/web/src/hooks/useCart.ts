@@ -2,11 +2,13 @@ import { useCallback, useEffect, useReducer, useRef } from 'react';
 import type { Cart } from '@shop/contracts/cart';
 import * as api from '../api/cart';
 import * as bundlesApi from '../api/bundles';
+import * as customBlendsApi from '../api/customBlends';
 import { ApiError, isMissingCartError } from '../api/client';
 import { clearCartId, getCartId } from '../lib/cartStorage';
 import { createCartClient } from './cartClient';
+import type { CreateCustomBlendBody, ReplaceCustomBlendBody } from '@shop/contracts/custom-blends';
 
-export type CartAction = 'add' | 'bundle-add' | 'update' | 'remove';
+export type CartAction = 'add' | 'bundle-add' | 'update' | 'remove' | 'blend-add' | 'blend-replace';
 
 type CartStatus = 'initializing' | 'ready' | 'refreshing' | 'error';
 
@@ -63,8 +65,19 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-function cartLinePendingKey(productId: string, variantId?: number): string {
-  return variantId === undefined ? productId : `line:${productId}:${variantId}`;
+/**
+ * Configured lines share a product and variant with their plain counterpart, so pending
+ * identity carries the config key. Plain lines keep their historic key shape.
+ */
+function cartLinePendingKey(productId: string, variantId?: number, configKey?: string): string {
+  if (variantId === undefined) return productId;
+  const lineKey = `line:${productId}:${variantId}`;
+  return configKey ? `${lineKey}:${configKey}` : lineKey;
+}
+
+function customBlendPendingKey(baseVariantId: number, configKey?: string): string {
+  const blendKey = `blend:${baseVariantId}`;
+  return configKey ? `${blendKey}:${configKey}` : blendKey;
 }
 
 export function useCart() {
@@ -224,27 +237,52 @@ export function useCart() {
     [runCartAction],
   );
   const updateQuantity = useCallback(
-    (productId: string, quantity: number, variantId?: number) =>
+    (productId: string, quantity: number, variantId?: number, configKey?: string) =>
       runCartAction(
         'update',
-        cartLinePendingKey(productId, variantId),
-        (cartId) =>
-          variantId === undefined
-            ? api.updateCartItem(cartId, productId, quantity)
-            : api.updateCartItem(cartId, productId, quantity, variantId),
+        cartLinePendingKey(productId, variantId, configKey),
+        (cartId) => {
+          if (variantId === undefined) return api.updateCartItem(cartId, productId, quantity);
+          if (configKey === undefined)
+            return api.updateCartItem(cartId, productId, quantity, variantId);
+          return api.updateCartItem(cartId, productId, quantity, variantId, configKey);
+        },
         false,
       ),
     [runCartAction],
   );
   const removeItem = useCallback(
-    (productId: string, variantId?: number) =>
+    (productId: string, variantId?: number, configKey?: string) =>
       runCartAction(
         'remove',
-        cartLinePendingKey(productId, variantId),
-        (cartId) =>
-          variantId === undefined
-            ? api.removeFromCart(cartId, productId)
-            : api.removeFromCart(cartId, productId, variantId),
+        cartLinePendingKey(productId, variantId, configKey),
+        (cartId) => {
+          if (variantId === undefined) return api.removeFromCart(cartId, productId);
+          if (configKey === undefined) return api.removeFromCart(cartId, productId, variantId);
+          return api.removeFromCart(cartId, productId, variantId, configKey);
+        },
+        false,
+      ),
+    [runCartAction],
+  );
+  const addCustomBlend = useCallback(
+    (body: CreateCustomBlendBody) =>
+      runCartAction(
+        'blend-add',
+        customBlendPendingKey(body.baseVariantId),
+        (cartId) => customBlendsApi.createCustomBlend(cartId, body),
+        true,
+      ),
+    [runCartAction],
+  );
+  // A replace targets one existing configured line, so a recovered empty cart has
+  // nothing to retry against; the caller is told the line is gone instead.
+  const replaceCustomBlend = useCallback(
+    (body: ReplaceCustomBlendBody) =>
+      runCartAction(
+        'blend-replace',
+        customBlendPendingKey(body.baseVariantId, body.configKey),
+        (cartId) => customBlendsApi.replaceCustomBlend(cartId, body),
         false,
       ),
     [runCartAction],
@@ -259,8 +297,9 @@ export function useCart() {
   }, [initializeCart]);
 
   const isActionPending = useCallback(
-    (productId: string, action?: CartAction, variantId?: number) => {
-      const pendingAction = state.pendingActions[cartLinePendingKey(productId, variantId)];
+    (productId: string, action?: CartAction, variantId?: number, configKey?: string) => {
+      const pendingAction =
+        state.pendingActions[cartLinePendingKey(productId, variantId, configKey)];
       return action ? pendingAction === action : pendingAction !== undefined;
     },
     [state.pendingActions],
@@ -278,6 +317,8 @@ export function useCart() {
     isActionPending,
     addItem,
     addBundle,
+    addCustomBlend,
+    replaceCustomBlend,
     updateQuantity,
     removeItem,
     refreshCart,

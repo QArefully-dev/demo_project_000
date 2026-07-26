@@ -27,13 +27,18 @@ export function finalizeAuthorizedCheckout(
         consumptionClassification: v.consumptionClassification as 'food' | 'non-food' | 'caution',
         deliveryClass: v.deliveryClass,
       };
+      // The quote emits the money split and specification only on configured lines, so a plain
+      // line falls back to fee-free defaults and persists byte-identically to prior releases.
       return {
         productId: v.productId,
         productName: v.productName,
         unitPriceCents: v.unitPriceCents,
         quantity: v.quantity,
+        discountableTotalCents: v.discountableTotalCents ?? v.lineTotalCents,
+        blendingFeeCents: v.blendingFeeCents ?? 0,
         lineTotalCents: v.lineTotalCents,
         variantSnapshot,
+        ...(v.customBlend ? { customBlend: v.customBlend } : {}),
       };
     });
 

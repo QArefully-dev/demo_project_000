@@ -2,6 +2,11 @@ import type { Cart } from '@shop/contracts/cart';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { formatMoney } from '@/lib/formatMoney';
+import { cartItemKey } from '@/lib/cartLineIdentity';
+import {
+  CUSTOM_BLEND_MADE_TO_ORDER_NOTE,
+  customBlendCompositionLabel,
+} from '@/features/customBlend/CustomBlendPackaging';
 import { PromoCodeForm } from './PromoCodeForm';
 
 interface CheckoutSummaryProps {
@@ -16,10 +21,6 @@ interface CheckoutSummaryProps {
   onPromoChange: (value: string) => void;
   onApplyPromo: () => void;
   onRemovePromo: () => void;
-}
-
-function cartItemKey(item: { productId: string; variantSnap?: { variantId: number } }): string {
-  return `${item.productId}:${item.variantSnap?.variantId ?? 'no-variant'}`;
 }
 
 function deliveryModeLabel(mode: string): string {
@@ -40,6 +41,7 @@ export function CheckoutSummary({
   onRemovePromo,
 }: CheckoutSummaryProps) {
   const deliveryPreview = cart.deliveryPreview;
+  const hasCustomBlend = cart.items.some((item) => item.customBlend !== undefined);
 
   return (
     <Card>
@@ -67,12 +69,41 @@ export function CheckoutSummary({
                     {formatMoney(item.perTonneCents)} / tonne · {item.variantSnap.weightGrams}g pack
                   </span>
                 )}
+                {item.customBlend && (
+                  <span
+                    className="block text-xs text-muted-foreground"
+                    data-testid="checkout-blend"
+                  >
+                    Custom blend: {customBlendCompositionLabel(item.product.name, item.customBlend)}
+                    <span className="block">
+                      Base material: {formatMoney(item.materialSubtotalCents)} · Blending fee:{' '}
+                      {formatMoney(item.blendingFeeCents)}
+                    </span>
+                  </span>
+                )}
               </span>
               <span className="shrink-0">{formatMoney(item.lineTotalCents)}</span>
             </div>
           ))}
         </div>
+        {hasCustomBlend && (
+          <p className="rounded-md border border-amber-500/40 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            {CUSTOM_BLEND_MADE_TO_ORDER_NOTE}
+          </p>
+        )}
         <Separator />
+        {cart.blendingFeeTotalCents > 0 && (
+          <>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Material subtotal</span>
+              <span>{formatMoney(cart.discountableSubtotalCents)}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Blending fees</span>
+              <span>{formatMoney(cart.blendingFeeTotalCents)}</span>
+            </div>
+          </>
+        )}
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">Resolved merchandise subtotal</span>
           <span>{formatMoney(cart.subtotalCents)}</span>

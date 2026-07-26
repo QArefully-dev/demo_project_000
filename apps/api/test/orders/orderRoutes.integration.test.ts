@@ -43,6 +43,8 @@ function createOrder(
         productName: 'Persisted line',
         unitPriceCents: 500,
         quantity: 1,
+        discountableTotalCents: 500,
+        blendingFeeCents: 0,
         lineTotalCents: 500,
       },
     ],

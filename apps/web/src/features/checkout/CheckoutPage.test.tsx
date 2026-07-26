@@ -46,10 +46,16 @@ const cart: Cart = {
       perTonneCents: 40000,
       resolvedUnitPriceCents: 1000,
       quantity: 1,
+      configKey: '',
+      materialSubtotalCents: 1000,
+      blendingFeeCents: 0,
+      discountableTotalCents: 1000,
       lineTotalCents: 1000,
     },
   ],
   subtotalCents: 1000,
+  discountableSubtotalCents: 1000,
+  blendingFeeTotalCents: 0,
   totalItems: 1,
   deliveryPreview: {
     mode: 'freight',
@@ -72,6 +78,8 @@ const cartContext: ReturnType<typeof useCart> = {
   isActionPending: () => false,
   addItem: vi.fn().mockResolvedValue(true),
   addBundle: vi.fn().mockResolvedValue(true),
+  addCustomBlend: vi.fn().mockResolvedValue(true),
+  replaceCustomBlend: vi.fn().mockResolvedValue(true),
   updateQuantity: vi.fn().mockResolvedValue(true),
   removeItem: vi.fn().mockResolvedValue(true),
   refreshCart: vi.fn().mockResolvedValue(true),
@@ -125,6 +133,56 @@ describe('CheckoutPage', () => {
     expect(screen.getByText(/Resolved pack price: \$10.00/)).toBeInTheDocument();
     expect(screen.getByText(/\$400.00 \/ tonne/)).toBeInTheDocument();
     expect(screen.getByText(/25,?000g pack/)).toBeInTheDocument();
+  });
+
+  it('discloses blend composition, the fee split, and the made-to-order terms', async () => {
+    const configKey = 'b'.repeat(64);
+    const blendLine = {
+      ...cart.items[0]!,
+      configKey,
+      materialSubtotalCents: 1000,
+      blendingFeeCents: 2500,
+      discountableTotalCents: 1000,
+      lineTotalCents: 3500,
+      customBlend: {
+        configKey,
+        basePercentage: 80,
+        mixingGroup: 'mineral' as const,
+        ingredients: [
+          {
+            variantId: 601,
+            productId: '11',
+            productName: 'Chalk Filler',
+            productDescription: 'Filler',
+            mixingGroup: 'mineral' as const,
+            percentage: 20,
+          },
+        ],
+        blendingFeeCents: 2500,
+        madeToOrder: true as const,
+        returnable: false as const,
+      },
+    };
+    const { useCartContext } = await import('@/hooks/CartContext');
+    vi.mocked(useCartContext).mockReturnValue({
+      ...cartContext,
+      cart: {
+        ...cart,
+        items: [blendLine],
+        subtotalCents: 3500,
+        discountableSubtotalCents: 1000,
+        blendingFeeTotalCents: 2500,
+      },
+    });
+
+    renderCheckout();
+
+    expect(screen.getByText(/Custom blend: Powdered Water — 20% Chalk Filler/)).toBeInTheDocument();
+    expect(screen.getByText(/Base material: \$10.00 · Blending fee: \$25.00/)).toBeInTheDocument();
+    expect(screen.getByText('Blending fees')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Made to order\. Custom blends cannot be returned/),
+    ).toBeInTheDocument();
   });
 
   it('adds the server-provided delivery preview to the checkout total', () => {

@@ -1,8 +1,15 @@
 import type Database from 'better-sqlite3';
+import { MIXING_GROUPS } from '@shop/catalog';
 import type { VariantRow } from '../catalog/productRepository.js';
+import type { CustomBlendFactRow } from '../customBlend/customBlendRepository.js';
+
+const SACK_WEIGHT_GRAMS = 25_000;
+const supportedMixingGroupPlaceholders = MIXING_GROUPS.map(() => '?').join(', ');
 
 export interface CartLineRow {
   variant_id: number;
+  config_key: string;
+  custom_blend_json: string | null;
   product_id: number;
   quantity: number;
   price_cents: number;
@@ -32,12 +39,27 @@ export interface CartRepository {
   create(id: string): void;
   exists(cartId: string): boolean;
   listLines(cartId: string): CartLineRow[];
+  listEligibleCustomBlendFacts(variantIds: number[]): CustomBlendFactRow[];
   variantExists(variantId: string): boolean;
-  lineQuantity(cartId: string, variantId: string): number;
-  addLine(cartId: string, variantId: string): void;
-  addLineQuantity(cartId: string, variantId: string, quantity: number): void;
-  updateLine(cartId: string, variantId: string, quantity: number): boolean;
-  removeLine(cartId: string, variantId: string): boolean;
+  lineQuantity(cartId: string, variantId: string, configKey?: string): number;
+  addLine(cartId: string, variantId: string, configKey?: string): void;
+  addLineQuantity(cartId: string, variantId: string, quantity: number, configKey?: string): void;
+  addConfiguredLineQuantity(
+    cartId: string,
+    variantId: string,
+    configKey: string,
+    customBlendJson: string,
+    quantity: number,
+  ): void;
+  replaceConfiguredLine(
+    cartId: string,
+    variantId: string,
+    previousConfigKey: string,
+    configKey: string,
+    customBlendJson: string,
+  ): boolean;
+  updateLine(cartId: string, variantId: string, quantity: number, configKey?: string): boolean;
+  removeLine(cartId: string, variantId: string, configKey?: string): boolean;
   reserve(cartId: string, paymentIdempotencyKey: string, createdAt: string): boolean;
   releaseReservation(paymentIdempotencyKey: string): boolean;
   /** Expired prepared checkout locks do not block cart mutation. */
@@ -63,7 +85,7 @@ export function createCartRepository(db: Database.Database): CartRepository {
     listLines(cartId) {
       return db
         .prepare(
-          `SELECT cli.variant_id, cli.quantity,
+          `SELECT cli.variant_id, cli.config_key, cli.custom_blend_json, cli.quantity,
             p.id AS product_id, p.name AS product_name, p.description AS product_description,
             v.price_cents AS price_cents, p.category AS product_category,
             p.image_set_id AS product_image_set_id, p.slug AS product_slug,
@@ -87,53 +109,121 @@ export function createCartRepository(db: Database.Database): CartRepository {
         )
         .all(cartId) as CartLineRow[];
     },
+    listEligibleCustomBlendFacts(variantIds) {
+      if (variantIds.length === 0) return [];
+      const variantPlaceholders = variantIds.map(() => '?').join(', ');
+      return db
+        .prepare(
+          `SELECT
+             p.id AS product_id, p.name AS product_name, p.description AS product_description,
+             p.mixing_group, pv.id AS variant_id, pv.sku, pv.label, pv.weight_grams,
+             pv.price_cents, pv.moq_sacks, pv.compare_at_price_cents, pv.stock_count,
+             pv.backorderable, pv.backorder_lead_days, pv.delivery_class,
+             pv.active AS variant_active, pv.sort_order
+           FROM product_variants pv
+           INNER JOIN products p ON p.id = pv.product_id
+           WHERE pv.id IN (${variantPlaceholders})
+             AND p.active = 1
+             AND pv.active = 1
+             AND pv.sort_order = 1
+             AND pv.weight_grams = ${SACK_WEIGHT_GRAMS}
+             AND p.mixing_group IN (${supportedMixingGroupPlaceholders})`,
+        )
+        .all(...variantIds, ...MIXING_GROUPS) as CustomBlendFactRow[];
+    },
     variantExists(variantId) {
       return (
         db.prepare('SELECT 1 FROM product_variants WHERE id = ? AND active = 1').get(variantId) !==
         undefined
       );
     },
-    lineQuantity(cartId, variantId) {
+    lineQuantity(cartId, variantId, configKey = '') {
       return (
         (
           db
-            .prepare('SELECT quantity FROM cart_line_items WHERE cart_id = ? AND variant_id = ?')
-            .get(cartId, variantId) as { quantity: number } | undefined
+            .prepare(
+              'SELECT quantity FROM cart_line_items WHERE cart_id = ? AND variant_id = ? AND config_key = ?',
+            )
+            .get(cartId, variantId, configKey) as { quantity: number } | undefined
         )?.quantity ?? 0
       );
     },
-    addLine(cartId, variantId) {
+    addLine(cartId, variantId, configKey = '') {
       db.prepare(
-        `INSERT INTO cart_line_items (cart_id, variant_id, quantity, created_at, updated_at)
-         VALUES (?, ?, 1, datetime('now'), datetime('now'))
-         ON CONFLICT(cart_id, variant_id) DO UPDATE SET
+        `INSERT INTO cart_line_items (cart_id, variant_id, config_key, quantity, created_at, updated_at)
+         VALUES (?, ?, ?, 1, datetime('now'), datetime('now'))
+         ON CONFLICT(cart_id, variant_id, config_key) DO UPDATE SET
            quantity = quantity + 1,
            updated_at = datetime('now')`,
-      ).run(cartId, variantId);
+      ).run(cartId, variantId, configKey);
     },
-    addLineQuantity(cartId, variantId, quantity) {
+    addLineQuantity(cartId, variantId, quantity, configKey = '') {
       db.prepare(
-        `INSERT INTO cart_line_items (cart_id, variant_id, quantity, created_at, updated_at)
-         VALUES (?, ?, ?, datetime('now'), datetime('now'))
-         ON CONFLICT(cart_id, variant_id) DO UPDATE SET
+        `INSERT INTO cart_line_items (cart_id, variant_id, config_key, quantity, created_at, updated_at)
+         VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
+         ON CONFLICT(cart_id, variant_id, config_key) DO UPDATE SET
            quantity = quantity + excluded.quantity,
            updated_at = datetime('now')`,
-      ).run(cartId, variantId, quantity);
+      ).run(cartId, variantId, configKey, quantity);
     },
-    updateLine(cartId, variantId, quantity) {
+    addConfiguredLineQuantity(cartId, variantId, configKey, customBlendJson, quantity) {
+      db.prepare(
+        `INSERT INTO cart_line_items
+           (cart_id, variant_id, config_key, custom_blend_json, quantity, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+         ON CONFLICT(cart_id, variant_id, config_key) DO UPDATE SET
+           quantity = quantity + excluded.quantity,
+           custom_blend_json = excluded.custom_blend_json,
+           updated_at = datetime('now')`,
+      ).run(cartId, variantId, configKey, customBlendJson, quantity);
+    },
+    replaceConfiguredLine(cartId, variantId, previousConfigKey, configKey, customBlendJson) {
+      const existing = db
+        .prepare(
+          `SELECT quantity FROM cart_line_items
+           WHERE cart_id = ? AND variant_id = ? AND config_key = ?`,
+        )
+        .get(cartId, variantId, previousConfigKey) as { quantity: number } | undefined;
+      if (!existing) return false;
+      if (previousConfigKey === configKey) {
+        db.prepare(
+          `UPDATE cart_line_items
+           SET custom_blend_json = ?, updated_at = datetime('now')
+           WHERE cart_id = ? AND variant_id = ? AND config_key = ?`,
+        ).run(customBlendJson, cartId, variantId, configKey);
+        return true;
+      }
+      db.prepare(
+        `INSERT INTO cart_line_items
+           (cart_id, variant_id, config_key, custom_blend_json, quantity, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+         ON CONFLICT(cart_id, variant_id, config_key) DO UPDATE SET
+           quantity = quantity + excluded.quantity,
+           custom_blend_json = excluded.custom_blend_json,
+           updated_at = datetime('now')`,
+      ).run(cartId, variantId, configKey, customBlendJson, existing.quantity);
+      db.prepare(
+        `DELETE FROM cart_line_items
+         WHERE cart_id = ? AND variant_id = ? AND config_key = ?`,
+      ).run(cartId, variantId, previousConfigKey);
+      return true;
+    },
+    updateLine(cartId, variantId, quantity, configKey = '') {
       return (
         db
           .prepare(
-            "UPDATE cart_line_items SET quantity = ?, updated_at = datetime('now') WHERE cart_id = ? AND variant_id = ?",
+            "UPDATE cart_line_items SET quantity = ?, updated_at = datetime('now') WHERE cart_id = ? AND variant_id = ? AND config_key = ?",
           )
-          .run(quantity, cartId, variantId).changes > 0
+          .run(quantity, cartId, variantId, configKey).changes > 0
       );
     },
-    removeLine(cartId, variantId) {
+    removeLine(cartId, variantId, configKey = '') {
       return (
         db
-          .prepare('DELETE FROM cart_line_items WHERE cart_id = ? AND variant_id = ?')
-          .run(cartId, variantId).changes > 0
+          .prepare(
+            'DELETE FROM cart_line_items WHERE cart_id = ? AND variant_id = ? AND config_key = ?',
+          )
+          .run(cartId, variantId, configKey).changes > 0
       );
     },
     reserve(cartId, paymentIdempotencyKey, createdAt) {

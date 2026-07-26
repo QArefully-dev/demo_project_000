@@ -1,5 +1,6 @@
-import { render, screen } from '@testing-library/react';
-import type { Cart } from '@shop/contracts/cart';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type { Cart, CartLine } from '@shop/contracts/cart';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { useCartContext } from '@/hooks/CartContext';
@@ -8,43 +9,49 @@ import { CartPage } from './CartPage';
 
 vi.mock('@/hooks/CartContext', () => ({ useCartContext: vi.fn() }));
 
+const plainLine: CartLine = {
+  productId: '1',
+  product: {
+    id: '1',
+    name: 'Pallet material',
+    description: 'Test material.',
+    priceCents: 1000,
+    imageSetId: 'test-material',
+    category: 'Trade',
+    stock: 10,
+    availability: 'in_stock',
+    backorderable: false,
+    backorderLeadDays: null,
+    slug: 'test-material',
+    salesCount: 0,
+    createdAt: '2026-07-14T00:00:00.000Z',
+    available: true,
+    tags: [],
+    specificationGroups: [],
+  },
+  variantSnap: {
+    variantId: 1,
+    sku: 'MAT-001',
+    label: '25kg sack',
+    weightGrams: 25000,
+    deliveryClass: 'freight',
+  },
+  perTonneCents: 40000,
+  resolvedUnitPriceCents: 1000,
+  quantity: 1,
+  configKey: '',
+  materialSubtotalCents: 1000,
+  blendingFeeCents: 0,
+  discountableTotalCents: 1000,
+  lineTotalCents: 1000,
+};
+
 const cart: Cart = {
   id: '58f1b5ed-3dbf-4c3c-908e-c71d7e7bf912',
-  items: [
-    {
-      productId: '1',
-      product: {
-        id: '1',
-        name: 'Pallet material',
-        description: 'Test material.',
-        priceCents: 1000,
-        imageSetId: 'test-material',
-        category: 'Trade',
-        stock: 10,
-        availability: 'in_stock',
-        backorderable: false,
-        backorderLeadDays: null,
-        slug: 'test-material',
-        salesCount: 0,
-        createdAt: '2026-07-14T00:00:00.000Z',
-        available: true,
-        tags: [],
-        specificationGroups: [],
-      },
-      variantSnap: {
-        variantId: 1,
-        sku: 'MAT-001',
-        label: '25kg sack',
-        weightGrams: 25000,
-        deliveryClass: 'freight',
-      },
-      perTonneCents: 40000,
-      resolvedUnitPriceCents: 1000,
-      quantity: 1,
-      lineTotalCents: 1000,
-    },
-  ],
+  items: [plainLine],
   subtotalCents: 1000,
+  discountableSubtotalCents: 1000,
+  blendingFeeTotalCents: 0,
   totalItems: 1,
   deliveryPreview: {
     mode: 'freight',
@@ -54,16 +61,22 @@ const cart: Cart = {
   },
 };
 
-function renderCart(error: string | null = null) {
+interface CartContextOverrides {
+  cart?: Cart;
+  updateQuantity?: ReturnType<typeof vi.fn>;
+  isActionPending?: ReturnType<typeof vi.fn>;
+}
+
+function renderCart(error: string | null = null, overrides: CartContextOverrides = {}) {
   vi.mocked(useCartContext).mockReturnValue({
-    cart,
+    cart: overrides.cart ?? cart,
     isLoading: false,
     isInitializing: false,
     error,
-    updateQuantity: vi.fn(),
+    updateQuantity: overrides.updateQuantity ?? vi.fn(),
     removeItem: vi.fn(),
     retryCart: vi.fn(),
-    isActionPending: vi.fn(),
+    isActionPending: overrides.isActionPending ?? vi.fn(),
   } as unknown as ReturnType<typeof useCart>);
   return render(
     <MemoryRouter>
@@ -71,6 +84,49 @@ function renderCart(error: string | null = null) {
     </MemoryRouter>,
   );
 }
+
+const CONFIG_KEY_A = 'a'.repeat(64);
+const CONFIG_KEY_B = 'b'.repeat(64);
+
+/**
+ * Two configured lines over the SAME base variant, distinguished only by config key. This is the
+ * only shape in which config-key line identity is load-bearing: drop the key from the render key or
+ * the pending key and the two lines start sharing state.
+ */
+function blendLine(configKey: string, fillerName: string, quantity: number): CartLine {
+  return {
+    ...plainLine,
+    configKey,
+    quantity,
+    blendingFeeCents: 2_500,
+    lineTotalCents: 3_500,
+    customBlend: {
+      configKey,
+      basePercentage: 80,
+      mixingGroup: 'mineral',
+      ingredients: [
+        {
+          variantId: 601,
+          productId: '11',
+          productName: fillerName,
+          productDescription: 'Filler',
+          mixingGroup: 'mineral',
+          percentage: 20,
+        },
+      ],
+      blendingFeeCents: 2_500,
+      madeToOrder: true,
+      returnable: false,
+    },
+  };
+}
+
+const twoBlendCart: Cart = {
+  ...cart,
+  items: [blendLine(CONFIG_KEY_A, 'Chalk Filler', 1), blendLine(CONFIG_KEY_B, 'Silica Flour', 4)],
+  totalItems: 5,
+  blendingFeeTotalCents: 5_000,
+};
 
 describe('CartPage', () => {
   it('frames session-held lines, resolved totals, and server delivery weight as an order', () => {
@@ -91,6 +147,43 @@ describe('CartPage', () => {
       screen.getByText(/Pallet freight scheduled after order confirmation/),
     ).toBeInTheDocument();
     expect(screen.getByText(/Total order weight: 100,000g/)).toBeInTheDocument();
+  });
+
+  it('keeps two blends over one base variant as independent lines keyed by config key', async () => {
+    const user = userEvent.setup();
+    const updateQuantity = vi.fn().mockResolvedValue(true);
+    const isActionPending = vi.fn().mockReturnValue(false);
+    // React only reports colliding list keys through console.error, so a lost config-key segment is
+    // otherwise silent.
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    renderCart(null, { cart: twoBlendCart, updateQuantity, isActionPending });
+
+    // Both compositions reach the screen: neither line is collapsed into or overwritten by the other.
+    expect(screen.getByText('Pallet material — 20% Chalk Filler')).toBeInTheDocument();
+    expect(screen.getByText('Pallet material — 20% Silica Flour')).toBeInTheDocument();
+
+    const duplicateKeyWarnings = consoleError.mock.calls.filter((call) =>
+      call.some((argument) => String(argument).includes('same key')),
+    );
+    consoleError.mockRestore();
+    expect(duplicateKeyWarnings).toEqual([]);
+
+    // Pending state is queried per config key, so a spinner on one line cannot disable the other.
+    expect(isActionPending).toHaveBeenCalledWith('1', 'update', 1, CONFIG_KEY_A);
+    expect(isActionPending).toHaveBeenCalledWith('1', 'update', 1, CONFIG_KEY_B);
+    expect(isActionPending).toHaveBeenCalledWith('1', 'remove', 1, CONFIG_KEY_A);
+    expect(isActionPending).toHaveBeenCalledWith('1', 'remove', 1, CONFIG_KEY_B);
+
+    const lineB = screen.getByText('Pallet material — 20% Silica Flour').closest('div.py-3');
+    expect(lineB).not.toBeNull();
+    await user.click(
+      within(lineB as HTMLElement).getByRole('button', { name: 'Increase quantity' }),
+    );
+
+    // Line B holds quantity 4, so the mutation must carry 5 and B's own config key.
+    expect(updateQuantity).toHaveBeenCalledTimes(1);
+    expect(updateQuantity).toHaveBeenCalledWith('1', 5, 1, CONFIG_KEY_B);
   });
 
   it('shows the MOQ error returned by the cart hook', () => {

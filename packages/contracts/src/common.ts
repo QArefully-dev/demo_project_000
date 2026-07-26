@@ -1,7 +1,7 @@
 import { Type, type Static } from '@sinclair/typebox';
 
-/** Monetary value in cents. Integer >= 0. */
-export const MoneyCents = Type.Integer({ minimum: 0 });
+/** Monetary value in cents. Safe integer >= 0. */
+export const MoneyCents = Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER });
 
 export const ErrorResponse = Type.Object({
   error: Type.String({ minLength: 1, maxLength: 500 }),

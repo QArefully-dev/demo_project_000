@@ -31,16 +31,22 @@ export function addToCart(
   });
 }
 
+/**
+ * `configKey` selects among lines that share a variant: `''` (or omitted) targets the
+ * plain line, a blend key targets that one configured line.
+ */
 export function updateCartItem(
   cartId: string,
   productId: string,
   quantity: number,
   variantId?: number,
+  configKey?: string,
 ): Promise<Cart> {
   const body: UpdateCartLineBody = {
     productId,
     quantity,
     ...(variantId !== undefined ? { variantId } : {}),
+    ...(configKey !== undefined ? { configKey } : {}),
   };
   return apiFetch(Cart, `/api/cart/${cartId}/items`, {
     method: 'PATCH',
@@ -52,9 +58,12 @@ export function removeFromCart(
   cartId: string,
   productId: string,
   variantId?: number,
+  configKey?: string,
 ): Promise<Cart> {
   const body: RemoveFromCartBody | undefined =
-    variantId === undefined ? undefined : { productId, variantId };
+    variantId === undefined
+      ? undefined
+      : { productId, variantId, ...(configKey !== undefined ? { configKey } : {}) };
   return apiFetch(Cart, `/api/cart/${cartId}/items/${productId}`, {
     method: 'DELETE',
     ...(body ? { body: JSON.stringify(body) } : {}),

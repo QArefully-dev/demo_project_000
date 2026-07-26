@@ -275,8 +275,9 @@ export function seedOrderScenarios(db: Database.Database): void {
   const insertProductLine = db.prepare(`
     INSERT INTO order_line_items
       (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents,
+       discountable_total_cents, blending_fee_cents,
        variant_id, sku, variant_label, weight_grams, consumption_classification, delivery_class)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const findVariantByProduct = db.prepare(
     'SELECT id, sku, label, weight_grams, delivery_class FROM product_variants WHERE product_id = ? AND sort_order = 1 AND active = 1 LIMIT 1',
@@ -355,6 +356,9 @@ export function seedOrderScenarios(db: Database.Database): void {
           line.product.price_cents,
           line.quantity,
           line.product.price_cents * line.quantity,
+          // Demo fixtures are ordinary lines: fully discountable, never blended.
+          line.product.price_cents * line.quantity,
+          0,
           variant?.id ?? null,
           variant?.sku ?? null,
           variant?.label ?? null,

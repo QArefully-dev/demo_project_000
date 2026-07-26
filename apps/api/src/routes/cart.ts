@@ -168,9 +168,9 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
       },
     },
     async (request, reply) => {
-      const { productId, variantId, quantity } = request.body;
+      const { productId, variantId, configKey, quantity } = request.body;
       const cartData = carts.get(request.params.cartId);
-      const resolvedVariantId = resolveCartLineVariant(cartData, productId, variantId);
+      const resolvedVariantId = resolveCartLineVariant(cartData, productId, variantId, configKey);
 
       if (resolvedVariantId === 'AMBIGUOUS') {
         return reply.code(400).send({
@@ -187,6 +187,7 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
         resolvedVariantId,
         quantity,
         auditContext(request),
+        configKey,
       );
       if (result === 'CART_NOT_FOUND') {
         sendNotFound(reply, 'Cart');
@@ -231,6 +232,7 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
         cartData,
         productId,
         request.body?.variantId,
+        request.body?.configKey,
       );
 
       if (resolvedVariantId === 'AMBIGUOUS') {
@@ -243,7 +245,12 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
         return;
       }
 
-      const result = carts.remove(request.params.cartId, resolvedVariantId, auditContext(request));
+      const result = carts.remove(
+        request.params.cartId,
+        resolvedVariantId,
+        auditContext(request),
+        request.body?.configKey,
+      );
       if (result === 'CART_NOT_FOUND') {
         sendNotFound(reply, 'Cart');
         return;
@@ -263,8 +270,12 @@ function resolveCartLineVariant(
   cart: CartResponse | undefined,
   productId: string,
   variantId: number | undefined,
+  configKey: string | undefined,
 ): string | undefined {
-  const matchingLines = cart?.items.filter((item) => item.productId === productId) ?? [];
+  const matchingLines =
+    cart?.items.filter(
+      (item) => item.productId === productId && item.configKey === (configKey ?? ''),
+    ) ?? [];
   if (variantId !== undefined) {
     return matchingLines.some((item) => item.variantSnap?.variantId === variantId)
       ? String(variantId)

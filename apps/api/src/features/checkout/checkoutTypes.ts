@@ -24,6 +24,8 @@ export type CheckoutErrorCode =
   | 'RESERVATION_EXPIRED'
   | 'INSUFFICIENT_STOCK'
   | 'BELOW_MOQ'
+  /** A configured Custom Blend line no longer resolves to eligible catalog facts. */
+  | 'CUSTOM_BLEND_INVALID'
   | 'CHECKOUT_FAILED';
 
 export type CheckoutResult =

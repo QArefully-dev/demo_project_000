@@ -20,6 +20,7 @@ import { HelpIndexPage } from './features/help/HelpIndexPage';
 import { HelpArticlePage } from './features/help/HelpArticlePage';
 import { ComparisonPage } from './features/comparison/ComparisonPage';
 import { BundlesPage } from './features/bundles/BundlesPage';
+import { CustomBlendPage } from './features/customBlend/CustomBlendPage';
 import { OrderHistoryPage } from './features/orders/OrderHistoryPage';
 import { OrderDetailPage } from './features/orders/OrderDetailPage';
 import { AdminRoute } from './components/AdminRoute';
@@ -33,6 +34,7 @@ export default function App() {
         <Route path="/catalog" element={<CatalogPage />} />
         <Route path="/compare" element={<ComparisonPage />} />
         <Route path="/bundles" element={<BundlesPage />} />
+        <Route path="/custom-blend" element={<CustomBlendPage />} />
         <Route path="/products/:id" element={<ProductPage />} />
         <Route path="/cart" element={<CartPage />} />
         <Route path="/checkout" element={<CheckoutPage />} />
