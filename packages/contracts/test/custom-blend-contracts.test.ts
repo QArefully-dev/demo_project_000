@@ -4,13 +4,14 @@ import { Value } from '@sinclair/typebox/value';
 import {
   CartLineConfigKey,
   CreateCustomBlendBody,
+  CustomBlendOption,
   CustomBlendSnapshot,
   ReplaceCustomBlendBody,
 } from '../src/customBlends.js';
 import { Cart, CartLine, RemoveFromCartBody, UpdateCartLineBody } from '../src/cart.js';
 import { OrderLineItem } from '../src/orders.js';
 import { PersistedCheckoutQuoteV6, parsePersistedCheckoutQuote } from '../src/payments.js';
-import { CUSTOM_BLEND_FEE_CENTS } from '../src/pricing.js';
+import { CUSTOM_BLEND_FEE_CENTS, TIER_LADDER } from '../src/pricing.js';
 
 const uuid = '123e4567-e89b-42d3-a456-426614174000';
 const configKey = 'a'.repeat(64);
@@ -93,6 +94,84 @@ void test('Custom Blend snapshot carries fee and non-returnable made-to-order fa
   );
   assert.equal(Value.Check(CustomBlendSnapshot, { ...customBlend, madeToOrder: false }), false);
   assert.equal(Value.Check(CustomBlendSnapshot, { ...customBlend, returnable: true }), false);
+});
+
+void test('Custom Blend base presentation is optional for legacy snapshots and strict when present', () => {
+  const basePresentation = {
+    category: 'Trade & Creative Materials',
+    consumptionClassification: 'non-food',
+    categoryFacts: {
+      texture: 'Fine powder',
+      colour: 'White',
+      source: 'Mineral',
+      intendedUse: 'Construction',
+      storage: 'Cool dry',
+      consumptionClassification: 'non-food',
+    },
+  };
+  assert.equal(Value.Check(CustomBlendSnapshot, customBlend), true);
+  assert.equal(Value.Check(CustomBlendSnapshot, { ...customBlend, basePresentation }), true);
+  assert.equal(
+    Value.Check(CustomBlendSnapshot, {
+      ...customBlend,
+      basePresentation: { ...basePresentation, unexpected: true },
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(CustomBlendSnapshot, {
+      ...customBlend,
+      basePresentation: { ...basePresentation, categoryFacts: { texture: 'incomplete' } },
+    }),
+    false,
+  );
+});
+
+void test('Custom Blend options require presentation facts and reject unknown properties', () => {
+  const option = {
+    productId: '1',
+    productName: product.name,
+    productDescription: product.description,
+    category: 'Sports Nutrition',
+    consumptionClassification: 'food',
+    categoryFacts: {
+      texture: 'Fine powder',
+      colour: 'White',
+      source: 'Plant',
+      intendedUse: 'Supplement',
+      storage: 'Cool dry',
+      consumptionClassification: 'food',
+    },
+    mixingGroup: 'food-grade',
+    variant: {
+      variantId: 1,
+      productId: 1,
+      sku: 'SN-0001-001',
+      label: '25kg Sack',
+      weightGrams: 25_000,
+      priceCents: 2500,
+      moqSacks: 1,
+      perTonneCents: 100_000,
+      priceTiers: TIER_LADDER,
+      stockCount: 10,
+      backorderable: false,
+      backorderLeadDays: null,
+      deliveryClass: 'parcel',
+      active: true,
+      sortOrder: 1,
+    },
+  };
+
+  assert.equal(Value.Check(CustomBlendOption, option), true);
+  assert.equal(Value.Check(CustomBlendOption, { ...option, category: '' }), true);
+  assert.equal(Value.Check(CustomBlendOption, { ...option, category: 'x'.repeat(161) }), true);
+  assert.equal(Value.Check(CustomBlendOption, { ...option, category: undefined }), false);
+  assert.equal(
+    Value.Check(CustomBlendOption, { ...option, consumptionClassification: undefined }),
+    false,
+  );
+  assert.equal(Value.Check(CustomBlendOption, { ...option, categoryFacts: undefined }), false);
+  assert.equal(Value.Check(CustomBlendOption, { ...option, unexpected: true }), false);
 });
 
 void test('configured cart and order lines expose money split and specification', () => {

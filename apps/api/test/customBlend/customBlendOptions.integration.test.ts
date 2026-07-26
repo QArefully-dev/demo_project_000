@@ -85,6 +85,12 @@ void test('Custom Blend options expose all compatible active 25 kg lots across c
   assert.equal(Value.Check(CustomBlendOptionsResponse, body), true);
   assert.equal(body.base.variant.variantId, base.variantId);
   assert.equal(body.base.mixingGroup, 'food-grade');
+  for (const option of [body.base, ...body.ingredients]) {
+    assert.ok(option.category.length > 0);
+    assert.ok(['food', 'non-food', 'caution'].includes(option.consumptionClassification));
+    assert.equal(typeof option.categoryFacts, 'object');
+  }
+  assert.notEqual(body.base.categoryFacts.texture, 'Not specified');
   assert.ok(
     body.ingredients.some((option) => option.variant.variantId === crossCategory.variantId),
   );
@@ -112,6 +118,67 @@ void test('Custom Blend options expose all compatible active 25 kg lots across c
       )
       .map((option) => option.variant.variantId),
   );
+});
+
+void test('Custom Blend options safely default invalid category facts', async (t) => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'shop-custom-blend-options-facts-'));
+  const db = openDatabase({ path: join(tempDir, 'shop.db') });
+  resetDatabase(db);
+  seedDatabase(db);
+  const base = eligibleLot(db, 'Sports Nutrition');
+  const ingredient = db
+    .prepare(
+      `SELECT pv.id AS variantId, p.id AS productId, p.category
+       FROM product_variants pv
+       INNER JOIN products p ON p.id = pv.product_id
+       WHERE p.active = 1 AND pv.active = 1 AND pv.sort_order = 1 AND pv.weight_grams = 25000
+         AND p.mixing_group = 'food-grade' AND pv.id != ?
+       ORDER BY p.name COLLATE NOCASE ASC, pv.id ASC LIMIT 1`,
+    )
+    .get(base.variantId) as EligibleLot | undefined;
+  if (!ingredient) throw new Error('Expected compatible ingredient lot');
+  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
+  t.after(async () => {
+    await app.close();
+    closeDatabase(db);
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  const expectedFacts = {
+    texture: 'Not specified',
+    colour: 'Not specified',
+    source: 'Not specified',
+    intendedUse: 'Not specified',
+    storage: 'Not specified',
+    consumptionClassification: 'food',
+  };
+  for (const detailsJson of [
+    null,
+    '{malformed',
+    '{}',
+    '[]',
+    JSON.stringify({ texture: 'Fine soft powder' }),
+    JSON.stringify({ ...expectedFacts, unexpected: 'fact' }),
+  ]) {
+    db.prepare('UPDATE products SET details_json = ? WHERE id IN (?, ?)').run(
+      detailsJson,
+      base.productId,
+      ingredient.productId,
+    );
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/custom-blends/options?baseVariantId=${base.variantId}`,
+    });
+    assert.equal(response.statusCode, 200);
+    const body = response.json<CustomBlendOptionsResponseType>();
+    assert.equal(Value.Check(CustomBlendOptionsResponse, body), true);
+    assert.deepEqual(body.base.categoryFacts, expectedFacts);
+    assert.deepEqual(
+      body.ingredients.find((option) => option.variant.variantId === ingredient.variantId)
+        ?.categoryFacts,
+      expectedFacts,
+    );
+  }
 });
 
 void test('Custom Blend options reject nonexistent, inactive, null-group, and wrong-shape bases', async (t) => {

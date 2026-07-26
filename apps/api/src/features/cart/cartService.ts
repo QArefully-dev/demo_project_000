@@ -413,6 +413,7 @@ function hydrateCustomBlend(
     configKey: normalized.configKey,
     basePercentage: normalized.basePercentage,
     mixingGroup: base.mixing_group,
+    ...(persisted.basePresentation ? { basePresentation: persisted.basePresentation } : {}),
     ingredients: ingredients as CustomBlendSnapshot['ingredients'],
     blendingFeeCents: CUSTOM_BLEND_FEE_CENTS,
     madeToOrder: true,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CustomBlendSnapshot } from '@shop/contracts/custom-blends';
 import {
+  balanceEvenlyPercentages,
   customBlendReducer,
   customBlendValidation,
   derivedBasePercentage,
@@ -80,10 +81,10 @@ describe('customBlendReducer', () => {
     ]);
   });
 
-  it('never defaults an ingredient below the 5% floor', () => {
+  it('does not add an ingredient when the remaining budget is below the 5% floor', () => {
     const state = stateWith({ ingredients: ingredients(50) });
     const next = customBlendReducer(state, { type: 'ingredient-toggled', variantId: 700 });
-    expect(next.ingredients.at(-1)).toEqual({ variantId: 700, percentage: 5 });
+    expect(next).toBe(state);
   });
 
   it('toggles a selected ingredient back off', () => {
@@ -142,21 +143,57 @@ describe('customBlendReducer', () => {
     expect(next).toEqual({ ...initialCustomBlendState, baseVariantId: 501 });
   });
 
-  it('changes one ingredient percentage without touching the others', () => {
+  it('clamps a changed ingredient percentage to the remaining 50% budget', () => {
     const state = stateWith({ ingredients: ingredients(10, 20) });
     const next = customBlendReducer(state, {
       type: 'percentage-changed',
       variantId: 601,
-      percentage: 35,
+      percentage: 50,
     });
     expect(next.ingredients).toEqual([
       { variantId: 600, percentage: 10 },
-      { variantId: 601, percentage: 35 },
+      { variantId: 601, percentage: 40 },
     ]);
+  });
+
+  it('keeps percentage changes whole and within the 5% to 50% bounds', () => {
+    const state = stateWith({ ingredients: ingredients(20) });
+    expect(
+      customBlendReducer(state, {
+        type: 'percentage-changed',
+        variantId: 600,
+        percentage: 3.6,
+      }).ingredients,
+    ).toEqual([{ variantId: 600, percentage: 5 }]);
+    expect(
+      customBlendReducer(state, {
+        type: 'percentage-changed',
+        variantId: 600,
+        percentage: 55,
+      }).ingredients,
+    ).toEqual([{ variantId: 600, percentage: 50 }]);
   });
 });
 
 describe('derived blend facts', () => {
+  it('balances one through four ingredients within the 50% budget deterministically', () => {
+    expect([...balanceEvenlyPercentages([1])]).toEqual([[1, 50]]);
+    expect([...balanceEvenlyPercentages([1, 2])]).toEqual([
+      [1, 25],
+      [2, 25],
+    ]);
+    expect([...balanceEvenlyPercentages([1, 2, 3])]).toEqual([
+      [1, 17],
+      [2, 17],
+      [3, 16],
+    ]);
+    expect([...balanceEvenlyPercentages([1, 2, 3, 4])]).toEqual([
+      [1, 13],
+      [2, 13],
+      [3, 12],
+      [4, 12],
+    ]);
+  });
   it('derives the live base remainder from the ingredient total', () => {
     const state = stateWith({ ingredients: ingredients(15, 10) });
     expect(ingredientTotalPercentage(state)).toBe(25);

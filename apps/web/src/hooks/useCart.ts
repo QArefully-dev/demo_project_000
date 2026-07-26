@@ -169,7 +169,7 @@ export function useCart() {
       pendingKey: string,
       operation: (activeCartId: string) => Promise<Cart>,
       retryAfterRecovery: boolean,
-    ): Promise<boolean> => {
+    ): Promise<Cart | false> => {
       const mutationSequence = ++mutationSequenceRef.current;
       if (mountedRef.current) dispatch({ type: 'action-started', pendingKey, action });
 
@@ -184,7 +184,7 @@ export function useCart() {
         try {
           const cart = await operation(activeCartId);
           if (getCartId() === cart.id) applyMutationCart(cart, mutationSequence);
-          return true;
+          return cart;
         } catch (error) {
           if (!isMissingCartError(error)) throw error;
 
@@ -196,7 +196,7 @@ export function useCart() {
 
           const cart = await operation(replacementCart.id);
           if (getCartId() === cart.id) applyMutationCart(cart, mutationSequence);
-          return true;
+          return cart;
         }
       } catch (error) {
         if (mountedRef.current) {
@@ -213,9 +213,21 @@ export function useCart() {
     [applyCart, applyMutationCart, loadCart, recoverCart],
   );
 
+  // Most callers only need success/failure. Custom Blend also needs the server-returned line so
+  // its recap cannot reuse the pre-edit key.
+  const runCartActionSucceeded = useCallback(
+    async (
+      action: CartAction,
+      pendingKey: string,
+      operation: (activeCartId: string) => Promise<Cart>,
+      retryAfterRecovery: boolean,
+    ) => Boolean(await runCartAction(action, pendingKey, operation, retryAfterRecovery)),
+    [runCartAction],
+  );
+
   const addItem = useCallback(
     (productId: string, variantId?: number, quantity?: number) =>
-      runCartAction(
+      runCartActionSucceeded(
         'add',
         productId,
         (cartId) =>
@@ -224,21 +236,21 @@ export function useCart() {
             : api.addToCart(cartId, productId, variantId, quantity),
         true,
       ),
-    [runCartAction],
+    [runCartActionSucceeded],
   );
   const addBundle = useCallback(
     (bundleId: string) =>
-      runCartAction(
+      runCartActionSucceeded(
         'bundle-add',
         `bundle:${bundleId}`,
         (cartId) => bundlesApi.addBundleToCart(cartId, bundleId),
         true,
       ),
-    [runCartAction],
+    [runCartActionSucceeded],
   );
   const updateQuantity = useCallback(
     (productId: string, quantity: number, variantId?: number, configKey?: string) =>
-      runCartAction(
+      runCartActionSucceeded(
         'update',
         cartLinePendingKey(productId, variantId, configKey),
         (cartId) => {
@@ -249,11 +261,11 @@ export function useCart() {
         },
         false,
       ),
-    [runCartAction],
+    [runCartActionSucceeded],
   );
   const removeItem = useCallback(
     (productId: string, variantId?: number, configKey?: string) =>
-      runCartAction(
+      runCartActionSucceeded(
         'remove',
         cartLinePendingKey(productId, variantId, configKey),
         (cartId) => {
@@ -263,7 +275,7 @@ export function useCart() {
         },
         false,
       ),
-    [runCartAction],
+    [runCartActionSucceeded],
   );
   const addCustomBlend = useCallback(
     (body: CreateCustomBlendBody) =>

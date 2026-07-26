@@ -23,6 +23,8 @@ vi.mock('@/hooks/useProducts', () => ({ useProducts: vi.fn() }));
 vi.mock('@/hooks/useCategories', () => ({ useCategories: vi.fn() }));
 
 const EDIT_CONFIG_KEY = 'a'.repeat(64);
+const CREATED_CONFIG_KEY = 'c'.repeat(64);
+const REPLACED_CONFIG_KEY = 'b'.repeat(64);
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -42,6 +44,16 @@ function option(
     productName,
     productDescription: `${productName} description`,
     mixingGroup: 'mineral',
+    category: 'Cement',
+    consumptionClassification: 'non-food',
+    categoryFacts: {
+      texture: 'Fine',
+      colour: 'Grey',
+      source: 'Test source',
+      intendedUse: 'Testing',
+      storage: 'Dry cool',
+      consumptionClassification: 'non-food',
+    },
     variant: {
       variantId,
       productId: variantId,
@@ -124,6 +136,38 @@ function configuredLine(): CartLine {
       returnable: false,
     },
   };
+}
+
+function returnedCart(line: CartLine): Cart {
+  return {
+    id: 'cart',
+    items: [line],
+    subtotalCents: line.lineTotalCents,
+    discountableSubtotalCents: line.discountableTotalCents,
+    blendingFeeTotalCents: line.blendingFeeCents,
+    totalItems: line.quantity,
+  };
+}
+
+function lineWithAuthoritativeKey(
+  configKey: string,
+  basePercentage: number,
+  ingredientPercentage: number,
+) {
+  const line = configuredLine();
+  return {
+    ...line,
+    configKey,
+    customBlend: {
+      ...line.customBlend!,
+      configKey,
+      basePercentage,
+      ingredients: line.customBlend!.ingredients.map((ingredient) => ({
+        ...ingredient,
+        percentage: ingredientPercentage,
+      })),
+    },
+  } satisfies CartLine;
 }
 
 const addCustomBlend = vi.fn();
@@ -213,16 +257,17 @@ function renderPage(search: string, extra?: React.ReactNode) {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  addCustomBlend.mockResolvedValue(true);
-  replaceCustomBlend.mockResolvedValue(true);
-  mockCart({
+  const cart = {
     id: 'cart',
     items: [],
     subtotalCents: 0,
     discountableSubtotalCents: 0,
     blendingFeeTotalCents: 0,
     totalItems: 0,
-  });
+  } satisfies Cart;
+  addCustomBlend.mockResolvedValue(cart);
+  replaceCustomBlend.mockResolvedValue(cart);
+  mockCart(cart);
   vi.mocked(useCategories).mockReturnValue({ categories: [], isLoading: false, error: null });
   mockProducts([]);
 });
@@ -236,38 +281,38 @@ describe('CustomBlendPage', () => {
     renderPage('?baseVariantId=501');
 
     const chalk = await screen.findByLabelText('Chalk Filler');
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Base 100% · ingredients 0% · 0 of 4 ingredients selected',
-    );
+    expect(
+      screen.getByText(/Base 100% · ingredients 0% · 0 of 4 ingredients selected/),
+    ).toHaveTextContent('Base 100% · ingredients 0% · 0 of 4 ingredients selected');
 
     // Operable from the keyboard alone: focus the checkbox and toggle with Space.
     chalk.focus();
     await user.keyboard(' ');
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Base 50% · ingredients 50% · 1 of 4 ingredients selected',
-    );
+    expect(
+      screen.getByText(/Base 50% · ingredients 50% · 1 of 4 ingredients selected/),
+    ).toHaveTextContent('Base 50% · ingredients 50% · 1 of 4 ingredients selected');
 
     const percentage = screen.getByLabelText('Chalk Filler percentage');
     fireEvent.change(percentage, { target: { value: '30' } });
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Base 70% · ingredients 30% · 1 of 4 ingredients selected',
-    );
+    expect(
+      screen.getByText(/Base 70% · ingredients 30% · 1 of 4 ingredients selected/),
+    ).toHaveTextContent('Base 70% · ingredients 30% · 1 of 4 ingredients selected');
 
     await user.click(screen.getByLabelText('Fine Sand'));
     fireEvent.change(screen.getByLabelText('Fine Sand percentage'), { target: { value: '25' } });
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Base 45% · ingredients 55% · 2 of 4 ingredients selected',
-    );
     expect(
-      screen.getByText('Ingredients must total 50% or less. They currently total 55%.'),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Add blend to cart' })).toBeDisabled();
+      screen.getByText(/Base 50% · ingredients 50% · 2 of 4 ingredients selected/),
+    ).toHaveTextContent('Base 50% · ingredients 50% · 2 of 4 ingredients selected');
+    expect(screen.getByRole('button', { name: 'Add blend to cart' })).toBeEnabled();
   });
 
   it('submits a valid blend to the cart', async () => {
     const user = userEvent.setup();
     vi.mocked(getCustomBlendOptions).mockResolvedValue(
       optionsFor('Portland Cement', [option(601, 'Chalk Filler')]),
+    );
+    addCustomBlend.mockResolvedValue(
+      returnedCart(lineWithAuthoritativeKey(CREATED_CONFIG_KEY, 80, 20)),
     );
     renderPage('?baseVariantId=501');
 
@@ -280,20 +325,28 @@ describe('CustomBlendPage', () => {
       ingredients: [{ variantId: 601, percentage: 20 }],
     });
     expect(await screen.findByText('Custom blend added to your cart')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute(
+      'data-batch-mark',
+      'CB-CCCCCC',
+    );
     // The success screen must render the shared note verbatim: dropping the cancellation clause
     // reads as "this order is now final" at the highest-salience moment of the flow.
     expect(screen.getByText(CUSTOM_BLEND_MADE_TO_ORDER_NOTE)).toBeInTheDocument();
     expect(screen.getByText(/cancel the order until it is dispatched/)).toBeInTheDocument();
   });
 
-  it('keeps a sold-out ingredient selectable behind an informational badge', async () => {
+  it('keeps a sold-out ingredient selectable with an advisory badge', async () => {
+    const user = userEvent.setup();
     vi.mocked(getCustomBlendOptions).mockResolvedValue(
       optionsFor('Portland Cement', [option(601, 'Chalk Filler', { stockCount: 0 })]),
     );
     renderPage('?baseVariantId=501');
 
-    expect(await screen.findByLabelText('Chalk Filler')).toBeEnabled();
+    const ingredient = await screen.findByLabelText('Chalk Filler');
+    expect(ingredient).toBeEnabled();
     expect(screen.getByText('Out of stock')).toBeInTheDocument();
+    await user.click(ingredient);
+    expect(ingredient).toBeChecked();
   });
 
   /**
@@ -433,11 +486,14 @@ describe('CustomBlendPage', () => {
     vi.mocked(getCustomBlendOptions).mockResolvedValue(
       optionsFor('Portland Cement', [option(601, 'Chalk Filler'), option(602, 'Fine Sand')]),
     );
+    replaceCustomBlend.mockResolvedValue(
+      returnedCart(lineWithAuthoritativeKey(REPLACED_CONFIG_KEY, 70, 30)),
+    );
     renderPage(`?baseVariantId=501&editConfigKey=${EDIT_CONFIG_KEY}`);
 
     expect(await screen.findByLabelText('Chalk Filler')).toBeChecked();
     expect(screen.getByLabelText('Chalk Filler percentage')).toHaveValue(30);
-    expect(screen.getByRole('status')).toHaveTextContent('Base 70% · ingredients 30%');
+    expect(screen.getByText(/Base 70% · ingredients 30%/)).toBeInTheDocument();
     expect(
       screen.getByText(
         'Quantity: 7 sacks. Base material and quantity stay fixed while editing a blend.',
@@ -453,6 +509,14 @@ describe('CustomBlendPage', () => {
     });
     expect(await screen.findByText('Custom blend updated')).toBeInTheDocument();
     expect(screen.getByText(CUSTOM_BLEND_MADE_TO_ORDER_NOTE)).toBeInTheDocument();
+    expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute(
+      'data-batch-mark',
+      'CB-BBBBBB',
+    );
+    expect(screen.getByTestId('custom-blend-livery')).not.toHaveAttribute(
+      'data-batch-mark',
+      'CB-AAAAAA',
+    );
   });
 
   it('creates a new blend after recovering from a failed edit onto a different base lot', async () => {

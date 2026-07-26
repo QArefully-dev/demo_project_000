@@ -1,6 +1,6 @@
 # Custom Blend UI Uplift Coding Plan
 
-Status: proposed
+Status: complete (G3 passed, 2026-07-26)
 Source: `plans/custom_blend_ui_uplift_high_level_plan.md` -> whole plan, W0.1/W0.2 + W1-W8; W0.3 excluded by user decision 2026-07-26
 Repository baseline: branch `materials_exchange_refactor` @ `bb6fef9b21eae99d4611b0cb61829a4310c8b890`
 
@@ -12,6 +12,25 @@ Repository baseline: branch `materials_exchange_refactor` @ `bb6fef9b21eae99d461
 - execution root: every worker, reviewer, test, fix, convergence action runs in worktree; repository-relative paths resolve under worktree root
 - integration: no merge, rebase, cherry-pick, copy-back, worktree removal, branch deletion
 - completion reply: absolute worktree path + implementation branch + source branch + base revision; user owns merge
+
+## Execution Checkpoint
+
+- worktree: `C:\Users\iwano\Desktop\repos\demo_project_000-custom-blend-ui-uplift`
+- implementation branch: `codex/custom-blend-ui-uplift`
+- source branch: `materials_exchange_refactor`
+- actual base revision: `6edc22e1b9ffeca064aee592008b98ffe999de04`
+- G0: passed — Node 22.23.1, clean `npm ci`, `tsx`, API typecheck; resolver requires later minimal input widening plus option adapter, never a cast
+- accepted through G1: P1/R1 with `R1-001` fixed; P2/R2 with `R2-001` fixed; P3/R3; P4/R4. G1 passed because GR2 and GR4 passed.
+- accepted after G1: P5/R5/GR5; P6/R6/GR6 (W4 ingredient selection + ratio editing, including inactive-tile disablement, selectable sold-out advisory, ratio controls, balance-evenly, gauge, focus choreography, and focused `customBlendState`, `RatioEditor`, and `IngredientPicker` coverage); P7/R7/GR7. G2 passed after GR7.
+- accepted after G2: P8/R8/GR8; P9 with `R9-F1`/`R9-F2` fixed; P10 and its focused evidence.
+- R10: the approved `basePresentation` exception/remediation was applied and reviewed; `R10-F1` is no longer unresolved. Historic records without the optional snapshot use the neutral fallback.
+- S1 convergence and R11 review completed. Final evidence: `E22` workspace typecheck, `E23` lint, `E24` web tests, and `E25` 1080p browser journey were collected. Historical pre-G3 evidence: a prior full `npm run reset` + `npm run verify` retry passed; its first run had an isolated Checkout test flake, recorded as a first-run flake rather than an unresolved product finding.
+- GR11 recheck: passed; findings closed.
+- G3: passed — post-GR11 `npm run reset` then `npm run verify` completed successfully in 211.3s. Nonfatal warnings were emitted during the run; they did not fail any check or invalidate the gate.
+
+## Approved R10 Exception (2026-07-26)
+
+- Optional frozen `basePresentation` snapshot metadata is approved solely to preserve historic Custom Blend artwork semantics. It changes no migration, config-key hashing, price, fee, eligibility, or write rule; when legacy records lack it, use the neutral fallback.
 
 ## Objective
 
@@ -26,7 +45,7 @@ Raise Custom Blend from placeholder presentation to premium-industrial feature s
 - `--custom-blend-*` token block + configurator-scoped component classes in `index.css`, light + dark + reduced-motion (W1)
 - `CustomBlendPage.tsx` split into feature components, two-column shell, numbered steps, shadcn primitives, skeletons (W2)
 - base selection as artwork cards with category badge + inline eligibility failure (W3)
-- ingredient tiles with artwork/pigment/search/grouping; slider + numeric + stepper ratios; balance-evenly; total gauge (W4)
+- ingredient tiles with artwork/pigment/search/grouping; slider + numeric + stepper ratios; balance-evenly; total gauge (W4; inventory is server-authoritative, so stock count is advisory and does not make a compatible ingredient client-ineligible)
 - SVG mix visualization with palette-derived segments, legend, animation (W5)
 - large `CustomBlendPackaging` preview in sticky aside + click-to-zoom + success recap (W6)
 - `CustomBlendBanner` on `HomePage` above bestsellers shelf (W7)
@@ -274,7 +293,7 @@ Raise Custom Blend from placeholder presentation to premium-industrial feature s
 - depends on: `P2`, `P4`, `G1`
 - owns: `apps/web/src/features/customBlend/IngredientPicker.tsx`, `RatioEditor.tsx`, `RatioGauge.tsx`, `apps/web/src/features/customBlend/customBlendState.ts`, `apps/web/src/features/customBlend/customBlendState.test.ts`, `apps/web/src/features/customBlend/RatioEditor.test.tsx` (proposed), `IngredientPicker.test.tsx` (proposed)
 - reads: `apps/web/src/features/customBlend/customBlendState.ts` -> reducer, `customBlendValidation`, `derivedBasePercentage`, bounds -> rules to extend without altering; `apps/web/src/components/packaging/catalogPackagingPalettes.ts` -> `resolveCatalogPackagingPalette` -> pigment swatch source; `apps/web/src/features/customBlend/CustomBlendPage.tsx` -> props contracts from `P4`
-- acceptance: ingredient tiles carry pigment swatch + artwork thumb, search box, category grouping, "n of 4 selected / n remaining" affordance; ineligible/out-of-stock render as labelled disabled tiles carrying a reason; each selected ingredient has range slider + numeric input + stepper clamped 5-50 with a live remaining-budget readout; "Balance evenly" distributes across selected ingredients client-side with base remainder derived as today; gauge shows bar + `aria-live` sentence, flips success/destructive, prints base share numerically and graphically; adding an ingredient focuses its ratio input, removing focuses a neighbour
+- acceptance: ingredient tiles carry pigment swatch + artwork thumb, search box, category grouping, "n of 4 selected / n remaining" affordance; inactive or limit-reached tiles render as labelled disabled tiles carrying a reason; stock-count-zero compatible ingredients remain selectable with a visible out-of-stock advisory badge, with inventory eligibility left to the server; each selected ingredient has range slider + numeric input + stepper clamped 5-50 with a live remaining-budget readout; "Balance evenly" distributes across selected ingredients client-side with base remainder derived as today; gauge shows bar + `aria-live` sentence, flips success/destructive, prints base share numerically and graphically; adding an ingredient focuses its ratio input, removing focuses a neighbour
 - non-goals: mix segments, packaging preview, any money, any server call, any change to validation thresholds or config-key inputs
 - upstream inputs: `P2` -> `category`/facts for swatch and grouping; `P4` -> component prop contracts
 - changes:
@@ -284,9 +303,9 @@ Raise Custom Blend from placeholder presentation to premium-industrial feature s
   - add a pure balance-evenly helper to `customBlendState.ts` with unit tests covering 1-4 ingredients, remainder distribution, and clamp bounds
   - build `RatioGauge` with `aria-live` sentence and state flip
   - implement focus choreography
-- invariants: reducer stays the single draft authority; balance-evenly must not produce out-of-bounds or >50 total; disabled tiles always state why; percentages remain integers
+- invariants: reducer stays the single draft authority; balance-evenly must not produce out-of-bounds or >50 total; disabled tiles always state why; stock count remains server-authoritative and advisory only in the client; percentages remain integers
 - relevant evidence: `E3`, `E4`, `E5`, `E8`, `E9`
-- test duty: `npm exec -w @shop/web -- vitest run --configLoader runner apps/web/src/features/customBlend/customBlendState.test.ts apps/web/src/features/customBlend/RatioEditor.test.tsx apps/web/src/features/customBlend/IngredientPicker.test.tsx` -> `E16`
+- test duty: `npm exec -w @shop/web -- vitest run --configLoader runner src/features/customBlend/customBlendState.test.ts src/features/customBlend/RatioEditor.test.tsx src/features/customBlend/IngredientPicker.test.tsx` -> `E16`
 - verification: `npm run typecheck -w @shop/web` -> `E17`
 - handoff: percentage + selection view model consumed by `P7`
 - review: `R6` -> `GR6` blocks `S1`

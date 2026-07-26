@@ -1,6 +1,11 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { MoneyCents, PositiveIntegerString } from './common.js';
-import { CatalogVariant, MixingGroup } from './products.js';
+import {
+  CatalogVariant,
+  CategoryFacts,
+  ConsumptionClassification,
+  MixingGroup,
+} from './products.js';
 
 const SafePositiveInteger = Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER });
 const SafePercentage = Type.Integer({ minimum: 5, maximum: 50 });
@@ -36,12 +41,28 @@ export const CustomBlendIngredientSnapshot = Type.Object(
 );
 export type CustomBlendIngredientSnapshot = Static<typeof CustomBlendIngredientSnapshot>;
 
+/**
+ * Frozen, presentation-only facts for the base material. This is deliberately excluded from the
+ * canonical blend specification: it must never affect the configuration hash, eligibility, or
+ * money. It is optional so snapshots written before this field was introduced remain readable.
+ */
+export const CustomBlendBasePresentation = Type.Object(
+  {
+    category: Type.String(),
+    consumptionClassification: ConsumptionClassification,
+    categoryFacts: CategoryFacts,
+  },
+  { additionalProperties: false },
+);
+export type CustomBlendBasePresentation = Static<typeof CustomBlendBasePresentation>;
+
 /** Immutable Custom Blend specification. Base material remains represented by its cart line. */
 export const CustomBlendSnapshot = Type.Object(
   {
     configKey: CustomBlendConfigKey,
     basePercentage: Type.Integer({ minimum: 50, maximum: 95 }),
     mixingGroup: MixingGroup,
+    basePresentation: Type.Optional(CustomBlendBasePresentation),
     ingredients: Type.Array(CustomBlendIngredientSnapshot, { minItems: 1, maxItems: 4 }),
     blendingFeeCents: MoneyCents,
     madeToOrder: Type.Literal(true),
@@ -57,6 +78,9 @@ export const CustomBlendOption = Type.Object(
     productId: PositiveIntegerString,
     productName: Type.String({ minLength: 1, maxLength: 160 }),
     productDescription: Type.String({ minLength: 1, maxLength: 2_000 }),
+    category: Type.String(),
+    consumptionClassification: ConsumptionClassification,
+    categoryFacts: CategoryFacts,
     mixingGroup: MixingGroup,
     variant: CatalogVariant,
   },

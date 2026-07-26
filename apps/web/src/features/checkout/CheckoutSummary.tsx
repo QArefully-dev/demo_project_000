@@ -5,8 +5,10 @@ import { formatMoney } from '@/lib/formatMoney';
 import { cartItemKey } from '@/lib/cartLineIdentity';
 import {
   CUSTOM_BLEND_MADE_TO_ORDER_NOTE,
+  CustomBlendPackaging,
   customBlendCompositionLabel,
 } from '@/features/customBlend/CustomBlendPackaging';
+import { Badge } from '@/components/ui/badge';
 import { PromoCodeForm } from './PromoCodeForm';
 
 interface CheckoutSummaryProps {
@@ -51,8 +53,21 @@ export function CheckoutSummary({
       <CardContent className="space-y-4">
         <div className="space-y-2">
           {cart.items.map((item) => (
-            <div key={cartItemKey(item)} className="flex items-center justify-between text-sm">
-              <span className="min-w-0">
+            <div
+              key={cartItemKey(item)}
+              className="flex items-center justify-between gap-3 text-sm"
+            >
+              {item.customBlend && (
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+                  <CustomBlendPackaging
+                    product={item.product}
+                    variant={item.variantSnap}
+                    blend={item.customBlend}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+              )}
+              <span className="min-w-0 flex-1">
                 {item.product.name}{' '}
                 {item.variantSnap && (
                   <span className="text-muted-foreground">&mdash; {item.variantSnap.label}</span>
@@ -74,7 +89,12 @@ export function CheckoutSummary({
                     className="block text-xs text-muted-foreground"
                     data-testid="checkout-blend"
                   >
-                    Custom blend: {customBlendCompositionLabel(item.product.name, item.customBlend)}
+                    <Badge variant="outline" className="mb-0.5 w-fit text-[10px]">
+                      Custom blend
+                    </Badge>
+                    <span className="block">
+                      {customBlendCompositionLabel(item.product.name, item.customBlend)}
+                    </span>
                     <span className="block">
                       Base material: {formatMoney(item.materialSubtotalCents)} · Blending fee:{' '}
                       {formatMoney(item.blendingFeeCents)}
@@ -87,7 +107,7 @@ export function CheckoutSummary({
           ))}
         </div>
         {hasCustomBlend && (
-          <p className="rounded-md border border-amber-500/40 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <p className="custom-blend-notice rounded-md px-3 py-2 text-xs">
             {CUSTOM_BLEND_MADE_TO_ORDER_NOTE}
           </p>
         )}

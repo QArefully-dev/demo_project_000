@@ -1,8 +1,12 @@
-import type { CatalogVariant, Product, ProductWithVariants } from '@shop/contracts/products';
+import type { CatalogVariant } from '@shop/contracts/products';
 import type { CustomBlendSnapshot } from '@shop/contracts/custom-blends';
 
 import { PackagingArtwork } from '@/components/packaging/PackagingArtwork';
-import { resolvePackagingSpec, type Vessel } from '@/components/packaging/packagingSpec';
+import {
+  resolvePackagingSpec,
+  type PackagingProductInput,
+  type Vessel,
+} from '@/components/packaging/packagingSpec';
 
 /**
  * Stable diagnostic key for the one Custom Blend livery. A blend is never printed from a catalog
@@ -58,13 +62,15 @@ export function customBlendCompositionLabel(
   const ingredients = blend.ingredients
     .map((ingredient) => `${ingredient.percentage}% ${ingredient.productName}`)
     .join(', ');
-  return `${baseProductName} — ${ingredients}`;
+  return `${blend.basePercentage}% ${baseProductName} — ${ingredients}`;
 }
 
 interface CustomBlendPackagingProps {
-  product: Product | ProductWithVariants;
+  product: PackagingProductInput;
   variant?: Pick<CatalogVariant, 'sku' | 'label'>;
   blend: CustomBlendSnapshot;
+  /** Draft previews have no server config key; their mark must never claim one. */
+  previewBatchMark?: string;
   className?: string;
 }
 
@@ -82,16 +88,34 @@ export function CustomBlendPackaging({
   product,
   variant,
   blend,
+  previewBatchMark,
   className,
 }: CustomBlendPackagingProps) {
+  // Orders written before base presentation was frozen cannot safely infer a vessel. In
+  // particular, the shared resolver's unknown-category fallback is a food bag, which would make
+  // an historic non-food blend misleading. Show a neutral, explicit placeholder instead.
+  if (!product.category) {
+    return (
+      <span
+        role="img"
+        aria-label={`${product.name} custom blend packaging unavailable`}
+        className={className}
+        data-testid="custom-blend-livery"
+        data-vessel="neutral"
+        data-colour-scheme="neutral"
+      >
+        Custom blend
+      </span>
+    );
+  }
   const baseSpec = resolvePackagingSpec({ product, variant });
-  const mark = customBlendBatchMark(blend.configKey);
+  const mark = previewBatchMark ?? customBlendBatchMark(blend.configKey);
   const spec = {
     ...baseSpec,
     schemeKey: CUSTOM_BLEND_SCHEME_KEY,
     pigment: CUSTOM_BLEND_PIGMENT,
     ink: { ink: CUSTOM_BLEND_INK, alert: baseSpec.ink.alert },
-    grade: CUSTOM_BLEND_SPEC_BAND,
+    grade: baseSpec.grade ?? CUSTOM_BLEND_SPEC_BAND,
     lot: mark,
   };
 
@@ -113,6 +137,9 @@ export function CustomBlendPackaging({
         name={product.name}
         spec={spec}
         mark="CB"
+        // The food-bag renderer has no grade slot; its printed quantity line is the equivalent
+        // short label. Pass the resolved grade through so its `CUSTOM BLEND` fallback is visible.
+        quantity={spec.grade}
         batchCode={mark}
         schemeKey={CUSTOM_BLEND_SCHEME_KEY}
         consumptionLabel={null}

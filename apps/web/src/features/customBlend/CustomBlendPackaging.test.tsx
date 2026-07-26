@@ -150,9 +150,15 @@ describe('CustomBlendPackaging', () => {
     ).toBeInTheDocument();
   });
 
+  it('prints the resolved CUSTOM BLEND grade on food-bag packaging', () => {
+    render(<CustomBlendPackaging product={product('Baking & Pantry')} blend={blend()} />);
+
+    expect(screen.getByText('CUSTOM BLEND')).toBeInTheDocument();
+  });
+
   it('formats the composition as the base name followed by each ingredient share', () => {
     expect(customBlendCompositionLabel('Portland Cement', blend())).toBe(
-      'Portland Cement — 15% Chalk Filler, 5% Silica Flour',
+      '80% Portland Cement — 15% Chalk Filler, 5% Silica Flour',
     );
   });
 });

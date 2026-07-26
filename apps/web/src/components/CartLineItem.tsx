@@ -126,7 +126,7 @@ export function CartLineItem({
              */}
             <p
               data-testid="cart-line-made-to-order"
-              className="w-fit rounded-md border border-amber-500/40 bg-amber-50 px-2 py-1 text-xs text-amber-900"
+              className="custom-blend-notice w-fit rounded-md px-2 py-1 text-xs"
             >
               {CUSTOM_BLEND_MADE_TO_ORDER_NOTE}
             </p>

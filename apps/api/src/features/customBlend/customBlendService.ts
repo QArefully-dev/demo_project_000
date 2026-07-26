@@ -1,4 +1,5 @@
 import {
+  CategoryFacts,
   CUSTOM_BLEND_FEE_CENTS,
   TIER_LADDER,
   type Cart,
@@ -6,9 +7,11 @@ import {
   type CreateCustomBlendBody,
   type CustomBlendOption,
   type CustomBlendOptionsResponse,
+  type CustomBlendBasePresentation,
   type CustomBlendSnapshot,
   type ReplaceCustomBlendBody,
 } from '@shop/contracts';
+import { Value } from '@sinclair/typebox/value';
 import { perTonneCents } from '../pricing/pricingRules.js';
 import type { CustomBlendFactRow, CustomBlendRepository } from './customBlendRepository.js';
 import type { CartService } from '../cart/cartService.js';
@@ -72,8 +75,35 @@ function toOption(row: CustomBlendFactRow): CustomBlendOption {
     productId: String(row.product_id),
     productName: row.product_name,
     productDescription: row.product_description,
+    category: row.category,
+    consumptionClassification:
+      row.consumption_classification as CustomBlendOption['consumptionClassification'],
+    categoryFacts: parseCategoryFacts(row.details_json, row.consumption_classification),
     mixingGroup: row.mixing_group,
     variant,
+  };
+}
+
+function parseCategoryFacts(
+  detailsJson: string | null,
+  consumptionClassification: string,
+): CategoryFacts {
+  if (detailsJson) {
+    try {
+      const parsed: unknown = JSON.parse(detailsJson);
+      if (Value.Check(CategoryFacts, parsed)) return parsed;
+    } catch {
+      // Fall through to the canonical catalog presentation fallback.
+    }
+  }
+  return {
+    texture: 'Not specified',
+    colour: 'Not specified',
+    source: 'Not specified',
+    intendedUse: 'Not specified',
+    storage: 'Not specified',
+    consumptionClassification:
+      (consumptionClassification as CategoryFacts['consumptionClassification']) || 'non-food',
   };
 }
 
@@ -153,6 +183,12 @@ function resolveSnapshot(
     configKey: normalized.configKey,
     basePercentage: normalized.basePercentage,
     mixingGroup: base.mixing_group,
+    basePresentation: {
+      category: base.category,
+      consumptionClassification:
+        base.consumption_classification as CustomBlendBasePresentation['consumptionClassification'],
+      categoryFacts: parseCategoryFacts(base.details_json, base.consumption_classification),
+    },
     ingredients: snapshots,
     blendingFeeCents: CUSTOM_BLEND_FEE_CENTS,
     madeToOrder: true,

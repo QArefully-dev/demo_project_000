@@ -3,7 +3,6 @@ import type {
   CategoryFacts,
   ConsumptionClassification,
   Product,
-  ProductWithVariants,
 } from '@shop/contracts/products';
 
 import { resolveCatalogPackagingPalette } from './catalogPackagingPalettes';
@@ -67,12 +66,20 @@ const CATEGORY_PREFIX: Readonly<Record<string, string>> = {
   'Household & Cleaning': 'HCL',
 };
 
+export type PackagingProductInput = Pick<Product, 'id' | 'name' | 'category'> & {
+  consumptionClassification?: ConsumptionClassification;
+  categoryFacts?: CategoryFacts;
+  mixingGroup?: string | null;
+};
+
 interface ResolveInput {
-  product: Product | ProductWithVariants;
+  product: PackagingProductInput;
   variant?: Pick<CatalogVariant, 'sku' | 'label'>;
 }
 
-function hasCategoryFacts(product: Product | ProductWithVariants): product is ProductWithVariants {
+function hasCategoryFacts(
+  product: PackagingProductInput,
+): product is PackagingProductInput & Required<Pick<PackagingProductInput, 'categoryFacts'>> {
   return 'categoryFacts' in product;
 }
 
@@ -133,7 +140,7 @@ function mixingGroupLabel(mixingGroup: string | null | undefined): string | unde
 }
 
 function lotFor(
-  product: Product | ProductWithVariants,
+  product: PackagingProductInput,
   variant: Pick<CatalogVariant, 'sku' | 'label'> | undefined,
   categoryPrefix: string | undefined,
 ): string {

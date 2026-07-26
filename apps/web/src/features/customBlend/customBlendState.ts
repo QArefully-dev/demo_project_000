@@ -65,9 +65,31 @@ export type CustomBlendEvent =
   | { type: 'percentage-changed'; variantId: number; percentage: number };
 
 /** Default share for a newly picked ingredient: fill the remaining budget, within bounds. */
-function defaultPercentageFor(state: CustomBlendState): number {
+function defaultPercentageFor(state: CustomBlendState): number | null {
   const remaining = MAX_INGREDIENT_TOTAL - ingredientTotalPercentage(state);
+  if (remaining < MIN_INGREDIENT_PERCENTAGE) return null;
   return Math.max(MIN_INGREDIENT_PERCENTAGE, Math.min(MAX_INGREDIENT_PERCENTAGE, remaining));
+}
+
+function clampedPercentageForIngredient(
+  state: CustomBlendState,
+  variantId: number,
+  requestedPercentage: number,
+): number | null {
+  const ingredient = state.ingredients.find((item) => item.variantId === variantId);
+  if (!ingredient) return null;
+
+  const otherIngredientTotal = ingredientTotalPercentage(state) - ingredient.percentage;
+  const maximumForIngredient = Math.min(
+    MAX_INGREDIENT_PERCENTAGE,
+    MAX_INGREDIENT_TOTAL - otherIngredientTotal,
+  );
+  if (maximumForIngredient < MIN_INGREDIENT_PERCENTAGE) return null;
+
+  const normalizedPercentage = Number.isFinite(requestedPercentage)
+    ? Math.round(requestedPercentage)
+    : MIN_INGREDIENT_PERCENTAGE;
+  return Math.max(MIN_INGREDIENT_PERCENTAGE, Math.min(maximumForIngredient, normalizedPercentage));
 }
 
 export function customBlendReducer(
@@ -106,12 +128,11 @@ export function customBlendReducer(
         };
       }
       if (state.ingredients.length >= MAX_INGREDIENTS) return state;
+      const percentage = defaultPercentageFor(state);
+      if (percentage === null) return state;
       return {
         ...state,
-        ingredients: [
-          ...state.ingredients,
-          { variantId: event.variantId, percentage: defaultPercentageFor(state) },
-        ],
+        ingredients: [...state.ingredients, { variantId: event.variantId, percentage }],
       };
     }
     case 'ingredient-removed':
@@ -121,15 +142,16 @@ export function customBlendReducer(
           (ingredient) => ingredient.variantId !== event.variantId,
         ),
       };
-    case 'percentage-changed':
+    case 'percentage-changed': {
+      const percentage = clampedPercentageForIngredient(state, event.variantId, event.percentage);
+      if (percentage === null) return state;
       return {
         ...state,
         ingredients: state.ingredients.map((ingredient) =>
-          ingredient.variantId === event.variantId
-            ? { ...ingredient, percentage: event.percentage }
-            : ingredient,
+          ingredient.variantId === event.variantId ? { ...ingredient, percentage } : ingredient,
         ),
       };
+    }
   }
 }
 
@@ -149,6 +171,24 @@ export function isIngredientSelected(state: CustomBlendState, variantId: number)
 /** True once no further ingredient may be picked, used to disable rather than hide options. */
 export function isIngredientLimitReached(state: CustomBlendState): boolean {
   return state.ingredients.length >= MAX_INGREDIENTS;
+}
+
+/**
+ * Splits the available 50% ingredient budget as evenly as possible. Remainder points are assigned
+ * in the current draft order, keeping the result deterministic and suitable for a reducer event.
+ */
+export function balanceEvenlyPercentages(
+  variantIds: readonly number[],
+): ReadonlyMap<number, number> {
+  if (variantIds.length === 0) return new Map();
+  const count = Math.min(variantIds.length, MAX_INGREDIENTS);
+  const share = Math.floor(MAX_INGREDIENT_TOTAL / count);
+  const remainder = MAX_INGREDIENT_TOTAL % count;
+  return new Map(
+    variantIds
+      .slice(0, count)
+      .map((variantId, index) => [variantId, share + (index < remainder ? 1 : 0)]),
+  );
 }
 
 export type CustomBlendValidation = {

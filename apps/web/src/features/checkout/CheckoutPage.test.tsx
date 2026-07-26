@@ -177,7 +177,9 @@ describe('CheckoutPage', () => {
 
     renderCheckout();
 
-    expect(screen.getByText(/Custom blend: Powdered Water — 20% Chalk Filler/)).toBeInTheDocument();
+    expect(screen.getByText(/80% Powdered Water — 20% Chalk Filler/)).toBeInTheDocument();
+    expect(screen.getByText('Custom blend')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-blend-livery')).toBeInTheDocument();
     expect(screen.getByText(/Base material: \$10.00 · Blending fee: \$25.00/)).toBeInTheDocument();
     expect(screen.getByText('Blending fees')).toBeInTheDocument();
     expect(
