@@ -5,27 +5,28 @@
 //
 // Usage:
 //   node shoot.mjs --url http://127.0.0.1:5173/custom-blend --out ./shots
-//   node shoot.mjs --route /cart --viewports 1280x800,390x844 --full-page
+//   node shoot.mjs --route /cart --full-page
 //
 // Flags:
 //   --url <absolute>     Full URL to capture. Overrides --route/--base.
 //   --route <path>       Path appended to --base (default "/"). Use with a running dev server.
 //   --base <origin>      Origin for --route. Default http://127.0.0.1:5173
 //   --out <dir>          Directory for PNGs. Default ./shots (created if missing).
-//   --viewports <list>   Comma list of WxH. Default 1280x800,390x844.
+//   --viewports <list>   Comma list of WxH. Default 1920x1080 (1080p is the only
+//                        target size; mobile/tablet checks are out of scope).
 //   --session <name>     playwright-cli session name. Default "qa".
 //   --full-page          Capture full scrollable page instead of just the viewport.
 //   --keep-open          Leave the browser session open afterwards (for follow-up commands).
 //
 // Exit code is non-zero if any viewport shows horizontal overflow (> 0px),
-// so it doubles as a responsive-layout gate in scripts.
+// so it doubles as a layout gate in scripts.
 
 import { spawnSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 
 function parseArgs(argv) {
-  const out = { viewports: '1280x800,390x844', base: 'http://127.0.0.1:5173', route: '/', out: './shots', session: 'qa' };
+  const out = { viewports: '1920x1080', base: 'http://127.0.0.1:5173', route: '/', out: './shots', session: 'qa' };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--full-page') out.fullPage = true;

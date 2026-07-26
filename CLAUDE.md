@@ -71,7 +71,7 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
 - `packages/catalog/`: canonical product/category/packaging content plus validation
 - `apps/api/data/`: ignored local SQLite runtime files; default `apps/api/data/shop.db`
 - `plans/`: `demo_project_high_level_plan.md` = current direction; `custom_additives_handoff.md` = item 16 product input; `plans/old/powderizer_removal_coding_plan.md` = completed item 11; `plans/old/` = completed/historical context
-- `.claude/skills/`: repo-local agent skills; load only when task matches
+- `.claude/skills/`: repo-local agent skills; load only when task matches. `browser-qa` = required entry point for all browser work (see Quality)
 - root configs: workspaces/scripts in `package.json`; shared TypeScript, ESLint, Prettier configuration
 
 Dependency direction: `packages/contracts` -> `apps/api` + `apps/web`; `packages/catalog` -> `apps/api`; `apps/api` -> HTTP -> `apps/web`.
@@ -124,8 +124,9 @@ Keep `--configLoader runner` on Vite/Vitest commands. Root scripts already suppl
 ## Quality
 
 - Use repository scripts; run format, typecheck, lint, build, seed/reset, tests proportional to change.
-- Browser QA: serve app on loopback -> use Codex internal browser + bundled Playwright.
-- Never use, control, capture, or activate user's Chrome. Internal browser unavailable -> report blocker; no Chrome fallback.
+- Any browser task (screenshot, visual check, journey click-through, console/network read, UI bug repro) -> load `.claude/skills/browser-qa` and follow it. Mandatory entry point; no ad-hoc browser driving.
+- Viewport scope: 1080p (`1920x1080`) only. No mobile/tablet/responsive checks unless user names explicit size.
+- Never use, control, capture, or activate user's Chrome. `browser-qa` headless Chromium unavailable -> report blocker; no Chrome fallback.
 - Prettier formats code and config only; Markdown (`*.md`) stays excluded through `.prettierignore`.
 - Keep Vite/Vitest `--configLoader runner`; bundled config loader traverses sandbox-blocked Windows ancestors.
 - Tests: pure rule -> unit; repository/transaction -> SQLite integration; route/schema/auth -> Fastify `app.inject()`.
