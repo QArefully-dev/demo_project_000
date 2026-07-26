@@ -18,7 +18,10 @@ describe('HeroSection', () => {
     expect(
       screen.getByRole('heading', { name: /materials supply with operational clarity/i }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText('Materials exchange supply overview')).toBeInTheDocument();
-    expect(screen.getByText('Food ingredients')).toBeInTheDocument();
+    const overview = screen.getByLabelText('Materials exchange supply overview');
+    expect(overview).toBeInTheDocument();
+    // The stacked vessels are decorative: three SVGs, none of them exposed to assistive tech.
+    expect(overview.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(3);
+    expect(screen.queryByText('Exchange board')).not.toBeInTheDocument();
   });
 });

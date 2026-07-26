@@ -289,10 +289,12 @@
     box-shadow: 0 0 0 2px color-mix(in oklch, var(--destructive) 24%, transparent);
   }
 
+  /* The iridescent gradient is the banner surface, not just its border: this is the one
+     homepage block that must not read as another card. */
   .custom-blend-banner {
     border: 2px solid transparent;
     background:
-      linear-gradient(var(--custom-blend-surface), var(--custom-blend-surface)) padding-box,
+      var(--custom-blend-gradient) padding-box,
       var(--custom-blend-gradient-border) border-box;
     background-size: var(--custom-blend-gradient-size);
     color: var(--custom-blend-gradient-foreground);
@@ -420,7 +422,7 @@
     width: 50%;
     height: 58%;
     right: 49%;
-    bottom: -5%;
+    bottom: 1%;
     transform: rotate(-14deg);
   }
 
@@ -428,8 +430,8 @@
     z-index: 1;
     width: 48%;
     height: 56%;
-    right: -4%;
-    top: -3%;
+    right: -2%;
+    top: 2%;
     transform: rotate(13deg);
   }
 

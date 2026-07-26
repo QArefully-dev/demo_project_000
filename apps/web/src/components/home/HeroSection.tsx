@@ -1,19 +1,73 @@
 import { ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { PackagingArtwork } from '@/components/packaging/PackagingArtwork';
+import {
+  CATALOG_PACKAGING_PALETTES,
+  type CatalogPackagingCategory,
+} from '@/components/packaging/catalogPackagingPalettes';
+import { PACKAGING_BRAND, type PackagingSpec } from '@/components/packaging/packagingSpec';
+import { INKS, titleLines, type InkKey } from '@/components/packaging/svgText';
 import { Button } from '@/components/ui/button';
 
-const marketSignals = [
+interface HeroVessel {
+  /** Accessible name is suppressed per vessel; kept for the artwork components' internal copy. */
+  name: string;
+  spec: PackagingSpec;
+  className: string;
+}
+
+/**
+ * Hand-authored decorative specs for the hero's stacked vessels. Deliberately not resolved from a
+ * catalog product: the hero renders before any catalog fetch and must not imply a specific SKU, so
+ * `lot` carries a visibly generic sample code rather than a catalog SKU. Colours reuse the first
+ * scheme of each category's palette so the stack matches what the catalog actually prints.
+ */
+function heroSpec(
+  category: CatalogPackagingCategory,
+  inkKey: InkKey,
+  vessel: PackagingSpec['vessel'],
+  name: string,
+  lot: string,
+  extra: Partial<PackagingSpec> = {},
+): PackagingSpec {
+  const [palette] = CATALOG_PACKAGING_PALETTES[category];
+  return {
+    vessel,
+    schemeKey: palette.key,
+    pigment: palette.pigment,
+    ink: { ink: palette.ink, alert: INKS[inkKey].alert },
+    brand: PACKAGING_BRAND,
+    titleLines: titleLines(name),
+    sub: category,
+    lot,
+    netWeight: '25 kg',
+    ...extra,
+  };
+}
+
+const heroVessels: readonly HeroVessel[] = [
   {
-    label: 'Food ingredients',
-    detail: 'Specification-led supply',
+    name: 'Trade materials sack',
+    spec: heroSpec(
+      'Trade & Creative Materials',
+      'trade',
+      'kraft-sack',
+      'Trade materials',
+      'TCM-SAMPLE',
+    ),
+    className: 'powder-hero-bag-0',
   },
   {
-    label: 'Performance inputs',
-    detail: 'Pack formats for teams',
+    name: 'Garden materials sack',
+    spec: heroSpec('Garden & Outdoors', 'garden', 'woven-sack', 'Garden materials', 'GDN-SAMPLE'),
+    className: 'powder-hero-bag-1',
   },
   {
-    label: 'Trade materials',
-    detail: 'Clear availability signals',
+    name: 'Cleaning materials keg',
+    spec: heroSpec('Household & Cleaning', 'clean', 'keg', 'Cleaning materials', 'HCL-SAMPLE', {
+      tone: 'mild',
+    }),
+    className: 'powder-hero-bag-2',
   },
 ];
 
@@ -44,25 +98,19 @@ export function HeroSection() {
       </div>
       <div
         aria-label="Materials exchange supply overview"
-        className="powder-hero-art relative grid min-h-72 content-center gap-3 overflow-hidden bg-surface-soft p-6 sm:p-10 lg:min-h-full"
+        className="powder-hero-art relative min-h-72 overflow-hidden bg-surface-soft p-6 sm:p-10 lg:min-h-full"
       >
         <div aria-hidden="true" className="powder-measurements absolute inset-4" />
-        <p className="relative text-xs font-bold tracking-[0.18em] text-foreground uppercase">
-          Exchange board
-        </p>
-        {marketSignals.map((signal, index) => (
-          <article
-            key={signal.label}
-            className="relative border border-foreground/25 bg-background/85 px-4 py-3 shadow-sm"
-          >
-            <p className="text-xs font-bold tracking-[0.14em] text-primary uppercase">
-              {String(index + 1).padStart(2, '0')}
-            </p>
-            <h2 className="mt-1 text-lg font-semibold tracking-tight text-foreground">
-              {signal.label}
-            </h2>
-            <p className="text-sm text-muted-foreground">{signal.detail}</p>
-          </article>
+        {heroVessels.map((vessel) => (
+          <PackagingArtwork
+            key={vessel.className}
+            name={vessel.name}
+            spec={vessel.spec}
+            mark=""
+            consumptionLabel={null}
+            ariaLabel=""
+            className={`powder-hero-bag ${vessel.className} absolute`}
+          />
         ))}
       </div>
     </section>

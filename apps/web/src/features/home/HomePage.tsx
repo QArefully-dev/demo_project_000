@@ -102,6 +102,7 @@ export function HomePage() {
   return (
     <div className="space-y-16 pb-12 lg:space-y-20">
       <HeroSection />
+      <CustomBlendBanner />
       <BundleBanner />
       <section
         aria-label="Store assurances"
@@ -128,7 +129,6 @@ export function HomePage() {
         error={categoriesError}
         onRetry={() => setCategoriesRetry((attempt) => attempt + 1)}
       />
-      <CustomBlendBanner />
       <ProductShelf
         eyebrow="Most requested by name"
         title="Bestsellers"
