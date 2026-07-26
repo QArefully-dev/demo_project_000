@@ -232,7 +232,7 @@ export function CustomBlendPage() {
     );
   }
   return (
-    <div className="content-shell pb-12">
+    <div className="pb-12">
       <header className="mb-7 max-w-3xl">
         <p className="custom-blend-eyebrow-rule section-eyebrow">Custom Blend</p>
         <h1 className="section-heading mt-2">

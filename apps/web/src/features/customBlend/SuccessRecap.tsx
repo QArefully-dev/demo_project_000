@@ -19,7 +19,7 @@ export function SuccessRecap({
   authoritativeConfigKey?: string;
 }) {
   return (
-    <div className="content-shell grid max-w-3xl gap-6 pb-12">
+    <div className="grid max-w-3xl gap-6 pb-12">
       <header>
         <p className="custom-blend-eyebrow-rule section-eyebrow">Custom Blend</p>
         <h1 className="section-heading mt-2">
