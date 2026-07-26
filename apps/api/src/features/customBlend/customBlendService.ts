@@ -128,28 +128,31 @@ function resolveSnapshot(
     );
   }
   const base = repository.findEligibleVariant(baseVariantId);
-  if (!base) throw new CustomBlendInvalidError('Selected base lot is not eligible for Custom Blend.');
+  if (!base)
+    throw new CustomBlendInvalidError('Selected base lot is not eligible for Custom Blend.');
   const compatibleByVariant = new Map(
     repository.listCompatibleIngredients(base).map((fact) => [fact.variant_id, fact]),
   );
   const snapshots = normalized.ingredients.map((ingredient) => {
     const fact = compatibleByVariant.get(ingredient.variantId);
     if (!fact) {
-      throw new CustomBlendInvalidError('Selected ingredient lot is not compatible with this base lot.');
+      throw new CustomBlendInvalidError(
+        'Selected ingredient lot is not compatible with this base lot.',
+      );
     }
     return {
       variantId: fact.variant_id,
       productId: String(fact.product_id),
       productName: fact.product_name,
       productDescription: fact.product_description,
-      mixingGroup: fact.mixing_group as CustomBlendSnapshot['mixingGroup'],
+      mixingGroup: fact.mixing_group,
       percentage: ingredient.percentage,
     };
   });
   return {
     configKey: normalized.configKey,
     basePercentage: normalized.basePercentage,
-    mixingGroup: base.mixing_group as CustomBlendSnapshot['mixingGroup'],
+    mixingGroup: base.mixing_group,
     ingredients: snapshots,
     blendingFeeCents: CUSTOM_BLEND_FEE_CENTS,
     madeToOrder: true,

@@ -7,11 +7,8 @@ import { ErrorMessage } from './ErrorMessage';
 import { CartLineItem } from './CartLineItem';
 import { formatMoney } from '@/lib/formatMoney';
 import { useCartContext } from '@/hooks/CartContext';
+import { cartItemKey, pendingConfigKey } from '@/lib/cartLineIdentity';
 import { Link } from 'react-router-dom';
-
-function cartItemKey(item: { productId: string; variantSnap?: { variantId: number } }): string {
-  return `${item.productId}:${item.variantSnap?.variantId ?? 'no-variant'}`;
-}
 
 function deliveryLabel(mode: string): string {
   return mode === 'freight' ? 'Freight' : 'Parcel';
@@ -85,11 +82,13 @@ export function CartSheet() {
                     item.productId,
                     'update',
                     item.variantSnap?.variantId,
+                    pendingConfigKey(item),
                   )}
                   isRemoving={isActionPending(
                     item.productId,
                     'remove',
                     item.variantSnap?.variantId,
+                    pendingConfigKey(item),
                   )}
                   onUpdateQuantity={updateQuantity}
                   onRemove={removeItem}
@@ -104,6 +103,18 @@ export function CartSheet() {
         </div>
         {!isInitializing && cart && cart.totalItems > 0 && (
           <div className="border-t pt-4 space-y-3">
+            {cart.blendingFeeTotalCents > 0 && (
+              <>
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>Material subtotal</span>
+                  <span>{formatMoney(cart.discountableSubtotalCents)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>Blending fees</span>
+                  <span>{formatMoney(cart.blendingFeeTotalCents)}</span>
+                </div>
+              </>
+            )}
             <div className="flex items-center justify-between text-sm">
               <span>Resolved order subtotal</span>
               <span className="font-semibold">{formatMoney(cart.subtotalCents)}</span>

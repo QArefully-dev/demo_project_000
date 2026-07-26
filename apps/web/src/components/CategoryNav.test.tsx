@@ -51,8 +51,24 @@ describe('CategoryNav', () => {
     expect(bundles).toHaveAttribute('aria-current', 'page');
   });
 
-  // The custom-blend nav treatment has no consumer yet; high-level plan item 16 re-adds
-  // the nav entry against it. This guards the frozen colour/motion contract meanwhile.
+  it('links to the Custom Blend configurator through the reserved iridescent slot', () => {
+    renderNav('/custom-blend');
+
+    const customBlend = screen.getByRole('link', { name: 'Custom Blend' });
+    expect(customBlend).toHaveAttribute('href', '/custom-blend');
+    expect(customBlend).toHaveAttribute('aria-current', 'page');
+    // The frozen visual contract is claimed here and nowhere else.
+    expect(customBlend).toHaveClass('custom-blend-nav-link');
+    expect(screen.getAllByRole('link', { name: 'Custom Blend' })).toHaveLength(1);
+  });
+
+  it('marks Custom Blend as current only on its own route', () => {
+    renderNav('/catalog');
+
+    expect(screen.getByRole('link', { name: 'Custom Blend' })).not.toHaveAttribute('aria-current');
+  });
+
+  // Guards the frozen colour/motion contract now consumed by the Custom Blend nav entry.
   it('freezes the iridescent animation for reduced motion', () => {
     const styles = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8');
 

@@ -1,4 +1,6 @@
 import type Database from 'better-sqlite3';
+import { Value } from '@sinclair/typebox/value';
+import { CustomBlendSnapshot } from '@shop/contracts/custom-blends';
 import type {
   Order,
   OrderDetailResponse,
@@ -34,6 +36,9 @@ interface ProductLineRow {
   product_price_cents: number;
   quantity: number;
   line_total_cents: number;
+  discountable_total_cents: number;
+  blending_fee_cents: number;
+  custom_blend_json: string | null;
   allocated_quantity?: number | null;
   backordered_quantity?: number | null;
   cancelled_quantity?: number | null;
@@ -121,44 +126,76 @@ export interface OrderRepository extends OrderAccessRepository {
   ): { orderId: number; requestFingerprint: string } | undefined;
 }
 
+/**
+ * Storage-boundary parser for the frozen Custom Blend specification on an order line.
+ *
+ * Fails closed: an order is a financial record, so unreadable, schema-invalid, or
+ * money-inconsistent snapshot JSON must surface as an error rather than degrade the line
+ * into an ordinary one. Backfilled and plain rows store `NULL` and hydrate to `undefined`.
+ */
+function hydrateOrderCustomBlend(row: ProductLineRow): CustomBlendSnapshot | undefined {
+  if (row.custom_blend_json === null) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(row.custom_blend_json);
+  } catch {
+    throw new Error(`Order line ${row.id} has an unreadable Custom Blend snapshot`);
+  }
+  if (!Value.Check(CustomBlendSnapshot, parsed)) {
+    throw new Error(`Order line ${row.id} has an invalid Custom Blend snapshot`);
+  }
+  if (parsed.blendingFeeCents !== row.blending_fee_cents) {
+    throw new Error(
+      `Order line ${row.id} Custom Blend fee disagrees with its persisted line money`,
+    );
+  }
+  return parsed;
+}
+
 function mapOrder(row: OrderRow, items: ProductLineRow[]): Order {
   return {
     id: String(row.id),
     status: row.lifecycle_status,
     version: row.version,
-    items: items.map((item): OrderLineItem => ({
-      lineId: String(item.id),
-      productId: String(item.product_id),
-      productName: item.product_name,
-      unitPriceCents: item.product_price_cents,
-      quantity: item.quantity,
-      lineTotalCents: item.line_total_cents,
-      inventoryStatus:
-        (item.cancelled_quantity ?? 0) > 0
-          ? 'cancelled'
-          : (item.backordered_quantity ?? 0) === 0
-            ? 'allocated'
-            : (item.allocated_quantity ?? 0) === 0
-              ? 'backordered'
-              : 'partially_backordered',
-      allocatedQuantity: item.allocated_quantity ?? item.quantity,
-      backorderedQuantity: item.backordered_quantity ?? 0,
-      variantSnapshot:
-        item.variant_id != null
-          ? {
-              variantId: item.variant_id,
-              sku: item.sku ?? '',
-              label: item.variant_label ?? item.product_name,
-              unitPriceCents: item.product_price_cents,
-              weightGrams: item.weight_grams ?? 1000,
-              consumptionClassification:
-                (item.consumption_classification as OrderLineVariantSnapshot['consumptionClassification']) ??
-                'non-food',
-              deliveryClass:
-                (item.delivery_class as OrderLineVariantSnapshot['deliveryClass']) ?? 'parcel',
-            }
-          : undefined,
-    })),
+    items: items.map((item): OrderLineItem => {
+      const customBlend = hydrateOrderCustomBlend(item);
+      return {
+        lineId: String(item.id),
+        productId: String(item.product_id),
+        productName: item.product_name,
+        unitPriceCents: item.product_price_cents,
+        quantity: item.quantity,
+        discountableTotalCents: item.discountable_total_cents,
+        blendingFeeCents: item.blending_fee_cents,
+        lineTotalCents: item.line_total_cents,
+        inventoryStatus:
+          (item.cancelled_quantity ?? 0) > 0
+            ? 'cancelled'
+            : (item.backordered_quantity ?? 0) === 0
+              ? 'allocated'
+              : (item.allocated_quantity ?? 0) === 0
+                ? 'backordered'
+                : 'partially_backordered',
+        allocatedQuantity: item.allocated_quantity ?? item.quantity,
+        backorderedQuantity: item.backordered_quantity ?? 0,
+        variantSnapshot:
+          item.variant_id != null
+            ? {
+                variantId: item.variant_id,
+                sku: item.sku ?? '',
+                label: item.variant_label ?? item.product_name,
+                unitPriceCents: item.product_price_cents,
+                weightGrams: item.weight_grams ?? 1000,
+                consumptionClassification:
+                  (item.consumption_classification as OrderLineVariantSnapshot['consumptionClassification']) ??
+                  'non-food',
+                deliveryClass:
+                  (item.delivery_class as OrderLineVariantSnapshot['deliveryClass']) ?? 'parcel',
+              }
+            : undefined,
+        ...(customBlend ? { customBlend } : {}),
+      };
+    }),
     subtotalCents: row.subtotal_cents,
     discountCents: row.discount_cents,
     totalCents: row.total_cents,
@@ -204,6 +241,7 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
       .prepare(
         `SELECT line.id, line.product_id, line.product_name, line.product_price_cents,
            line.quantity, line.line_total_cents,
+           line.discountable_total_cents, line.blending_fee_cents, line.custom_blend_json,
            line.variant_id, line.sku, line.variant_label, line.weight_grams,
            line.consumption_classification, line.delivery_class,
            allocation.allocated_quantity, allocation.backordered_quantity, allocation.cancelled_quantity
@@ -291,8 +329,9 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
       const addItem = db.prepare(
         `INSERT INTO order_line_items
           (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents,
+           discountable_total_cents, blending_fee_cents, custom_blend_json,
            variant_id, sku, variant_label, weight_grams, consumption_classification, delivery_class)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       for (const item of params.items)
         addItem.run(
@@ -302,6 +341,9 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
           item.unitPriceCents,
           item.quantity,
           item.lineTotalCents,
+          item.discountableTotalCents,
+          item.blendingFeeCents,
+          item.customBlend ? JSON.stringify(item.customBlend) : null,
           item.variantSnapshot?.variantId ?? null,
           item.variantSnapshot?.sku ?? null,
           item.variantSnapshot?.label ?? null,

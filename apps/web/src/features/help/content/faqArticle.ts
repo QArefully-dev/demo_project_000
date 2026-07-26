@@ -12,7 +12,7 @@ export const faqArticle = {
     {
       kind: 'paragraph',
       id: 'demo-context',
-      text: 'QArefully Materials Exchange is a local QA demo with a credible materials catalogue, a Custom Small Order blend feature (currently being rebuilt), and simulated commerce.',
+      text: 'QArefully Materials Exchange is a local QA demo with a credible materials catalogue, a Custom Blend configurator, and simulated commerce.',
     },
     {
       kind: 'faq',

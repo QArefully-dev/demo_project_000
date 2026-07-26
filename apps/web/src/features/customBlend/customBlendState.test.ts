@@ -1,0 +1,245 @@
+import { describe, expect, it } from 'vitest';
+import type { CustomBlendSnapshot } from '@shop/contracts/custom-blends';
+import {
+  customBlendReducer,
+  customBlendValidation,
+  derivedBasePercentage,
+  initialCustomBlendState,
+  ingredientTotalPercentage,
+  isIngredientLimitReached,
+  isIngredientSelected,
+  snapshotToDraftIngredients,
+  toIngredientInputs,
+  type CustomBlendState,
+} from './customBlendState';
+
+function stateWith(overrides: Partial<CustomBlendState> = {}): CustomBlendState {
+  return { ...initialCustomBlendState, baseVariantId: 501, ...overrides };
+}
+
+function ingredients(...percentages: number[]) {
+  return percentages.map((percentage, index) => ({ variantId: 600 + index, percentage }));
+}
+
+const EDIT_KEY = 'a'.repeat(64);
+
+function loadedEdit(): CustomBlendState {
+  return customBlendReducer(initialCustomBlendState, {
+    type: 'edit-loaded',
+    baseVariantId: 501,
+    configKey: EDIT_KEY,
+    quantity: 7,
+    ingredients: ingredients(15, 10),
+  });
+}
+
+describe('customBlendReducer', () => {
+  it('clears prior ingredient picks when the base lot changes', () => {
+    const state = stateWith({ ingredients: ingredients(10, 20) });
+    const next = customBlendReducer(state, {
+      type: 'target-changed',
+      baseVariantId: 502,
+      editConfigKey: null,
+    });
+    expect(next.baseVariantId).toBe(502);
+    expect(next.ingredients).toEqual([]);
+  });
+
+  it('keeps ingredient picks when the target is unchanged', () => {
+    const state = stateWith({ ingredients: ingredients(10) });
+    expect(
+      customBlendReducer(state, {
+        type: 'target-changed',
+        baseVariantId: 501,
+        editConfigKey: null,
+      }),
+    ).toBe(state);
+  });
+
+  it('clears the base lot when the target loses it', () => {
+    const state = stateWith({ ingredients: ingredients(10) });
+    const next = customBlendReducer(state, {
+      type: 'target-changed',
+      baseVariantId: null,
+      editConfigKey: null,
+    });
+    expect(next).toEqual(initialCustomBlendState);
+  });
+
+  it('fills the remaining ingredient budget when a lot is picked', () => {
+    const first = customBlendReducer(stateWith(), { type: 'ingredient-toggled', variantId: 600 });
+    expect(first.ingredients).toEqual([{ variantId: 600, percentage: 50 }]);
+
+    const second = customBlendReducer(
+      { ...first, ingredients: [{ variantId: 600, percentage: 30 }] },
+      { type: 'ingredient-toggled', variantId: 601 },
+    );
+    expect(second.ingredients).toEqual([
+      { variantId: 600, percentage: 30 },
+      { variantId: 601, percentage: 20 },
+    ]);
+  });
+
+  it('never defaults an ingredient below the 5% floor', () => {
+    const state = stateWith({ ingredients: ingredients(50) });
+    const next = customBlendReducer(state, { type: 'ingredient-toggled', variantId: 700 });
+    expect(next.ingredients.at(-1)).toEqual({ variantId: 700, percentage: 5 });
+  });
+
+  it('toggles a selected ingredient back off', () => {
+    const state = stateWith({ ingredients: ingredients(10, 20) });
+    const next = customBlendReducer(state, { type: 'ingredient-toggled', variantId: 600 });
+    expect(next.ingredients.map((item) => item.variantId)).toEqual([601]);
+    expect(isIngredientSelected(next, 600)).toBe(false);
+  });
+
+  it('refuses a fifth ingredient', () => {
+    const state = stateWith({ ingredients: ingredients(5, 5, 5, 5) });
+    expect(isIngredientLimitReached(state)).toBe(true);
+    expect(customBlendReducer(state, { type: 'ingredient-toggled', variantId: 900 })).toBe(state);
+  });
+
+  it('pins the base lot and quantity while the target still names the edited line', () => {
+    const loaded = loadedEdit();
+    expect(loaded).toMatchObject({
+      baseVariantId: 501,
+      editConfigKey: EDIT_KEY,
+      lockedQuantity: 7,
+    });
+    expect(
+      customBlendReducer(loaded, {
+        type: 'target-changed',
+        baseVariantId: 501,
+        editConfigKey: EDIT_KEY,
+      }),
+    ).toBe(loaded);
+  });
+
+  it('drops the whole edit draft when the target leaves edit mode', () => {
+    const next = customBlendReducer(loadedEdit(), {
+      type: 'target-changed',
+      baseVariantId: 501,
+      editConfigKey: null,
+    });
+    expect(next).toEqual({ ...initialCustomBlendState, baseVariantId: 501 });
+  });
+
+  it('drops the whole edit draft when the target moves to another base lot', () => {
+    const next = customBlendReducer(loadedEdit(), {
+      type: 'target-changed',
+      baseVariantId: 602,
+      editConfigKey: null,
+    });
+    expect(next).toEqual({ ...initialCustomBlendState, baseVariantId: 602 });
+  });
+
+  it('drops the whole edit draft when the target moves to another configured line', () => {
+    const next = customBlendReducer(loadedEdit(), {
+      type: 'target-changed',
+      baseVariantId: 501,
+      editConfigKey: 'b'.repeat(64),
+    });
+    expect(next).toEqual({ ...initialCustomBlendState, baseVariantId: 501 });
+  });
+
+  it('changes one ingredient percentage without touching the others', () => {
+    const state = stateWith({ ingredients: ingredients(10, 20) });
+    const next = customBlendReducer(state, {
+      type: 'percentage-changed',
+      variantId: 601,
+      percentage: 35,
+    });
+    expect(next.ingredients).toEqual([
+      { variantId: 600, percentage: 10 },
+      { variantId: 601, percentage: 35 },
+    ]);
+  });
+});
+
+describe('derived blend facts', () => {
+  it('derives the live base remainder from the ingredient total', () => {
+    const state = stateWith({ ingredients: ingredients(15, 10) });
+    expect(ingredientTotalPercentage(state)).toBe(25);
+    expect(derivedBasePercentage(state)).toBe(75);
+  });
+
+  it('reports the boundary remainders of 95% and 50%', () => {
+    expect(derivedBasePercentage(stateWith({ ingredients: ingredients(5) }))).toBe(95);
+    expect(derivedBasePercentage(stateWith({ ingredients: ingredients(50) }))).toBe(50);
+  });
+
+  it('maps draft ingredients to request inputs', () => {
+    const state = stateWith({ ingredients: ingredients(15, 10) });
+    expect(toIngredientInputs(state)).toEqual([
+      { variantId: 600, percentage: 15 },
+      { variantId: 601, percentage: 10 },
+    ]);
+  });
+
+  it('rehydrates draft ingredients from a persisted specification', () => {
+    const snapshot = {
+      configKey: 'b'.repeat(64),
+      basePercentage: 75,
+      mixingGroup: 'mineral',
+      ingredients: [
+        {
+          variantId: 610,
+          productId: '9',
+          productName: 'Chalk Filler',
+          productDescription: 'Filler',
+          mixingGroup: 'mineral',
+          percentage: 25,
+        },
+      ],
+      blendingFeeCents: 2500,
+      madeToOrder: true,
+      returnable: false,
+    } satisfies CustomBlendSnapshot;
+    expect(snapshotToDraftIngredients(snapshot)).toEqual([{ variantId: 610, percentage: 25 }]);
+  });
+});
+
+describe('customBlendValidation', () => {
+  it('accepts a blend inside every boundary', () => {
+    expect(customBlendValidation(stateWith({ ingredients: ingredients(25, 25) }))).toEqual({
+      isValid: true,
+      errors: [],
+    });
+    expect(customBlendValidation(stateWith({ ingredients: ingredients(5) })).isValid).toBe(true);
+  });
+
+  it('requires a base lot', () => {
+    const state = { ...initialCustomBlendState, ingredients: ingredients(10) };
+    expect(customBlendValidation(state).errors).toContain(
+      'Choose a base material to start your blend.',
+    );
+  });
+
+  it('requires at least one ingredient', () => {
+    expect(customBlendValidation(stateWith()).errors).toContain('Add at least 1 ingredient.');
+  });
+
+  it('rejects an ingredient percentage outside 5% to 50%', () => {
+    const expected = 'Each ingredient must be a whole percentage between 5% and 50%.';
+    expect(customBlendValidation(stateWith({ ingredients: ingredients(4) })).errors).toContain(
+      expected,
+    );
+    expect(customBlendValidation(stateWith({ ingredients: ingredients(51) })).errors).toContain(
+      expected,
+    );
+    expect(customBlendValidation(stateWith({ ingredients: ingredients(12.5) })).errors).toContain(
+      expected,
+    );
+  });
+
+  it('rejects an ingredient total above 50%', () => {
+    expect(customBlendValidation(stateWith({ ingredients: ingredients(30, 25) })).errors).toContain(
+      'Ingredients must total 50% or less. They currently total 55%.',
+    );
+  });
+
+  it('rejects more than four ingredients', () => {
+    const state = stateWith({ ingredients: ingredients(5, 5, 5, 5, 5) });
+    expect(customBlendValidation(state).errors).toContain('Use no more than 4 ingredients.');
+  });
+});

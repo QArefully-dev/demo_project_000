@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { useCartContext } from '@/hooks/CartContext';
 import type { useCart } from '@/hooks/useCart';
-import { CartPage } from './CartPage';
+import { CartSheet } from './CartSheet';
 
 vi.mock('@/hooks/CartContext', () => ({ useCartContext: vi.fn() }));
 
@@ -46,52 +46,13 @@ const plainLine: CartLine = {
   lineTotalCents: 1000,
 };
 
-const cart: Cart = {
-  id: '58f1b5ed-3dbf-4c3c-908e-c71d7e7bf912',
-  items: [plainLine],
-  subtotalCents: 1000,
-  discountableSubtotalCents: 1000,
-  blendingFeeTotalCents: 0,
-  totalItems: 1,
-  deliveryPreview: {
-    mode: 'freight',
-    chargeCents: 999,
-    weightGrams: 100000,
-    reason: 'Freight threshold reached',
-  },
-};
-
-interface CartContextOverrides {
-  cart?: Cart;
-  updateQuantity?: ReturnType<typeof vi.fn>;
-  isActionPending?: ReturnType<typeof vi.fn>;
-}
-
-function renderCart(error: string | null = null, overrides: CartContextOverrides = {}) {
-  vi.mocked(useCartContext).mockReturnValue({
-    cart: overrides.cart ?? cart,
-    isLoading: false,
-    isInitializing: false,
-    error,
-    updateQuantity: overrides.updateQuantity ?? vi.fn(),
-    removeItem: vi.fn(),
-    retryCart: vi.fn(),
-    isActionPending: overrides.isActionPending ?? vi.fn(),
-  } as unknown as ReturnType<typeof useCart>);
-  return render(
-    <MemoryRouter>
-      <CartPage />
-    </MemoryRouter>,
-  );
-}
-
 const CONFIG_KEY_A = 'a'.repeat(64);
 const CONFIG_KEY_B = 'b'.repeat(64);
 
 /**
- * Two configured lines over the SAME base variant, distinguished only by config key. This is the
- * only shape in which config-key line identity is load-bearing: drop the key from the render key or
- * the pending key and the two lines start sharing state.
+ * Two configured lines over the SAME base variant, distinguished only by config key. The sheet is a
+ * second renderer of the same cart lines as the cart page, so it needs its own proof that the
+ * shared identity helpers are wired through here too.
  */
 function blendLine(configKey: string, fillerName: string, quantity: number): CartLine {
   return {
@@ -122,33 +83,48 @@ function blendLine(configKey: string, fillerName: string, quantity: number): Car
 }
 
 const twoBlendCart: Cart = {
-  ...cart,
+  id: '58f1b5ed-3dbf-4c3c-908e-c71d7e7bf912',
   items: [blendLine(CONFIG_KEY_A, 'Chalk Filler', 1), blendLine(CONFIG_KEY_B, 'Silica Flour', 4)],
-  totalItems: 5,
+  subtotalCents: 12_000,
+  discountableSubtotalCents: 7_000,
   blendingFeeTotalCents: 5_000,
+  totalItems: 5,
+  deliveryPreview: {
+    mode: 'freight',
+    chargeCents: 999,
+    weightGrams: 125000,
+    reason: 'Freight threshold reached',
+  },
 };
 
-describe('CartPage', () => {
-  it('frames session-held lines, resolved totals, and server delivery weight as an order', () => {
-    renderCart();
+interface CartContextOverrides {
+  updateQuantity?: ReturnType<typeof vi.fn>;
+  isActionPending?: ReturnType<typeof vi.fn>;
+}
 
-    expect(screen.getByRole('heading', { name: 'Your pallet order' })).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'Lines held in your order for this session. Adjust pallet quantities before checkout.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByText('Resolved order subtotal (1 units)')).toBeInTheDocument();
-    expect(screen.getAllByText('$10.00')).not.toHaveLength(0);
-    expect(screen.getByText(/Resolved pack price: \$10.00/)).toBeInTheDocument();
-    expect(screen.getByText(/\$400.00 \/ tonne/)).toBeInTheDocument();
-    expect(screen.getByText(/25,?000g pack/)).toBeInTheDocument();
-    expect(
-      screen.getByText(/Pallet freight scheduled after order confirmation/),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/Total order weight: 100,000g/)).toBeInTheDocument();
-  });
+function renderSheet(cart: Cart, overrides: CartContextOverrides = {}) {
+  vi.mocked(useCartContext).mockReturnValue({
+    cart,
+    isLoading: false,
+    isInitializing: false,
+    error: null,
+    updateQuantity: overrides.updateQuantity ?? vi.fn(),
+    removeItem: vi.fn(),
+    retryCart: vi.fn(),
+    isActionPending: overrides.isActionPending ?? vi.fn(),
+  } as unknown as ReturnType<typeof useCart>);
+  return render(
+    <MemoryRouter>
+      <CartSheet />
+    </MemoryRouter>,
+  );
+}
 
+async function openSheet(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: /Open cart/ }));
+}
+
+describe('CartSheet', () => {
   it('keeps two blends over one base variant as independent lines keyed by config key', async () => {
     const user = userEvent.setup();
     const updateQuantity = vi.fn().mockResolvedValue(true);
@@ -157,10 +133,11 @@ describe('CartPage', () => {
     // otherwise silent.
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    renderCart(null, { cart: twoBlendCart, updateQuantity, isActionPending });
+    renderSheet(twoBlendCart, { updateQuantity, isActionPending });
+    await openSheet(user);
 
     // Both compositions reach the screen: neither line is collapsed into or overwritten by the other.
-    expect(screen.getByText('Pallet material — 20% Chalk Filler')).toBeInTheDocument();
+    expect(await screen.findByText('Pallet material — 20% Chalk Filler')).toBeInTheDocument();
     expect(screen.getByText('Pallet material — 20% Silica Flour')).toBeInTheDocument();
 
     const duplicateKeyWarnings = consoleError.mock.calls.filter((call) =>
@@ -186,11 +163,33 @@ describe('CartPage', () => {
     expect(updateQuantity).toHaveBeenCalledWith('1', 5, 1, CONFIG_KEY_B);
   });
 
-  it('shows the MOQ error returned by the cart hook', () => {
-    renderCart('Minimum order quantity not met. Adjust pallet quantity and try again.');
+  it('separates material subtotal from blending fees in the sheet summary', async () => {
+    const user = userEvent.setup();
 
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'Minimum order quantity not met. Adjust pallet quantity and try again.',
-    );
+    renderSheet(twoBlendCart);
+    await openSheet(user);
+
+    expect(await screen.findByText('Material subtotal')).toBeInTheDocument();
+    expect(screen.getByText('Blending fees')).toBeInTheDocument();
+    expect(screen.getByText('$50.00')).toBeInTheDocument();
+    expect(screen.getByText('$70.00')).toBeInTheDocument();
+  });
+
+  it('omits the blending fee breakdown when the order holds no configured line', async () => {
+    const user = userEvent.setup();
+
+    renderSheet({
+      ...twoBlendCart,
+      items: [plainLine],
+      totalItems: 1,
+      subtotalCents: 1000,
+      discountableSubtotalCents: 1000,
+      blendingFeeTotalCents: 0,
+    });
+    await openSheet(user);
+
+    expect(await screen.findByText('Resolved order subtotal')).toBeInTheDocument();
+    expect(screen.queryByText('Blending fees')).not.toBeInTheDocument();
+    expect(screen.queryByText('Material subtotal')).not.toBeInTheDocument();
   });
 });

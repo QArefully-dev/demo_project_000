@@ -5,6 +5,10 @@ import { Separator } from '@/components/ui/separator';
 import { formatMoney } from '@/lib/formatMoney';
 import type { OrderDetailResponse } from '@shop/contracts/orders';
 import type { LegacyRef } from 'react';
+import {
+  CUSTOM_BLEND_MADE_TO_ORDER_NOTE,
+  customBlendCompositionLabel,
+} from '@/features/customBlend/CustomBlendPackaging';
 import { formatOrderDate, orderStatusLabel } from './orderPresentation';
 
 type Props = {
@@ -35,6 +39,7 @@ export function OrderDetailView({
   const namesByLineId = new Map<string, string>(
     order.items.map((line): [string, string] => [line.lineId, line.productName]),
   );
+  const hasCustomBlend = order.items.some((line) => line.customBlend !== undefined);
 
   return (
     <section className="space-y-6" aria-label={`Order ${order.id}`}>
@@ -66,6 +71,16 @@ export function OrderDetailView({
                       {item.variantSnapshot.weightGrams}g
                     </span>
                   )}
+                  {item.customBlend && (
+                    <span className="block text-xs text-muted-foreground" data-testid="order-blend">
+                      Custom blend:{' '}
+                      {customBlendCompositionLabel(item.productName, item.customBlend)}
+                      <span className="block">
+                        Base material: {formatMoney(item.discountableTotalCents)} · Blending fee:{' '}
+                        {formatMoney(item.blendingFeeCents)}
+                      </span>
+                    </span>
+                  )}
                   {item.inventoryStatus === 'partially_backordered' && (
                     <span className="block text-xs font-medium text-amber-700">
                       {item.allocatedQuantity} allocated; {item.backorderedQuantity} awaiting stock
@@ -89,6 +104,11 @@ export function OrderDetailView({
               </div>
             ))}
           </div>
+          {hasCustomBlend && (
+            <p className="rounded-md border border-amber-500/40 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              {CUSTOM_BLEND_MADE_TO_ORDER_NOTE}
+            </p>
+          )}
           <Separator />
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">

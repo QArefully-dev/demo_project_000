@@ -79,7 +79,13 @@ describe('Help pages', () => {
     // Eligibility section
     expect(screen.getByRole('heading', { level: 2, name: 'Eligibility' })).toBeInTheDocument();
     expect(screen.getByText(/30 days/)).toBeInTheDocument();
-    expect(screen.getByText(/Custom Small Order blends are excluded/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Custom Blend lines are made to order and are excluded/),
+    ).toBeInTheDocument();
+    // Exclusion from returns must not be read as an order that can no longer be cancelled.
+    expect(
+      screen.getByText(/cancels on exactly the same terms as any other order/),
+    ).toBeInTheDocument();
     // Workflow section
     expect(screen.getByRole('heading', { level: 2, name: 'How it works' })).toBeInTheDocument();
     expect(screen.getByText(/demo administrator/)).toBeInTheDocument();
@@ -88,6 +94,51 @@ describe('Help pages', () => {
       screen.getByRole('heading', { level: 2, name: 'Returns vs cancellation' }),
     ).toBeInTheDocument();
     expect(screen.getByText(/Cancellation stops simulated fulfilment/)).toBeInTheDocument();
+  });
+
+  it('documents Custom Blend configuration, fee, stock asymmetry, cancellation, and returns', () => {
+    renderHelpRoute('/help/custom-blend');
+
+    expect(screen.getByRole('article', { name: 'Custom Blend' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Custom Blend' })).toBeInTheDocument();
+
+    // How to configure: base choice plus the ratio limits the configurator enforces.
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Configuring a blend' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/one and four ingredients/)).toBeInTheDocument();
+    expect(screen.getByText(/5% to 50%/)).toBeInTheDocument();
+    expect(screen.getByText(/no more than 50% together/)).toBeInTheDocument();
+
+    // Flat fee, stated as a per-line charge and tied to the pricing contract value.
+    expect(screen.getByRole('heading', { level: 2, name: 'Blending fee' })).toBeInTheDocument();
+    expect(screen.getByText(/flat blending fee of \$25\.00/)).toBeInTheDocument();
+    expect(screen.getByText(/per line rather than per sack/)).toBeInTheDocument();
+
+    // Ingredient stock asymmetry: sold-out ingredients stay selectable, the base does not.
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Ingredient availability' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/out of stock is still selectable/)).toBeInTheDocument();
+    expect(screen.getByText(/The base material behaves differently/)).toBeInTheDocument();
+
+    // Cancellation and non-returnability are stated as separate rules, not one combined finality.
+    expect(
+      screen.getByRole('note', { name: 'Cancellation and returns work differently' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/cancelled on the ordinary terms, at any point up to dispatch/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/never eligible for return/)).toBeInTheDocument();
+  });
+
+  it('lists Custom Blend on the help index', () => {
+    renderHelpRoute('/help');
+
+    expect(screen.getByRole('link', { name: 'Custom Blend' })).toHaveAttribute(
+      'href',
+      '/help/custom-blend',
+    );
   });
 
   it('uses Materials Exchange branding in product safety guidance', () => {

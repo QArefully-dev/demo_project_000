@@ -33,10 +33,11 @@ export default function promoRoutes(app: FastifyInstance, { services }: AppConte
       if (result.valid && result.promoCode) {
         const discountCents = calculateDiscount({
           promo: result.promoCode,
-          subtotalCents: cart.subtotalCents,
+          discountableSubtotalCents: cart.discountableSubtotalCents,
         });
-        // Promotions discount merchandise only. Reuse the cart's server-owned delivery quote
-        // so clients receive the same freight-inclusive total shown at checkout.
+        // Promotions discount merchandise only: blending fees stay out of the discount base but
+        // remain inside the payable subtotal. Reuse the cart's server-owned delivery quote so
+        // clients receive the same freight-inclusive total shown at checkout.
         const totalCents =
           cart.subtotalCents - discountCents + (cart.deliveryPreview?.chargeCents ?? 0);
         return { ...result, discountCents, totalCents };

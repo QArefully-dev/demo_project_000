@@ -158,7 +158,13 @@ export function createCartService(
     remove: (cartId, variantId, context, configKey = '') =>
       runCartMutation(auditDependencies, () => {
         requireAuditContext(auditDependencies, context);
-        const result = removeItem(repository, cartId, variantId, availabilityDependencies, configKey);
+        const result = removeItem(
+          repository,
+          cartId,
+          variantId,
+          availabilityDependencies,
+          configKey,
+        );
         if (context && auditDependencies && typeof result !== 'string') {
           auditDependencies.audit.append({
             action: 'cart.product_removed',
@@ -362,7 +368,10 @@ function hydrateCustomBlend(
   } catch {
     return undefined;
   }
-  if (persisted.configKey !== row.config_key || persisted.blendingFeeCents !== CUSTOM_BLEND_FEE_CENTS) {
+  if (
+    persisted.configKey !== row.config_key ||
+    persisted.blendingFeeCents !== CUSTOM_BLEND_FEE_CENTS
+  ) {
     return undefined;
   }
   let normalized;
@@ -377,7 +386,10 @@ function hydrateCustomBlend(
   ) {
     return undefined;
   }
-  const factIds = [row.variant_id, ...normalized.ingredients.map((ingredient) => ingredient.variantId)];
+  const factIds = [
+    row.variant_id,
+    ...normalized.ingredients.map((ingredient) => ingredient.variantId),
+  ];
   const facts = repository.listEligibleCustomBlendFacts(factIds);
   if (facts.length !== factIds.length) return undefined;
   const byVariantId = new Map(facts.map((fact) => [fact.variant_id, fact]));
@@ -385,13 +397,14 @@ function hydrateCustomBlend(
   if (!base || base.mixing_group !== persisted.mixingGroup) return undefined;
   const ingredients = normalized.ingredients.map((ingredient) => {
     const fact = byVariantId.get(ingredient.variantId);
-    if (!fact || fact.variant_id === base.variant_id || fact.mixing_group !== base.mixing_group) return undefined;
+    if (!fact || fact.variant_id === base.variant_id || fact.mixing_group !== base.mixing_group)
+      return undefined;
     return {
       variantId: fact.variant_id,
       productId: String(fact.product_id),
       productName: fact.product_name,
       productDescription: fact.product_description,
-      mixingGroup: fact.mixing_group as CustomBlendSnapshot['mixingGroup'],
+      mixingGroup: fact.mixing_group,
       percentage: ingredient.percentage,
     };
   });
@@ -399,7 +412,7 @@ function hydrateCustomBlend(
   return {
     configKey: normalized.configKey,
     basePercentage: normalized.basePercentage,
-    mixingGroup: base.mixing_group as CustomBlendSnapshot['mixingGroup'],
+    mixingGroup: base.mixing_group,
     ingredients: ingredients as CustomBlendSnapshot['ingredients'],
     blendingFeeCents: CUSTOM_BLEND_FEE_CENTS,
     madeToOrder: true,
@@ -462,7 +475,8 @@ export function addConfiguredItem(
   if (!variant || !repository.variantExists(variantId)) return 'VARIANT_NOT_FOUND';
   const addedQuantity = quantity ?? minimumMoqQuantity(variant.weight_grams, variant.moq_sacks);
   if (addedQuantity === undefined) return 'INVALID_QUANTITY';
-  const nextQuantity = repository.lineQuantity(cartId, variantId, customBlend.configKey) + addedQuantity;
+  const nextQuantity =
+    repository.lineQuantity(cartId, variantId, customBlend.configKey) + addedQuantity;
   if (!supportsCartLineArithmetic(variant, nextQuantity)) return 'INVALID_QUANTITY';
   if (!validateMoq(nextQuantity, variant.weight_grams, variant.moq_sacks)) return 'BELOW_MOQ';
   repository.addConfiguredLineQuantity(

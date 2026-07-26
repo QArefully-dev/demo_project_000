@@ -1,7 +1,7 @@
 import { useLocation, useSearchParams, Link } from 'react-router-dom';
 import { useCategories } from '@/hooks/useCategories';
 import { cn } from '@/lib/utils';
-import { bundlesItem } from './nav/navItems';
+import { bundlesItem, customBlendItem } from './nav/navItems';
 
 /**
  * Functional category filter navigation.
@@ -50,6 +50,16 @@ export function CategoryNav() {
         className={linkClassName(pathname === '/bundles')}
       >
         {bundlesItem.label}
+      </Link>
+      <Link
+        to="/custom-blend"
+        aria-current={pathname === '/custom-blend' ? 'page' : undefined}
+        className={cn(
+          'rounded-md px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm',
+          customBlendItem.className,
+        )}
+      >
+        {customBlendItem.label}
       </Link>
       <Link
         to="/catalog?onSale=true&sort=bestselling"

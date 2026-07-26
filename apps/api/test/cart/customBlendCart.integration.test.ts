@@ -37,7 +37,8 @@ void test('Custom Blend cart lines deduplicate, rehydrate, merge edits, and addr
     .all() as Array<{ id: number; product_id: number; moq_sacks: number }>;
   assert.equal(lots.length, 3);
   const [base, ingredientA, ingredientB] = lots;
-  if (!base || !ingredientA || !ingredientB) throw new Error('Expected compatible Custom Blend lots');
+  if (!base || !ingredientA || !ingredientB)
+    throw new Error('Expected compatible Custom Blend lots');
 
   const created = await app.inject({ method: 'POST', url: '/api/cart' });
   const cartId = Value.Parse(CreateCartResponse, created.json()).cartId;
@@ -108,7 +109,11 @@ void test('Custom Blend cart lines deduplicate, rehydrate, merge edits, and addr
   const removed = await app.inject({
     method: 'DELETE',
     url: `/api/cart/${cartId}/items/${base.product_id}`,
-    payload: { productId: String(base.product_id), variantId: base.id, configKey: lineB?.configKey },
+    payload: {
+      productId: String(base.product_id),
+      variantId: base.id,
+      configKey: lineB?.configKey,
+    },
   });
   assert.equal(removed.statusCode, 200);
   const remaining = Value.Parse(Cart, removed.json());
@@ -168,7 +173,9 @@ void test('Custom Blend rejects retired persisted facts and reserved-cart edits'
     },
   });
   assert.equal(blocked.statusCode, 409);
-  db.prepare("DELETE FROM cart_reservations WHERE payment_idempotency_key = 'custom-blend-lock'").run();
+  db.prepare(
+    "DELETE FROM cart_reservations WHERE payment_idempotency_key = 'custom-blend-lock'",
+  ).run();
   db.prepare('UPDATE product_variants SET active = 0 WHERE id = ?').run(ingredient.id);
   assert.equal((await app.inject({ method: 'GET', url: `/api/cart/${cartId}` })).statusCode, 404);
 });
@@ -201,7 +208,8 @@ void test('corrupt Custom Blend JSON blocks plain and configured cart mutations 
     )
     .all() as Array<{ id: number; product_id: number; moq_sacks: number }>;
   const [base, ingredientA, ingredientB] = lots;
-  if (!base || !ingredientA || !ingredientB) throw new Error('Expected compatible Custom Blend lots');
+  if (!base || !ingredientA || !ingredientB)
+    throw new Error('Expected compatible Custom Blend lots');
 
   const cartId = Value.Parse(
     CreateCartResponse,
@@ -229,15 +237,21 @@ void test('corrupt Custom Blend JSON blocks plain and configured cart mutations 
   db.pragma('ignore_check_constraints = OFF');
   db.prepare("UPDATE carts SET updated_at = '2000-01-01 00:00:00' WHERE id = ?").run(cartId);
   const before = {
-    lineCount: (db.prepare('SELECT COUNT(*) AS count FROM cart_line_items WHERE cart_id = ?').get(cartId) as {
-      count: number;
-    }).count,
-    updatedAt: (db.prepare('SELECT updated_at FROM carts WHERE id = ?').get(cartId) as {
-      updated_at: string;
-    }).updated_at,
-    auditCount: (db.prepare('SELECT COUNT(*) AS count FROM audit_events WHERE entity_id = ?').get(cartId) as {
-      count: number;
-    }).count,
+    lineCount: (
+      db.prepare('SELECT COUNT(*) AS count FROM cart_line_items WHERE cart_id = ?').get(cartId) as {
+        count: number;
+      }
+    ).count,
+    updatedAt: (
+      db.prepare('SELECT updated_at FROM carts WHERE id = ?').get(cartId) as {
+        updated_at: string;
+      }
+    ).updated_at,
+    auditCount: (
+      db.prepare('SELECT COUNT(*) AS count FROM audit_events WHERE entity_id = ?').get(cartId) as {
+        count: number;
+      }
+    ).count,
   };
 
   const plain = await app.inject({
@@ -258,15 +272,25 @@ void test('corrupt Custom Blend JSON blocks plain and configured cart mutations 
   assert.equal(configured.statusCode, 404);
   assert.deepEqual(
     {
-      lineCount: (db.prepare('SELECT COUNT(*) AS count FROM cart_line_items WHERE cart_id = ?').get(cartId) as {
-        count: number;
-      }).count,
-      updatedAt: (db.prepare('SELECT updated_at FROM carts WHERE id = ?').get(cartId) as {
-        updated_at: string;
-      }).updated_at,
-      auditCount: (db.prepare('SELECT COUNT(*) AS count FROM audit_events WHERE entity_id = ?').get(cartId) as {
-        count: number;
-      }).count,
+      lineCount: (
+        db
+          .prepare('SELECT COUNT(*) AS count FROM cart_line_items WHERE cart_id = ?')
+          .get(cartId) as {
+          count: number;
+        }
+      ).count,
+      updatedAt: (
+        db.prepare('SELECT updated_at FROM carts WHERE id = ?').get(cartId) as {
+          updated_at: string;
+        }
+      ).updated_at,
+      auditCount: (
+        db
+          .prepare('SELECT COUNT(*) AS count FROM audit_events WHERE entity_id = ?')
+          .get(cartId) as {
+          count: number;
+        }
+      ).count,
     },
     before,
   );

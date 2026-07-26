@@ -9,10 +9,7 @@ import {
 } from '../src/customBlends.js';
 import { Cart, CartLine, RemoveFromCartBody, UpdateCartLineBody } from '../src/cart.js';
 import { OrderLineItem } from '../src/orders.js';
-import {
-  PersistedCheckoutQuoteV6,
-  parsePersistedCheckoutQuote,
-} from '../src/payments.js';
+import { PersistedCheckoutQuoteV6, parsePersistedCheckoutQuote } from '../src/payments.js';
 import { CUSTOM_BLEND_FEE_CENTS } from '../src/pricing.js';
 
 const uuid = '123e4567-e89b-42d3-a456-426614174000';
@@ -61,11 +58,17 @@ void test('Custom Blend inputs enforce integer percentage bounds and strict conf
   assert.equal(Value.Check(CreateCustomBlendBody, create), true);
   assert.equal(Value.Check(CreateCustomBlendBody, { ...create, ingredients: [] }), false);
   assert.equal(
-    Value.Check(CreateCustomBlendBody, { ...create, ingredients: [{ variantId: 2, percentage: 4 }] }),
+    Value.Check(CreateCustomBlendBody, {
+      ...create,
+      ingredients: [{ variantId: 2, percentage: 4 }],
+    }),
     false,
   );
   assert.equal(
-    Value.Check(CreateCustomBlendBody, { ...create, ingredients: [{ variantId: 2, percentage: 20.5 }] }),
+    Value.Check(CreateCustomBlendBody, {
+      ...create,
+      ingredients: [{ variantId: 2, percentage: 20.5 }],
+    }),
     false,
   );
   assert.equal(Value.Check(CartLineConfigKey, ''), true);
@@ -82,7 +85,10 @@ void test('Custom Blend snapshot carries fee and non-returnable made-to-order fa
   assert.equal(CUSTOM_BLEND_FEE_CENTS, 2500);
   assert.equal(Value.Check(CustomBlendSnapshot, customBlend), true);
   assert.equal(
-    Value.Check(CustomBlendSnapshot, { ...customBlend, blendingFeeCents: Number.MAX_SAFE_INTEGER + 1 }),
+    Value.Check(CustomBlendSnapshot, {
+      ...customBlend,
+      blendingFeeCents: Number.MAX_SAFE_INTEGER + 1,
+    }),
     false,
   );
   assert.equal(Value.Check(CustomBlendSnapshot, { ...customBlend, madeToOrder: false }), false);
@@ -123,7 +129,10 @@ void test('configured cart and order lines expose money split and specification'
     Value.Check(CartLine, { ...line, discountableTotalCents: Number.MAX_SAFE_INTEGER + 1 }),
     false,
   );
-  assert.equal(Value.Check(CartLine, { ...line, lineTotalCents: Number.MAX_SAFE_INTEGER + 1 }), false);
+  assert.equal(
+    Value.Check(CartLine, { ...line, lineTotalCents: Number.MAX_SAFE_INTEGER + 1 }),
+    false,
+  );
   assert.equal(Value.Check(CartLine, { ...line, configKey: '' }), false);
   assert.equal(Value.Check(CartLine, { ...line, customBlend: undefined }), false);
   assert.equal(
@@ -173,7 +182,10 @@ void test('configured cart and order lines expose money split and specification'
   };
   assert.equal(Value.Check(OrderLineItem, orderLine), true);
   assert.equal(
-    Value.Check(OrderLineItem, { ...orderLine, discountableTotalCents: Number.MAX_SAFE_INTEGER + 1 }),
+    Value.Check(OrderLineItem, {
+      ...orderLine,
+      discountableTotalCents: Number.MAX_SAFE_INTEGER + 1,
+    }),
     false,
   );
   assert.equal(
@@ -242,7 +254,9 @@ void test('V6 keeps plain quotes readable and round-trips configured variant lin
     assert.equal(
       Value.Check(PersistedCheckoutQuoteV6, {
         ...configured,
-        variantLines: [{ ...configured.variantLines[0], [monetaryField]: Number.MAX_SAFE_INTEGER + 1 }],
+        variantLines: [
+          { ...configured.variantLines[0], [monetaryField]: Number.MAX_SAFE_INTEGER + 1 },
+        ],
       }),
       false,
     );

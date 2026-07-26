@@ -1,8 +1,5 @@
 import { createHash } from 'node:crypto';
-import {
-  CUSTOM_BLEND_FEE_CENTS,
-  type CustomBlendIngredientInput,
-} from '@shop/contracts';
+import { CUSTOM_BLEND_FEE_CENTS, type CustomBlendIngredientInput } from '@shop/contracts';
 
 const MIN_INGREDIENTS = 1;
 const MAX_INGREDIENTS = 4;
@@ -43,7 +40,15 @@ function requireNonNegativeSafeInteger(value: unknown, name: string): asserts va
 export function canonicalizeCustomBlendIngredients(
   ingredients: readonly CustomBlendIngredientInput[],
 ): CustomBlendIngredientInput[] {
-  if (!Array.isArray(ingredients) || ingredients.length < MIN_INGREDIENTS || ingredients.length > MAX_INGREDIENTS) {
+  // Array-ness is checked through an `unknown` alias: narrowing `Array.isArray` against the
+  // declared readonly array would collapse the element type to `any` and silently drop
+  // ingredient typing for the whole canonicalization path.
+  const candidate: unknown = ingredients;
+  if (
+    !Array.isArray(candidate) ||
+    ingredients.length < MIN_INGREDIENTS ||
+    ingredients.length > MAX_INGREDIENTS
+  ) {
     throw new RangeError(`ingredients must contain ${MIN_INGREDIENTS}-${MAX_INGREDIENTS} entries.`);
   }
 
@@ -72,7 +77,10 @@ export function canonicalizeCustomBlendIngredients(
     return { variantId, percentage };
   });
 
-  const ingredientTotal = normalized.reduce((total, ingredient) => total + ingredient.percentage, 0);
+  const ingredientTotal = normalized.reduce(
+    (total, ingredient) => total + ingredient.percentage,
+    0,
+  );
   if (ingredientTotal > MAX_INGREDIENT_TOTAL) {
     throw new RangeError(`ingredient percentage total must not exceed ${MAX_INGREDIENT_TOTAL}.`);
   }

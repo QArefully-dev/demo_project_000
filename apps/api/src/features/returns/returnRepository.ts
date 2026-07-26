@@ -214,6 +214,10 @@ export interface ReturnRepository {
 export function createReturnRepository(db: Database.Database): ReturnRepository {
   // ── eligibility rows ──────────────────────────────────────────────
 
+  /**
+   * Delivered lines a customer may return. Made-to-order Custom Blend lines are excluded at the
+   * SQL boundary, so a blend can never be selected, reserved, received, or refunded.
+   */
   const loadEligibleLines = (
     orderId: number,
   ): { lines: ReturnEligibilityLine[]; corruption: string[] } => {
@@ -241,6 +245,7 @@ export function createReturnRepository(db: Database.Database): ReturnRepository 
            GROUP BY shipment_id
          ) de ON de.shipment_id = s.id
          WHERE s.order_id = ? AND s.status = 'delivered'
+           AND li.custom_blend_json IS NULL
          ORDER BY s.id ASC, li.id ASC`,
       )
       .all(orderId) as Array<{

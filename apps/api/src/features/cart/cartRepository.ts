@@ -220,7 +220,9 @@ export function createCartRepository(db: Database.Database): CartRepository {
     removeLine(cartId, variantId, configKey = '') {
       return (
         db
-          .prepare('DELETE FROM cart_line_items WHERE cart_id = ? AND variant_id = ? AND config_key = ?')
+          .prepare(
+            'DELETE FROM cart_line_items WHERE cart_id = ? AND variant_id = ? AND config_key = ?',
+          )
           .run(cartId, variantId, configKey).changes > 0
       );
     },

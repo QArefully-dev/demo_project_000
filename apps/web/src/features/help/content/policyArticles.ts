@@ -35,7 +35,7 @@ export const privacyArticle = defineHelpArticle({
       paragraphs: [
         {
           id: 'privacy-browser-storage-local-storage',
-          text: 'This browser can keep a cart identifier and a bounded Custom Small Order history in local storage so the demo can restore those features between visits.',
+          text: 'This browser can keep a cart identifier in local storage so the demo can restore your order between visits. Blend configurations are held against that cart on the local backend, not in browser storage.',
         },
         {
           id: 'privacy-browser-storage-session-cookie',
@@ -54,7 +54,7 @@ export const privacyArticle = defineHelpArticle({
         },
         {
           id: 'privacy-clearing-data-database',
-          text: 'Likewise, resetting local database data does not promise to remove cart identifiers or Custom Small Order blend history already stored in a browser. Clear browser storage separately when needed.',
+          text: 'Likewise, resetting local database data does not promise to remove a cart identifier already stored in a browser. Clear browser storage separately when needed.',
         },
       ],
     },

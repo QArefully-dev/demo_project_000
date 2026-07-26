@@ -1,4 +1,9 @@
+import { CUSTOM_BLEND_FEE_CENTS } from '@shop/contracts/pricing';
+import { formatMoney } from '@/lib/formatMoney';
 import { defineHelpArticle, type HelpArticle } from './helpContentTypes';
+
+/** Derived from the pricing contract so the published fee cannot drift from the charged one. */
+const BLENDING_FEE = formatMoney(CUSTOM_BLEND_FEE_CENTS);
 
 export const shippingArticle = defineHelpArticle({
   id: 'shipping',
@@ -107,7 +112,7 @@ export const returnsArticle = defineHelpArticle({
         },
         {
           id: 'returns-eligibility-products',
-          text: 'Only ordinary catalogue products are eligible. Custom Small Order blends are excluded from returns. Only delivered shipment quantities can be returned; backordered, shipped, or failed-delivery items are not eligible.',
+          text: 'Only ordinary catalogue products are eligible. Custom Blend lines are made to order and are excluded from returns. Only delivered shipment quantities can be returned; backordered, shipped, or failed-delivery items are not eligible.',
         },
       ],
     },
@@ -138,6 +143,10 @@ export const returnsArticle = defineHelpArticle({
         {
           id: 'returns-cancellation-diff',
           text: 'Cancellation stops simulated fulfilment before shipping and releases allocated stock, but does not issue a refund. Returns apply after delivery and can result in a simulated refund when processed by an administrator. Cancellation and returns are separate workflows.',
+        },
+        {
+          id: 'returns-cancellation-custom-blend',
+          text: 'Being excluded from returns does not make an order final. An order containing a Custom Blend line cancels on exactly the same terms as any other order, at any point up to dispatch.',
         },
       ],
     },
@@ -263,9 +272,91 @@ export const safetyArticle = defineHelpArticle({
   ],
 });
 
+export const customBlendArticle = defineHelpArticle({
+  id: 'custom-blend',
+  group: 'help',
+  slug: 'custom-blend',
+  path: '/help/custom-blend',
+  title: 'Custom Blend',
+  summary:
+    'Configuring a made-to-order blend, its blending fee, and how it behaves after ordering.',
+  blocks: [
+    {
+      kind: 'paragraph',
+      id: 'custom-blend-overview',
+      text: 'Custom Blend lets you order a material blended to your own specification instead of picking a stocked lot. You choose one base material and the ingredients mixed into it, and the blend is produced against your order.',
+    },
+    {
+      kind: 'section',
+      id: 'custom-blend-configuring',
+      heading: 'Configuring a blend',
+      paragraphs: [
+        {
+          id: 'custom-blend-configuring-base',
+          text: 'Open Custom Blend from the main navigation, then choose a base material. Search by name or filter by category to narrow the list. Only the 25 kg sack of a material can act as a base, because the sack is the purchase unit a blend is produced in.',
+        },
+        {
+          id: 'custom-blend-configuring-ingredients',
+          text: 'With a base chosen, add between one and four ingredients and set each one to a whole percentage from 5% to 50%. Ingredients must total no more than 50% together, so the base always makes up at least half the blend. The summary shows the running base and ingredient percentages, and the configurator refuses to submit a ratio outside those limits.',
+        },
+        {
+          id: 'custom-blend-configuring-editing',
+          text: 'A blend already in your order can be reopened from its cart line. Editing keeps the base material and the quantity fixed and replaces only the recipe; two blends over the same base material stay separate lines.',
+        },
+      ],
+    },
+    {
+      kind: 'section',
+      id: 'custom-blend-pricing',
+      heading: 'Blending fee',
+      paragraphs: [
+        {
+          id: 'custom-blend-pricing-fee',
+          text: `A flat blending fee of ${BLENDING_FEE} is added once per blend line. It is charged per line rather than per sack, so raising the quantity on a blend does not multiply the fee.`,
+        },
+        {
+          id: 'custom-blend-pricing-discounts',
+          text: 'The fee sits outside the discountable amount. Cart, checkout, and order pages therefore show the material subtotal and the blending fees separately, and a promotion applies to the material subtotal only. Material pricing itself follows the ordinary per-tonne rate and quantity-break tiers for the base lot.',
+        },
+      ],
+    },
+    {
+      kind: 'section',
+      id: 'custom-blend-stock',
+      heading: 'Ingredient availability',
+      paragraphs: [
+        {
+          id: 'custom-blend-stock-selectable',
+          text: 'An ingredient that is out of stock is still selectable. Its availability is shown for information, and it does not block the blend.',
+        },
+        {
+          id: 'custom-blend-stock-asymmetry',
+          text: 'The base material behaves differently: it is a stocked lot, so its own availability and backorder rules apply exactly as they do when you buy that lot on its own.',
+        },
+      ],
+    },
+    {
+      kind: 'notice',
+      id: 'custom-blend-after-ordering',
+      heading: 'Cancellation and returns work differently',
+      paragraphs: [
+        {
+          id: 'custom-blend-after-ordering-cancellation',
+          text: 'Cancellation is unaffected. An order containing a blend can be cancelled on the ordinary terms, at any point up to dispatch, in the same way as an order of stocked lots.',
+        },
+        {
+          id: 'custom-blend-after-ordering-returns',
+          text: 'Returns are the exception. A blend is produced to your specification and cannot be resold, so a blend line is never eligible for return. Once an order with a blend is dispatched, that line is final, while any ordinary lots in the same order remain returnable on the usual terms.',
+        },
+      ],
+    },
+  ],
+});
+
 export const serviceArticles = [
   shippingArticle,
   returnsArticle,
   packSizesArticle,
   safetyArticle,
+  customBlendArticle,
 ] as const satisfies readonly HelpArticle<'help', string>[];

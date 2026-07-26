@@ -15,10 +15,7 @@ import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../
 
 type EligibleLot = { variantId: number; productId: number; category: string };
 
-function eligibleLot(
-  db: ReturnType<typeof openDatabase>,
-  category?: string,
-): EligibleLot {
+function eligibleLot(db: ReturnType<typeof openDatabase>, category?: string): EligibleLot {
   const categoryClause = category ? 'AND p.category = ?' : '';
   const row = db
     .prepare(
@@ -56,7 +53,9 @@ void test('Custom Blend options expose all compatible active 25 kg lots across c
     )
     .get(base.category) as EligibleLot | undefined;
   if (!crossCategory) throw new Error('Expected cross-category food-grade lot');
-  db.prepare('UPDATE product_variants SET stock_count = 0 WHERE id = ?').run(crossCategory.variantId);
+  db.prepare('UPDATE product_variants SET stock_count = 0 WHERE id = ?').run(
+    crossCategory.variantId,
+  );
 
   const excluded = db
     .prepare(
@@ -86,13 +85,22 @@ void test('Custom Blend options expose all compatible active 25 kg lots across c
   assert.equal(Value.Check(CustomBlendOptionsResponse, body), true);
   assert.equal(body.base.variant.variantId, base.variantId);
   assert.equal(body.base.mixingGroup, 'food-grade');
-  assert.ok(body.ingredients.some((option) => option.variant.variantId === crossCategory.variantId));
+  assert.ok(
+    body.ingredients.some((option) => option.variant.variantId === crossCategory.variantId),
+  );
   assert.equal(
-    body.ingredients.find((option) => option.variant.variantId === crossCategory.variantId)?.variant.stockCount,
+    body.ingredients.find((option) => option.variant.variantId === crossCategory.variantId)?.variant
+      .stockCount,
     0,
   );
-  assert.equal(body.ingredients.some((option) => option.variant.variantId === base.variantId), false);
-  assert.equal(body.ingredients.some((option) => option.productId === String(excluded.productId)), false);
+  assert.equal(
+    body.ingredients.some((option) => option.variant.variantId === base.variantId),
+    false,
+  );
+  assert.equal(
+    body.ingredients.some((option) => option.productId === String(excluded.productId)),
+    false,
+  );
   assert.deepEqual(
     body.ingredients.map((option) => option.variant.variantId),
     [...body.ingredients]
@@ -123,7 +131,8 @@ void test('Custom Blend options reject nonexistent, inactive, null-group, and wr
     { variantId: 999_999, mutate: () => undefined },
     {
       variantId: base.variantId,
-      mutate: () => db.prepare('UPDATE product_variants SET active = 0 WHERE id = ?').run(base.variantId),
+      mutate: () =>
+        db.prepare('UPDATE product_variants SET active = 0 WHERE id = ?').run(base.variantId),
     },
     {
       variantId: base.variantId,
@@ -131,15 +140,20 @@ void test('Custom Blend options reject nonexistent, inactive, null-group, and wr
     },
     {
       variantId: base.variantId,
-      mutate: () => db.prepare('UPDATE products SET mixing_group = NULL WHERE id = ?').run(base.productId),
+      mutate: () =>
+        db.prepare('UPDATE products SET mixing_group = NULL WHERE id = ?').run(base.productId),
     },
     {
       variantId: base.variantId,
-      mutate: () => db.prepare('UPDATE product_variants SET weight_grams = 1000 WHERE id = ?').run(base.variantId),
+      mutate: () =>
+        db
+          .prepare('UPDATE product_variants SET weight_grams = 1000 WHERE id = ?')
+          .run(base.variantId),
     },
     {
       variantId: base.variantId,
-      mutate: () => db.prepare('UPDATE product_variants SET sort_order = 2 WHERE id = ?').run(base.variantId),
+      mutate: () =>
+        db.prepare('UPDATE product_variants SET sort_order = 2 WHERE id = ?').run(base.variantId),
     },
   ]) {
     resetDatabase(db);

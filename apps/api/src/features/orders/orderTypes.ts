@@ -1,3 +1,4 @@
+import type { CustomBlendSnapshot } from '@shop/contracts/custom-blends';
 import type {
   OrderLifecycleEventType,
   OrderShipmentLine,
@@ -29,8 +30,18 @@ export interface CreateOrderParams {
     productName: string;
     unitPriceCents: number;
     quantity: number;
+    /**
+     * Promotion base for this line. Equals `lineTotalCents` on ordinary lines; on a configured
+     * Custom Blend line it excludes the blending fee, which is a service charge and never
+     * discountable, refundable, or a weight in refund discount proration.
+     */
+    discountableTotalCents: number;
+    /** One-off blending service charge. Always `0` on ordinary lines. */
+    blendingFeeCents: number;
     lineTotalCents: number;
     variantSnapshot?: CreateOrderLineVariantSnapshot;
+    /** Frozen Custom Blend specification. Present only on configured lines. */
+    customBlend?: CustomBlendSnapshot;
   }>;
   deliveryMode?: 'parcel' | 'freight';
   deliveryChargeCents?: number;

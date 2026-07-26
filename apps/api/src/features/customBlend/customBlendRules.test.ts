@@ -23,7 +23,10 @@ void test('normalizes permutations without mutating caller ingredients', () => {
     { variantId: 9, percentage: 15 },
   ]);
   assert.equal(first.basePercentage, 65);
-  assert.equal(first.canonicalJson, '[{"variantId":2,"percentage":20},{"variantId":9,"percentage":15}]');
+  assert.equal(
+    first.canonicalJson,
+    '[{"variantId":2,"percentage":20},{"variantId":9,"percentage":15}]',
+  );
   assert.equal(first.canonicalJson, second.canonicalJson);
   assert.equal(first.configKey, second.configKey);
   assert.match(first.configKey, /^[a-f0-9]{64}$/);

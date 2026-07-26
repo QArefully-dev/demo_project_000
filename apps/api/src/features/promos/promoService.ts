@@ -92,7 +92,9 @@ export function validatePromo(
       `Minimum ${promo.minItemCount} items required (have ${cart.totalItems})`,
       'MIN_ITEMS',
     );
-  if (promo.minSubtotalCents !== null && cart.subtotalCents < promo.minSubtotalCents)
+  // Eligibility and discount both read the discountable subtotal: Custom Blend blending fees are
+  // a service charge, never merchandise, so they can neither unlock nor be reduced by a promotion.
+  if (promo.minSubtotalCents !== null && cart.discountableSubtotalCents < promo.minSubtotalCents)
     return invalid(
       `Minimum subtotal of $${(promo.minSubtotalCents / 100).toFixed(2)} required`,
       'MIN_SUBTOTAL',
@@ -100,11 +102,15 @@ export function validatePromo(
   return { valid: true, promoCode: asValidPromo(promo) };
 }
 
+/**
+ * Discount is computed against the discountable subtotal only, so a fixed-amount promo can never
+ * consume blending fees and a percentage promo never applies to them.
+ */
 export function calculateDiscount(params: {
   promo: Pick<ValidPromo, 'kind' | 'discountPercent' | 'amountCents'>;
-  subtotalCents: number;
+  discountableSubtotalCents: number;
 }): number {
   return params.promo.kind === 'fixed'
-    ? Math.min(params.promo.amountCents ?? 0, params.subtotalCents)
-    : Math.floor((params.subtotalCents * params.promo.discountPercent) / 100);
+    ? Math.min(params.promo.amountCents ?? 0, params.discountableSubtotalCents)
+    : Math.floor((params.discountableSubtotalCents * params.promo.discountPercent) / 100);
 }

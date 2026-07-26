@@ -6,10 +6,7 @@ import { ErrorMessage } from '@/components/ErrorMessage';
 import { CartLineItem } from '@/components/CartLineItem';
 import { formatMoney } from '@/lib/formatMoney';
 import { useCartContext } from '@/hooks/CartContext';
-
-function cartItemKey(item: { productId: string; variantSnap?: { variantId: number } }): string {
-  return `${item.productId}:${item.variantSnap?.variantId ?? 'no-variant'}`;
-}
+import { cartItemKey, pendingConfigKey } from '@/lib/cartLineIdentity';
 
 function deliveryLabel(mode: string): string {
   return mode === 'freight' ? 'Freight' : 'Parcel';
@@ -60,8 +57,18 @@ export function CartPage() {
             <div key={cartItemKey(item)}>
               <CartLineItem
                 item={item}
-                isUpdating={isActionPending(item.productId, 'update', item.variantSnap?.variantId)}
-                isRemoving={isActionPending(item.productId, 'remove', item.variantSnap?.variantId)}
+                isUpdating={isActionPending(
+                  item.productId,
+                  'update',
+                  item.variantSnap?.variantId,
+                  pendingConfigKey(item),
+                )}
+                isRemoving={isActionPending(
+                  item.productId,
+                  'remove',
+                  item.variantSnap?.variantId,
+                  pendingConfigKey(item),
+                )}
                 onUpdateQuantity={updateQuantity}
                 onRemove={removeItem}
               />
@@ -74,6 +81,18 @@ export function CartPage() {
           ))}
           <Separator className="my-4" />
           <div className="space-y-2">
+            {cart.blendingFeeTotalCents > 0 && (
+              <>
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>Material subtotal</span>
+                  <span>{formatMoney(cart.discountableSubtotalCents)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>Blending fees</span>
+                  <span>{formatMoney(cart.blendingFeeTotalCents)}</span>
+                </div>
+              </>
+            )}
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">
                 Resolved order subtotal ({cart.totalItems} units)

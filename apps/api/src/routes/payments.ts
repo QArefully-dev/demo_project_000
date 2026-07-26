@@ -93,6 +93,11 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
             reservationExpiresAt: result.reservationExpiresAt,
           });
           return;
+        case 'CUSTOM_BLEND_INVALID':
+          // Catalog state moved under a configured line. Same conflict class as stock shortfall:
+          // the request was well formed, the cart must be revisited before paying.
+          reply.code(409).send({ error: 'CUSTOM_BLEND_INVALID' });
+          return;
         case 'INSUFFICIENT_STOCK':
           reply.code(409).send({ error: 'INSUFFICIENT_STOCK', productIds: result.productIds });
           return;

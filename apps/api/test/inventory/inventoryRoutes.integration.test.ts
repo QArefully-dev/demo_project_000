@@ -55,6 +55,8 @@ function createBackorder(
         productName: 'Moon Rock',
         unitPriceCents: 500,
         quantity,
+        discountableTotalCents: 500 * quantity,
+        blendingFeeCents: 0,
         lineTotalCents: 500 * quantity,
       },
     ],
