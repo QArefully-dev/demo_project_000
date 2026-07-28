@@ -1,5 +1,7 @@
 import type { Cart } from '@shop/contracts/cart';
+import type { DeliverySlot } from '@shop/contracts/delivery';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatDeliverySlot } from '@/features/orders/orderPresentation';
 import { Separator } from '@/components/ui/separator';
 import { formatMoney } from '@/lib/formatMoney';
 import { cartItemKey } from '@/lib/cartLineIdentity';
@@ -20,6 +22,11 @@ interface CheckoutSummaryProps {
   promoError: string | null;
   promoValidating: boolean;
   isPromoEligible: boolean;
+  /** Chosen saved site label, or the head of the ad-hoc address. `null` until step 1 completes. */
+  destinationSummary: string | null;
+  billingSummary: string | null;
+  deliverySlot: DeliverySlot | null;
+  purchaseOrderReference: string | null;
   onPromoChange: (value: string) => void;
   onApplyPromo: () => void;
   onRemovePromo: () => void;
@@ -38,11 +45,24 @@ export function CheckoutSummary({
   promoError,
   promoValidating,
   isPromoEligible,
+  destinationSummary,
+  billingSummary,
+  deliverySlot,
+  purchaseOrderReference,
   onPromoChange,
   onApplyPromo,
   onRemovePromo,
 }: CheckoutSummaryProps) {
   const deliveryPreview = cart.deliveryPreview;
+  const slotSummary = deliverySlot ? formatDeliverySlot(deliverySlot) : null;
+  const tradeRows: Array<{ label: string; value: string }> = [
+    ...(destinationSummary ? [{ label: 'Delivery site', value: destinationSummary }] : []),
+    ...(slotSummary ? [{ label: 'Delivery slot', value: slotSummary }] : []),
+    ...(billingSummary ? [{ label: 'Billed to', value: billingSummary }] : []),
+    ...(purchaseOrderReference
+      ? [{ label: 'Purchase order reference', value: purchaseOrderReference }]
+      : []),
+  ];
   const hasCustomBlend = cart.items.some((item) => item.customBlend !== undefined);
 
   return (
@@ -161,6 +181,19 @@ export function CheckoutSummary({
             <p className="text-xs text-muted-foreground">
               Total order weight: {deliveryPreview.weightGrams.toLocaleString()}g
             </p>
+          </>
+        )}
+        {tradeRows.length > 0 && (
+          <>
+            <Separator />
+            <dl className="space-y-1 text-sm">
+              {tradeRows.map((row) => (
+                <div key={row.label} className="flex items-start justify-between gap-3">
+                  <dt className="text-muted-foreground">{row.label}</dt>
+                  <dd className="text-right">{row.value}</dd>
+                </div>
+              ))}
+            </dl>
           </>
         )}
         <Separator />

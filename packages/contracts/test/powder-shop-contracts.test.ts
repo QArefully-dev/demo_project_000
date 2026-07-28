@@ -3,7 +3,7 @@ import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import {
   CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION,
-  PersistedCheckoutQuoteV6,
+  PersistedCheckoutQuoteV7,
   parsePersistedCheckoutQuote,
 } from '../src/payments.js';
 import {
@@ -49,9 +49,21 @@ import {
 const uuid = '123e4567-e89b-42d3-a456-426614174000';
 const utc = '2026-07-14T00:00:00.000Z';
 
+const deliveryAddress = {
+  line1: '1 Example Street',
+  city: 'London',
+  postcode: 'EC1A 1BB',
+  countryCode: 'GB',
+};
+
 const baseQuote = {
   cartId: uuid,
-  customer: { name: 'Ada Shopper', email: 'ada@example.test', shippingAddress: '1 Example Street' },
+  customer: {
+    name: 'Ada Shopper',
+    email: 'ada@example.test',
+    deliveryAddress,
+    shippingAddress: '1 Example Street, London, EC1A 1BB, GB',
+  },
   userId: null,
   promoCode: null,
   subtotalCents: 2500,
@@ -59,6 +71,14 @@ const baseQuote = {
   totalCents: 2500,
   lines: [],
   createdAt: utc,
+  billingEntity: {
+    legalName: 'Example Trading Ltd',
+    registrationNumber: null,
+    vatNumber: null,
+    address: deliveryAddress,
+  },
+  deliverySlot: { date: '2026-08-03', window: 'am' },
+  purchaseOrderReference: null,
 };
 
 const product = {
@@ -537,13 +557,13 @@ const variantLine = {
   lineTotalCents: 2500,
 };
 
-void test('PersistedCheckoutQuoteV6 roundtrip with variant lines and delivery', () => {
+void test('PersistedCheckoutQuoteV7 roundtrip with variant lines and delivery', () => {
   const subtotal = variantLine.lineTotalCents;
   const deliveryCharge = 999;
   const total = subtotal + deliveryCharge;
 
-  const v6 = {
-    version: 6,
+  const v7 = {
+    version: 7,
     ...baseQuote,
     subtotalCents: subtotal,
     totalCents: total,
@@ -556,44 +576,44 @@ void test('PersistedCheckoutQuoteV6 roundtrip with variant lines and delivery', 
     },
     inventoryAllocations: [{ productId: '1', reservedQuantity: 1, backorderedQuantity: 0 }],
   };
-  assert.equal(Value.Check(PersistedCheckoutQuoteV6, v6), true);
-  assert.deepEqual(parsePersistedCheckoutQuote(v6), v6);
-  assert.equal(v6.subtotalCents, subtotal);
-  assert.equal(v6.totalCents, total);
+  assert.equal(Value.Check(PersistedCheckoutQuoteV7, v7), true);
+  assert.deepEqual(parsePersistedCheckoutQuote(v7), v7);
+  assert.equal(v7.subtotalCents, subtotal);
+  assert.equal(v7.totalCents, total);
 });
 
-void test('v6 is the only version written and accepted', () => {
-  assert.equal(CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION, 6);
+void test('v7 is the only version written and accepted', () => {
+  assert.equal(CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION, 7);
 
-  const v6 = {
-    version: 6,
+  const v7 = {
+    version: 7,
     ...baseQuote,
     variantLines: [variantLine],
     deliverySummary: { mode: 'parcel', chargeCents: 0, weightGrams: 500, reason: 'ok' },
     inventoryAllocations: [{ productId: '1', reservedQuantity: 1, backorderedQuantity: 0 }],
   };
-  assert.doesNotThrow(() => parsePersistedCheckoutQuote(v6));
+  assert.doesNotThrow(() => parsePersistedCheckoutQuote(v7));
 
-  for (const staleVersion of [1, 2, 3, 4, 5]) {
-    assert.throws(() => parsePersistedCheckoutQuote({ ...v6, version: staleVersion }));
+  for (const staleVersion of [1, 2, 3, 4, 5, 6]) {
+    assert.throws(() => parsePersistedCheckoutQuote({ ...v7, version: staleVersion }));
   }
   assert.throws(() => parsePersistedCheckoutQuote({ version: 0, ...baseQuote }));
   assert.throws(() => parsePersistedCheckoutQuote(null));
   assert.throws(() => parsePersistedCheckoutQuote(undefined));
 });
 
-void test('v6 rejects unknown persisted fields and missing variant lines', () => {
-  const v6 = {
-    version: 6,
+void test('v7 rejects unknown persisted fields and missing variant lines', () => {
+  const v7 = {
+    version: 7,
     ...baseQuote,
     variantLines: [variantLine],
     deliverySummary: { mode: 'parcel', chargeCents: 0, weightGrams: 500, reason: 'ok' },
     inventoryAllocations: [{ productId: '1', reservedQuantity: 1, backorderedQuantity: 0 }],
   };
-  // Any field beyond the v6 shape is rejected, including those retired with the mix line model.
-  assert.equal(Value.Check(PersistedCheckoutQuoteV6, { ...v6, retiredLegacyField: [] }), false);
+  // Any field beyond the v7 shape is rejected, including those retired with the mix line model.
+  assert.equal(Value.Check(PersistedCheckoutQuoteV7, { ...v7, retiredLegacyField: [] }), false);
 
-  const withoutVariantLines: Partial<typeof v6> = { ...v6 };
+  const withoutVariantLines: Partial<typeof v7> = { ...v7 };
   delete withoutVariantLines.variantLines;
-  assert.equal(Value.Check(PersistedCheckoutQuoteV6, withoutVariantLines), false);
+  assert.equal(Value.Check(PersistedCheckoutQuoteV7, withoutVariantLines), false);
 });

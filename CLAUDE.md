@@ -63,8 +63,8 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
   - tests: colocated `*.test.ts(x)`; browser journeys use `*.integration.test.tsx`
 - `apps/api/`: Fastify API and SQLite runtime
   - `src/app.ts`: composition root; services, plugins, routes
-  - `src/routes/`: HTTP schemas, auth gates, transport mapping
-  - `src/features/`: domain services, repositories, workflow rules
+  - `src/routes/`: HTTP schemas, auth gates, transport mapping; `tradeAccount.ts` = saved delivery sites + billing entities, `deliverySlots.ts` = offered delivery slots
+  - `src/features/`: domain services, repositories, workflow rules; `tradeAccount/` = delivery site + billing entity rules, shared address normalisation
   - `src/db/`: database lifecycle, unit of work, migrations, seed/reset
   - `test/`: SQLite and `app.inject()` integration tests grouped by domain
 - `packages/contracts/`: TypeBox transport schemas/types and public subpath exports

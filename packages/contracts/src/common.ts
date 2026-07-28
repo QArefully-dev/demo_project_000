@@ -33,5 +33,18 @@ export const Uuid = Type.String({
 });
 
 export const CustomerName = Type.String({ minLength: 1, maxLength: 120 });
-export const ShippingAddress = Type.String({ minLength: 5, maxLength: 500 });
 export const PromoCodeValue = Type.String({ minLength: 1, maxLength: 64 });
+
+/**
+ * Pattern for a required plain-text field: markup delimiters excluded, and a value that is empty
+ * once trimmed rejected. Consumers trim before rendering or persisting, so a whitespace-only value
+ * would otherwise pass validation and then collapse to nothing downstream.
+ */
+export const REQUIRED_PLAIN_TEXT_PATTERN = '^(?!\\s*$)[^<>]*$';
+
+/** Buyer-supplied purchase-order / requisition reference. Plain text, markup delimiters excluded. */
+export const PurchaseOrderReference = Type.String({
+  minLength: 1,
+  maxLength: 64,
+  pattern: '^[^<>]*$',
+});

@@ -8,6 +8,11 @@ export function finalizeAuthorizedCheckout(
   dependencies: CheckoutDependencies,
   idempotencyKey: string,
   auditContext: AuditContext,
+  /**
+   * Saved site the buyer selected, or `null` for an ad-hoc destination. The quote snapshots the
+   * resolved address rather than the record it came from, so the reference is supplied here.
+   */
+  deliverySiteId: number | null = null,
 ): CheckoutResult {
   return dependencies.unitOfWork.run(() => {
     const payment = dependencies.payments.load(idempotencyKey);
@@ -55,6 +60,12 @@ export function finalizeAuthorizedCheckout(
       deliveryMode: quote.deliverySummary.mode,
       deliveryChargeCents: quote.deliverySummary.chargeCents,
       deliveryWeightGrams: quote.deliverySummary.weightGrams,
+      // An anonymous checkout owns no saved records, so it can never stamp a site reference.
+      deliverySiteId: quote.userId === null ? null : deliverySiteId,
+      deliveryAddress: quote.customer.deliveryAddress,
+      billingEntity: quote.billingEntity,
+      deliverySlot: quote.deliverySlot,
+      purchaseOrderReference: quote.purchaseOrderReference,
       createdAt,
     });
 
@@ -82,11 +93,17 @@ export function finalizeAuthorizedCheckout(
       dependencies.promos.commitReservation({ paymentIdempotencyKey: idempotencyKey, orderId });
     dependencies.mailbox.add({
       recipient: quote.customer.email,
-      subject: `QArefully Powder Co. — order #${orderId} confirmed`,
-      body: `Your QArefully Powder Co. order #${orderId} has been recorded. ${
+      subject: `QArefully Materials Exchange — order #${orderId} confirmed`,
+      body: `Your QArefully Materials Exchange order #${orderId} has been recorded. ${
         quote.deliverySummary.mode === 'freight'
           ? `Freight delivery: $${quote.deliverySummary.chargeCents / 100}. `
           : ''
+      }Delivery slot: ${quote.deliverySlot.date} ${
+        quote.deliverySlot.window === 'am' ? 'morning' : 'afternoon'
+      }. ${
+        quote.purchaseOrderReference === null
+          ? ''
+          : `Purchase order reference: ${quote.purchaseOrderReference}. `
       }Total: $${quote.totalCents / 100}. This was a simulated payment; no card was charged.`,
       kind: 'order_confirmation',
       createdAt,

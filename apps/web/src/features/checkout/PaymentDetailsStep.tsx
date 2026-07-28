@@ -35,7 +35,7 @@ export function PaymentDetailsStep({
           Test card details
         </h2>
         <p className="text-sm text-muted-foreground">
-          Step 2 of 2. Card details stay in this page only.
+          Step 3 of 3. Card details stay in this page only.
         </p>
       </div>
       <div className="space-y-1.5">
@@ -105,7 +105,7 @@ export function PaymentDetailsStep({
       </div>
       <div className="flex gap-3">
         <Button type="button" variant="outline" className="flex-1" onClick={onBack}>
-          Back to contact
+          Back to schedule
         </Button>
         <Button type="button" className="flex-1" disabled={disabled} onClick={onSubmit}>
           {submitting ? 'Processing payment...' : 'Simulate payment'}

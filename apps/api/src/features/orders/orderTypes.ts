@@ -1,4 +1,7 @@
+import type { PostalAddress } from '@shop/contracts/address';
 import type { CustomBlendSnapshot } from '@shop/contracts/custom-blends';
+import type { DeliverySlot } from '@shop/contracts/delivery';
+import type { BillingEntitySnapshot } from '@shop/contracts/trade-account';
 import type {
   OrderLifecycleEventType,
   OrderShipmentLine,
@@ -46,6 +49,16 @@ export interface CreateOrderParams {
   deliveryMode?: 'parcel' | 'freight';
   deliveryChargeCents?: number;
   deliveryWeightGrams?: number;
+  /**
+   * The B2B checkout commitments, all optional so an order created by a path that does not capture
+   * them (seed data, historic rows) stays representable. `shippingAddress` above is the rendering
+   * of `deliveryAddress`; the caller derives it through the shared formatter, never independently.
+   */
+  deliverySiteId?: number | null;
+  deliveryAddress?: PostalAddress | null;
+  billingEntity?: BillingEntitySnapshot | null;
+  deliverySlot?: DeliverySlot | null;
+  purchaseOrderReference?: string | null;
   createdAt: string;
 }
 

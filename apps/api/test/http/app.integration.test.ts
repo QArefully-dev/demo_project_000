@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { buildApp } from '../../src/app.js';
 import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { adhocBilling, adhocDestination, bookableSlot } from '../checkout/checkoutDepthFixtures.js';
 
 function firstActiveVariantId(db: ReturnType<typeof openDatabase>, productId: number): number {
   const row = db
@@ -165,7 +166,9 @@ void test('app factory injects isolated databases without starting a server', as
       promoCode: 'SAVE10',
       customerName: 'HTTP User',
       customerEmail: 'http@example.test',
-      shippingAddress: '1 Test Street',
+      deliveryDestination: adhocDestination,
+      billingSelection: adhocBilling,
+      deliverySlot: bookableSlot(),
       cardNumber: '4242 4242 4242 4242',
       cardExpiry: '12/99',
       cardCvc: '123',
@@ -197,7 +200,9 @@ void test('app factory injects isolated databases without starting a server', as
       cartId: declineCartId,
       customerName: 'Declined User',
       customerEmail: 'declined@example.test',
-      shippingAddress: '2 Test Street',
+      deliveryDestination: adhocDestination,
+      billingSelection: adhocBilling,
+      deliverySlot: bookableSlot(),
       cardNumber: '4000 0000 0000 0002',
       cardExpiry: '12/99',
       cardCvc: '123',

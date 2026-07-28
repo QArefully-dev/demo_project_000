@@ -21,6 +21,12 @@ import { createAuditRepository } from '../../src/features/audit/auditRepository.
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
+import {
+  adhocBilling,
+  adhocDestination,
+  bookableSlot,
+  checkoutDepthDependencies,
+} from './checkoutDepthFixtures.js';
 
 function checkoutService(db: import('better-sqlite3').Database, now?: () => Date) {
   const carts = createCartRepository(db);
@@ -39,6 +45,7 @@ function checkoutService(db: import('better-sqlite3').Database, now?: () => Date
       clock: { now: now ?? (() => new Date()) },
     }),
     inventory: createInventoryService({ repository: createInventoryRepository(db) }),
+    ...checkoutDepthDependencies(db, { now: now ?? (() => new Date()) }),
   });
 }
 
@@ -51,7 +58,9 @@ function paymentParams(
     cartId,
     customerName: 'Delivery Test',
     customerEmail: 'delivery@example.test',
-    shippingAddress: '1 Test Street',
+    deliveryDestination: adhocDestination,
+    billingSelection: adhocBilling,
+    deliverySlot: bookableSlot(),
     cardNumber: '4242 4242 4242 4242',
     cardExpiry: '12/99',
     cardCvc: '123',

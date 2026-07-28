@@ -11,7 +11,15 @@ import {
   CustomBlendPackaging,
   customBlendCompositionLabel,
 } from '@/features/customBlend/CustomBlendPackaging';
-import { formatOrderDate, orderStatusLabel } from './orderPresentation';
+import {
+  formatBillingIdentifiers,
+  formatAddressLine,
+  formatDeliverySlot,
+  formatOrderDate,
+  formatPurchaseOrderReference,
+  hasOrderTradeDetails,
+  orderStatusLabel,
+} from './orderPresentation';
 
 type Props = {
   order: OrderDetailResponse;
@@ -68,6 +76,10 @@ export function OrderDetailView({
     order.items.map((line): [string, string] => [line.lineId, line.productName]),
   );
   const hasCustomBlend = order.items.some((line) => line.customBlend !== undefined);
+  const deliveryAddress = formatAddressLine(order.deliveryAddress);
+  const deliverySlot = formatDeliverySlot(order.deliverySlot);
+  const billingIdentifiers = formatBillingIdentifiers(order.billingEntity);
+  const purchaseOrderReference = formatPurchaseOrderReference(order.purchaseOrderReference);
 
   return (
     <section className="space-y-6" aria-label={`Order ${order.id}`}>
@@ -183,6 +195,60 @@ export function OrderDetailView({
           </div>
         </CardContent>
       </Card>
+
+      {hasOrderTradeDetails(order) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Delivery and billing</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <dl className="grid gap-4 text-sm sm:grid-cols-2">
+              {deliveryAddress && (
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Delivery address
+                  </dt>
+                  <dd className="mt-1">{deliveryAddress}</dd>
+                </div>
+              )}
+              {deliverySlot && (
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Delivery slot
+                  </dt>
+                  <dd className="mt-1">{deliverySlot}</dd>
+                </div>
+              )}
+              {order.billingEntity && (
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Billing details
+                  </dt>
+                  <dd className="mt-1">
+                    <span className="block font-medium">{order.billingEntity.legalName}</span>
+                    <span className="block text-muted-foreground">
+                      {formatAddressLine(order.billingEntity.address)}
+                    </span>
+                    {billingIdentifiers && (
+                      <span className="block text-xs text-muted-foreground">
+                        {billingIdentifiers}
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              )}
+              {purchaseOrderReference && (
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Purchase order reference
+                  </dt>
+                  <dd className="mt-1 font-medium">{purchaseOrderReference}</dd>
+                </div>
+              )}
+            </dl>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

@@ -1,6 +1,10 @@
 import type Database from 'better-sqlite3';
+import type { TSchema } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
+import { PostalAddress } from '@shop/contracts/address';
 import { CustomBlendSnapshot } from '@shop/contracts/custom-blends';
+import { DeliverySlot } from '@shop/contracts/delivery';
+import { BillingEntitySnapshot } from '@shop/contracts/trade-account';
 import type {
   Order,
   OrderDetailResponse,
@@ -28,6 +32,12 @@ interface OrderRow {
   delivery_mode: string | null;
   delivery_charge_cents: number | null;
   delivery_weight_grams: number | null;
+  delivery_site_id: number | null;
+  delivery_address_json: string | null;
+  billing_entity_json: string | null;
+  delivery_slot_date: string | null;
+  delivery_slot_window: string | null;
+  purchase_order_reference: string | null;
 }
 interface ProductLineRow {
   id: number;
@@ -152,6 +162,42 @@ function hydrateOrderCustomBlend(row: ProductLineRow): CustomBlendSnapshot | und
   return parsed;
 }
 
+/**
+ * Storage-boundary parser for a JSON snapshot column on an order.
+ *
+ * Fails closed for the same reason as the Custom Blend snapshot: an order is a financial record, so
+ * unreadable or schema-invalid delivery/billing JSON must surface as an error rather than silently
+ * hydrate as an order that was never told where it was going or who was billed.
+ */
+function hydrateOrderSnapshot<T>(
+  orderId: number,
+  column: string,
+  schema: TSchema,
+  json: string | null,
+): T | undefined {
+  if (json === null) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    throw new Error(`Order ${orderId} has an unreadable ${column}`);
+  }
+  if (!Value.Check(schema, parsed)) {
+    throw new Error(`Order ${orderId} has an invalid ${column}`);
+  }
+  return parsed as T;
+}
+
+/** Slot identity is date plus window; a half-written pair is corruption, not a partial booking. */
+function hydrateOrderSlot(row: OrderRow): DeliverySlot | undefined {
+  if (row.delivery_slot_date === null && row.delivery_slot_window === null) return undefined;
+  const slot = { date: row.delivery_slot_date, window: row.delivery_slot_window };
+  if (!Value.Check(DeliverySlot, slot)) {
+    throw new Error(`Order ${row.id} has an invalid delivery slot`);
+  }
+  return slot;
+}
+
 function mapOrder(row: OrderRow, items: ProductLineRow[]): Order {
   return {
     id: String(row.id),
@@ -204,6 +250,20 @@ function mapOrder(row: OrderRow, items: ProductLineRow[]): Order {
     deliveryMode: (row.delivery_mode as Order['deliveryMode']) ?? undefined,
     deliveryChargeCents: row.delivery_charge_cents ?? undefined,
     deliveryWeightGrams: row.delivery_weight_grams ?? undefined,
+    deliveryAddress: hydrateOrderSnapshot<PostalAddress>(
+      row.id,
+      'delivery address snapshot',
+      PostalAddress,
+      row.delivery_address_json,
+    ),
+    billingEntity: hydrateOrderSnapshot<BillingEntitySnapshot>(
+      row.id,
+      'billing entity snapshot',
+      BillingEntitySnapshot,
+      row.billing_entity_json,
+    ),
+    deliverySlot: hydrateOrderSlot(row),
+    purchaseOrderReference: row.purchase_order_reference ?? undefined,
   };
 }
 
@@ -232,7 +292,9 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
       .prepare(
         `SELECT id, promo_code_applied, subtotal_cents, discount_cents, total_cents, created_at,
             lifecycle_status, version, cancelled_at, user_id,
-            delivery_mode, delivery_charge_cents, delivery_weight_grams
+            delivery_mode, delivery_charge_cents, delivery_weight_grams,
+            delivery_site_id, delivery_address_json, billing_entity_json,
+            delivery_slot_date, delivery_slot_window, purchase_order_reference
          FROM orders WHERE id = ?`,
       )
       .get(orderId) as OrderRow | undefined;
@@ -308,8 +370,10 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
             (customer_name, customer_email, shipping_address, promo_code_applied,
              subtotal_cents, discount_cents, total_cents,
              delivery_mode, delivery_charge_cents, delivery_weight_grams,
+             delivery_site_id, delivery_address_json, billing_entity_json,
+             delivery_slot_date, delivery_slot_window, purchase_order_reference,
              user_id, created_at, lifecycle_status, version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0)`,
         )
         .run(
           params.customerName,
@@ -322,6 +386,12 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
           params.deliveryMode ?? 'parcel',
           params.deliveryChargeCents ?? 0,
           params.deliveryWeightGrams ?? 0,
+          params.deliverySiteId ?? null,
+          params.deliveryAddress ? JSON.stringify(params.deliveryAddress) : null,
+          params.billingEntity ? JSON.stringify(params.billingEntity) : null,
+          params.deliverySlot?.date ?? null,
+          params.deliverySlot?.window ?? null,
+          params.purchaseOrderReference ?? null,
           params.userId,
           params.createdAt,
         );
@@ -373,6 +443,7 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
       const items = db
         .prepare(
           `SELECT o.id, o.lifecycle_status, o.version, o.total_cents, o.created_at,
+          o.purchase_order_reference,
           COALESCE((SELECT SUM(quantity) FROM order_line_items WHERE order_id = o.id), 0) AS total_items,
           EXISTS(SELECT 1 FROM order_inventory_allocations allocation
             JOIN order_line_items line ON line.id = allocation.order_line_item_id
@@ -387,6 +458,7 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
         total_items: number;
         has_backorder: number;
         created_at: string;
+        purchase_order_reference: string | null;
       }>;
       const count = db
         .prepare('SELECT COUNT(*) AS count FROM orders WHERE user_id = ?')
@@ -400,6 +472,8 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
           totalItems: row.total_items,
           hasBackorder: row.has_backorder === 1,
           createdAt: row.created_at,
+          // Contract-optional: absent on every order placed before checkout captured a reference.
+          purchaseOrderReference: row.purchase_order_reference ?? undefined,
         })),
         total: count.count,
       };

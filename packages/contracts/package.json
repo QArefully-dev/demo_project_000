@@ -14,6 +14,14 @@
       "types": "./dist/common.d.ts",
       "import": "./dist/common.js"
     },
+    "./address": {
+      "types": "./dist/address.d.ts",
+      "import": "./dist/address.js"
+    },
+    "./trade-account": {
+      "types": "./dist/tradeAccount.d.ts",
+      "import": "./dist/tradeAccount.js"
+    },
     "./products": {
       "types": "./dist/products.d.ts",
       "import": "./dist/products.js"

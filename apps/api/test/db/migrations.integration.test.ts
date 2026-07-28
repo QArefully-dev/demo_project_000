@@ -42,11 +42,13 @@ const expectedVersions = [
   '020',
   '021',
   '022',
+  '023',
 ];
 
 /** Every migration up to but excluding `021`, i.e. the schema powderizer still existed in. */
 const prePowderizerRemoval = migrations.filter((migration) => migration.version < '021');
 const preCustomBlendsMigration = migrations.filter((migration) => migration.version < '022');
+const preCheckoutDepthMigration = migrations.filter((migration) => migration.version < '023');
 
 function migrationVersions(db: Database.Database): string[] {
   return db
@@ -237,6 +239,12 @@ void test('migrations create a fresh schema, record every version, and remain id
     );
   }
   for (const table of ['curated_bundles', 'curated_bundle_components']) {
+    assert.deepEqual(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table),
+      { name: table },
+    );
+  }
+  for (const table of ['delivery_sites', 'billing_entities']) {
     assert.deepEqual(
       db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table),
       { name: table },
@@ -2169,4 +2177,331 @@ void test('v22 migration preserves populated 021 cart/order rows and dependent r
         .run(),
     /CHECK constraint failed|malformed JSON/,
   );
+});
+
+void test('v23 adds trade account tables and additive order checkout-depth columns', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-v23-'));
+  const db = new Database(join(directory, 'shop.db'));
+  db.pragma('foreign_keys = ON');
+  t.after(() => {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  migrateDatabase(db, preCheckoutDepthMigration);
+  assert.equal(tableExists(db, 'delivery_sites'), false);
+  assert.equal(tableExists(db, 'billing_entities'), false);
+  db.exec(`
+    INSERT INTO users (id, email, display_name, password_hash, password_salt, role)
+    VALUES
+      (2301, 'v23-buyer@example.test', 'V23 buyer', 'hash', 'salt', 'customer'),
+      (2302, 'v23-other@example.test', 'V23 other', 'hash', 'salt', 'customer');
+    INSERT INTO orders
+      (id, customer_name, customer_email, shipping_address, subtotal_cents, total_cents,
+       created_at, lifecycle_status, version)
+    VALUES (2301, 'V23 legacy customer', 'v23-order@example.test', '23 Legacy Road',
+            15000, 15000, '2026-07-01T12:00:00.000Z', 'shipped', 1);
+  `);
+
+  migrateDatabase(db);
+  assert.deepEqual(migrationVersions(db), expectedVersions);
+
+  // Pre-existing orders survive untouched and carry NULL in every new column.
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT customer_name, shipping_address, subtotal_cents, total_cents, lifecycle_status,
+                delivery_site_id, delivery_address_json, billing_entity_json,
+                delivery_slot_date, delivery_slot_window, purchase_order_reference
+         FROM orders WHERE id = 2301`,
+      )
+      .get(),
+    {
+      customer_name: 'V23 legacy customer',
+      shipping_address: '23 Legacy Road',
+      subtotal_cents: 15000,
+      total_cents: 15000,
+      lifecycle_status: 'shipped',
+      delivery_site_id: null,
+      delivery_address_json: null,
+      billing_entity_json: null,
+      delivery_slot_date: null,
+      delivery_slot_window: null,
+      purchase_order_reference: null,
+    },
+  );
+
+  for (const column of [
+    'user_id',
+    'label',
+    'contact_name',
+    'contact_phone',
+    'address_line1',
+    'address_line2',
+    'address_city',
+    'address_region',
+    'address_postcode',
+    'address_country_code',
+    'is_default',
+    'active',
+    'created_at',
+    'updated_at',
+  ]) {
+    assert.ok(columnNames(db, 'delivery_sites').includes(column), `delivery_sites.${column}`);
+  }
+  for (const column of [
+    'user_id',
+    'legal_name',
+    'registration_number',
+    'vat_number',
+    'address_line1',
+    'address_city',
+    'address_postcode',
+    'address_country_code',
+    'is_default',
+    'active',
+    'created_at',
+    'updated_at',
+  ]) {
+    assert.ok(columnNames(db, 'billing_entities').includes(column), `billing_entities.${column}`);
+  }
+  for (const index of [
+    'delivery_sites_user_label_active_idx',
+    'delivery_sites_user_default_idx',
+    'delivery_sites_user_active_idx',
+    'billing_entities_user_legal_name_active_idx',
+    'billing_entities_user_default_idx',
+    'billing_entities_user_active_idx',
+    'orders_purchase_order_reference_idx',
+  ]) {
+    assert.deepEqual(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?").get(index),
+      { name: index },
+      `${index} must exist`,
+    );
+  }
+
+  const insertSite = db.prepare(
+    `INSERT INTO delivery_sites
+      (user_id, label, contact_name, contact_phone, address_line1, address_line2, address_city,
+       address_region, address_postcode, address_country_code, is_default, active,
+       created_at, updated_at)
+     VALUES (?, ?, 'Yard supervisor', '01234 567890', 'Unit 4 Trade Park', NULL, 'Leeds',
+             NULL, 'LS10 1AA', ?, ?, ?, '2026-07-01T12:00:00.000Z', '2026-07-01T12:00:00.000Z')`,
+  );
+  insertSite.run(2301, 'Main yard', 'GB', 1, 1);
+
+  // One active default per user, enforced by the partial unique index.
+  assert.throws(() => insertSite.run(2301, 'Second yard', 'GB', 1, 1), /UNIQUE constraint failed/);
+  // A retired default never blocks a live one, and another user is unaffected.
+  insertSite.run(2301, 'Retired yard', 'GB', 1, 0);
+  insertSite.run(2302, 'Other buyer yard', 'GB', 1, 1);
+  // Labels are unique per user, and reused freely across users.
+  assert.throws(() => insertSite.run(2301, 'Main yard', 'GB', 0, 1), /UNIQUE constraint failed/);
+  insertSite.run(2302, 'Main yard', 'GB', 0, 1);
+  // Country codes are stored upper case; booleans stay 0/1.
+  assert.throws(() => insertSite.run(2301, 'Lower case', 'gb', 0, 1), /CHECK constraint failed/);
+  assert.throws(() => insertSite.run(2301, 'Too long', 'GBR', 0, 1), /CHECK constraint failed/);
+  assert.throws(() => insertSite.run(2301, 'Bad boolean', 'GB', 2, 1), /CHECK constraint failed/);
+  assert.throws(() => insertSite.run(2301, 'Bad active', 'GB', 0, 2), /CHECK constraint failed/);
+
+  const insertEntity = db.prepare(
+    `INSERT INTO billing_entities
+      (user_id, legal_name, registration_number, vat_number, address_line1, address_city,
+       address_postcode, address_country_code, is_default, active, created_at, updated_at)
+     VALUES (?, ?, '01234567', 'GB123456789', 'Finance House', 'Leeds', 'LS1 4AP', ?, ?, ?,
+             '2026-07-01T12:00:00.000Z', '2026-07-01T12:00:00.000Z')`,
+  );
+  insertEntity.run(2301, 'Northern Builders Ltd', 'GB', 1, 1);
+  assert.throws(
+    () => insertEntity.run(2301, 'Southern Builders Ltd', 'GB', 1, 1),
+    /UNIQUE constraint failed/,
+  );
+  assert.throws(
+    () => insertEntity.run(2301, 'Northern Builders Ltd', 'GB', 0, 1),
+    /UNIQUE constraint failed/,
+  );
+  assert.throws(() => insertEntity.run(2301, 'Bad country', 'gb', 0, 1), /CHECK constraint failed/);
+
+  const siteId = Number(
+    db
+      .prepare("SELECT id FROM delivery_sites WHERE user_id = 2301 AND label = 'Main yard'")
+      .pluck()
+      .get(),
+  );
+  const insertOrder = db.prepare(
+    `INSERT INTO orders
+      (customer_name, customer_email, shipping_address, subtotal_cents, total_cents, created_at,
+       lifecycle_status, version, delivery_site_id, delivery_address_json, billing_entity_json,
+       delivery_slot_date, delivery_slot_window, purchase_order_reference)
+     VALUES ('V23 depth customer', 'v23-depth@example.test', 'Unit 4 Trade Park, Leeds, LS10 1AA, GB',
+             15000, 15000, '2026-07-05T12:00:00.000Z', 'processing', 0, ?, ?, ?, ?, ?, ?)`,
+  );
+  const addressJson = JSON.stringify({
+    line1: 'Unit 4 Trade Park',
+    city: 'Leeds',
+    postcode: 'LS10 1AA',
+    countryCode: 'GB',
+  });
+  const billingJson = JSON.stringify({ legalName: 'Northern Builders Ltd' });
+  insertOrder.run(siteId, addressJson, billingJson, '2026-08-03', 'am', 'PO-2026-0042');
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT delivery_site_id, delivery_address_json, billing_entity_json, delivery_slot_date,
+                delivery_slot_window, purchase_order_reference
+         FROM orders WHERE customer_email = 'v23-depth@example.test'`,
+      )
+      .get(),
+    {
+      delivery_site_id: siteId,
+      delivery_address_json: addressJson,
+      billing_entity_json: billingJson,
+      delivery_slot_date: '2026-08-03',
+      delivery_slot_window: 'am',
+      purchase_order_reference: 'PO-2026-0042',
+    },
+  );
+
+  assert.throws(
+    () => insertOrder.run(siteId, '{not-json}', billingJson, '2026-08-03', 'am', 'PO-1'),
+    /CHECK constraint failed|malformed JSON/,
+  );
+  assert.throws(
+    () => insertOrder.run(siteId, addressJson, '[1,2]', '2026-08-03', 'am', 'PO-1'),
+    /CHECK constraint failed|malformed JSON/,
+  );
+  assert.throws(
+    () => insertOrder.run(siteId, addressJson, billingJson, '03/08/2026', 'am', 'PO-1'),
+    /CHECK constraint failed/,
+  );
+  assert.throws(
+    () => insertOrder.run(siteId, addressJson, billingJson, '2026-08-03', 'evening', 'PO-1'),
+    /CHECK constraint failed/,
+  );
+  assert.throws(
+    () => insertOrder.run(siteId, addressJson, billingJson, '2026-08-03', 'am', 'x'.repeat(65)),
+    /CHECK constraint failed/,
+  );
+  assert.throws(
+    () => insertOrder.run(999999, addressJson, billingJson, '2026-08-03', 'pm', 'PO-2'),
+    /FOREIGN KEY constraint failed/,
+  );
+
+  // Trade records belong to their user and leave with them; orders never do.
+  db.prepare('DELETE FROM users WHERE id = 2302').run();
+  assert.equal(
+    (
+      db.prepare('SELECT COUNT(*) AS count FROM delivery_sites WHERE user_id = 2302').get() as {
+        count: number;
+      }
+    ).count,
+    0,
+  );
+  assert.equal((db.pragma('foreign_key_check') as unknown[]).length, 0);
+
+  // Re-applying the migration body directly is a no-op, and so is the whole chain through the runner.
+  const checkoutDepth = migrations.find((migration) => migration.version === '023')!;
+  assert.doesNotThrow(() => checkoutDepth.up(db));
+  assert.equal(
+    (
+      db.prepare('SELECT COUNT(*) AS count FROM delivery_sites WHERE user_id = 2301').get() as {
+        count: number;
+      }
+    ).count,
+    2,
+  );
+  assert.ok(indexNames(db, 'delivery_sites').includes('delivery_sites_user_default_idx'));
+  assert.ok(indexNames(db, 'orders').includes('orders_purchase_order_reference_idx'));
+  migrateDatabase(db);
+  assert.deepEqual(migrationVersions(db), expectedVersions);
+  assert.equal((db.pragma('foreign_key_check') as unknown[]).length, 0);
+});
+
+void test('v23 trade-record uniqueness is scoped to live rows so a retired name is reusable', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-v23-retire-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  db.exec(`
+    INSERT INTO users (id, email, display_name, password_hash, password_salt, role)
+    VALUES (2311, 'v23-retire@example.test', 'V23 retire', 'hash', 'salt', 'customer');
+  `);
+
+  const insertSite = db.prepare(
+    `INSERT INTO delivery_sites
+      (user_id, label, contact_name, address_line1, address_city, address_postcode,
+       address_country_code, is_default, active, created_at, updated_at)
+     VALUES (?, ?, 'Yard supervisor', 'Unit 4 Trade Park', 'Leeds', 'LS10 1AA', 'GB', 0, ?,
+             '2026-07-01T12:00:00.000Z', '2026-07-01T12:00:00.000Z')`,
+  );
+
+  // Two live rows may not share a label.
+  insertSite.run(2311, 'Main yard', 1);
+  assert.throws(() => insertSite.run(2311, 'Main yard', 1), /UNIQUE constraint failed/);
+
+  // Retiring is the only removal available once an order snapshots the site, so the label must come
+  // back into play: a table-level UNIQUE(user_id, label) would let the retired row squat it forever.
+  db.prepare(
+    "UPDATE delivery_sites SET active = 0 WHERE user_id = 2311 AND label = 'Main yard'",
+  ).run();
+  assert.doesNotThrow(() => insertSite.run(2311, 'Main yard', 1));
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT active, COUNT(*) AS count FROM delivery_sites
+         WHERE user_id = 2311 AND label = 'Main yard' GROUP BY active ORDER BY active`,
+      )
+      .all(),
+    [
+      { active: 0, count: 1 },
+      { active: 1, count: 1 },
+    ],
+  );
+  // Any number of retired rows may share the label; only one live row may hold it.
+  db.prepare(
+    "UPDATE delivery_sites SET active = 0 WHERE user_id = 2311 AND label = 'Main yard'",
+  ).run();
+  insertSite.run(2311, 'Main yard', 0);
+  insertSite.run(2311, 'Main yard', 1);
+  assert.throws(() => insertSite.run(2311, 'Main yard', 1), /UNIQUE constraint failed/);
+
+  const insertEntity = db.prepare(
+    `INSERT INTO billing_entities
+      (user_id, legal_name, address_line1, address_city, address_postcode, address_country_code,
+       is_default, active, created_at, updated_at)
+     VALUES (?, ?, 'Finance House', 'Leeds', 'LS1 4AP', 'GB', 0, ?,
+             '2026-07-01T12:00:00.000Z', '2026-07-01T12:00:00.000Z')`,
+  );
+
+  insertEntity.run(2311, 'Northern Builders Ltd', 1);
+  assert.throws(
+    () => insertEntity.run(2311, 'Northern Builders Ltd', 1),
+    /UNIQUE constraint failed/,
+  );
+  db.prepare(
+    "UPDATE billing_entities SET active = 0 WHERE user_id = 2311 AND legal_name = 'Northern Builders Ltd'",
+  ).run();
+  assert.doesNotThrow(() => insertEntity.run(2311, 'Northern Builders Ltd', 1));
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT active, COUNT(*) AS count FROM billing_entities
+         WHERE user_id = 2311 AND legal_name = 'Northern Builders Ltd'
+         GROUP BY active ORDER BY active`,
+      )
+      .all(),
+    [
+      { active: 0, count: 1 },
+      { active: 1, count: 1 },
+    ],
+  );
+  assert.throws(
+    () => insertEntity.run(2311, 'Northern Builders Ltd', 1),
+    /UNIQUE constraint failed/,
+  );
+  assert.equal((db.pragma('foreign_key_check') as unknown[]).length, 0);
 });

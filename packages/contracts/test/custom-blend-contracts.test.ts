@@ -10,7 +10,7 @@ import {
 } from '../src/customBlends.js';
 import { Cart, CartLine, RemoveFromCartBody, UpdateCartLineBody } from '../src/cart.js';
 import { OrderLineItem } from '../src/orders.js';
-import { PersistedCheckoutQuoteV6, parsePersistedCheckoutQuote } from '../src/payments.js';
+import { PersistedCheckoutQuoteV7, parsePersistedCheckoutQuote } from '../src/payments.js';
 import { CUSTOM_BLEND_FEE_CENTS, TIER_LADDER } from '../src/pricing.js';
 
 const uuid = '123e4567-e89b-42d3-a456-426614174000';
@@ -277,11 +277,22 @@ void test('configured cart and order lines expose money split and specification'
   );
 });
 
-void test('V6 keeps plain quotes readable and round-trips configured variant lines', () => {
+void test('V7 keeps plain quotes readable and round-trips configured variant lines', () => {
+  const address = {
+    line1: '1 Example Street',
+    city: 'London',
+    postcode: 'EC1A 1BB',
+    countryCode: 'GB',
+  };
   const plain = {
-    version: 6,
+    version: 7,
     cartId: uuid,
-    customer: { name: 'Ada', email: 'ada@example.test', shippingAddress: '1 Example Street' },
+    customer: {
+      name: 'Ada',
+      email: 'ada@example.test',
+      deliveryAddress: address,
+      shippingAddress: '1 Example Street, London, EC1A 1BB, GB',
+    },
     userId: null,
     promoCode: null,
     subtotalCents: 2500,
@@ -305,8 +316,16 @@ void test('V6 keeps plain quotes readable and round-trips configured variant lin
     ],
     deliverySummary: { mode: 'parcel', chargeCents: 0, weightGrams: 25_000, reason: 'ok' },
     inventoryAllocations: [{ productId: '1', reservedQuantity: 1, backorderedQuantity: 0 }],
+    billingEntity: {
+      legalName: 'Example Trading Ltd',
+      registrationNumber: null,
+      vatNumber: null,
+      address,
+    },
+    deliverySlot: { date: '2026-08-03', window: 'pm' },
+    purchaseOrderReference: 'PO-4471',
   };
-  assert.equal(Value.Check(PersistedCheckoutQuoteV6, plain), true);
+  assert.equal(Value.Check(PersistedCheckoutQuoteV7, plain), true);
   const configured = {
     ...plain,
     subtotalCents: 12_500,
@@ -323,7 +342,7 @@ void test('V6 keeps plain quotes readable and round-trips configured variant lin
       },
     ],
   };
-  assert.equal(Value.Check(PersistedCheckoutQuoteV6, configured), true);
+  assert.equal(Value.Check(PersistedCheckoutQuoteV7, configured), true);
   for (const monetaryField of [
     'materialSubtotalCents',
     'blendingFeeCents',
@@ -331,7 +350,7 @@ void test('V6 keeps plain quotes readable and round-trips configured variant lin
     'lineTotalCents',
   ] as const) {
     assert.equal(
-      Value.Check(PersistedCheckoutQuoteV6, {
+      Value.Check(PersistedCheckoutQuoteV7, {
         ...configured,
         variantLines: [
           { ...configured.variantLines[0], [monetaryField]: Number.MAX_SAFE_INTEGER + 1 },

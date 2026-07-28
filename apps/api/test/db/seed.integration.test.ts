@@ -650,6 +650,171 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   );
 });
 
+void test('seed installs deterministic trade delivery sites and billing entities', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-trade-account-seed-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+
+  // Scoped to the seeded user emails: never assume these tables are otherwise empty.
+  const seededSites = () =>
+    db
+      .prepare(
+        `SELECT users.email, sites.label, sites.is_default, sites.active,
+                sites.address_city, sites.address_country_code
+         FROM delivery_sites AS sites
+         JOIN users ON users.id = sites.user_id
+         WHERE users.email IN ('alice@example.com', 'bob@example.com', 'admin@example.com')
+         ORDER BY sites.id`,
+      )
+      .all();
+  const seededEntities = () =>
+    db
+      .prepare(
+        `SELECT users.email, entities.legal_name, entities.is_default, entities.active,
+                entities.vat_number
+         FROM billing_entities AS entities
+         JOIN users ON users.id = entities.user_id
+         WHERE users.email IN ('alice@example.com', 'bob@example.com', 'admin@example.com')
+         ORDER BY entities.id`,
+      )
+      .all();
+
+  const firstSites = seededSites();
+  const firstEntities = seededEntities();
+  assert.deepEqual(firstSites, [
+    {
+      email: 'alice@example.com',
+      label: 'Bakery yard',
+      is_default: 1,
+      active: 1,
+      address_city: 'Manchester',
+      address_country_code: 'GB',
+    },
+    {
+      email: 'alice@example.com',
+      label: 'Depot annexe',
+      is_default: 0,
+      active: 1,
+      address_city: 'Salford',
+      address_country_code: 'GB',
+    },
+    {
+      email: 'bob@example.com',
+      label: 'Store loading bay',
+      is_default: 1,
+      active: 1,
+      address_city: 'Bristol',
+      address_country_code: 'GB',
+    },
+    {
+      email: 'bob@example.com',
+      label: 'Warehouse north',
+      is_default: 0,
+      active: 1,
+      address_city: 'Gloucester',
+      address_country_code: 'GB',
+    },
+    {
+      email: 'admin@example.com',
+      label: 'Head office dock',
+      is_default: 1,
+      active: 1,
+      address_city: 'London',
+      address_country_code: 'GB',
+    },
+  ]);
+  assert.deepEqual(firstEntities, [
+    {
+      email: 'alice@example.com',
+      legal_name: 'Fournier Bakeries Ltd',
+      is_default: 1,
+      active: 1,
+      vat_number: 'GB194672301',
+    },
+    {
+      email: 'alice@example.com',
+      legal_name: 'Fournier Contract Catering Ltd',
+      is_default: 0,
+      active: 1,
+      vat_number: null,
+    },
+    {
+      email: 'bob@example.com',
+      legal_name: 'Ashby Convenience Stores Ltd',
+      is_default: 1,
+      active: 1,
+      vat_number: 'GB288104553',
+    },
+    {
+      email: 'admin@example.com',
+      legal_name: 'QArefully Materials Exchange Ltd',
+      is_default: 1,
+      active: 1,
+      vat_number: 'GB402118997',
+    },
+  ]);
+
+  // Exactly one live default of each record type per seeded user.
+  const defaultCounts = (table: string) =>
+    db
+      .prepare(
+        `SELECT users.email, COUNT(*) AS count
+         FROM ${table} AS records
+         JOIN users ON users.id = records.user_id
+         WHERE records.is_default = 1 AND records.active = 1
+           AND users.email IN ('alice@example.com', 'bob@example.com', 'admin@example.com')
+         GROUP BY users.email ORDER BY users.email`,
+      )
+      .all();
+  const expectedDefaults = [
+    { email: 'admin@example.com', count: 1 },
+    { email: 'alice@example.com', count: 1 },
+    { email: 'bob@example.com', count: 1 },
+  ];
+  assert.deepEqual(defaultCounts('delivery_sites'), expectedDefaults);
+  assert.deepEqual(defaultCounts('billing_entities'), expectedDefaults);
+
+  // Repeat seed adds no duplicates and leaves buyer-owned edits alone.
+  const bobId = Number(
+    db.prepare("SELECT id FROM users WHERE email = 'bob@example.com'").pluck().get(),
+  );
+  db.prepare(
+    `INSERT INTO delivery_sites
+      (user_id, label, contact_name, contact_phone, address_line1, address_city,
+       address_postcode, address_country_code, is_default, active)
+     VALUES (?, 'Buyer added yard', 'Bob Ashby', NULL, '9 Local Way', 'Bristol', 'BS2 9AA', 'GB', 0, 1)`,
+  ).run(bobId);
+  db.prepare(
+    `INSERT INTO billing_entities
+      (user_id, legal_name, registration_number, vat_number, address_line1, address_city,
+       address_postcode, address_country_code, is_default, active)
+     VALUES (?, 'Buyer Added Trading Ltd', NULL, NULL, '9 Local Way', 'Bristol', 'BS2 9AA', 'GB', 0, 1)`,
+  ).run(bobId);
+  db.prepare("UPDATE delivery_sites SET label = 'Renamed yard' WHERE id = 1").run();
+
+  seedDatabase(db);
+
+  assert.equal(
+    (db.prepare('SELECT label FROM delivery_sites WHERE id = 1').get() as { label: string }).label,
+    'Renamed yard',
+  );
+  assert.equal(seededSites().length, firstSites.length + 1);
+  assert.equal(seededEntities().length, firstEntities.length + 1);
+  assert.deepEqual(defaultCounts('delivery_sites'), expectedDefaults);
+  assert.deepEqual(defaultCounts('billing_entities'), expectedDefaults);
+
+  // Reset restores the canonical rows exactly, buyer-added rows gone.
+  resetDatabase(db);
+  seedDatabase(db);
+  assert.deepEqual(seededSites(), firstSites);
+  assert.deepEqual(seededEntities(), firstEntities);
+});
+
 void test('seed installs variant rows and links default variant IDs', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-variant-seed-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });

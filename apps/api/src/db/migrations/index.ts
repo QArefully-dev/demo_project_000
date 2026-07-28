@@ -21,6 +21,7 @@ import { variantMoqMigration } from './019_variant_moq.js';
 import { retireLegacyVariantsMigration } from './020_retire_legacy_variants.js';
 import { removePowderizerMigration } from './021_remove_powderizer.js';
 import { customBlendsMigration } from './022_custom_blends.js';
+import { tradeDeliveryAndCheckoutDepthMigration } from './023_trade_delivery_and_checkout_depth.js';
 
 export const migrations: readonly Migration[] = [
   initialMigration,
@@ -45,4 +46,5 @@ export const migrations: readonly Migration[] = [
   retireLegacyVariantsMigration,
   removePowderizerMigration,
   customBlendsMigration,
+  tradeDeliveryAndCheckoutDepthMigration,
 ];
