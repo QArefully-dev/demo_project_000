@@ -3,7 +3,7 @@ name: code-reviewer
 description: Use when reviewing code, PRs, diffs, packet work, pre-merge changes, or any code-review / reviewer-role task in this repo.
 ---
 
-# Code Reviewer (critical + high only)
+# Code Reviewer
 
 ## Purpose
 
@@ -31,13 +31,13 @@ A confident wrong finding costs more than a missed nitpick, because the user wil
 3. Check the behavior is not already handled elsewhere (route schema, repository guard, migration, provider).
 4. Grep whether the pattern is repo-wide convention. Convention you dislike is not a bug; convention broken in one place is a real inconsistency.
 
-If verification is impossible without running something, run it - focused test commands are cheap here (`npm exec -w @shop/api -- tsx --test <path>`, `npm exec -w @shop/web -- vitest run --configLoader runner <path>`).
+If verification is impossible without running something, run it - focused single-file test runs are cheap here. Get the runner and its flags from the owning workspace's `package.json` scripts rather than assuming a command.
 
 ## Scope the review
 
 Default target: working diff against `main` (`git diff main...HEAD` plus uncommitted changes). If user names a PR, plan, or path, use that instead.
 
-If change is plan-driven, read the named plan in `plans/` and check acceptance criteria for the assigned packet. `plans/old/` is history - ignore unless named. Unmet criterion in the assigned packet is a High finding; work belonging to a later packet is not.
+If change is plan-driven, read the named plan and check acceptance criteria for the assigned packet. Archived/superseded plan folders are history - ignore unless named. Unmet criterion in the assigned packet is a High finding; work belonging to a later packet is not.
 
 Review changed code plus its immediate blast radius: callers, the route that exposes it, the repository behind it, the test that claims to cover it.
 
@@ -51,15 +51,15 @@ Money and pricing
 - Totals recomputed on frontend and trusted by backend -> critical.
 
 Inventory, orders, returns, payments
-- Stock decrement, order creation, payment capture, lifecycle event write must sit inside one transaction owning the full invariant. Repository call outside the unit of work in `apps/api/src/db/unitOfWork.ts` -> partial commit.
+- Stock decrement, order creation, payment capture, lifecycle event write must sit inside one transaction owning the full invariant. Repository call issued outside the API's unit-of-work helper -> partial commit.
 - Check state machines: order/return/payment transitions that skip a state or allow a backwards move.
 - Idempotency keys and request IDs: reused, ignored, or generated per attempt -> double charge or double stock movement.
 
 Routes, auth, contracts
-- Every route in `apps/api/src/routes/` needs its auth gate. Admin routes (`adminInventory`, `adminOrders`, `adminReturns`, `audit`) leaking to customer sessions -> critical.
+- Every API route needs its auth gate. Admin-only surfaces (inventory, orders, returns, audit) reachable from a customer session -> critical.
 - Route schema must reject bad input rather than let the service handle it later. Missing schema, `additionalProperties` slack, or a type widened with a cast to make TS quiet -> real vulnerability surface.
-- Transport types live in `packages/contracts`. Hand-written duplicate type in a route or in `apps/web/src/api/` that has drifted from the schema -> wrong parsing, silent field loss.
-- Web must never import API source; packages must never import app-private source. Dependency direction: contracts -> api + web, catalog -> api, api -> HTTP -> web.
+- Transport types live in the shared contracts package. Hand-written duplicate type in a route or in the web API client layer that has drifted from the schema -> wrong parsing, silent field loss.
+- Web must never import API source; shared packages must never import app-private source. Dependency direction: contracts -> api + web, catalog -> api, api -> HTTP -> web.
 
 Persistence and migrations
 - Migrations ordered and versioned; a migration that drops/recreates a table with live rows, or that is edited after having run, breaks `npm run reset` vs upgrade parity.
@@ -68,7 +68,7 @@ Persistence and migrations
 
 Frontend
 - Async UI must abort or ignore stale completion. Fetch on prop change without cancellation -> stale result overwrites fresh one. Real bug, report it.
-- Business rule reimplemented in `apps/web/src/features/` that disagrees with the API service -> user sees a number the backend rejects.
+- Business rule reimplemented in web feature code that disagrees with the API service -> user sees a number the backend rejects.
 - No mutable module-global cart/session/request state.
 - Secrets (payment, auth) in logs, browser storage, or persistent fingerprints -> critical.
 
@@ -89,7 +89,7 @@ Common and high value in this repo. Look for:
 Report when the name lies about behavior, since that is what causes downstream bugs:
 
 - `getX` that mutates, `validateX` that returns without checking, `deleteX` that soft-deletes, plural/singular mismatch on a return shape.
-- Method renamed at one call site but not others, leaving parallel legacy and new implementations alive. CLAUDE.md forbids the parallel path - obsolete path left after final consumer moved is a real finding.
+- Method renamed at one call site but not others, leaving parallel legacy and new implementations alive. Repo agent instructions forbid the parallel path - obsolete path left after final consumer moved is a real finding.
 - Same domain concept spelled two ways across contracts/api/web so a field silently maps to `undefined`.
 
 Do not report names you would merely have chosen differently.
