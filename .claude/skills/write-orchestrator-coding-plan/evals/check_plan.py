@@ -95,6 +95,40 @@ def has_review_graph(text: str) -> bool:
     )
 
 
+BROWSER_TERMS = (
+    "browser-qa",
+    "browser",
+    "screenshot",
+    "playwright",
+    "click-through",
+    "click through",
+    "manual check",
+    "manually verify",
+    "visually verify",
+    "visual check",
+    "exploratory",
+)
+
+
+def has_automated_only_verification(text: str) -> bool:
+    """Packet duties, gates, and schedule must never assign agent-driven browser work."""
+    lines = [
+        line.lower()
+        for line in text.splitlines()
+        if re.match(r"^\s*-\s*(test duty|verification|acceptance|test policy|policy|owner):", line.strip(), flags=re.IGNORECASE)
+    ]
+    schedule = re.search(
+        r"^## Test Execution Schedule\s*(.+?)(?=^## |\Z)", text, flags=re.MULTILINE | re.DOTALL
+    )
+    if schedule:
+        lines.extend(
+            line.lower() for line in schedule.group(1).splitlines() if line.strip().startswith("-")
+        )
+    # Strip explicit prohibition clauses ("...; no browser, screenshot...") before scanning.
+    scanned = [re.sub(r"\bno\b.*$", "", line) for line in lines]
+    return not any(term in line for line in scanned for term in BROWSER_TERMS)
+
+
 CHECKS: dict[str, tuple[str, Callable[[str], bool]]] = {
     "required_sections": (
         "Contains core plan sections.",
@@ -164,6 +198,10 @@ CHECKS: dict[str, tuple[str, Callable[[str], bool]]] = {
                 "orchestrator_run_state_v1",
             ),
         ),
+    ),
+    "automated_only_verification": (
+        "Test duties, verification, gates, and schedule assign automated commands only; no agent browser work.",
+        has_automated_only_verification,
     ),
     "verification_schedule": (
         "Assigns focused, fan-in, and final verification work.",

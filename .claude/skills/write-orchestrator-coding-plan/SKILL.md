@@ -50,7 +50,9 @@ Cover relevant coding details:
 - contracts/API: shared schemas, request/response shape, status/error mapping, pagination, idempotency
 - UI: routes, state authority, loading/empty/error states, accessibility, responsive integration
 - cross-cutting: audit, logging, notifications, feature flags, seed/reset, security, privacy
-- verification: critical unit, contract, route, SQLite integration, React integration, accessibility, manual checks
+- verification: critical unit, contract, route, SQLite integration, React integration, accessibility — automated repository commands only
+
+Verification is automated-only. Never plan agent-driven browser work: no screenshots, no headless/manual click-through, no visual confirmation, no exploratory UI poking, no console/network inspection through a live app. UI behavior proven through React integration tests, route/contract tests, and unit rules. Applies to every packet, gate, fix, and convergence step including `S1` and final gate. Human-owned smoke checks may appear only under `Risks and Open Questions` as user-owned follow-up, never as packet test duty, verification, acceptance, or gate condition.
 
 Omit irrelevant layers. Prefer extension of established patterns over new abstractions. Name non-goals to prevent scope drift.
 
@@ -213,6 +215,8 @@ Reviewer report rules:
 
 ## Test and Review Protocol
 
+Every scheduled command is a repository script or focused test runner producing pass/fail without human or agent judgment. No browser-driving command, screenshot capture, dev-server click-through, or `browser-qa` invocation enters any test duty, verification, gate, or review policy. Reviewer likewise inspects code plus automated evidence only.
+
 Assign each test command to one packet or gate. Orchestrator maintains verification ledger across subagent sessions:
 
 - evidence ID
@@ -324,8 +328,8 @@ Repository baseline: `[commit/branch if useful, otherwise inspection date]`
   - [ordered coding step with symbols, schemas, routes, or components]
 - invariants: [rules packet must preserve]
 - relevant evidence: `[evidence ID]` -> [covered scope and change set; omit unrelated ledger entries]
-- test duty: [none, reuse evidence ID, or run exact command at packet completion]
-- verification: [non-test checks plus expected evidence]
+- test duty: [none, reuse evidence ID, or run exact automated command at packet completion]
+- verification: [automated checks plus expected evidence; no browser, screenshot, or manual UI step]
 - handoff: [artifacts/interfaces downstream packets receive]
 - review: `[review assignment]` -> [review gate blocking downstream consumer or fan-in]
 
@@ -341,8 +345,8 @@ Repository baseline: `[commit/branch if useful, otherwise inspection date]`
 - changes:
   - [integration steps]
 - relevant evidence: `[evidence IDs]` -> [fan-in scope; omit unrelated ledger entries]
-- test duty: [shared integration commands run once after fan-in]
-- verification: [non-test checks plus expected evidence]
+- test duty: [shared automated integration commands run once after fan-in]
+- verification: [automated checks plus expected evidence; no browser session, screenshot, or agent click-through at this gate]
 - handoff: [completion evidence]
 - review: `[review assignment]` -> [convergence review gate blocking completion]
 
@@ -385,6 +389,7 @@ Repeat review assignment for every implementation packet by default. State expli
 - `T1`: after `[packet]` changes settle -> owner: `[packet]` -> `[focused command]`
 - `T2`: after parallel fan-in -> owner: `[convergence packet]` -> `[shared integration command]`
 - `T3`: after all fixes settle -> owner: `[final gate]` -> `[broad command, once]`
+- policy: automated repository commands only; no browser, screenshot, or manual UI verification in any entry
 - reuse: [valid evidence rules and ledger handoff]
 - invalidation: `[paths/dependencies]` -> `[entries/commands to rerun]`
 
@@ -500,6 +505,8 @@ Before saving plan, confirm:
 - reviewer packets include exact change set, scoped reads, acceptance criteria, invariants, risk focus, inspect-only write policy, test policy, and relevant evidence only
 - every reviewer assignment sets `review_skill=code-reviewer` and directs reviewer to invoke `code-reviewer` skill as review method
 - every test command has one owner, execution point, reuse rule, invalidation rule
+- every test duty, verification, gate, and review policy uses automated commands only; no agent browser session, screenshot, click-through, or exploratory UI confirmation anywhere, including `S1`, convergence, and final gate
+- UI-behavior acceptance backed by React integration/route/contract/unit tests, not visual inspection
 - new sessions reuse valid test evidence
 - reviewers avoid duplicate test runs
 - role-specific assignment/report contracts referenced; no obsolete shared contracts

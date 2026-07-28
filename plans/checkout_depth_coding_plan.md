@@ -1,8 +1,8 @@
 # Checkout Depth Coding Plan
 
-Status: proposed
+Status: complete -> `G4` reached 2026-07-28. Change set unstaged on `codex/checkout-depth-20260726`; merge is the user's call
 Source: `plans/demo_project_high_level_plan.md` -> `Future Expansion Order` -> `4. Checkout depth`
-Repository baseline: branch `materials_exchange_refactor` @ `7d7e3ce`, inspected 2026-07-26
+Repository baseline: branch `materials_exchange_refactor` @ `a15f48b` (plan-save commit; supersedes the `7d7e3ce` figure quoted at authoring time), inspected 2026-07-26
 
 ## Runtime Worktree
 
@@ -14,6 +14,13 @@ Repository baseline: branch `materials_exchange_refactor` @ `7d7e3ce`, inspected
 - source checkout read-only after worktree creation, except saved plan + run-scoped temp state
 - integration: no merge, rebase, cherry-pick, copy-back, worktree deletion, branch deletion; user handles merge into the source branch
 - completion reply: absolute worktree path + implementation branch + source branch + base revision; user handles integration
+
+### Live worktree identity (created 2026-07-27)
+
+- path: `C:\Users\iwano\Desktop\repos\demo_project_000-worktrees\checkout-depth-20260726`
+- implementation branch: `codex/checkout-depth-20260726`
+- source branch: `materials_exchange_refactor`; base revision `a15f48b`
+- state: uncommitted working tree; nothing merged; every packet below landed as unstaged/untracked files
 
 ## Objective
 
@@ -141,6 +148,159 @@ Close item 4 remaining scope -> B2B checkout captures where, when, who pays, and
 - `apps/web/src/features/checkout/` -> steps `delivery` -> `schedule` -> `payment` driven by `?step=`; `DeliveryStep` (saved-site picker when authenticated, ad-hoc address form otherwise), `ScheduleBillingStep` (slot picker, billing entity, PO reference), existing `PaymentDetailsStep` retained; `CheckoutSummary` shows site, slot, PO reference; `OrderConfirmationPage` shows all four
 - `apps/web/src/features/orders/` -> order detail shows delivery address, slot, billing entity, PO reference; order history list shows PO reference when present
 - async UI -> slot fetch and trade-profile mutations abort or ignore stale completion; explicit loading, empty, error, retry states
+
+## Landed State (2026-07-27)
+
+Gates cleared: `G0` -> `GR1`, `GR2` -> `G1` -> `GR3`, `GR4`, `GR7`, `GR9` -> `G2` -> `GR5` -> `GR6`, `GR8` -> `G3` -> `GR10` -> `G4`.
+Outstanding: none. Plan executed end to end.
+
+Packets complete: `P1`, `P2`, `P3`, `P4`, `P5`, `P6`, `P7`, `P8`, `P9`, `S1`. All reviewed; all findings closed through fresh-worker fixes with targeted evidence.
+
+Change set is unstaged on `codex/checkout-depth-20260726` in worktree `demo_project_000-worktrees/checkout-depth-20260726`, `HEAD` still at base `a15f48b`. Merge is the user's call.
+
+### `S1` -> `R10` -> `GR10` -> `G4` (2026-07-28)
+
+`S1` seeded trade records, documented them, corrected the repository map, and produced the integrated verification evidence.
+
+- `seed.ts` -> `SEED_DELIVERY_SITES` (5) + `SEED_BILLING_ENTITIES` (4); fixed ids, literal instant `2026-07-01T09:00:00.000Z`, `INSERT OR IGNORE` inside the existing seed transaction after the users loop. `user_id` resolved by email lookup, never hardcoded
+- exactly one live default per user per type -> alice, bob, admin. Verified against migration `023` index predicates `(user_id) WHERE is_default = 1 AND active = 1`
+- `reset.ts` untouched -> both tables cascade from `DELETE FROM users`; explicit ids make reset+seed byte-reproducible independent of `sqlite_sequence`
+- seed test scopes every count by seeded email join; no absolute table counts, no fixed starting ids
+- `README.md` -> trade delivery sites / billing entities section plus delivery slot booking trigger. `R10` checked each factual claim against code (limits 25/10, lead times 1/3/5 days, 15-business-day horizon, am+pm, `GET /api/delivery/slots`, PO reference <=64 chars)
+- `CLAUDE.md` repository map -> `apps/api/src/routes/tradeAccount.ts`, `routes/deliverySlots.ts`, `src/features/tradeAccount/`. Resolves the open question below: two new API paths only
+
+`S1-FIX-1` -> `E12` came back red on `apps/web/src/features/checkout/CheckoutPage.test.tsx`, two cases at `Test timed out in 5000ms`. Investigated before patching: no fake timers, no retry/backoff, no debounce, no hung promise; cost is real-timer `userEvent` driving two full three-step passes per case. Eight of twenty cases sit at 2.8-3.7s against a 5000ms default, so parallel-worker contention erases the headroom. Fixed with a describe-level `{ timeout: 20_000 }` in that one file — test-only, zero runtime reach. Per-test scope was rejected because it would leave six more flake candidates; the global config was left alone so real hangs still fail fast elsewhere.
+
+`R10` verdict -> `pass`, zero critical/high, inspect-only, all evidence accepted as sufficient and not stale.
+
+`R10` below-gate notes, no code change:
+
+- `INSERT OR IGNORE` masks a conflict if a trade row occupies a seeded id before the first seed. Only reachable with seeding disabled via `SHOP_SEED` followed by a buyer write; `npm run dev` and `npm run reset` both seed first. No integrity breach, degraded demo data at worst
+- the seed test's rename step keys on a literal `WHERE id = 1` — the one place it leans on an absolute id rather than an email-scoped lookup. Defensible: seed-owned constant in a temp DB
+- README trade tables are visually ragged in source; `*.md` is Prettier-excluded so there is no churn either way
+
+### Evidence at `G4`
+
+- `E10` -> `npm test -w @shop/api` -> `209/209`
+- `E11` -> `npm run reset` -> `Database reset and re-seeded.`, then `npm exec -w @shop/api -- tsx --test test/db/seed.integration.test.ts` -> `8/8`
+- `E12` -> `npm run verify` -> `EXIT=0` twice back-to-back after `S1-FIX-1`; `Test Files 71 passed (71)`, node suites `# fail 0` across all
+- `E13` -> browser journey through `.claude/skills/browser-qa` headless Chromium at `1920x1080`, `console errors: 0`. Catalog -> cement sack x4 -> cart -> saved site `Bakery yard` -> slot `Monday, August 3, 2026 · Morning` + PO `PO-QA-88421` -> card -> `/order-confirmation/21` -> `/orders`. Seven PNGs cover slot selection, PO on confirmation, PO in order history
+- `E13` predates `S1-FIX-1`; not re-run because that fix is a Vitest timeout option with no runtime reach
+
+Gotcha for future browser runs -> `vite.config.ts` proxies `/login` to Fastify, so navigating directly to `/login` does not reach the SPA. Enter login through the in-app Account menu.
+
+### `P6` -> `R6` -> `GR6` (2026-07-27)
+
+`P6` landed the checkout money path -> `checkoutTypes.ts`, `checkoutService.ts`, `checkoutQuote.ts`, `checkoutFinalizer.ts`, `paymentRepository.ts`, `orderTypes.ts`, `orderRepository.ts`, `routes/payments.ts`, `app.ts` dependency literal. New suites `test/checkout/checkoutDepth.integration.test.ts` (11 cases), `test/orders/orderDeliveryDetails.integration.test.ts` (5 cases), shared `test/checkout/checkoutDepthFixtures.ts`.
+
+`R6` verdict -> `pass`, zero critical/high. Reviewer re-ran both load-bearing commands independently and read every target file end-to-end.
+
+`P6` deviations, all reviewed and accepted:
+
+- fingerprint hashes the **selection** (`site:<id>` / `entity:<id>`) for saved records, not the resolved address -> avoids forcing a DB read onto the replay path, where a since-retired site would break replay of an already-succeeded order. Unsafe direction is narrow: same key + saved record edited between attempts -> replay, with no gateway call, no money movement, and the real persisted address in the response
+- `app.ts` -> `tradeAccount` + `deliverySlots` hoisted to consts so checkout and `AppServices` share one instance each; no duplicate service graph, `P5` region otherwise untouched
+- `delivery_site_id` threaded to the finalizer as an argument (`V7` has no site-id field, contracts frozen). `finalizeAuthorizedCheckout` has exactly one caller -> the `null` default is unreachable, no drift path
+- new failure codes audit as `CHECKOUT_FAILED`. `PRE_GATEWAY_FAILURE_CODES` has no release, reservation, or route consumer; four pre-`P6` codes already collapse the same way
+- slot re-validation calls `deliverySlots.optionsForCart` -> an unwrapped `better-sqlite3` read on the same handle, so it sees in-transaction state. Chosen for anti-drift over a cheaper direct `calculateLeadTime`
+- four non-owned test files updated for the `CheckoutParams` / `PaymentBody` change -> pure param substitution, `+31/-7`, zero assertions removed or loosened
+
+`R5-F1` residue closed -> `test/returns/*.integration.test.ts` added to the `test:integration` glob; globs verified disjoint, nothing double-runs.
+
+### `P8` -> `R8` -> `GR8` (2026-07-27)
+
+`P8` restructured web checkout to `delivery` -> `schedule` -> `payment`. New `useDeliverySlots.ts`, `DeliveryStep.tsx`, `ScheduleBillingStep.tsx`; `ContactDetailsStep.tsx` deleted after its last consumer moved. `OrderConfirmationPage.tsx` needed no change -> it renders `P9`'s `OrderDetailView`, which already displays all four new values; a confirmation-route test was added instead of forking display logic.
+
+`R8` verdict -> `pass`, zero critical/high. Reviewer reproduced the focused suite green and traced every acceptance criterion to file contents.
+
+- slot staleness handled by a monotonic `generation` ref plus per-request `AbortController`; success, error, and `finally` branches all guard, and effect cleanup aborts -> both cancels and ignores
+- idempotency key regenerates on every new field including PO reference; unrecognized `409` shapes fall through to `submission-failed` rather than being swallowed
+- promo gate `cartValidation.ts` byte-unchanged, confirmed by empty `git diff`
+- below-gate note, no code change: `useDeliverySlots` retains prior `options` during a post-cart-change refetch, so `validateSchedule` transiently accepts a superseded slot. Backend re-validates and the resulting `DELIVERY_SLOT_UNAVAILABLE` renders recoverably
+
+### Post-review fixes closed at `G3`
+
+- `P6-FIX-1` -> `fingerprintDestination` ad-hoc branch hashed the **raw** client address while `resolveCommitments` normalizes via `normalizePostalAddress`, and `purchaseOrderReference` used `?.trim()` against resolution's `normalizeText`. The invariant stated in `addressRules.ts:34-36` (`sw1a 1aa` / `SW1A 1AA` must not produce two fingerprints) did not hold. Both now hash the normalized value. Failure direction was safe throughout -> spurious `IDEMPOTENT_CONFLICT`, never a silent replay
+- `P6-FIX-2` -> `fingerprintBilling` ad-hoc branch carried the identical raw-vs-normalized shape for `legalName` and `address`; additionally `registrationNumber` and `vatNumber` were **absent from the hash entirely**, so a changed reg/VAT under one idempotency key silently replayed the prior snapshot. All four now normalize exactly as `checkoutService.ts:125-128` does. This closed a genuine silent-replay hole that `R6` did not surface
+- both fixes carry a negative control -> assertion verified failing with the fix reverted, then restored
+- full `createSafeFingerprint` field audit recorded -> no raw-vs-normalized mismatch survives; saved-selection identifier hashing remains the reviewed-accepted design; PAN and CVC absent from fingerprint, persistence, and logs
+
+### Evidence at `G3`
+
+- `npm test -w @shop/api` -> unit `43/43`, integration `208/208`
+- `npm test -w @shop/web` -> `Test Files 71 passed (71)`, `Tests 534 passed (534)`
+- `E6` focused -> `39/39`; `E8` focused -> `Test Files 6 passed (6)`, `Tests 39 passed (39)`
+- `npm run typecheck -w @shop/api` and `-w @shop/web` -> 0 errors each; the 5 expected `P1` consumer-breakage errors are all resolved
+- `npm run lint`, `npm run format` -> clean
+- `S1`-owned `E10`, `E11`, `E12`, `E13` ran after `G3` -> see Evidence at `G4`
+
+### `P5` -> `R5` -> `GR5` (2026-07-27)
+
+`P5` landed -> `apps/api/src/routes/tradeAccount.ts`, `routes/deliverySlots.ts`, `app.ts` composition, 2 route integration suites. `E5` -> `10/10` pass. Typecheck delta `0`; the 4 remaining `@shop/api` errors stay `P6`-owned.
+
+`P5` decisions, frozen for `P6` + `P8`:
+
+- error mapping -> `SITE_NOT_FOUND` / `BILLING_ENTITY_NOT_FOUND` -> `404` `sendNotFound`; `DUPLICATE_LABEL`, `DUPLICATE_LEGAL_NAME`, `SITE_LIMIT_REACHED`, `BILLING_ENTITY_LIMIT_REACHED` -> `409` `sendConflict`. Exhaustive `Record<TradeAccountErrorCode, ...>` -> "not yours" and "does not exist" byte-identical
+- `AppServices` shape -> `tradeAccount: {sites, billingEntities}` + `deliverySlots`
+- 8 endpoints = 4 per record type (`GET` list, `POST` create `201`, `PATCH` update, `DELETE` retire). No separate set-default route -> default swap rides `PATCH isDefault:true`
+- `cartService` hoisted to a local const in `createAppServices` -> `deliverySlots` and `services.carts` share one instance. `createCheckoutService` still receives the cart **repository**; that literal stays `P6`-owned and untouched
+- `GET /api/delivery/slots` unauthenticated, cart-scoped; `cartId` is the only capability; unknown cart -> `404`, malformed uuid -> `400`
+
+`R5` verdict -> `pass_with_findings`, one high.
+
+- `R5-F1` high -> `apps/api/package.json` `test:integration` glob omitted `test/tradeAccount/*` and `test/delivery/*` -> both new route suites plus the `P3` + `P4` suites never ran under `npm test` / `npm run verify`; an auth-gate removal would have shipped green. Closed by `P5-FIX-1` -> globs widened (`tradeAccount`, `delivery`, `customBlend`; pure rules -> `test:unit`, route suites -> `test:integration`, disjoint so nothing double-runs). Unit `17/17` -> `43/43`; integration `140/107/33` -> `177/144/33` -> `+37` tests executing, pre-existing failure count unchanged
+- `R5-F1` residue -> `test/returns/*` still outside the glob. In isolation it is `8/5/3`; the 3 failures are the same pre-existing "Invalid persisted checkout quote" `P6` breakage. **`P6` must add `test/returns/*.integration.test.ts` to the `test:integration` glob once the checkout quote path lands**, otherwise `test/returns` keeps zero CI protection
+- `R5` coverage gaps, non-blocking -> no HTTP-layer test asserts `409` for either `*_LIMIT_REACHED` code or for `DUPLICATE_LABEL` (service-level suites cover the rules); `UpdateDeliverySiteBody.contactPhone` is optional-non-nullable, so a saved phone cannot be cleared through `PATCH` -> contract-owned (`P1`, gated), not a `P5` defect
+
+### Consolidated evidence at settled state
+
+- contracts `102/102`; API lanes (`migrations` + `tradeAccount` x2 + `deliverySlotRules`) `60/60`; web lanes (`account` + `orders`) `51/51`
+- `npm run typecheck -w @shop/api` -> 4 errors, all `P6`-owned -> `features/checkout/checkoutQuote.ts` x2, `features/payments/paymentRepository.ts`, `routes/payments.ts`
+- `npm run typecheck -w @shop/web` -> 1 error, `P8`-owned -> `features/checkout/usePaymentSubmission.ts:67` (`shippingAddress` gone from `PaymentBody`)
+- these 5 errors are the expected consumer breakage from the `P1` contract change; they are the work of `P6` + `P8`, not defects
+
+### Frozen interfaces for `P5`, `P6`, `P8`
+
+Trade account services -> `createDeliverySiteService({repository, unitOfWork, clock})`, `createBillingEntityService(...)`; both expose `list`, `get`, `findForOrderHydration`, `create`, `update`, `setDefault`, `retire`. Result type `TradeAccountResult<T> = {ok:true,value:T} | {ok:false,code:TradeAccountErrorCode}`. Mapper `toBillingEntitySnapshot(entity)` -> identifier-free snapshot for order freezing.
+
+Slot rules -> `calculateLeadTime({deliverySummary, now})`, `listBookableSlots({leadTime, now})`, `isSlotBookable(slot, leadTime, now)`; service `createDeliverySlotService({cart, clock})` -> `optionsForCart(cartId)` -> `DeliverySlotOptionsResponse | 'CART_NOT_FOUND'`.
+
+Web clients -> `apps/web/src/api/tradeAccount.ts` (8 functions, all take `{signal?}`), `apps/web/src/api/deliverySlots.ts` -> `getDeliverySlotOptions(cartId, options?)`. Reusable form -> `PostalAddressFields` + `PostalAddressDraft`, `EMPTY_POSTAL_ADDRESS_DRAFT`, `toPostalAddressDraft`, `validatePostalAddressDraft`.
+
+Schema names -> tables `delivery_sites`, `billing_entities`; indexes `delivery_sites_user_default_idx`, `delivery_sites_user_label_active_idx`, `delivery_sites_user_active_idx` and the three `billing_entities_*` counterparts, plus `orders_purchase_order_reference_idx`.
+
+### Decisions taken by workers, recorded
+
+- record caps -> `MAX_DELIVERY_SITES_PER_USER = 25`, `MAX_BILLING_ENTITIES_PER_USER = 10`; counted over live rows only, so retiring frees a slot (resolves the `P3` open question)
+- lead-time ladder -> parcel any weight `1` business day; freight `< 1_000_000 g` -> `3`; freight `>= 1_000_000 g` -> `5`; threshold inclusive; horizon `15` business days, `latestDate = earliestDate + 14` business days (resolves the `P4` open question)
+- default lifecycle -> first live record auto-defaults; `isDefault:false` on update never demotes; retiring the default promotes the oldest survivor; zero defaults only when zero live rows exist
+- `get` rejects retired records (checkout resolver); `findForOrderHydration` accepts them (order history). Not interchangeable
+- `plans/old/` assumption confirmed at `G0` -> directory does not exist; do not create it
+
+### Deviations from the plan as written
+
+- migration `023` was edited in place twice rather than paying a `024`. Licensed because `023` is uncommitted WIP on this branch and has never landed; the append-only forward-only rule binds landed migrations
+- `OrderSummary` gained an optional `purchaseOrderReference`. The plan's `P9` acceptance ("order history rows show PO reference when present") was otherwise unbuildable -> `OrderSummary` carried no such field and a bypass cast is banned. Additive, optional, reuses the bounded `PurchaseOrderReference` type
+- `ListBookableSlotsInput.horizonDays` removed before downstream froze against it -> it was accepted but never honoured; horizon rides on `leadTime.latestDate`
+- `DeliverySite.contactPhone` is now `Type.Optional`; `UpdateBillingEntityBody.registrationNumber` / `.vatNumber` are `Type.Optional(Type.Union([X, Type.Null()]))` -> absent leaves untouched, explicit `null` clears. `CreateBillingEntityBody` unchanged
+- `AccountPage` container widened `max-w-lg` -> `max-w-2xl` to fit the address grid; reviewed, no pre-existing block disturbed
+
+### Review findings closed
+
+- `R2-F1` high -> table-level `UNIQUE(user_id,label)` / `(user_id,legal_name)` not scoped to `active` -> a retired record squatted its name forever. Replaced with partial unique indexes `WHERE active = 1`
+- `P1-H1`, `P1-H2` high -> contract `maxLength` exceeded migration CHECK bounds (label `120 > 80`; registration/VAT `64 > 40`) -> schema-valid payloads would 500 at INSERT instead of 400. Contract bounds tightened to match persistence
+- `R3-01` high -> whitespace-only `contactPhone` passed validation, normalized to `''`, escaped as raw `SQLITE_CONSTRAINT_CHECK`. Fixed both layers -> contract pattern requires a digit, service writes `NULL`
+- `P7-F1` high -> clearing a saved VAT/registration number silently no-opped while the UI reported success. Fixed via nullable update body + explicit `null` on the edit path
+
+### Carry-forward constraints for the remaining packets
+
+All constraints below are SATISFIED as of `G3` -> `P5`, `P6`, `P8` complete and gated. Retained as the record of what each packet was bound to, not as outstanding work. `S1` carries no constraint from this list.
+
+- `P6` must populate `OrderSummary.purchaseOrderReference` in the order **list** mapper; the field is contract-legal and web-ready but always absent at runtime until it does
+- `P6` must re-derive lead time from the freshly re-quoted cart summary **inside** the preparation transaction, then call `isSlotBookable(submittedSlot, freshLeadTime, clock.now())`. Reusing a stale `leadTime` defeats the `409 DELIVERY_SLOT_UNAVAILABLE` check
+- `P5` + `P6` must map `TradeAccountErrorCode` to status themselves; the services never throw raw SQLite errors, and duplicate/cap pre-checks are stricter than the indexes
+- `P5` must treat zero-defaults as empty-list, not as a repairable state; there is no self-healing path
+- `P8` must not reintroduce a required read of `DeliverySite.contactPhone` -> it is optional now
+- `P8` PATCH bodies send the full validated body, not a minimal diff; the server must replace `address` as a whole object rather than per-column COALESCE, or clearing `line2`/`region` hits the same silent-no-op shape as `P7-F1`
 
 ## Execution Graph
 
@@ -340,7 +500,7 @@ Close item 4 remaining scope -> B2B checkout captures where, when, who pays, and
   - extend `CheckoutPage.test.tsx` and add step/slot tests -> step gating, saved vs ad-hoc destination, slot load error and retry, stale slot response discard, slot-unavailable conflict, idempotency-key regeneration, keyboard and label accessibility
 - invariants: backend stays authoritative for totals, slots, and address resolution; frontend five-item promo gate in `cartValidation.ts` unchanged; no card data in storage or logs; async work aborts or ignores stale completion
 - relevant evidence: `E7` -> web trade clients
-- test duty: `E8` -> `npm exec -w @shop/web -- vitest run --configLoader runner apps/web/src/features/checkout`
+- test duty: `E8` -> `npm exec -w @shop/web -- vitest run --configLoader runner src/features/checkout --exclude 'src/features/checkout/cartValidation.test.ts'`
 - verification: `npm run typecheck -w @shop/web` green
 - handoff: completed buyer checkout journey -> `S1`
 - review: `R8` -> `GR8` blocks `G3`
@@ -580,10 +740,13 @@ Close item 4 remaining scope -> B2B checkout captures where, when, who pays, and
 - Codex only: launch the globally configured `worker` agent for worker packets, fixes, and worker-owned verification; launch the globally configured `reviewer` agent for review assignments. Resolve model, reasoning effort, and developer instructions from global Codex settings. Never name or override those values in plan or assignment
 - non-Codex harnesses: ignore the Codex binding; use harness-native role configuration while preserving worker and reviewer responsibilities and communication contracts
 - all harnesses: reviewer runs `code-reviewer` as review method; assignment sets `review_skill=code-reviewer`; reviewer invokes it explicitly by name because the skill carries `disable-model-invocation`
+- correction (observed 2026-07-27): no `code-reviewer` skill is installed in this repository or user scope. Reviewers for `R1`-`R4`, `R7`, `R9` ran with the skill's duties stated inline instead -> severity gate critical + high only, verify every finding against file contents before reporting, no speculation, no style nits, return `reviewer_report_v1`. The same substitution was applied for `R5`, `R6`, `R8`, `R10`. Every review in this plan ran with inline duties; the skill was never installed
 
 ## Test Execution Schedule
 
 Every command runs from the worktree root after prepending Node 22 to `PATH` in PowerShell -> `$env:PATH='C:\Users\iwano\AppData\Local\nvm\v22.23.1;' + $env:PATH`. Node-unavailable protocol from `CLAUDE.md` applies; never silently skip an assigned command.
+
+Correction (observed 2026-07-27): `npm exec -w <workspace>` runs with cwd = that workspace directory, so test paths must be **workspace-relative**, not repository-root-relative. The `T3`-`T10` entries below quote root-relative paths and fail as written. Use `test/db/migrations.integration.test.ts` not `apps/api/test/db/...`, and `src/features/account` not `apps/web/src/features/account`.
 
 - `T1` -> evidence `E0`: at `G0` -> owner: orchestrator -> `npm ci` then `npm run smoke`
 - `T2` -> evidence `E1`: focused, after `P1` -> owner: `P1` -> `npm run build -w @shop/contracts` then `npm test -w @shop/contracts`
@@ -593,7 +756,8 @@ Every command runs from the worktree root after prepending Node 22 to `PATH` in 
 - `T6` -> evidence `E5`: focused, after `P5` -> owner: `P5` -> `npm exec -w @shop/api -- tsx --test apps/api/test/tradeAccount/tradeAccountRoutes.integration.test.ts apps/api/test/delivery/deliverySlotRoutes.integration.test.ts`
 - `T7` -> evidence `E6`: focused, after `P6` -> owner: `P6` -> `npm exec -w @shop/api -- tsx --test apps/api/test/checkout/payment.integration.test.ts apps/api/test/checkout/paymentIntent.integration.test.ts apps/api/test/checkout/checkoutDepth.integration.test.ts apps/api/test/orders/orderDeliveryDetails.integration.test.ts`
 - `T8` -> evidence `E7`: focused, after `P7` -> owner: `P7` -> `npm exec -w @shop/web -- vitest run --configLoader runner apps/web/src/features/account`
-- `T9` -> evidence `E8`: focused, after `P8` -> owner: `P8` -> `npm exec -w @shop/web -- vitest run --configLoader runner apps/web/src/features/checkout`
+- `T9` -> evidence `E8`: focused, after `P8` -> owner: `P8` -> `npm exec -w @shop/web -- vitest run --configLoader runner src/features/checkout --exclude 'src/features/checkout/cartValidation.test.ts'`
+  - correction (observed 2026-07-27, verified by `R8`): `apps/web/package.json` runs `src/features/checkout/cartValidation.test.ts` under `tsx --test` and excludes it from Vitest. Without the `--exclude`, Vitest fails to collect that `node:test` file and the command reports a spurious `1 failed` collection error. Plan-command defect, never a code defect
 - `T10` -> evidence `E9`: focused, after `P9` -> owner: `P9` -> `npm exec -w @shop/web -- vitest run --configLoader runner apps/web/src/features/orders`
 - `T11` -> evidence `E10`: fan-in, once at `G3` -> owner: `S1` -> `npm test -w @shop/api`, covering cross-lane API regression
 - `T12` -> evidence `E11`: fan-in, after `S1` seed work -> owner: `S1` -> `npm run reset` then `npm exec -w @shop/api -- tsx --test apps/api/test/db/seed.integration.test.ts`
@@ -648,9 +812,9 @@ Every command runs from the worktree root after prepending Node 22 to `PATH` in 
 - risk: slot rules diverge between generation and re-validation -> buyer books an offered slot and is rejected at payment -> mitigation: `isSlotBookable` shared by both paths, `R4` cross-check requirement
 - risk: `apps/api/src/app.ts` sequential co-ownership violated by concurrent launch -> mitigation: `GR5` gate strictly precedes `P6`; ownership rule stated explicitly
 - risk: three-step checkout regresses the five-item promo gate that course material depends on -> mitigation: `P8` non-goal plus `R8` risk focus plus untouched `cartValidation.ts`
-- question: record cap per user for delivery sites and billing entities -> owner: `P3` worker; pick a bounded default and state it in the report; orchestrator records it as a decision
-- question: exact freight lead-time base days and weight tier steps -> owner: `P4` worker; derive from existing freight constants, document the chosen ladder in `deliverySlotRules.ts` TSDoc, report as a decision
-- question: whether `CLAUDE.md` repository-map edits are in scope for this branch -> owner: `S1`; default yes for the two new API paths only
+- RESOLVED: record cap per user -> `25` delivery sites, `10` billing entities, live rows only. See `Landed State` -> `Decisions taken by workers`
+- RESOLVED: freight lead-time base days and tier steps -> parcel `1`, freight `3`, freight `>= 1 t` `5`; horizon `15` business days. Documented in `deliverySlotRules.ts` TSDoc
+- RESOLVED: `CLAUDE.md` repository-map edits in scope -> yes, limited to the two new route modules plus `apps/api/src/features/tradeAccount/`. Landed by `S1`, verified path-by-path against disk by `R10`
 
 ## Done Criteria
 
