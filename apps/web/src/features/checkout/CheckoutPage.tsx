@@ -5,8 +5,9 @@ import { ErrorMessage } from '@/components/ErrorMessage';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useCartContext } from '@/hooks/CartContext';
 import { CheckoutSummary } from './CheckoutSummary';
-import { ContactDetailsStep } from './ContactDetailsStep';
+import { DeliveryStep } from './DeliveryStep';
 import { PaymentDetailsStep } from './PaymentDetailsStep';
+import { ScheduleBillingStep } from './ScheduleBillingStep';
 import { useCheckoutFlow } from './useCheckoutFlow';
 
 export function CheckoutPage() {
@@ -101,25 +102,72 @@ export function CheckoutPage() {
           </Button>
         </div>
       )}
+      {flow.conflict?.code === 'DELIVERY_SLOT_UNAVAILABLE' && (
+        <div
+          role="alert"
+          className="mb-6 space-y-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
+        >
+          <p>The delivery slot you chose is no longer bookable.</p>
+          <p className="text-muted-foreground">
+            No payment was taken and your cart has not been changed. The earliest delivery date is
+            now {flow.conflict.earliestDate}. Choose another slot to continue.
+          </p>
+          <Button type="button" variant="outline" size="sm" onClick={flow.goToScheduleStep}>
+            Choose another slot
+          </Button>
+        </div>
+      )}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardContent className="pt-6">
-            {flow.step === 'contact' ? (
-              <ContactDetailsStep
+            {flow.step === 'delivery' && (
+              <DeliveryStep
                 contact={flow.contact}
+                delivery={flow.delivery}
+                savedSites={flow.savedSites}
+                savedSitesLoading={flow.savedSitesLoading}
+                savedSitesError={flow.savedSitesError}
+                onReloadSavedSites={flow.reloadSavedSites}
+                canUseSavedSites={flow.isAuthenticated}
                 fieldError={flow.fieldError}
-                onChange={flow.updateContact}
+                addressErrors={flow.deliveryAddressErrors}
+                onContactChange={flow.updateContact}
+                onDeliveryChange={flow.updateDelivery}
                 onBlur={flow.touchField}
+                onContinue={flow.goToSchedule}
+                disabled={flow.promoValidating || !isCartAvailable}
+              />
+            )}
+            {flow.step === 'schedule' && (
+              <ScheduleBillingStep
+                schedule={flow.schedule}
+                billing={flow.billing}
+                slotOptions={flow.slotOptions}
+                slotsLoading={flow.slotsLoading}
+                slotsError={flow.slotsError}
+                onReloadSlots={flow.reloadSlots}
+                billingEntities={flow.savedBillingEntities}
+                billingEntitiesLoading={flow.savedBillingEntitiesLoading}
+                billingEntitiesError={flow.savedBillingEntitiesError}
+                onReloadBillingEntities={flow.reloadSavedBillingEntities}
+                canUseSavedBillingEntities={flow.isAuthenticated}
+                fieldError={flow.fieldError}
+                addressErrors={flow.billingAddressErrors}
+                onSlotChange={flow.updateSchedule}
+                onBillingChange={flow.updateBilling}
+                onBlur={flow.touchField}
+                onBack={flow.goToDelivery}
                 onContinue={flow.goToPayment}
                 disabled={flow.promoValidating || !isCartAvailable}
               />
-            ) : (
+            )}
+            {flow.step === 'payment' && (
               <PaymentDetailsStep
                 card={flow.card}
                 fieldError={flow.fieldError}
                 onChange={flow.updateCard}
                 onBlur={flow.touchField}
-                onBack={flow.goToContact}
+                onBack={flow.goToScheduleStep}
                 onSubmit={() => void flow.submitPayment()}
                 submitting={flow.submitting}
                 disabled={flow.submitting || !isCartAvailable}
@@ -144,6 +192,10 @@ export function CheckoutPage() {
           promoError={flow.promoError}
           promoValidating={flow.promoValidating}
           isPromoEligible={flow.isPromoEligible}
+          destinationSummary={flow.destinationSummary}
+          billingSummary={flow.billingSummary}
+          deliverySlot={flow.schedule.slot}
+          purchaseOrderReference={flow.purchaseOrderReference}
           onPromoChange={flow.updatePromoCode}
           onApplyPromo={() => void flow.applyPromo()}
           onRemovePromo={flow.removePromo}

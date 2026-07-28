@@ -30,6 +30,12 @@ import { createAuditRepository } from '../../src/features/audit/auditRepository.
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
+import {
+  adhocBilling,
+  adhocDestination,
+  bookableSlot,
+  checkoutDepthDependencies,
+} from './checkoutDepthFixtures.js';
 
 function checkout(
   params: CheckoutParams,
@@ -55,6 +61,9 @@ function checkout(
       clock: { now: dependencies.now ?? (() => new Date()) },
     }),
     inventory: createInventoryService({ repository: createInventoryRepository(dependencies.db) }),
+    ...checkoutDepthDependencies(dependencies.db, {
+      now: dependencies.now ?? (() => new Date()),
+    }),
   }).process(params);
 }
 
@@ -96,11 +105,19 @@ void test('atomic checkout orchestration', async (t) => {
   const dbPath = join(dir, 'shop.db');
   const db = openDatabase({ path: dbPath });
   const carts = createCartRepository(db);
-  const payment = (cartId: string, idempotencyKey: string): CheckoutParams => ({
+  // `now` must match the clock the suite runs checkout under: the booked slot is re-validated
+  // against a lead time derived from that same instant.
+  const payment = (
+    cartId: string,
+    idempotencyKey: string,
+    now: Date = new Date(),
+  ): CheckoutParams => ({
     cartId,
     customerName: 'Checkout Test',
     customerEmail: 'checkout@example.test',
-    shippingAddress: '1 Test Street',
+    deliveryDestination: adhocDestination,
+    billingSelection: adhocBilling,
+    deliverySlot: bookableSlot(now),
     cardNumber: '4242 4242 4242 4242',
     cardExpiry: '12/99',
     cardCvc: '123',
@@ -340,7 +357,7 @@ void test('atomic checkout orchestration', async (t) => {
     const checkoutClock = new Date('2024-12-31T23:59:59.999Z');
 
     const result = await checkout(
-      { ...payment(cartId, 'clock-boundary'), promoCode: 'EXPIRED10' },
+      { ...payment(cartId, 'clock-boundary', checkoutClock), promoCode: 'EXPIRED10' },
       { db, now: () => checkoutClock },
     );
 
@@ -395,8 +412,8 @@ void test('atomic checkout orchestration', async (t) => {
   await t.test('expires prepared reservations and rejects late gateway completion', async () => {
     const cartId = freshCart();
     const deferred = deferredGateway();
-    const params = payment(cartId, 'expired-reservation');
     let current = new Date('2026-07-14T10:00:00.000Z');
+    const params = payment(cartId, 'expired-reservation', current);
     const first = checkout(params, { db, gateway: deferred.gateway, now: () => current });
     current = new Date('2026-07-14T10:15:00.000Z');
     const expired = await checkout(params, { db, gateway: deferred.gateway, now: () => current });
@@ -425,8 +442,8 @@ void test('atomic checkout orchestration', async (t) => {
     async () => {
       const cartId = freshCart();
       const deferred = deferredGateway();
-      const params = payment(cartId, 'late-gateway-expiry');
       let current = new Date('2026-07-14T10:00:00.000Z');
+      const params = payment(cartId, 'late-gateway-expiry', current);
       const first = checkout(params, { db, gateway: deferred.gateway, now: () => current });
       current = new Date('2026-07-14T10:15:00.000Z');
       deferred.resolve({ status: 'success' });
@@ -580,7 +597,7 @@ void test('atomic checkout orchestration', async (t) => {
             promoCode: null,
             customerName: params.customerName,
             customerEmail: params.customerEmail,
-            shippingAddress: params.shippingAddress,
+            shippingAddress: '1 Test Street',
             cardNumber: '4242424242424242',
             cardExpiry: params.cardExpiry,
             cardCvc: params.cardCvc,

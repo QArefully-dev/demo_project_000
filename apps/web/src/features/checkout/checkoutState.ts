@@ -1,14 +1,69 @@
-export type ContactField = 'customerName' | 'customerEmail' | 'shippingAddress';
+import type { DeliverySlot } from '@shop/contracts/delivery';
+import {
+  EMPTY_POSTAL_ADDRESS_DRAFT,
+  type PostalAddressDraft,
+} from '@/features/account/PostalAddressFields';
+
+export type ContactField = 'customerName' | 'customerEmail';
+export type DeliveryField = 'deliverySiteId';
+export type ScheduleField = 'deliverySlot';
+export type BillingField =
+  | 'billingEntityId'
+  | 'billingLegalName'
+  | 'billingRegistrationNumber'
+  | 'billingVatNumber'
+  | 'purchaseOrderReference';
 export type CardField = 'cardNumber' | 'cardExpiry' | 'cardCvc';
-export type Field = ContactField | CardField;
+export type Field = ContactField | DeliveryField | ScheduleField | BillingField | CardField;
 export type FieldErrors = Partial<Record<Field, string>>;
+
+/**
+ * Whether a destination or billing party is a stored trade record or entered for this order only.
+ * Mirrors the `kind` discriminator of the `PaymentBody` unions so step state maps to transport
+ * without inventing a second vocabulary.
+ */
+export type SelectionKind = 'saved' | 'adhoc';
+
+/** Step 1 state: who is buying and where the consignment goes. */
+export type CheckoutDelivery = {
+  destinationKind: SelectionKind;
+  /** Empty string while no saved site is chosen. */
+  deliverySiteId: string;
+  address: PostalAddressDraft;
+  /**
+   * Set once this state has been reconciled with the saved-site list. Guards the one-shot default
+   * preselection so a later list reload can never overwrite the buyer's own choice.
+   */
+  initialized: boolean;
+};
+
+/** Step 2 scheduling state. The slot is always one the server offered; never derived locally. */
+export type CheckoutSchedule = {
+  slot: DeliverySlot | null;
+};
+
+/** Step 2 billing state, including the optional buyer reference carried onto the order. */
+export type CheckoutBilling = {
+  selectionKind: SelectionKind;
+  billingEntityId: string;
+  legalName: string;
+  registrationNumber: string;
+  vatNumber: string;
+  address: PostalAddressDraft;
+  purchaseOrderReference: string;
+  initialized: boolean;
+};
 
 export type CheckoutConflict =
   | { code: 'RESERVATION_EXPIRED'; reservationExpiresAt: string }
-  | { code: 'INSUFFICIENT_STOCK'; productIds: string[] };
+  | { code: 'INSUFFICIENT_STOCK'; productIds: string[] }
+  | { code: 'DELIVERY_SLOT_UNAVAILABLE'; earliestDate: string };
 
 export type CheckoutState = {
   contact: Record<ContactField, string>;
+  delivery: CheckoutDelivery;
+  schedule: CheckoutSchedule;
+  billing: CheckoutBilling;
   card: Record<CardField, string>;
   touched: Partial<Record<Field, boolean>>;
   promoCode: string;
@@ -27,6 +82,11 @@ export type CheckoutState = {
 
 export type CheckoutEvent =
   | { type: 'contact-changed'; field: ContactField; value: string; idempotencyKey: string }
+  | { type: 'delivery-changed'; patch: Partial<CheckoutDelivery>; idempotencyKey: string }
+  | { type: 'schedule-changed'; slot: DeliverySlot | null; idempotencyKey: string }
+  | { type: 'billing-changed'; patch: Partial<CheckoutBilling>; idempotencyKey: string }
+  | { type: 'delivery-sites-loaded'; defaultSiteId: string | null; idempotencyKey: string }
+  | { type: 'billing-entities-loaded'; defaultEntityId: string | null; idempotencyKey: string }
   | { type: 'card-changed'; field: CardField; value: string; idempotencyKey: string }
   | { type: 'field-touched'; field: Field }
   | { type: 'fields-touched'; fields: Field[] }
@@ -48,8 +108,22 @@ export type CheckoutEvent =
   | { type: 'submission-failed'; error: string }
   | { type: 'submission-finished' };
 
-export const contactFields: ContactField[] = ['customerName', 'customerEmail', 'shippingAddress'];
+export const contactFields: ContactField[] = ['customerName', 'customerEmail'];
+export const deliveryFields: DeliveryField[] = ['deliverySiteId'];
+export const scheduleFields: ScheduleField[] = ['deliverySlot'];
+export const billingFields: BillingField[] = [
+  'billingEntityId',
+  'billingLegalName',
+  'billingRegistrationNumber',
+  'billingVatNumber',
+  'purchaseOrderReference',
+];
 export const cardFields: CardField[] = ['cardNumber', 'cardExpiry', 'cardCvc'];
+
+/** Fields validated before the delivery step may be left. */
+export const deliveryStepFields: Field[] = [...contactFields, ...deliveryFields];
+/** Fields validated before the schedule and billing step may be left. */
+export const scheduleStepFields: Field[] = [...scheduleFields, ...billingFields];
 
 export function createIdempotencyKey(): string {
   return crypto.randomUUID();
@@ -57,7 +131,24 @@ export function createIdempotencyKey(): string {
 
 export function initialCheckoutState(): CheckoutState {
   return {
-    contact: { customerName: '', customerEmail: '', shippingAddress: '' },
+    contact: { customerName: '', customerEmail: '' },
+    delivery: {
+      destinationKind: 'adhoc',
+      deliverySiteId: '',
+      address: { ...EMPTY_POSTAL_ADDRESS_DRAFT },
+      initialized: false,
+    },
+    schedule: { slot: null },
+    billing: {
+      selectionKind: 'adhoc',
+      billingEntityId: '',
+      legalName: '',
+      registrationNumber: '',
+      vatNumber: '',
+      address: { ...EMPTY_POSTAL_ADDRESS_DRAFT },
+      purchaseOrderReference: '',
+      initialized: false,
+    },
     card: { cardNumber: '', cardExpiry: '', cardCvc: '' },
     touched: {},
     promoCode: '',
@@ -75,6 +166,14 @@ export function initialCheckoutState(): CheckoutState {
   };
 }
 
+/**
+ * Reducer for the three-step checkout.
+ *
+ * Every event that changes a value the backend fingerprints — contact, destination, slot, billing
+ * party, purchase-order reference, card, promo — carries a fresh idempotency key. Reusing a key
+ * under a changed payload is exactly what the API answers with `IDEMPOTENT_CONFLICT`, so key
+ * rotation is a property of the state transition rather than of the submit path.
+ */
 export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): CheckoutState {
   switch (event.type) {
     case 'contact-changed':
@@ -84,6 +183,57 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         paymentError: null,
         idempotencyKey: event.idempotencyKey,
       };
+    case 'delivery-changed':
+      return {
+        ...state,
+        delivery: { ...state.delivery, ...event.patch, initialized: true },
+        paymentError: null,
+        idempotencyKey: event.idempotencyKey,
+      };
+    case 'schedule-changed':
+      return {
+        ...state,
+        schedule: { slot: event.slot },
+        // A newly chosen slot supersedes a slot-unavailable rejection; other conflicts stand.
+        conflict: state.conflict?.code === 'DELIVERY_SLOT_UNAVAILABLE' ? null : state.conflict,
+        paymentError: null,
+        idempotencyKey: event.idempotencyKey,
+      };
+    case 'billing-changed':
+      return {
+        ...state,
+        billing: { ...state.billing, ...event.patch, initialized: true },
+        paymentError: null,
+        idempotencyKey: event.idempotencyKey,
+      };
+    case 'delivery-sites-loaded': {
+      if (state.delivery.initialized) return state;
+      return {
+        ...state,
+        delivery: {
+          ...state.delivery,
+          initialized: true,
+          ...(event.defaultSiteId === null
+            ? {}
+            : { destinationKind: 'saved' as const, deliverySiteId: event.defaultSiteId }),
+        },
+        idempotencyKey: event.idempotencyKey,
+      };
+    }
+    case 'billing-entities-loaded': {
+      if (state.billing.initialized) return state;
+      return {
+        ...state,
+        billing: {
+          ...state.billing,
+          initialized: true,
+          ...(event.defaultEntityId === null
+            ? {}
+            : { selectionKind: 'saved' as const, billingEntityId: event.defaultEntityId }),
+        },
+        idempotencyKey: event.idempotencyKey,
+      };
+    }
     case 'card-changed':
       return {
         ...state,
@@ -179,6 +329,11 @@ export function createCartQuoteKey(cart: QuoteCart | null): string | null {
     .sort((left, right) => left.productId.localeCompare(right.productId))
     .map(({ productId, quantity, lineTotalCents }) => `${productId}:${quantity}:${lineTotalCents}`);
   return `${cart.id}:${cart.subtotalCents}:${lines.join('|')}`;
+}
+
+/** Stable identity of a slot, used for radio values and offered-list membership checks. */
+export function slotKey(slot: DeliverySlot): string {
+  return `${slot.date}:${slot.window}`;
 }
 
 export function selectAppliedPromo(state: CheckoutState, quoteKey: string | null): string | null {

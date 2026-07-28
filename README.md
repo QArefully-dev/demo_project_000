@@ -109,6 +109,27 @@ Most variants ship as standard parcel. Heavy variants or orders exceeding a comb
 
 Alice has 3 pre-seeded favourite products.
 
+### Trade Delivery Sites and Billing Entities
+
+Every seeded account signs in with a saved trade profile so checkout can be completed without typing an address. Manage these under **Account** (`/account`): add, edit, choose the default, or retire a record. Retiring keeps the record on any order that already used it.
+
+| Account             | Delivery sites                                          | Billing entities                                                        |
+| ------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------- |
+| alice@example.com   | `Bakery yard` (default, Manchester), `Depot annexe` (Salford) | `Fournier Bakeries Ltd` (default), `Fournier Contract Catering Ltd`      |
+| bob@example.com     | `Store loading bay` (default, Bristol), `Warehouse north` (Gloucester) | `Ashby Convenience Stores Ltd` (default)                     |
+| admin@example.com   | `Head office dock` (default, London)                     | `QArefully Materials Exchange Ltd` (default)                            |
+
+Exactly one delivery site and one billing entity per account is the default. Limits are 25 live delivery sites and 10 live billing entities per account. `npm run seed` inserts a missing record once and never overwrites a later edit; `npm run reset` restores the table above exactly.
+
+### Delivery Slot Booking
+
+Checkout runs in three steps: **Delivery** -> **Schedule and billing** -> **Payment**.
+
+- Step 1 picks a saved delivery site (or enters a one-off address), which is what triggers slot generation.
+- Step 2 shows the earliest delivery date the API derived from the consignment, then offers `am` and `pm` slots on business days only, across a 15-business-day horizon. Lead time is 1 business day for parcel, 3 for freight, and 5 for freight consignments of 1 tonne or more. Weekends are never offered, and slots have no capacity limit — two buyers may book the same slot.
+- Step 2 also captures the billing entity and an optional purchase-order reference (up to 64 characters). The reference is shown on the order confirmation page and against the order in `/orders`.
+- Slots come from `GET /api/delivery/slots`; the booked slot is re-validated by the same rules when payment is submitted, so a stale browser tab cannot book an expired date.
+
 ### Order Lifecycle Fixtures
 
 `npm run reset` restores four local-demo order scenarios. Normal `npm run seed` inserts a missing scenario once and never overwrites a lifecycle change made afterwards.

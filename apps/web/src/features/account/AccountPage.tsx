@@ -6,14 +6,21 @@ import { Button } from '@/components/ui/button';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { ApiError } from '@/api/client';
 import { Heart, LogOut, Package } from 'lucide-react';
+import { BillingEntitiesSection } from './BillingEntitiesSection';
+import { DeliverySitesSection } from './DeliverySitesSection';
+import { useTradeProfile } from './useTradeProfile';
 
 /**
- * Account page — authenticated user details, password change, and actions.
+ * Account page — authenticated user details, password change, trade profile, and actions.
  * Requires auth (guarded by ProtectedRoute).
+ *
+ * The trade profile sections live here rather than on their own route: they are account settings,
+ * and checkout reads the same saved records without the buyer needing a separate destination.
  */
 export function AccountPage() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const tradeProfile = useTradeProfile();
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -59,7 +66,7 @@ export function AccountPage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg py-20">
+    <div className="mx-auto max-w-2xl py-20">
       <h1 className="text-2xl font-bold">My Account</h1>
 
       {/* User details */}
@@ -128,6 +135,14 @@ export function AccountPage() {
           </Button>
         </form>
       </div>
+
+      {/* Trade profile — saved delivery sites and billing parties reused at checkout */}
+      {user && (
+        <>
+          <DeliverySitesSection profile={tradeProfile} />
+          <BillingEntitiesSection profile={tradeProfile} />
+        </>
+      )}
 
       {/* Actions */}
       <div className="mt-6 space-y-3">

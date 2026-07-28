@@ -112,6 +112,150 @@ const PROMOS = [
   },
 ] as const;
 
+/**
+ * Canonical trade delivery sites. Ids are fixed so a reset produces byte-identical rows and course
+ * material can name a site by id. Exactly one row per user carries `is_default = 1`, which is what
+ * the `delivery_sites_user_default_idx` partial unique index enforces.
+ *
+ * Timestamps are literal ISO instants rather than the column `datetime('now')` default so repeat
+ * seeds and resets stay deterministic.
+ */
+const SEED_DELIVERY_SITES = [
+  {
+    id: 1,
+    user_email: 'alice@example.com',
+    label: 'Bakery yard',
+    contact_name: 'Alice Fournier',
+    contact_phone: '+44 20 7946 0011',
+    address_line1: 'Unit 4, Mill Lane Trade Park',
+    address_line2: 'Goods entrance B',
+    address_city: 'Manchester',
+    address_region: 'Greater Manchester',
+    address_postcode: 'M15 4QL',
+    address_country_code: 'GB',
+    is_default: 1,
+  },
+  {
+    id: 2,
+    user_email: 'alice@example.com',
+    label: 'Depot annexe',
+    contact_name: 'Alice Fournier',
+    contact_phone: '+44 20 7946 0012',
+    address_line1: '18 Quarry Road',
+    address_line2: null,
+    address_city: 'Salford',
+    address_region: 'Greater Manchester',
+    address_postcode: 'M5 3TT',
+    address_country_code: 'GB',
+    is_default: 0,
+  },
+  {
+    id: 3,
+    user_email: 'bob@example.com',
+    label: 'Store loading bay',
+    contact_name: 'Bob Ashby',
+    contact_phone: '+44 117 496 0033',
+    address_line1: '2 Harbour Way',
+    address_line2: 'Rear service road',
+    address_city: 'Bristol',
+    address_region: null,
+    address_postcode: 'BS1 6TP',
+    address_country_code: 'GB',
+    is_default: 1,
+  },
+  {
+    id: 4,
+    user_email: 'bob@example.com',
+    label: 'Warehouse north',
+    contact_name: 'Bob Ashby',
+    contact_phone: null,
+    address_line1: '77 Kilnside Estate',
+    address_line2: null,
+    address_city: 'Gloucester',
+    address_region: 'Gloucestershire',
+    address_postcode: 'GL1 2AB',
+    address_country_code: 'GB',
+    is_default: 0,
+  },
+  {
+    id: 5,
+    user_email: 'admin@example.com',
+    label: 'Head office dock',
+    contact_name: 'Ops Desk',
+    contact_phone: '+44 20 7946 0099',
+    address_line1: '1 Exchange Square',
+    address_line2: null,
+    address_city: 'London',
+    address_region: null,
+    address_postcode: 'EC2A 2BB',
+    address_country_code: 'GB',
+    is_default: 1,
+  },
+] as const;
+
+/** Canonical billing entities. Same id and default rules as `SEED_DELIVERY_SITES`. */
+const SEED_BILLING_ENTITIES = [
+  {
+    id: 1,
+    user_email: 'alice@example.com',
+    legal_name: 'Fournier Bakeries Ltd',
+    registration_number: '07421188',
+    vat_number: 'GB194672301',
+    address_line1: 'Unit 4, Mill Lane Trade Park',
+    address_line2: null,
+    address_city: 'Manchester',
+    address_region: 'Greater Manchester',
+    address_postcode: 'M15 4QL',
+    address_country_code: 'GB',
+    is_default: 1,
+  },
+  {
+    id: 2,
+    user_email: 'alice@example.com',
+    legal_name: 'Fournier Contract Catering Ltd',
+    registration_number: '09930741',
+    vat_number: null,
+    address_line1: '18 Quarry Road',
+    address_line2: null,
+    address_city: 'Salford',
+    address_region: 'Greater Manchester',
+    address_postcode: 'M5 3TT',
+    address_country_code: 'GB',
+    is_default: 0,
+  },
+  {
+    id: 3,
+    user_email: 'bob@example.com',
+    legal_name: 'Ashby Convenience Stores Ltd',
+    registration_number: '05128877',
+    vat_number: 'GB288104553',
+    address_line1: '2 Harbour Way',
+    address_line2: null,
+    address_city: 'Bristol',
+    address_region: null,
+    address_postcode: 'BS1 6TP',
+    address_country_code: 'GB',
+    is_default: 1,
+  },
+  {
+    id: 4,
+    user_email: 'admin@example.com',
+    legal_name: 'QArefully Materials Exchange Ltd',
+    registration_number: '11002233',
+    vat_number: 'GB402118997',
+    address_line1: '1 Exchange Square',
+    address_line2: null,
+    address_city: 'London',
+    address_region: null,
+    address_postcode: 'EC2A 2BB',
+    address_country_code: 'GB',
+    is_default: 1,
+  },
+] as const;
+
+/** Fixed creation instant for every seeded trade-account row. */
+const TRADE_ACCOUNT_SEED_INSTANT = '2026-07-01T09:00:00.000Z';
+
 const ALICE_FAVOURITE_SLUGS = [
   'all-purpose-flour',
   'whey-protein-isolate',
@@ -369,6 +513,73 @@ export function seedDatabase(db: Database.Database): void {
     `);
     for (const user of USERS) {
       insertUser.run({ ...user, password_hash: seededPassword(user.email), password_salt: '' });
+    }
+
+    // Trade-account records are insert-only on a fixed id, so a buyer who renames, retires, or
+    // re-points the default of a seeded row keeps that change across later `npm run seed` calls.
+    // `resetDatabase` clears `users`, and both tables cascade from it, so reset restores these rows.
+    const userIdByEmail = db.prepare('SELECT id FROM users WHERE email = ?').pluck();
+
+    const insertDeliverySite = db.prepare(`
+      INSERT OR IGNORE INTO delivery_sites
+        (id, user_id, label, contact_name, contact_phone,
+         address_line1, address_line2, address_city, address_region, address_postcode,
+         address_country_code, is_default, active, created_at, updated_at)
+      VALUES
+        (@id, @user_id, @label, @contact_name, @contact_phone,
+         @address_line1, @address_line2, @address_city, @address_region, @address_postcode,
+         @address_country_code, @is_default, 1, @created_at, @updated_at)
+    `);
+    for (const site of SEED_DELIVERY_SITES) {
+      const userId = userIdByEmail.get(site.user_email) as number | undefined;
+      if (userId === undefined) continue;
+      insertDeliverySite.run({
+        id: site.id,
+        user_id: userId,
+        label: site.label,
+        contact_name: site.contact_name,
+        contact_phone: site.contact_phone,
+        address_line1: site.address_line1,
+        address_line2: site.address_line2,
+        address_city: site.address_city,
+        address_region: site.address_region,
+        address_postcode: site.address_postcode,
+        address_country_code: site.address_country_code,
+        is_default: site.is_default,
+        created_at: TRADE_ACCOUNT_SEED_INSTANT,
+        updated_at: TRADE_ACCOUNT_SEED_INSTANT,
+      });
+    }
+
+    const insertBillingEntity = db.prepare(`
+      INSERT OR IGNORE INTO billing_entities
+        (id, user_id, legal_name, registration_number, vat_number,
+         address_line1, address_line2, address_city, address_region, address_postcode,
+         address_country_code, is_default, active, created_at, updated_at)
+      VALUES
+        (@id, @user_id, @legal_name, @registration_number, @vat_number,
+         @address_line1, @address_line2, @address_city, @address_region, @address_postcode,
+         @address_country_code, @is_default, 1, @created_at, @updated_at)
+    `);
+    for (const entity of SEED_BILLING_ENTITIES) {
+      const userId = userIdByEmail.get(entity.user_email) as number | undefined;
+      if (userId === undefined) continue;
+      insertBillingEntity.run({
+        id: entity.id,
+        user_id: userId,
+        legal_name: entity.legal_name,
+        registration_number: entity.registration_number,
+        vat_number: entity.vat_number,
+        address_line1: entity.address_line1,
+        address_line2: entity.address_line2,
+        address_city: entity.address_city,
+        address_region: entity.address_region,
+        address_postcode: entity.address_postcode,
+        address_country_code: entity.address_country_code,
+        is_default: entity.is_default,
+        created_at: TRADE_ACCOUNT_SEED_INSTANT,
+        updated_at: TRADE_ACCOUNT_SEED_INSTANT,
+      });
     }
 
     const alice = db.prepare('SELECT id FROM users WHERE email = ?').get('alice@example.com') as

@@ -6,19 +6,53 @@ import {
   MoneyCents,
   PositiveIntegerString,
   PromoCodeValue,
-  ShippingAddress,
+  PurchaseOrderReference,
   Uuid,
 } from './common.js';
 import { PlaceOrderResponse } from './orders.js';
-import { DeliveryClass, DeliverySummary } from './delivery.js';
+import { DeliveryClass, DeliveryDate, DeliverySlot, DeliverySummary } from './delivery.js';
 import { CustomBlendSnapshot } from './customBlends.js';
+import { PostalAddress } from './address.js';
+import { BillingEntityInput, BillingEntitySnapshot } from './tradeAccount.js';
+
+/**
+ * Where the consignment goes. Discriminated on `kind`: a `saved` selection carries only an
+ * identifier, because the server loads the stored site and ignores any client-supplied address.
+ */
+export const DeliveryDestination = Type.Union([
+  Type.Object(
+    { kind: Type.Literal('saved'), deliverySiteId: PositiveIntegerString },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { kind: Type.Literal('adhoc'), address: PostalAddress },
+    { additionalProperties: false },
+  ),
+]);
+export type DeliveryDestination = Static<typeof DeliveryDestination>;
+
+/** Who is billed. Same discriminated shape and same server-authoritative resolution rule. */
+export const BillingSelection = Type.Union([
+  Type.Object(
+    { kind: Type.Literal('saved'), billingEntityId: PositiveIntegerString },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { kind: Type.Literal('adhoc'), billingEntity: BillingEntityInput },
+    { additionalProperties: false },
+  ),
+]);
+export type BillingSelection = Static<typeof BillingSelection>;
 
 export const PaymentBody = Type.Object({
   cartId: Uuid,
   promoCode: Type.Optional(PromoCodeValue),
   customerName: CustomerName,
   customerEmail: EmailAddress,
-  shippingAddress: ShippingAddress,
+  deliveryDestination: DeliveryDestination,
+  billingSelection: BillingSelection,
+  deliverySlot: DeliverySlot,
+  purchaseOrderReference: Type.Optional(PurchaseOrderReference),
   cardNumber: Type.String({ minLength: 12, maxLength: 25, pattern: '^[0-9 -]+$' }),
   cardExpiry: Type.String({ pattern: '^(0[1-9]|1[0-2])/[0-9]{2}$' }),
   cardCvc: Type.String({ pattern: '^[0-9]{3,4}$' }),
@@ -52,14 +86,27 @@ export const PaymentConflictResponse = Type.Union([
     },
     { additionalProperties: false },
   ),
+  Type.Object(
+    {
+      error: Type.Literal('DELIVERY_SLOT_UNAVAILABLE'),
+      earliestDate: DeliveryDate,
+    },
+    { additionalProperties: false },
+  ),
   Type.Object({ error: Type.String({ minLength: 1, maxLength: 500 }) }),
 ]);
 export type PaymentConflictResponse = Static<typeof PaymentConflictResponse>;
 
+/**
+ * Buyer identity plus resolved destination. `shippingAddress` is the `formatPostalAddress`
+ * rendering of `deliveryAddress`, retained so the legacy free-text order column has exactly one
+ * source and cannot drift from the structured value.
+ */
 const PersistedCheckoutCustomer = Type.Object(
   {
     name: Type.String(),
     email: Type.String(),
+    deliveryAddress: PostalAddress,
     shippingAddress: Type.String(),
   },
   { additionalProperties: false },
@@ -118,32 +165,36 @@ const PersistedCheckoutVariantLine = Type.Object(
 );
 
 /**
- * The only persisted checkout quote shape. Variant-scoped lines, delivery summary, and the
- * inventory split fixed before gateway authorization.
+ * The only persisted checkout quote shape. Variant-scoped lines, delivery summary, the inventory
+ * split, and the B2B delivery/billing commitments fixed before gateway authorization.
  *
- * The version integer stays `6` rather than restarting at `1`: it is written into stored JSON,
- * and a number no earlier writer ever emitted means a stale blob can never be read as current.
+ * The version integer advances to `7` rather than restarting at `1`: it is written into stored
+ * JSON, and a number no earlier writer ever emitted means a stale blob can never be read as
+ * current. Never reuse or restart this integer.
  */
-export const PersistedCheckoutQuoteV6 = Type.Object(
+export const PersistedCheckoutQuoteV7 = Type.Object(
   {
-    version: Type.Literal(6),
+    version: Type.Literal(7),
     ...PersistedCheckoutQuoteFields,
     variantLines: Type.Array(PersistedCheckoutVariantLine),
     deliverySummary: DeliverySummary,
     inventoryAllocations: Type.Array(PersistedInventoryAllocation),
+    billingEntity: BillingEntitySnapshot,
+    deliverySlot: DeliverySlot,
+    purchaseOrderReference: Type.Union([PurchaseOrderReference, Type.Null()]),
   },
   { additionalProperties: false },
 );
-export type PersistedCheckoutQuoteV6 = Static<typeof PersistedCheckoutQuoteV6>;
+export type PersistedCheckoutQuoteV7 = Static<typeof PersistedCheckoutQuoteV7>;
 
 /** Union of one. Retained as the stable name readers and writers depend on. */
-export const PersistedCheckoutQuote = Type.Union([PersistedCheckoutQuoteV6]);
+export const PersistedCheckoutQuote = Type.Union([PersistedCheckoutQuoteV7]);
 export type PersistedCheckoutQuote = Static<typeof PersistedCheckoutQuote>;
-export const CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION = 6;
+export const CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION = 7;
 
-/** Strict storage-boundary parser. v6 is the only readable and writable version. */
+/** Strict storage-boundary parser. v7 is the only readable and writable version. */
 export function parsePersistedCheckoutQuote(value: unknown): PersistedCheckoutQuote {
-  if (Value.Check(PersistedCheckoutQuoteV6, value)) return value;
+  if (Value.Check(PersistedCheckoutQuoteV7, value)) return value;
   throw new Error('Invalid persisted checkout quote');
 }
 

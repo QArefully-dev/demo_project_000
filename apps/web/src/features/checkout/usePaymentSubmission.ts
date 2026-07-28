@@ -8,6 +8,7 @@ import {
   type CheckoutEvent,
   type CheckoutState,
 } from './checkoutState';
+import { buildBillingSelection, buildDeliveryDestination } from './checkoutValidation';
 
 function checkoutConflict(error: unknown): CheckoutConflict | null {
   if (!(error instanceof ApiError) || error.status !== 409 || !error.response) return null;
@@ -25,6 +26,9 @@ function checkoutConflict(error: unknown): CheckoutConflict | null {
   ) {
     return { code: 'INSUFFICIENT_STOCK', productIds: response.productIds };
   }
+  if (response.error === 'DELIVERY_SLOT_UNAVAILABLE' && typeof response.earliestDate === 'string') {
+    return { code: 'DELIVERY_SLOT_UNAVAILABLE', earliestDate: response.earliestDate };
+  }
   return null;
 }
 
@@ -32,7 +36,8 @@ type UsePaymentSubmissionArgs = {
   cartId: string | null;
   cartPresent: boolean;
   state: CheckoutState;
-  contactIsValid: boolean;
+  /** Delivery and schedule steps both validate; the payment step is unreachable otherwise. */
+  stepsAreValid: boolean;
   cardIsValid: boolean;
   appliedPromo: string | null;
   dispatch: React.Dispatch<CheckoutEvent>;
@@ -45,7 +50,7 @@ export function usePaymentSubmission({
   cartId,
   cartPresent,
   state,
-  contactIsValid,
+  stepsAreValid,
   cardIsValid,
   appliedPromo,
   dispatch,
@@ -56,7 +61,13 @@ export function usePaymentSubmission({
   return useCallback(async () => {
     if (!cartId || !cartPresent || state.submitting) return;
     dispatch({ type: 'fields-touched', fields: cardFields });
-    if (!contactIsValid || !cardIsValid) return;
+    if (!stepsAreValid || !cardIsValid) return;
+    const deliveryDestination = buildDeliveryDestination(state.delivery);
+    const billingSelection = buildBillingSelection(state.billing);
+    const deliverySlot = state.schedule.slot;
+    // Guarded by `stepsAreValid`; the null checks keep the payload contract-shaped without a cast.
+    if (!deliveryDestination || !billingSelection || !deliverySlot) return;
+    const purchaseOrderReference = state.billing.purchaseOrderReference.trim();
     dispatch({ type: 'submission-started' });
     try {
       const order = await pay({
@@ -64,7 +75,10 @@ export function usePaymentSubmission({
         promoCode: appliedPromo ?? undefined,
         customerName: state.contact.customerName.trim(),
         customerEmail: state.contact.customerEmail.trim(),
-        shippingAddress: state.contact.shippingAddress.trim(),
+        deliveryDestination,
+        billingSelection,
+        deliverySlot,
+        ...(purchaseOrderReference ? { purchaseOrderReference } : {}),
         cardNumber: state.card.cardNumber,
         cardExpiry: state.card.cardExpiry,
         cardCvc: state.card.cardCvc,
@@ -97,9 +111,9 @@ export function usePaymentSubmission({
     cartId,
     cartPresent,
     clearCart,
-    contactIsValid,
     dispatch,
     replaceWithOrder,
     state,
+    stepsAreValid,
   ]);
 }

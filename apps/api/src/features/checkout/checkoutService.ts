@@ -1,6 +1,15 @@
 import { getCart } from '../cart/cartService.js';
 import type { Cart } from '@shop/contracts/cart';
+import type { PostalAddress } from '@shop/contracts/address';
+import type { BillingEntitySnapshot } from '@shop/contracts/trade-account';
 import { CUSTOM_BLEND_FEE_CENTS } from '@shop/contracts';
+import { isSlotBookable } from '../delivery/deliverySlotRules.js';
+import {
+  normalizeOptionalText,
+  normalizePostalAddress,
+  normalizeText,
+} from '../tradeAccount/addressRules.js';
+import { toBillingEntitySnapshot } from '../tradeAccount/billingEntityRepository.js';
 import { normalizeCustomBlendSpec } from '../customBlend/customBlendRules.js';
 import { validateCard, type ValidCard } from '../payments/cardValidation.js';
 import { createSafeFingerprint, type PaymentRecord } from '../payments/paymentRepository.js';
@@ -15,6 +24,7 @@ import type {
   CheckoutParams,
   CheckoutResult,
   CheckoutService,
+  ResolvedCheckoutCommitments,
 } from './checkoutTypes.js';
 
 export type {
@@ -22,6 +32,7 @@ export type {
   CheckoutParams,
   CheckoutResult,
   CheckoutService,
+  ResolvedCheckoutCommitments,
 } from './checkoutTypes.js';
 
 type Preparation = CheckoutResult | { quoteTotalCents: number; card: ValidCard } | { resume: true };
@@ -63,6 +74,82 @@ function replay(
   if (payment.status === 'declined') return { success: false, error: 'DECLINED' };
   if (payment.status === 'timed_out') return { success: false, error: 'TIMEOUT' };
   return { success: false, error: 'CHECKOUT_FAILED' };
+}
+
+/**
+ * Resolves the buyer's delivery and billing commitments server-side and re-validates the submitted
+ * slot, inside the preparation transaction and before any reservation is taken.
+ *
+ * A `saved` selection is loaded from the buyer's own live records: an unknown id, a retired record,
+ * another user's record, and an anonymous checkout all collapse to the same failure so the response
+ * cannot be used to probe which records exist. A client-supplied address is never consulted for a
+ * saved selection.
+ *
+ * The slot is checked against a lead time re-derived from the live cart through the same service
+ * that answered the slot endpoint, so an offered slot and an accepted slot cannot drift.
+ */
+function resolveCommitments(
+  params: CheckoutParams,
+  dependencies: CheckoutDependencies,
+): { resolved: ResolvedCheckoutCommitments } | { failure: CheckoutResult } {
+  const destination = params.deliveryDestination;
+  let deliverySiteId: number | null = null;
+  let deliveryAddress: PostalAddress;
+  if (destination.kind === 'saved') {
+    if (params.userId === null)
+      return { failure: { success: false, error: 'DELIVERY_SITE_NOT_FOUND' } };
+    const siteId = Number(destination.deliverySiteId);
+    const site = dependencies.tradeAccount.sites.get(params.userId, siteId);
+    if (!site.ok) return { failure: { success: false, error: 'DELIVERY_SITE_NOT_FOUND' } };
+    deliverySiteId = siteId;
+    deliveryAddress = site.value.address;
+  } else {
+    // Saved addresses are normalized on the way into storage; an ad-hoc one is normalized here so
+    // both destinations produce the same rendering and the same fingerprint for the same place.
+    deliveryAddress = normalizePostalAddress(destination.address);
+  }
+
+  const billing = params.billingSelection;
+  let billingEntity: BillingEntitySnapshot;
+  if (billing.kind === 'saved') {
+    if (params.userId === null)
+      return { failure: { success: false, error: 'BILLING_ENTITY_INVALID' } };
+    const entity = dependencies.tradeAccount.billingEntities.get(
+      params.userId,
+      Number(billing.billingEntityId),
+    );
+    if (!entity.ok) return { failure: { success: false, error: 'BILLING_ENTITY_INVALID' } };
+    billingEntity = toBillingEntitySnapshot(entity.value);
+  } else {
+    billingEntity = {
+      legalName: normalizeText(billing.billingEntity.legalName),
+      registrationNumber: normalizeOptionalText(billing.billingEntity.registrationNumber),
+      vatNumber: normalizeOptionalText(billing.billingEntity.vatNumber),
+      address: normalizePostalAddress(billing.billingEntity.address),
+    };
+  }
+
+  const options = dependencies.deliverySlots.optionsForCart(params.cartId);
+  if (options === 'CART_NOT_FOUND') return { failure: { success: false, error: 'CART_NOT_FOUND' } };
+  if (!isSlotBookable(params.deliverySlot, options.leadTime, dependencies.clock.now())) {
+    return {
+      failure: {
+        success: false,
+        error: 'DELIVERY_SLOT_UNAVAILABLE',
+        earliestDate: options.leadTime.earliestDate,
+      },
+    };
+  }
+
+  return {
+    resolved: {
+      deliverySiteId,
+      deliveryAddress,
+      billingEntity,
+      deliverySlot: params.deliverySlot,
+      purchaseOrderReference: normalizeOptionalText(params.purchaseOrderReference),
+    },
+  };
 }
 
 function prepare(
@@ -115,6 +202,16 @@ function prepare(
       return failPreparation(
         params.idempotencyKey,
         { success: false, error: 'BELOW_MOQ' },
+        params.auditContext,
+        dependencies,
+      );
+    // Destination, billing party, and slot are settled here: every branch below this point may take
+    // a cart, promo, or inventory reservation, and none of these failures may leave one held.
+    const commitments = resolveCommitments(params, dependencies);
+    if ('failure' in commitments)
+      return failPreparation(
+        params.idempotencyKey,
+        commitments.failure,
         params.auditContext,
         dependencies,
       );
@@ -202,6 +299,7 @@ function prepare(
     const quote = createCheckoutQuote({
       cart,
       checkout: params,
+      resolved: commitments.resolved,
       promo: validPromo,
       createdAt,
       inventoryAllocations,
@@ -349,7 +447,12 @@ export function createCheckoutService(dependencies: CheckoutDependencies): Check
       const prepared = prepare(params, card, dependencies);
       if ('success' in prepared) return prepared;
       if ('resume' in prepared)
-        return resumeFinalization(dependencies, params.idempotencyKey, params.auditContext);
+        return resumeFinalization(
+          dependencies,
+          params.idempotencyKey,
+          params.auditContext,
+          selectedDeliverySiteId(params),
+        );
       const gatewayResult = await dependencies.gateway.process({
         idempotencyKey: params.idempotencyKey,
         amountCents: prepared.quoteTotalCents,
@@ -414,7 +517,12 @@ export function createCheckoutService(dependencies: CheckoutDependencies): Check
           dependencies,
         ) as CheckoutResult;
       }
-      return resumeFinalization(dependencies, params.idempotencyKey, params.auditContext);
+      return resumeFinalization(
+        dependencies,
+        params.idempotencyKey,
+        params.auditContext,
+        selectedDeliverySiteId(params),
+      );
     },
   };
 }
@@ -464,13 +572,25 @@ function terminalizePreparedExpiry(
   return result;
 }
 
+/**
+ * The saved site an order should reference, taken from the request rather than the persisted quote:
+ * the quote snapshots the resolved address, not the record it came from. Safe on the resume path
+ * because the caller reaches it only after the request fingerprint matched the original attempt.
+ */
+function selectedDeliverySiteId(params: CheckoutParams): number | null {
+  return params.deliveryDestination.kind === 'saved'
+    ? Number(params.deliveryDestination.deliverySiteId)
+    : null;
+}
+
 function resumeFinalization(
   dependencies: CheckoutDependencies,
   idempotencyKey: string,
   auditContext: CheckoutParams['auditContext'],
+  deliverySiteId: number | null,
 ): CheckoutResult {
   try {
-    return finalizeAuthorizedCheckout(dependencies, idempotencyKey, auditContext);
+    return finalizeAuthorizedCheckout(dependencies, idempotencyKey, auditContext, deliverySiteId);
   } catch {
     // Authorization was committed separately; preserve it for same-key retry.
     return { success: false, error: 'IDEMPOTENT_IN_PROGRESS' };

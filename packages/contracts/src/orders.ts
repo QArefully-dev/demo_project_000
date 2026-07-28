@@ -1,15 +1,9 @@
 import { Type, type Static } from '@sinclair/typebox';
-import {
-  CustomerName,
-  EmailAddress,
-  MoneyCents,
-  PositiveIntegerString,
-  PromoCodeValue,
-  ShippingAddress,
-  Uuid,
-} from './common.js';
-import { DeliveryClass, DeliveryMode } from './delivery.js';
+import { MoneyCents, PositiveIntegerString, PurchaseOrderReference, Uuid } from './common.js';
+import { DeliveryClass, DeliveryMode, DeliverySlot } from './delivery.js';
 import { CustomBlendSnapshot } from './customBlends.js';
+import { PostalAddress } from './address.js';
+import { BillingEntitySnapshot } from './tradeAccount.js';
 
 const UtcIsoInstant = Type.String({
   minLength: 24,
@@ -121,6 +115,11 @@ export const Order = Type.Object(
     deliveryMode: Type.Optional(DeliveryMode),
     deliveryChargeCents: Type.Optional(Type.Integer({ minimum: 0 })),
     deliveryWeightGrams: Type.Optional(Type.Integer({ minimum: 0 })),
+    // Optional so orders placed before checkout captured these values stay representable.
+    deliveryAddress: Type.Optional(PostalAddress),
+    billingEntity: Type.Optional(BillingEntitySnapshot),
+    deliverySlot: Type.Optional(DeliverySlot),
+    purchaseOrderReference: Type.Optional(PurchaseOrderReference),
   },
   { additionalProperties: false },
 );
@@ -135,6 +134,8 @@ export const OrderSummary = Type.Object(
     totalItems: Type.Integer({ minimum: 0 }),
     hasBackorder: Type.Boolean(),
     createdAt: UtcIsoInstant,
+    // Optional so orders placed before checkout captured a reference stay representable.
+    purchaseOrderReference: Type.Optional(PurchaseOrderReference),
   },
   { additionalProperties: false },
 );
@@ -209,18 +210,6 @@ export const OrderDetailResponse = Type.Object(
   { additionalProperties: false },
 );
 export type OrderDetailResponse = Static<typeof OrderDetailResponse>;
-
-export const PlaceOrderBody = Type.Object(
-  {
-    cartId: Uuid,
-    promoCode: Type.Optional(PromoCodeValue),
-    customerName: CustomerName,
-    customerEmail: EmailAddress,
-    shippingAddress: ShippingAddress,
-  },
-  { additionalProperties: false },
-);
-export type PlaceOrderBody = Static<typeof PlaceOrderBody>;
 
 export const CancelOrderBody = Type.Object(
   { version: NonNegativeVersion, idempotencyKey: Uuid },

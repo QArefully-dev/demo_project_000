@@ -8,11 +8,25 @@ import { Order } from '../src/orders.js';
 import {
   PaymentBody,
   PersistedCheckoutQuote,
-  PersistedCheckoutQuoteV6,
+  PersistedCheckoutQuoteV7,
   parsePersistedCheckoutQuote,
 } from '../src/payments.js';
 
 const uuid = '123e4567-e89b-42d3-a456-426614174000';
+
+const address = {
+  line1: '1 Example Street',
+  city: 'London',
+  postcode: 'EC1A 1BB',
+  countryCode: 'GB',
+};
+
+const billingEntity = {
+  legalName: 'Example Trading Ltd',
+  registrationNumber: null,
+  vatNumber: null,
+  address,
+};
 
 void test('auth transport rejects unconstrained email and password values', () => {
   assert.equal(
@@ -41,7 +55,12 @@ void test('cart and payment transports require UUID identifiers and bounded card
     cartId: uuid,
     customerName: 'Ada Shopper',
     customerEmail: 'ada@example.test',
-    shippingAddress: '1 Example Street, London',
+    deliveryDestination: { kind: 'adhoc', address },
+    billingSelection: {
+      kind: 'adhoc',
+      billingEntity: { legalName: 'Example Trading Ltd', address },
+    },
+    deliverySlot: { date: '2026-08-03', window: 'am' },
     cardNumber: '4242 4242 4242 4242',
     cardExpiry: '12/99',
     cardCvc: '123',
@@ -80,14 +99,15 @@ void test('cart and order transports accept product-only line collections', () =
   assert.equal(Value.Check(Order, { ...emptyOrder, retiredLegacyField: [] }), false);
 });
 
-void test('persisted checkout quotes accept only the strict v6 shape', () => {
-  const v6 = {
-    version: 6,
+void test('persisted checkout quotes accept only the strict v7 shape', () => {
+  const v7 = {
+    version: 7,
     cartId: uuid,
     customer: {
       name: 'Ada Shopper',
       email: 'ada@example.test',
-      shippingAddress: '1 Example Street, London',
+      deliveryAddress: address,
+      shippingAddress: '1 Example Street, London, EC1A 1BB, GB',
     },
     userId: null,
     promoCode: null,
@@ -104,16 +124,19 @@ void test('persisted checkout quotes accept only the strict v6 shape', () => {
       reason: 'Under threshold',
     },
     inventoryAllocations: [{ productId: '1', reservedQuantity: 1, backorderedQuantity: 0 }],
+    billingEntity,
+    deliverySlot: { date: '2026-08-03', window: 'am' },
+    purchaseOrderReference: null,
   };
 
-  assert.equal(Value.Check(PersistedCheckoutQuoteV6, v6), true);
-  assert.equal(Value.Check(PersistedCheckoutQuote, v6), true);
-  assert.deepEqual(parsePersistedCheckoutQuote(v6), v6);
+  assert.equal(Value.Check(PersistedCheckoutQuoteV7, v7), true);
+  assert.equal(Value.Check(PersistedCheckoutQuote, v7), true);
+  assert.deepEqual(parsePersistedCheckoutQuote(v7), v7);
   assert.equal(
-    Value.Check(PersistedCheckoutQuoteV6, { ...v6, unexpectedPersistedField: true }),
+    Value.Check(PersistedCheckoutQuoteV7, { ...v7, unexpectedPersistedField: true }),
     false,
   );
-  assert.throws(() => parsePersistedCheckoutQuote({ ...v6, unexpectedPersistedField: true }));
+  assert.throws(() => parsePersistedCheckoutQuote({ ...v7, unexpectedPersistedField: true }));
 });
 
 void test('current-user transport contract accepts public user or null', () => {

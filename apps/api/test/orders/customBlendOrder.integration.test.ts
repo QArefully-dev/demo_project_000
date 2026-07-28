@@ -9,6 +9,7 @@ import { CUSTOM_BLEND_FEE_CENTS, SACK_WEIGHT_GRAMS } from '@shop/contracts';
 import { OrderDetailResponse, type OrderLineItem } from '@shop/contracts/orders';
 import { buildApp } from '../../src/app.js';
 import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { adhocBilling, adhocDestination, bookableSlot } from '../checkout/checkoutDepthFixtures.js';
 
 type App = Awaited<ReturnType<typeof buildApp>>;
 
@@ -145,7 +146,9 @@ async function pay(
       cartId,
       customerName: 'Blend Buyer',
       customerEmail: 'blend@example.test',
-      shippingAddress: '1 Test Street',
+      deliveryDestination: adhocDestination,
+      billingSelection: adhocBilling,
+      deliverySlot: bookableSlot(),
       cardNumber: '4242 4242 4242 4242',
       cardExpiry: '12/99',
       cardCvc: '123',
@@ -408,7 +411,9 @@ void test('a promotion prorates on discountable totals, never on the blending fe
       promoCode: 'SAVE10',
       customerName: 'Blend Buyer',
       customerEmail: 'blend@example.test',
-      shippingAddress: '1 Test Street',
+      deliveryDestination: adhocDestination,
+      billingSelection: adhocBilling,
+      deliverySlot: bookableSlot(),
       cardNumber: '4242 4242 4242 4242',
       cardExpiry: '12/99',
       cardCvc: '123',

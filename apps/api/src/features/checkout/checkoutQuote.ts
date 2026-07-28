@@ -1,11 +1,12 @@
 import type { Cart } from '@shop/contracts/cart';
 import {
   CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION,
-  type PersistedCheckoutQuoteV6,
+  type PersistedCheckoutQuoteV7,
 } from '@shop/contracts/payments';
+import { formatPostalAddress } from '@shop/contracts/address';
 import { calculateDiscount, type ValidPromo } from '../promos/promoService.js';
 import type { PersistedCheckoutQuote } from '../payments/paymentRepository.js';
-import type { CheckoutParams } from './checkoutTypes.js';
+import type { CheckoutParams, ResolvedCheckoutCommitments } from './checkoutTypes.js';
 import type { InventoryReservationAllocation } from '../inventory/inventoryTypes.js';
 import { quoteCartDelivery } from '../delivery/deliveryRules.js';
 
@@ -13,6 +14,8 @@ import { quoteCartDelivery } from '../delivery/deliveryRules.js';
 export function createCheckoutQuote(params: {
   cart: Cart;
   checkout: CheckoutParams;
+  /** Server-resolved destination, billing party, slot, and buyer reference. */
+  resolved: ResolvedCheckoutCommitments;
   promo: ValidPromo | undefined;
   createdAt: string;
   inventoryAllocations: readonly InventoryReservationAllocation[];
@@ -24,7 +27,7 @@ export function createCheckoutQuote(params: {
       })
     : 0;
 
-  const variantLines: PersistedCheckoutQuoteV6['variantLines'] = params.cart.items.map((item) => {
+  const variantLines: PersistedCheckoutQuoteV7['variantLines'] = params.cart.items.map((item) => {
     const snap = item.variantSnap;
     const line = {
       productId: item.productId,
@@ -59,7 +62,10 @@ export function createCheckoutQuote(params: {
     customer: {
       name: params.checkout.customerName.trim(),
       email: params.checkout.customerEmail.trim().toLowerCase(),
-      shippingAddress: params.checkout.shippingAddress.trim(),
+      deliveryAddress: params.resolved.deliveryAddress,
+      // The legacy free-text address is rendered here and nowhere else, so the structured value
+      // and the flat `orders.shipping_address` column can never disagree.
+      shippingAddress: formatPostalAddress(params.resolved.deliveryAddress),
     },
     userId: params.checkout.userId,
     promoCode: params.promo?.code ?? null,
@@ -74,6 +80,9 @@ export function createCheckoutQuote(params: {
       reservedQuantity: allocation.reservedQuantity,
       backorderedQuantity: allocation.backorderedQuantity,
     })),
+    billingEntity: params.resolved.billingEntity,
+    deliverySlot: params.resolved.deliverySlot,
+    purchaseOrderReference: params.resolved.purchaseOrderReference,
     createdAt: params.createdAt,
   };
 }

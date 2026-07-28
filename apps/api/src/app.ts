@@ -83,6 +83,31 @@ import {
   type CustomBlendService,
 } from './features/customBlend/customBlendService.js';
 import customBlendRoutes from './routes/customBlends.js';
+import tradeAccountRoutes from './routes/tradeAccount.js';
+import deliverySlotRoutes from './routes/deliverySlots.js';
+import { createDeliverySiteRepository } from './features/tradeAccount/deliverySiteRepository.js';
+import {
+  createDeliverySiteService,
+  type DeliverySiteService,
+} from './features/tradeAccount/deliverySiteService.js';
+import { createBillingEntityRepository } from './features/tradeAccount/billingEntityRepository.js';
+import {
+  createBillingEntityService,
+  type BillingEntityService,
+} from './features/tradeAccount/billingEntityService.js';
+import {
+  createDeliverySlotService,
+  type DeliverySlotService,
+} from './features/delivery/deliverySlotService.js';
+
+/**
+ * The buyer's saved trade records, grouped because they are always wired, injected, and consumed
+ * as one account surface (routes and checkout both need both halves).
+ */
+export interface TradeAccountServices {
+  sites: DeliverySiteService;
+  billingEntities: BillingEntityService;
+}
 
 export interface AppDependencies {
   db: Database.Database;
@@ -111,6 +136,8 @@ export interface AppServices {
   inventoryUnitOfWork: UnitOfWork;
   returns: ReturnService;
   customBlends: CustomBlendService;
+  tradeAccount: TradeAccountServices;
+  deliverySlots: DeliverySlotService;
   clock: Clock;
 }
 
@@ -129,6 +156,24 @@ function createAppServices(dependencies: AppDependencies): AppServices {
   });
   const auditRepository = createAuditRepository(dependencies.db);
   const audit = createAuditWriter({ repository: auditRepository, clock });
+  // Hoisted: the slot service reads carts through the same cart service the routes use, so the
+  // slot quote can never see a different view of a cart than the cart endpoints do.
+  const cartService = createCartService(carts, { unitOfWork, audit }, { inventory, clock });
+  // Hoisted: checkout resolves saved destinations and re-validates slots through the very same
+  // service instances the account and slot routes answer from, so no second view can exist.
+  const tradeAccount: TradeAccountServices = {
+    sites: createDeliverySiteService({
+      repository: createDeliverySiteRepository(dependencies.db),
+      unitOfWork,
+      clock,
+    }),
+    billingEntities: createBillingEntityService({
+      repository: createBillingEntityRepository(dependencies.db),
+      unitOfWork,
+      clock,
+    }),
+  };
+  const deliverySlots = createDeliverySlotService({ cart: cartService, clock });
   return {
     auth: createAuthService({
       users: createUserRepository(dependencies.db),
@@ -153,7 +198,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     }),
     mailbox,
     products: createProductService(products, { clock }),
-    carts: createCartService(carts, { unitOfWork, audit }, { inventory, clock }),
+    carts: cartService,
     promos: createPromoService({ promos, carts, clock }),
     orders: createOrderService({ repository: orders, unitOfWork, clock, audit, inventory }),
     orderAccess: createOrderAccessService({
@@ -173,6 +218,8 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       products,
       audit,
       inventory,
+      tradeAccount,
+      deliverySlots,
     }),
     favourites: createFavouritesService(createFavouritesRepository(dependencies.db)),
     bundles: createBundleService({
@@ -206,6 +253,8 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       },
     }),
     customBlends: createCustomBlendService(createCustomBlendRepository(dependencies.db)),
+    tradeAccount,
+    deliverySlots,
     clock,
     audit: createAuditReadService(auditRepository),
   };
@@ -259,6 +308,8 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(returnsRoutes, context);
   await app.register(adminReturnsRoutes, context);
   await app.register(customBlendRoutes, context);
+  await app.register(tradeAccountRoutes, context);
+  await app.register(deliverySlotRoutes, context);
 
   return app;
 }

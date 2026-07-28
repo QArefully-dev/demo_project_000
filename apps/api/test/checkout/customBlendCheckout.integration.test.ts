@@ -26,6 +26,12 @@ import { createCustomBlendRepository } from '../../src/features/customBlend/cust
 import { createCustomBlendService } from '../../src/features/customBlend/customBlendService.js';
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
+import {
+  adhocBilling,
+  adhocDestination,
+  bookableSlot,
+  checkoutDepthDependencies,
+} from './checkoutDepthFixtures.js';
 import { createMailboxRepository } from '../../src/features/mailbox/mailboxRepository.js';
 import { createOrderRepository } from '../../src/features/orders/orderRepository.js';
 import type { PaymentGateway } from '../../src/features/payments/paymentGateway.js';
@@ -97,6 +103,7 @@ function services(db: Database.Database, gateway: PaymentGateway) {
       products: createProductRepository(db),
       audit,
       inventory: createInventoryService({ repository: createInventoryRepository(db) }),
+      ...checkoutDepthDependencies(db, clock),
     }),
   };
 }
@@ -107,7 +114,9 @@ function paymentParams(cartId: string, idempotencyKey: string, promoCode?: strin
     ...(promoCode ? { promoCode } : {}),
     customerName: 'Blend Buyer',
     customerEmail: 'blend@example.test',
-    shippingAddress: '1 Test Street',
+    deliveryDestination: adhocDestination,
+    billingSelection: adhocBilling,
+    deliverySlot: bookableSlot(new Date('2026-07-25T10:00:00.000Z')),
     cardNumber: '4242 4242 4242 4242',
     cardExpiry: '12/99',
     cardCvc: '123',
@@ -385,7 +394,9 @@ void test('payment route maps a stale Custom Blend line to a 409 conflict', asyn
       cartId,
       customerName: 'Blend Buyer',
       customerEmail: 'blend@example.test',
-      shippingAddress: '1 Test Street',
+      deliveryDestination: adhocDestination,
+      billingSelection: adhocBilling,
+      deliverySlot: bookableSlot(),
       cardNumber: '4242 4242 4242 4242',
       cardExpiry: '12/99',
       cardCvc: '123',

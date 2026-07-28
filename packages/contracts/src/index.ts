@@ -1,5 +1,7 @@
 export { CONTRACTS_VERSION } from './version.js';
 export * from './common.js';
+export * from './address.js';
+export * from './tradeAccount.js';
 export * from './products.js';
 export * from './pricing.js';
 export * from './customBlends.js';

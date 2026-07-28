@@ -6,6 +6,7 @@ import test from 'node:test';
 import { buildApp } from '../../src/app.js';
 import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import { createOrderRepository } from '../../src/features/orders/orderRepository.js';
+import { adhocBilling, adhocDestination, bookableSlot } from '../checkout/checkoutDepthFixtures.js';
 
 function cookieValue(response: { headers: Record<string, string | string[] | undefined> }): string {
   const header = response.headers['set-cookie'];
@@ -297,7 +298,9 @@ void test('guest payment grants an exact-order, expiring capability cookie', asy
       cartId,
       customerName: 'Guest Buyer',
       customerEmail: 'guest@example.test',
-      shippingAddress: '1 Guest Street',
+      deliveryDestination: adhocDestination,
+      billingSelection: adhocBilling,
+      deliverySlot: bookableSlot(),
       cardNumber: '4242 4242 4242 4242',
       cardExpiry: '12/99',
       cardCvc: '123',
@@ -324,7 +327,9 @@ void test('guest payment grants an exact-order, expiring capability cookie', asy
       cartId,
       customerName: 'Changed Guest',
       customerEmail: 'guest@example.test',
-      shippingAddress: '1 Guest Street',
+      deliveryDestination: adhocDestination,
+      billingSelection: adhocBilling,
+      deliverySlot: bookableSlot(),
       cardNumber: '4242 4242 4242 4242',
       cardExpiry: '12/99',
       cardCvc: '123',

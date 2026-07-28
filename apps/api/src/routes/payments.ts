@@ -35,7 +35,10 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
         promoCode: request.body.promoCode,
         customerName: request.body.customerName,
         customerEmail: request.body.customerEmail,
-        shippingAddress: request.body.shippingAddress,
+        deliveryDestination: request.body.deliveryDestination,
+        billingSelection: request.body.billingSelection,
+        deliverySlot: request.body.deliverySlot,
+        purchaseOrderReference: request.body.purchaseOrderReference,
         cardNumber: request.body.cardNumber,
         cardExpiry: request.body.cardExpiry,
         cardCvc: request.body.cardCvc,
@@ -77,6 +80,21 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
           return;
         case 'PROMO_INVALID':
           sendBadRequest(reply, result.promoError ?? 'Invalid or ineligible promo code');
+          return;
+        // Both resolution failures answer 400 with one message each. A saved record that is
+        // unknown, retired, or another buyer's must be indistinguishable from here.
+        case 'DELIVERY_SITE_NOT_FOUND':
+          sendBadRequest(reply, 'Selected delivery site is not available');
+          return;
+        case 'BILLING_ENTITY_INVALID':
+          sendBadRequest(reply, 'Selected billing details are not available');
+          return;
+        case 'DELIVERY_SLOT_UNAVAILABLE':
+          // Same conflict class as stock shortfall: well-formed request, the buyer must rebook.
+          // The freshly derived earliest date travels with it so the picker can recover in place.
+          reply
+            .code(409)
+            .send({ error: 'DELIVERY_SLOT_UNAVAILABLE', earliestDate: result.earliestDate });
           return;
         case 'DECLINED':
           sendPaymentError(reply, 'Payment failed', 'CARD_DECLINED');
