@@ -1,6 +1,6 @@
 # Demo Project High-Level Plan
 
-Status: current product direction. Last refresh 2026-07-28 @ `ec37390` (branch `materials_exchange_refactor`).
+Status: current product direction. Last refresh 2026-07-29 @ `88fca8a` (branch `materials_exchange_refactor`).
 
 ## Direction Change
 
@@ -81,7 +81,7 @@ Avoid visible platform complexity:
 - seed: 100 deterministic products across 6 categories (Sports Nutrition 20, Baking & Pantry 20, Drinks 15, Household & Cleaning 15, Garden & Outdoors 15, Trade & Creative Materials 15), each carrying a nullable `mixingGroup` from a fixed set of eight (`food-grade`, `cleaning`, `garden-treatment`, `cementitious-materials`, `casting-materials`, `pigments`, `theatrical-effects`, `absorbents`) validated in `packages/catalog`, plus users, promotions including `GARDEN10` and `CLEANFIVE`, active/expired/future clearance fixtures, favourites, catalog metadata, curated bundles, and inventory/backorder scenarios
 - tests: focused unit, contract, route, SQLite integration, React integration, and accessibility coverage; broad E2E coverage reserved for course
 - completed expansion records under `plans/old/`: `powder_shop_catalog_expansion_plan.md`, `inventory_coding_plan.md`, `returns_and_refunds_coding_plan.md`, `order_history_and_lifecycle_coding_plan.md`, `review_depth_coding_plan.md`, `materials_exchange_gap_closure_coding_plan.md`, `catalog_bag_colour_schemes_and_pigments_coding_plan.md`, `powderizer_removal_coding_plan.md`, `heavy_duty_sack_prototypes.html`
-- completed plan records for Custom Blend (16) and Checkout depth (4) are no longer on disk; implementation truth is the code, migrations `022`-`023`, and commits `f63e9bf` / `b1957ba`
+- completed plan records for Custom Blend (16), Checkout depth (4), and Pricing and promotions (5) are not tracked; implementation truth is the code, migrations `022`-`024`, and commits `f63e9bf` / `b1957ba` / `b537512`
 
 ## Hard Constraints
 
@@ -138,13 +138,16 @@ Precursor B2B rebrand pass: COMPLETE. Brand/copy, sack/pallet unit model, `£/to
    - schema: migration `023` adds trade delivery sites, billing entities, and order delivery/billing columns
    - dropped (B2B pivot): gift options; parcel/express delivery-method choice (all lots pallet freight; `deliveryClass` enum retained but seeded `freight`)
    - QA surface, live: lead-time boundary vs slot cutoff, slot no longer bookable between quote and payment, address normalisation and default-site selection, PO reference validation, idempotent payment replay carrying delivery/billing detail
-5. Pricing and promotions: delivered slices
+5. Pricing and promotions: completed
+   - landed 2026-07-29 (`b537512`), merged `bc87973`
+   - schema: migration `024` adds variant clearance windows, promo category scope, and order discount-base columns
    - completed: percentage and fixed discounts, start/end scheduling, item/subtotal gates, global and per-user limits, reservation-safe redemption
    - completed: MOQ + qty-break tier engine replacing flat variant price; exact-boundary, rounding, next-tier-progress, and MOQ-shortfall coverage
    - completed: active clearance windows feed list-price replacement -> tier -> promo; catalog, product, cart, checkout, persisted V8 quotes, and orders use server-resolved pricing
    - completed: category-scoped promo codes calculate gates and discounts on matching material lines only; `CATEGORY_MISMATCH`, eligible subtotal, scope, and discount base are surfaced through checkout and orders
    - completed: discountable subtotal split, so the Custom Blend fee (16) is excluded from promo and tier maths; freight remains outside promo discounts
-   - remaining: promotion/clearance administration UI belongs to Secondary admin (9); multiple promotion codes, automatic category offers, RFQ/persisted quotes, trade-account net pricing, and login-to-see-price remain out of scope
+   - out of scope: promotion/clearance administration UI belongs to Secondary admin (9); multiple promotion codes, automatic category offers, RFQ/persisted quotes, trade-account net pricing, and login-to-see-price not delivered
+   - QA surface, live: clearance window boundaries at the request clock, clearance -> tier -> promo stacking order, `CATEGORY_MISMATCH` on a scoped code, eligible-subtotal gates on mixed-category carts, promo/tier leakage onto freight, delivery slots, or the Custom Blend fee, rounding drift on non-round line weights
    - dropped (B2B pivot): gift cards, loyalty points
    - rejected, do not re-add: RFQ/persisted quotes, trade-account net-price tiering, login-to-see-price
 6. Review depth: completed
@@ -203,9 +206,11 @@ Precursor B2B rebrand pass: COMPLETE. Brand/copy, sack/pallet unit model, `£/to
 
 Items 12-15 replace the retired 11. They compose as one line of work -> order -> save as list -> reorder -> notify. All funnel through the same multi-line cart-add path, so 13-15 are cheap once 12 lands. Together they set up standing/repeat orders under 8 without committing to it now. 16 sat outside that chain and has consumed the nav slot; 12-15 remain reachable from order history, account, and catalog surfaces without new nav entries.
 
-Landed 16 constrains later work: cart and order lines now key on variant plus `configKey`, and line totals separate a discountable material subtotal from a non-discountable blending fee. Items 5 and 12-14 must respect both -> multi-line cart-add paths carry blend identity, and promotion/tier maths applies to the material subtotal only. 4 already respects both.
+Landed 16 constrains later work: cart and order lines now key on variant plus `configKey`, and line totals separate a discountable material subtotal from a non-discountable blending fee. Items 12-14 must respect both -> multi-line cart-add paths carry blend identity. 4 and 5 already respect both.
 
-Landed 4 constrains later work: checkout now resolves a delivery site, billing entity, delivery slot, and PO reference before payment. Items 5, 8, and 12 must carry that context -> total recalculation keeps the freight charge and slot selection intact, reorder (12) re-enters checkout without assuming a bare address form, and any scheduling in 8 reuses the lead-time rules rather than forking them.
+Landed 4 constrains later work: checkout now resolves a delivery site, billing entity, delivery slot, and PO reference before payment. Items 8 and 12 must carry that context -> total recalculation keeps the freight charge and slot selection intact, reorder (12) re-enters checkout without assuming a bare address form, and any scheduling in 8 reuses the lead-time rules rather than forking them. 5 already carries it.
+
+Landed 5 constrains later work: pricing is server-resolved as clearance -> tier -> promo over the material subtotal only, and checkout/order snapshots are strict V8 carrying promo scope plus discount base. Items 12-14 must re-resolve price from the server on every cart add rather than trusting a stored line price (price-drift disclosure in 12 reads the resolved figure); 9 administration UI writes clearance windows and promo scope through the same rules; 10 currency work extends the existing minor-unit money path, never a parallel one.
 
 ### Sequencing Guidelines
 
@@ -213,20 +218,18 @@ Readiness favors `partial` items with self-contained remaining slices over green
 
 Recommended order:
 
-1. Pricing and promotions (5). Riskiest money path (stacking, rounding); checkout money path is now settled by landed 4, so this is next.
-2. Parallel: Account depth (7, remaining session/preferences/export/deletion slices) and Secondary admin (9). Both extend existing subsystems (auth/session; moderation + audit API) with additive, mostly disjoint boundaries. Assign the shared user/session domain lane (account deletion, session revocation in 7 vs. user management in 9) to a single owner to avoid conflicting edits.
-3. Then Async behavior (8), Country localisation (10).
+1. Parallel: Account depth (7, remaining session/preferences/export/deletion slices) and Secondary admin (9). Both extend existing subsystems (auth/session; moderation + audit API) with additive, mostly disjoint boundaries. Assign the shared user/session domain lane (account deletion, session revocation in 7 vs. user management in 9) to a single owner to avoid conflicting edits.
+2. Reorder chain (12 -> 13 -> 14), now unblocked with the money path settled. Build 12 first; 13 and 14 reuse its multi-line cart-add path.
+3. Then Async behavior (8), Country localisation (10). Back-in-stock (15) waits on 8.
 
-Custom Small Order retirement (11), Custom Blend (16), and Checkout depth (4) are complete. 16 landed before 4, taking 11's freed nav slot and Custom Blend CSS; 4 then landed on the settled money path.
-
-Reorder chain (12 -> 13 -> 14) sits outside the money path -> safe before or alongside 5. Build 12 first; 13 and 14 reuse its multi-line cart-add path. Back-in-stock (15) waits on 8.
+Custom Small Order retirement (11), Custom Blend (16), Checkout depth (4), and Pricing and promotions (5) are complete. 16 landed before 4, taking 11's freed nav slot and Custom Blend CSS; 4 then landed on the settled checkout path, and 5 closed the money path.
 
 Parallelization rules:
 
 - Safe: 7 + 9 concurrently, with the shared user/session lane owned by one side only.
 - Resolved: 4 landed the delivery-site/address model itself rather than consuming it from 7. Remaining 7 work no longer blocks anything in 4. Company accounts + approver roles (7) still gate any later order-approval threshold at checkout.
-- Resolved: 4 and 5 were serialized on the server-side total path (freight charge, tier discounts, MOQ validation, blending-fee exclusion, rounding). 4 is landed, so 5 now owns that path alone; no other in-flight item may mutate it concurrently.
-- Defer 10 until 4 and 5 stabilize the money path; it touches currency, availability, and policy across nearly everything.
+- Resolved: 4 and 5 were serialized on the server-side total path (freight charge, tier discounts, MOQ validation, blending-fee exclusion, rounding). Both are landed, so the money path is settled; later items consume server-resolved pricing rather than re-deriving it.
+- 10 is now unblocked by the money path (4 and 5 landed) but still touches currency, availability, and policy across nearly everything -> keep it after 7/9 and the reorder chain.
 
 ## Agentic AI and QA Surface
 
@@ -298,7 +301,7 @@ Keep suite focused, stable, fast, and obvious. Test only critical happy paths, i
 
 Target: 150k+ meaningful authored LOC. Report production and test LOC separately.
 
-Measured 2026-07-28 @ `ec37390` (tracked `apps/**` + `packages/**`, `*.ts|*.tsx|*.css|*.sql`, excluding `node_modules`, `dist`, `coverage`): production ~47.2k across 332 files; test ~32.5k across 144 files; total ~79.7k. Roughly 53% of target -> expansion items 5, 7-10, and 12-15 carry remaining growth.
+Measured 2026-07-28 @ `ec37390` (tracked `apps/**` + `packages/**`, `*.ts|*.tsx|*.css|*.sql`, excluding `node_modules`, `dist`, `coverage`): production ~47.2k across 332 files; test ~32.5k across 144 files; total ~79.7k. Roughly 53% of target -> expansion items 7-10 and 12-15 carry remaining growth.
 
 Suggested allocation:
 
