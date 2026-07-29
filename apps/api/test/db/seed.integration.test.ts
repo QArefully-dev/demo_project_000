@@ -969,3 +969,93 @@ void test('seed preserves local product ID 51 outside canonical sets', (t) => {
   };
   assert.deepEqual(local, { id: 51, name: 'Local 51', price_cents: 500 });
 });
+
+void test('seed installs deterministic clearance windows and category-scoped promos', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-pricing-promotions-seed-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+  const clearances = () =>
+    db
+      .prepare(
+        `SELECT sku, price_cents, clearance_price_cents, clearance_starts_at, clearance_ends_at
+         FROM product_variants
+         WHERE sku IN ('GDN-1043-001', 'HCL-1038-001', 'TCM-1049-001')
+         ORDER BY sku`,
+      )
+      .all();
+  const scopedPromos = () =>
+    db
+      .prepare(
+        `SELECT code, kind, discount_percent, amount_cents, category_scope
+         FROM promo_codes WHERE code IN ('GARDEN10', 'CLEANFIVE') ORDER BY code`,
+      )
+      .all();
+
+  const firstClearances = clearances();
+  assert.deepEqual(firstClearances, [
+    {
+      sku: 'GDN-1043-001',
+      price_cents: 27540,
+      clearance_price_cents: 24000,
+      clearance_starts_at: '2026-07-21T12:00:00.000Z',
+      clearance_ends_at: '2026-08-04T12:00:00.000Z',
+    },
+    {
+      sku: 'HCL-1038-001',
+      price_cents: 8940,
+      clearance_price_cents: 7200,
+      clearance_starts_at: '2026-07-07T12:00:00.000Z',
+      clearance_ends_at: '2026-07-27T12:00:00.000Z',
+    },
+    {
+      sku: 'TCM-1049-001',
+      price_cents: 14340,
+      clearance_price_cents: 12000,
+      clearance_starts_at: '2026-07-29T12:00:00.000Z',
+      clearance_ends_at: '2026-08-11T12:00:00.000Z',
+    },
+  ]);
+  assert.ok(
+    firstClearances.every(
+      (row) =>
+        (row as { clearance_price_cents: number; price_cents: number }).clearance_price_cents <
+        (row as { clearance_price_cents: number; price_cents: number }).price_cents,
+    ),
+  );
+  assert.deepEqual(scopedPromos(), [
+    {
+      code: 'CLEANFIVE',
+      kind: 'fixed',
+      discount_percent: 0,
+      amount_cents: 500,
+      category_scope: 'Household & Cleaning',
+    },
+    {
+      code: 'GARDEN10',
+      kind: 'percent',
+      discount_percent: 10,
+      amount_cents: null,
+      category_scope: 'Garden & Outdoors',
+    },
+  ]);
+
+  db.prepare(
+    `INSERT INTO promo_codes (code, discount_percent, min_item_count, active, category_scope)
+     VALUES ('LOCAL-SCOPE', 1, 0, 1, 'Drinks')`,
+  ).run();
+  seedDatabase(db);
+  assert.deepEqual(clearances(), firstClearances);
+  assert.equal(
+    (
+      db.prepare("SELECT category_scope FROM promo_codes WHERE code = 'LOCAL-SCOPE'").get() as {
+        category_scope: string;
+      }
+    ).category_scope,
+    'Drinks',
+  );
+});

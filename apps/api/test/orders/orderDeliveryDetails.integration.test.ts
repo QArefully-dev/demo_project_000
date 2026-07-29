@@ -83,6 +83,9 @@ void test('order delivery, billing, slot, and reference persistence', async (t) 
         billingEntity,
         deliverySlot: { date: '2026-08-03', window: 'pm' },
         purchaseOrderReference: 'PO-4417',
+        promoApplied: 'GARDEN10',
+        promoCategoryScope: 'Garden & Outdoors',
+        discountBaseCents: 4_000,
       }),
     );
     const order = repository.findById(orderId);
@@ -91,6 +94,8 @@ void test('order delivery, billing, slot, and reference persistence', async (t) 
     assert.deepEqual(order.billingEntity, billingEntity);
     assert.deepEqual(order.deliverySlot, { date: '2026-08-03', window: 'pm' });
     assert.equal(order.purchaseOrderReference, 'PO-4417');
+    assert.equal(order.promoCategoryScope, 'Garden & Outdoors');
+    assert.equal(order.discountBaseCents, 4_000);
     assert.equal(Value.Check(Order, order), true);
   });
 
@@ -103,6 +108,8 @@ void test('order delivery, billing, slot, and reference persistence', async (t) 
     assert.equal(order.billingEntity, undefined);
     assert.equal(order.deliverySlot, undefined);
     assert.equal(order.purchaseOrderReference, undefined);
+    assert.equal(order.promoCategoryScope, undefined);
+    assert.equal(order.discountBaseCents, undefined);
     assert.equal(Value.Check(Order, order), true);
   });
 

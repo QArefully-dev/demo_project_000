@@ -188,8 +188,11 @@ export function CheckoutPage() {
           promoCode={flow.promoCode}
           appliedPromo={flow.appliedPromo}
           discountCents={flow.discountCents}
+          discountBaseCents={flow.discountBaseCents}
+          promoCategoryScope={flow.promoCategoryScope}
           totalCents={flow.totalCents}
           promoError={flow.promoError}
+          promoErrorCode={flow.promoErrorCode}
           promoValidating={flow.promoValidating}
           isPromoEligible={flow.isPromoEligible}
           destinationSummary={flow.destinationSummary}

@@ -164,14 +164,7 @@ const PersistedCheckoutVariantLine = Type.Object(
   { additionalProperties: false },
 );
 
-/**
- * The only persisted checkout quote shape. Variant-scoped lines, delivery summary, the inventory
- * split, and the B2B delivery/billing commitments fixed before gateway authorization.
- *
- * The version integer advances to `7` rather than restarting at `1`: it is written into stored
- * JSON, and a number no earlier writer ever emitted means a stale blob can never be read as
- * current. Never reuse or restart this integer.
- */
+/** Historical V7 schema retained for callers that reference its transport type. */
 export const PersistedCheckoutQuoteV7 = Type.Object(
   {
     version: Type.Literal(7),
@@ -187,14 +180,37 @@ export const PersistedCheckoutQuoteV7 = Type.Object(
 );
 export type PersistedCheckoutQuoteV7 = Static<typeof PersistedCheckoutQuoteV7>;
 
-/** Union of one. Retained as the stable name readers and writers depend on. */
-export const PersistedCheckoutQuote = Type.Union([PersistedCheckoutQuoteV7]);
-export type PersistedCheckoutQuote = Static<typeof PersistedCheckoutQuote>;
-export const CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION = 7;
+/**
+ * The only persisted checkout quote shape. V8 records the base eligible for a promo discount,
+ * the category that scoped it, and the V7 checkout commitments. The version integer advances to
+ * `8` rather than restarting at `1`: it is written into stored JSON, and a number no earlier
+ * writer emitted means a stale blob can never be read as current. Never reuse or restart it.
+ */
+export const PersistedCheckoutQuoteV8 = Type.Object(
+  {
+    version: Type.Literal(8),
+    ...PersistedCheckoutQuoteFields,
+    discountBaseCents: MoneyCents,
+    promoCategoryScope: Type.Union([Type.String({ minLength: 1, maxLength: 100 }), Type.Null()]),
+    variantLines: Type.Array(PersistedCheckoutVariantLine),
+    deliverySummary: DeliverySummary,
+    inventoryAllocations: Type.Array(PersistedInventoryAllocation),
+    billingEntity: BillingEntitySnapshot,
+    deliverySlot: DeliverySlot,
+    purchaseOrderReference: Type.Union([PurchaseOrderReference, Type.Null()]),
+  },
+  { additionalProperties: false },
+);
+export type PersistedCheckoutQuoteV8 = Static<typeof PersistedCheckoutQuoteV8>;
 
-/** Strict storage-boundary parser. v7 is the only readable and writable version. */
+/** Union of one. Retained as the stable name readers and writers depend on. */
+export const PersistedCheckoutQuote = Type.Union([PersistedCheckoutQuoteV8]);
+export type PersistedCheckoutQuote = Static<typeof PersistedCheckoutQuote>;
+export const CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION = 8;
+
+/** Strict storage-boundary parser. V8 is the only readable and writable version. */
 export function parsePersistedCheckoutQuote(value: unknown): PersistedCheckoutQuote {
-  if (Value.Check(PersistedCheckoutQuoteV7, value)) return value;
+  if (Value.Check(PersistedCheckoutQuoteV8, value)) return value;
   throw new Error('Invalid persisted checkout quote');
 }
 

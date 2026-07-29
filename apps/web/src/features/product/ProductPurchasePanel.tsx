@@ -33,6 +33,15 @@ function minimumOrderUnits(variant: CatalogVariant): number {
   return Math.ceil((variant.moqSacks * SACK_WEIGHT_GRAMS) / variant.weightGrams);
 }
 
+function clearanceEndLabel(endsAt: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(endsAt));
+}
+
 function VariantSelector({
   variants,
   selectedVariantId,
@@ -55,6 +64,7 @@ function VariantSelector({
           const isBackorder = v.active && v.stockCount === 0 && v.backorderable;
           const isFreight = v.deliveryClass === 'freight';
           const hasSale = v.compareAtPriceCents != null && v.compareAtPriceCents > v.priceCents;
+          const clearance = v.clearance;
 
           return (
             <label
@@ -87,7 +97,16 @@ function VariantSelector({
                 </div>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
                   <span className="font-semibold text-foreground">
-                    {hasSale ? (
+                    {clearance ? (
+                      <>
+                        <span className="text-sale">
+                          Clearance price {formatMoney(clearance.priceCents)}
+                        </span>{' '}
+                        <span className="text-xs font-normal text-muted-foreground line-through">
+                          {formatMoney(v.priceCents)}
+                        </span>
+                      </>
+                    ) : hasSale ? (
                       <>
                         <span className="text-sale">Pack price {formatMoney(v.priceCents)}</span>{' '}
                         <span className="text-xs font-normal text-muted-foreground line-through">
@@ -98,7 +117,7 @@ function VariantSelector({
                       <>Pack price {formatMoney(v.priceCents)}</>
                     )}
                   </span>
-                  <span>{formatMoney(v.perTonneCents)} / tonne</span>
+                  <span>{formatMoney(clearance?.perTonneCents ?? v.perTonneCents)} / tonne</span>
                   <span className="inline-flex items-center gap-1">
                     <Package className="size-3.5" />
                     SKU: {v.sku}
@@ -110,6 +129,14 @@ function VariantSelector({
                       : `${v.weightGrams} g`}
                   </span>
                 </div>
+                {clearance && (
+                  <p
+                    className="text-xs font-medium text-sale"
+                    aria-label={`Clearance ends ${clearanceEndLabel(clearance.endsAt)}`}
+                  >
+                    Clearance ends {clearanceEndLabel(clearance.endsAt)}
+                  </p>
+                )}
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                   {isOutOfStock ? (
                     <span className="inline-flex items-center gap-1 font-medium text-destructive">
@@ -177,6 +204,7 @@ export function ProductPurchasePanel({
     ? (product.variants.find((v) => v.variantId === selectedVariantId) ?? null)
     : null;
   const minimumUnits = selectedVariant ? minimumOrderUnits(selectedVariant) : null;
+  const selectedClearance = selectedVariant?.clearance;
 
   const parsedQuantity = Number(quantity);
   const hasValidQuantity = Number.isSafeInteger(parsedQuantity) && parsedQuantity >= 1;
@@ -224,15 +252,37 @@ export function ProductPurchasePanel({
       </div>
 
       <div className="mt-6 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-3xl font-bold tracking-tight text-foreground">{priceLabel}</span>
-        {isOnSale && (
-          <>
-            <span className="text-lg text-muted-foreground line-through">
-              {formatMoney(product.compareAtPriceCents!)}
-            </span>
-          </>
+        <span
+          className={
+            selectedClearance
+              ? 'text-3xl font-bold tracking-tight text-sale'
+              : 'text-3xl font-bold tracking-tight text-foreground'
+          }
+        >
+          {selectedClearance ? formatMoney(selectedClearance.priceCents) : priceLabel}
+        </span>
+        {selectedClearance ? (
+          <span className="text-lg text-muted-foreground line-through">
+            {formatMoney(selectedVariant.priceCents)}
+          </span>
+        ) : (
+          isOnSale && (
+            <>
+              <span className="text-lg text-muted-foreground line-through">
+                {formatMoney(product.compareAtPriceCents!)}
+              </span>
+            </>
+          )
         )}
       </div>
+      {selectedClearance && (
+        <p
+          className="mt-1 text-sm font-medium text-sale"
+          aria-label={`Clearance ends ${clearanceEndLabel(selectedClearance.endsAt)}`}
+        >
+          Clearance ends {clearanceEndLabel(selectedClearance.endsAt)}
+        </p>
+      )}
 
       <p className="mt-6 leading-7 text-muted-foreground">{product.description}</p>
 
@@ -254,8 +304,17 @@ export function ProductPurchasePanel({
             {selectedVariant.sku})
           </p>
           <p>
-            <span className="font-semibold">Price:</span> {formatMoney(selectedVariant.priceCents)}
-            {selectedVariant.compareAtPriceCents != null &&
+            <span className="font-semibold">Price:</span>{' '}
+            {formatMoney(selectedClearance?.priceCents ?? selectedVariant.priceCents)}
+            {selectedClearance ? (
+              <>
+                {' '}
+                <span className="text-muted-foreground line-through">
+                  {formatMoney(selectedVariant.priceCents)}
+                </span>
+              </>
+            ) : (
+              selectedVariant.compareAtPriceCents != null &&
               selectedVariant.compareAtPriceCents > selectedVariant.priceCents && (
                 <>
                   {' '}
@@ -263,7 +322,8 @@ export function ProductPurchasePanel({
                     {formatMoney(selectedVariant.compareAtPriceCents)}
                   </span>
                 </>
-              )}
+              )
+            )}
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>

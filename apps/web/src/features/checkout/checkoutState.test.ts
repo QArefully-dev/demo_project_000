@@ -27,6 +27,8 @@ describe('checkoutState', () => {
       promoCode: 'SAVE10',
       quoteKey: 'quote-a',
       discountCents: 100,
+      discountBaseCents: 1000,
+      promoCategoryScope: 'aggregates',
       totalCents: 900,
     });
     state = checkoutReducer(state, { type: 'submission-started' });
@@ -37,6 +39,8 @@ describe('checkoutState', () => {
       promoCode: 'SAVE10',
       appliedPromo: 'SAVE10',
       discountCents: 100,
+      discountBaseCents: 1000,
+      promoCategoryScope: 'aggregates',
       submitting: true,
       idempotencyKey: 'promo',
     });
@@ -47,6 +51,8 @@ describe('checkoutState', () => {
     expect(state).toMatchObject({
       appliedPromo: null,
       discountCents: 0,
+      discountBaseCents: null,
+      promoCategoryScope: null,
       promoValidating: false,
       submitting: false,
       paymentError: 'declined',
@@ -78,6 +84,34 @@ describe('checkoutState', () => {
     });
     expect(state.idempotencyKey).toBe('after-po');
     expect(state.billing.purchaseOrderReference).toBe('PO-42');
+  });
+
+  it('clears a category-mismatch code when a promo retry succeeds', () => {
+    let state = checkoutReducer(initialCheckoutState(), {
+      type: 'promo-failed',
+      error: 'This code only applies to aggregates.',
+      errorCode: 'CATEGORY_MISMATCH',
+    });
+    expect(state.promoErrorCode).toBe('CATEGORY_MISMATCH');
+
+    state = checkoutReducer(state, { type: 'promo-started' });
+    expect(state).toMatchObject({ promoError: null, promoErrorCode: null, promoValidating: true });
+
+    state = checkoutReducer(state, {
+      type: 'promo-applied',
+      promoCode: 'AGG10',
+      quoteKey: 'quote-retry',
+      discountCents: 100,
+      discountBaseCents: 1000,
+      promoCategoryScope: 'aggregates',
+      totalCents: 900,
+    });
+    expect(state).toMatchObject({
+      appliedPromo: 'AGG10',
+      promoError: null,
+      promoErrorCode: null,
+      promoValidating: false,
+    });
   });
 
   it('preselects a default site only until the buyer chooses for themselves', () => {

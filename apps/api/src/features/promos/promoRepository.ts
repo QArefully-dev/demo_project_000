@@ -8,6 +8,7 @@ export interface PromoRecord {
   kind: 'percent' | 'fixed';
   amountCents: number | null;
   minSubtotalCents: number | null;
+  categoryScope: string | null;
   startAt: string | null;
   endAt: string | null;
   maxRedemptions: number | null;
@@ -23,6 +24,7 @@ interface PromoRow {
   kind: 'percent' | 'fixed';
   amount_cents: number | null;
   min_subtotal_cents: number | null;
+  category_scope: string | null;
   start_at: string | null;
   end_at: string | null;
   max_redemptions: number | null;
@@ -55,6 +57,7 @@ function toRecord(row: PromoRow): PromoRecord {
     kind: row.kind,
     amountCents: row.amount_cents,
     minSubtotalCents: row.min_subtotal_cents,
+    categoryScope: row.category_scope,
     startAt: row.start_at,
     endAt: row.end_at,
     maxRedemptions: row.max_redemptions,

@@ -77,6 +77,25 @@ export function CartPage() {
                   {formatMoney(item.perTonneCents)} / tonne · {item.variantSnap.weightGrams}g pack
                 </p>
               )}
+              {item.clearance && (
+                <p
+                  className="-mt-2 pb-3 text-xs font-medium text-sale"
+                  aria-label="Clearance price applied"
+                >
+                  Clearance price applied: {formatMoney(item.clearance.priceCents)} per pack
+                </p>
+              )}
+              {item.nextTierProgress && (
+                <p
+                  className="-mt-2 pb-3 text-xs text-muted-foreground"
+                  aria-label="Next volume tier progress"
+                >
+                  {item.nextTierProgress.sacksToNextTier} sack
+                  {item.nextTierProgress.sacksToNextTier === 1 ? '' : 's'} to{' '}
+                  {item.nextTierProgress.minTonnes}-tonne tier ({item.nextTierProgress.discountPct}%
+                  off)
+                </p>
+              )}
             </div>
           ))}
           <Separator className="my-4" />

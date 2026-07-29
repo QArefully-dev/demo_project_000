@@ -10,7 +10,7 @@ Reason: original consumer-shop idea works but B2B bulk trade is more grounded in
 
 Pivot is additive, not rewrite. Reuse catalog/pricing/inventory/checkout/orders foundations. Reframe UI + rules toward trade buyer; retain production boundaries.
 
-Phase status: rebrand pass COMPLETE. Three passes landed and merged -> B2B rebrand, gap closure, catalog colour schemes and pigments. Expansion items landed since the pivot: Custom Blend (16), Checkout depth (4). Current phase: expansion per `Future Expansion Order` below; next up is Pricing and promotions (5).
+Phase status: rebrand pass COMPLETE. Three passes landed and merged -> B2B rebrand, gap closure, catalog colour schemes and pigments. Expansion items landed since the pivot: Custom Blend (16), Checkout depth (4), Pricing and promotions (5). Current phase: expansion per `Future Expansion Order` below.
 
 ## Purpose
 
@@ -70,14 +70,15 @@ Avoid visible platform complexity:
 - external services: none
 - implemented commerce: auth, catalog, cart, inventory, promotions, checkout, simulated payment, orders, returns and refunds, favourites, account, dev mailbox
 - implemented catalog depth: 100 products across 6 categories, typed specifications and tags, advanced filters and stable sorts, product variants with SKU/price/weight/stock, comparison, similar products, curated bundles, customer reviews with helpfulness and abuse reporting
-- implemented B2B unit and pricing model: 25 kg sack purchase unit, 40 sacks = 1 t pallet, per-variant `moqSacks` floor, qty-break `TIER_LADDER` (1 t 0%, 5 t 5%, 10 t 10%, non-compounding), derived `perTonneCents` for `£/tonne` display; constants owned by `packages/contracts/src/pricing.ts`, rules by `apps/api/src/features/pricing/`
+- implemented B2B unit and pricing model: 25 kg sack purchase unit, 40 sacks = 1 t pallet, per-variant `moqSacks` floor, qty-break `TIER_LADDER` (1 t 0%, 5 t 5%, 10 t 10%, non-compounding), derived `perTonneCents` for `£/tonne` display; active clearance windows replace list-price base before tier calculation; cart and product views disclose next tier and MOQ shortfall; constants owned by `packages/contracts/src/pricing.ts`, rules by `apps/api/src/features/pricing/`
+- implemented pricing and promotions: category-scoped promotion eligibility and discount bases, `CATEGORY_MISMATCH`, clearance -> tier -> promo stacking over material only, and persisted V8 checkout/order snapshots carrying promo scope and discount base; freight, booked delivery slots, and Custom Blend fees remain outside discount calculations
 - implemented Custom Blend: `/custom-blend` configurator -> base lot plus 1-4 catalog-lot ingredients at whole-percent ratios (each 5-50%, total <= 50%, base is remainder), `mixingGroup` compatibility gate, `configKey` blend identity on cart and order lines, flat `CUSTOM_BLEND_FEE_CENTS` per line outside the tier-discountable subtotal, ingredients drawing no inventory, blend lines excluded from returns while cancellation stays unchanged
 - implemented customer journey: composed product detail, comparison entry points, help and policy center
 - implemented packaging artwork: web-side resolver on category + facts -> food bag, stitched kraft sack, woven PP sack, rigid HDPE keg; deterministic per-category colour schemes and pigment accents; `/bag-designs` fixture page
 - implemented delivery: freight-only seeded lots with simulated freight charge at checkout; `deliveryClass` enum retains `parcel` unused; freight lead-time calculation and bookable delivery slots (`apps/api/src/features/delivery/`)
 - implemented trade accounts: saved delivery sites and billing entities with shared address normalisation and defaults (`apps/api/src/features/tradeAccount/`, `apps/web/src/features/account/`), consumed at checkout alongside a buyer PO/reference number recorded on the order
-- implemented integrity: ordered migrations through `023` (`sort_order < 1` variants retired in `020`; obsolete Custom Small Order schema physically removed in `021`; custom blend tables plus cart/order line rebuild in `022`; trade delivery sites, billing entities, and order delivery/billing detail in `023`), append-only audit ledger, sanitized admin audit reads
-- seed: 100 deterministic products across 6 categories (Sports Nutrition 20, Baking & Pantry 20, Drinks 15, Household & Cleaning 15, Garden & Outdoors 15, Trade & Creative Materials 15), each carrying a nullable `mixingGroup` from a fixed set of eight (`food-grade`, `cleaning`, `garden-treatment`, `cementitious-materials`, `casting-materials`, `pigments`, `theatrical-effects`, `absorbents`) validated in `packages/catalog`, plus users, promotions, favourites, catalog metadata, curated bundles, and inventory/backorder scenarios
+- implemented integrity: ordered migrations through `024` (`sort_order < 1` variants retired in `020`; obsolete Custom Small Order schema physically removed in `021`; custom blend tables plus cart/order line rebuild in `022`; trade delivery sites, billing entities, and order delivery/billing detail in `023`; clearance, scoped promo, and order discount-base columns in `024`), append-only audit ledger, sanitized admin audit reads
+- seed: 100 deterministic products across 6 categories (Sports Nutrition 20, Baking & Pantry 20, Drinks 15, Household & Cleaning 15, Garden & Outdoors 15, Trade & Creative Materials 15), each carrying a nullable `mixingGroup` from a fixed set of eight (`food-grade`, `cleaning`, `garden-treatment`, `cementitious-materials`, `casting-materials`, `pigments`, `theatrical-effects`, `absorbents`) validated in `packages/catalog`, plus users, promotions including `GARDEN10` and `CLEANFIVE`, active/expired/future clearance fixtures, favourites, catalog metadata, curated bundles, and inventory/backorder scenarios
 - tests: focused unit, contract, route, SQLite integration, React integration, and accessibility coverage; broad E2E coverage reserved for course
 - completed expansion records under `plans/old/`: `powder_shop_catalog_expansion_plan.md`, `inventory_coding_plan.md`, `returns_and_refunds_coding_plan.md`, `order_history_and_lifecycle_coding_plan.md`, `review_depth_coding_plan.md`, `materials_exchange_gap_closure_coding_plan.md`, `catalog_bag_colour_schemes_and_pigments_coding_plan.md`, `powderizer_removal_coding_plan.md`, `heavy_duty_sack_prototypes.html`
 - completed plan records for Custom Blend (16) and Checkout depth (4) are no longer on disk; implementation truth is the code, migrations `022`-`023`, and commits `f63e9bf` / `b1957ba`
@@ -137,11 +138,13 @@ Precursor B2B rebrand pass: COMPLETE. Brand/copy, sack/pallet unit model, `£/to
    - schema: migration `023` adds trade delivery sites, billing entities, and order delivery/billing columns
    - dropped (B2B pivot): gift options; parcel/express delivery-method choice (all lots pallet freight; `deliveryClass` enum retained but seeded `freight`)
    - QA surface, live: lead-time boundary vs slot cutoff, slot no longer bookable between quote and payment, address normalisation and default-site selection, PO reference validation, idempotent payment replay carrying delivery/billing detail
-5. Pricing and promotions: partial
+5. Pricing and promotions: delivered slices
    - completed: percentage and fixed discounts, start/end scheduling, item/subtotal gates, global and per-user limits, reservation-safe redemption
-   - completed: MOQ + qty-break tier engine replacing flat variant price; later work extends it, does not replace it
-   - completed: discountable subtotal split, so the Custom Blend fee (16) is excluded from promo and tier maths; extend this split, do not bypass it
-   - remaining: category offers, stacking (promo on top of tier discount), tier-boundary and MOQ edge-case depth, clearance/spot-priced lot presentation
+   - completed: MOQ + qty-break tier engine replacing flat variant price; exact-boundary, rounding, next-tier-progress, and MOQ-shortfall coverage
+   - completed: active clearance windows feed list-price replacement -> tier -> promo; catalog, product, cart, checkout, persisted V8 quotes, and orders use server-resolved pricing
+   - completed: category-scoped promo codes calculate gates and discounts on matching material lines only; `CATEGORY_MISMATCH`, eligible subtotal, scope, and discount base are surfaced through checkout and orders
+   - completed: discountable subtotal split, so the Custom Blend fee (16) is excluded from promo and tier maths; freight remains outside promo discounts
+   - remaining: promotion/clearance administration UI belongs to Secondary admin (9); multiple promotion codes, automatic category offers, RFQ/persisted quotes, trade-account net pricing, and login-to-see-price remain out of scope
    - dropped (B2B pivot): gift cards, loyalty points
    - rejected, do not re-add: RFQ/persisted quotes, trade-account net-price tiering, login-to-see-price
 6. Review depth: completed

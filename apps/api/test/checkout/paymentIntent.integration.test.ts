@@ -24,7 +24,7 @@ const createdAt = '2026-07-14T10:00:00.000Z';
 
 function quote(cartId: string, totalCents = 1200): PersistedCheckoutQuote {
   return {
-    version: 7,
+    version: 8,
     cartId,
     customer: {
       name: 'Checkout test',
@@ -35,6 +35,8 @@ function quote(cartId: string, totalCents = 1200): PersistedCheckoutQuote {
     userId: null,
     promoCode: null,
     subtotalCents: totalCents,
+    discountBaseCents: 0,
+    promoCategoryScope: null,
     discountCents: 0,
     totalCents,
     lines: [],

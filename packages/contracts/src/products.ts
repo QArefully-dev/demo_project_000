@@ -1,7 +1,7 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { MoneyCents, PositiveIntegerString } from './common.js';
 import { DeliveryClass } from './delivery.js';
-import { PriceTier } from './pricing.js';
+import { ClearanceWindow, PriceTier } from './pricing.js';
 
 const NormalizedCatalogKey = Type.String({
   minLength: 1,
@@ -92,6 +92,8 @@ export const Product = Type.Object(
     backorderLeadDays: Type.Union([Type.Integer({ minimum: 1, maximum: 365 }), Type.Null()]),
     slug: Type.String(),
     compareAtPriceCents: Type.Optional(MoneyCents),
+    /** Catalog-list indicator resolved against the server clock. */
+    hasActiveClearance: Type.Optional(Type.Boolean()),
     salesCount: Type.Integer({ minimum: 0 }),
     createdAt: UtcIsoInstant,
     available: Type.Boolean(),
@@ -357,6 +359,7 @@ export const CatalogVariant = Type.Object(
     perTonneCents: MoneyCents,
     priceTiers: Type.Array(PriceTier, { minItems: 1 }),
     compareAtPriceCents: Type.Optional(MoneyCents),
+    clearance: Type.Optional(ClearanceWindow),
     stockCount: Type.Integer({ minimum: 0 }),
     backorderable: Type.Boolean(),
     backorderLeadDays: Type.Union([Type.Integer({ minimum: 1, maximum: 365 }), Type.Null()]),

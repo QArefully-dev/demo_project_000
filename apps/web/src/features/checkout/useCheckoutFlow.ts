@@ -99,6 +99,8 @@ export function useCheckoutFlow() {
 
   const appliedPromo = selectAppliedPromo(state, quoteKey);
   const discountCents = selectDiscountCents(state, quoteKey);
+  const discountBaseCents = appliedPromo ? state.discountBaseCents : null;
+  const promoCategoryScope = appliedPromo ? state.promoCategoryScope : null;
   const deliveryChargeCents = cart?.deliveryPreview?.chargeCents ?? 0;
   const totalCents =
     appliedPromo && state.promoTotalCents !== null
@@ -247,8 +249,11 @@ export function useCheckoutFlow() {
     promoCode: state.promoCode,
     appliedPromo,
     discountCents,
+    discountBaseCents,
+    promoCategoryScope,
     totalCents,
     promoError: state.promoError,
+    promoErrorCode: state.promoErrorCode,
     promoValidating: state.promoValidating,
     isPromoEligible: cart ? isEligibleForPromo(cart.totalItems) : false,
     submitting: state.submitting,

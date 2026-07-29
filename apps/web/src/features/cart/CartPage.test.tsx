@@ -193,4 +193,57 @@ describe('CartPage', () => {
       'Minimum order quantity not met. Adjust pallet quantity and try again.',
     );
   });
+
+  it('shows a server-supplied clearance note without deriving a price', () => {
+    renderCart(null, {
+      cart: {
+        ...cart,
+        items: [
+          {
+            ...plainLine,
+            clearance: {
+              priceCents: 800,
+              perTonneCents: 32000,
+              startsAt: '2026-07-01T00:00:00.000Z',
+              endsAt: '2026-08-01T00:00:00.000Z',
+            },
+          },
+        ],
+      },
+    });
+
+    expect(screen.getByLabelText('Clearance price applied')).toHaveTextContent(
+      'Clearance price applied: $8.00 per pack',
+    );
+  });
+
+  it('renders server-supplied next-tier progress one sack below the next break', () => {
+    renderCart(null, {
+      cart: {
+        ...cart,
+        items: [
+          {
+            ...plainLine,
+            nextTierProgress: {
+              minTonnes: 5,
+              discountPct: 5,
+              sacksToNextTier: 1,
+              weightToNextTierGrams: 25_000,
+            },
+          },
+        ],
+      },
+    });
+
+    expect(screen.getByLabelText('Next volume tier progress')).toHaveTextContent(
+      '1 sack to 5-tonne tier (5% off)',
+    );
+  });
+
+  it('omits clearance and next-tier progress when the server omits both at the top tier', () => {
+    renderCart();
+
+    expect(screen.queryByLabelText('Clearance price applied')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Next volume tier progress')).not.toBeInTheDocument();
+  });
 });

@@ -169,7 +169,10 @@ function prepare(
       createdAt: dependencies.clock.now().toISOString(),
     });
     if (!reservation.reserved) return replay(reservation.payment, fingerprint, dependencies);
-    const cart = getCart(dependencies.carts, params.cartId);
+    const cart = getCart(dependencies.carts, params.cartId, {
+      inventory: dependencies.inventory,
+      clock: dependencies.clock,
+    });
     if (!cart)
       return failPreparation(
         params.idempotencyKey,

@@ -27,6 +27,9 @@ export interface CartLineRow {
   variant_label: string;
   variant_weight_grams: number;
   variant_moq_sacks: number;
+  variant_clearance_price_cents?: number | null;
+  variant_clearance_starts_at?: string | null;
+  variant_clearance_ends_at?: string | null;
   variant_delivery_class: string;
   variant_backorderable: number;
   variant_backorder_lead_days: number | null;
@@ -98,6 +101,9 @@ export function createCartRepository(db: Database.Database): CartRepository {
             v.sku AS variant_sku, v.label AS variant_label,
             v.weight_grams AS variant_weight_grams,
             v.moq_sacks AS variant_moq_sacks,
+            v.clearance_price_cents AS variant_clearance_price_cents,
+            v.clearance_starts_at AS variant_clearance_starts_at,
+            v.clearance_ends_at AS variant_clearance_ends_at,
             v.delivery_class AS variant_delivery_class,
             v.backorderable AS variant_backorderable,
             v.backorder_lead_days AS variant_backorder_lead_days,

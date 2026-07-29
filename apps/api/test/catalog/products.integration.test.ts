@@ -221,6 +221,113 @@ void test('catalog query validation reports deterministic 400 responses and expo
   }
 });
 
+void test('catalog onSale includes only a clearance active at the request clock', async (t) => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'shop-product-clearance-filter-'));
+  const db = openDatabase({ path: join(tempDir, 'shop.db') });
+  seedDatabase(db);
+  const activeAt = '2037-07-28T12:00:00.000Z';
+  const insertProduct = db.prepare(`
+    INSERT INTO products
+      (id, name, description, price_cents, category, stock_count, image_set_id, slug,
+       compare_at_price_cents, sales_count, active, backorderable, backorder_lead_days,
+       created_at, consumption_classification, mixing_group, details_json)
+    VALUES (?, ?, 'Test-only clearance filter product', 1_000, 'Baking & Pantry', 10,
+            'test-clearance-filter', ?, NULL, 0, 1, 0, NULL,
+            '2026-07-01T00:00:00.000Z', 'food', NULL, NULL)
+  `);
+  const insertVariant = db.prepare(`
+    INSERT INTO product_variants
+      (product_id, sku, label, weight_grams, price_cents, compare_at_price_cents,
+       clearance_price_cents, clearance_starts_at, clearance_ends_at, stock_count,
+       backorderable, backorder_lead_days, delivery_class, active, sort_order, moq_sacks,
+       created_at, updated_at)
+    VALUES (?, ?, 'Test-only clearance filter variant', 1_000, 1_000, NULL, 750, ?, ?, 10,
+            0, NULL, 'parcel', 1, 1, 1, '2026-07-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z')
+  `);
+  const fixtures = [
+    {
+      id: 9_000_001,
+      state: 'active',
+      startsAt: '2037-07-28T11:30:00.000+01:00',
+      endsAt: '2037-07-28T13:30:00.000+01:00',
+    },
+    {
+      id: 9_000_002,
+      state: 'expired',
+      startsAt: '2037-07-28T10:00:00.000+02:00',
+      endsAt: '2037-07-28T13:00:00.000+02:00',
+    },
+    {
+      id: 9_000_003,
+      state: 'future',
+      startsAt: '2037-07-28T11:00:00.000-02:00',
+      endsAt: '2037-07-28T12:01:00.000-02:00',
+    },
+  ];
+  for (const fixture of fixtures) {
+    const name = `P5 clearance filter ${fixture.state}`;
+    insertProduct.run(fixture.id, name, `p5-clearance-filter-${fixture.state}`);
+    insertVariant.run(
+      fixture.id,
+      `P5-CLEARANCE-${fixture.state.toUpperCase()}`,
+      fixture.startsAt,
+      fixture.endsAt,
+    );
+  }
+
+  const app = await buildApp({
+    db,
+    resetBaseUrl: 'http://web.test',
+    clock: { now: () => new Date(activeAt) },
+  });
+  t.after(async () => {
+    await app.close();
+    closeDatabase(db);
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  const response = await app.inject({
+    method: 'GET',
+    url: '/api/products?q=P5%20clearance%20filter&onSale=true&pageSize=48',
+  });
+  assert.equal(response.statusCode, 200);
+  const body = response.json<ProductListPaginatedResponse>();
+  assert.equal(Value.Check(ProductListPaginatedResponse, body), true);
+  assert.deepEqual(
+    body.items.map((product) => product.id),
+    ['9000001'],
+  );
+  assert.equal(body.total, 1);
+  assert.equal(body.items[0]?.hasActiveClearance, true);
+
+  const unfilteredResponse = await app.inject({
+    method: 'GET',
+    url: '/api/products?q=P5%20clearance%20filter&pageSize=48',
+  });
+  assert.equal(unfilteredResponse.statusCode, 200);
+  const unfiltered = unfilteredResponse.json<ProductListPaginatedResponse>();
+  assert.equal(Value.Check(ProductListPaginatedResponse, unfiltered), true);
+  assert.deepEqual(
+    unfiltered.items.map((product) => [product.id, product.hasActiveClearance]),
+    [
+      ['9000001', true],
+      ['9000002', false],
+      ['9000003', false],
+    ],
+  );
+
+  const detail = await app.inject({ method: 'GET', url: '/api/products/9000001' });
+  assert.equal(detail.statusCode, 200);
+  const activeProduct = detail.json<ProductWithVariantsType>();
+  assert.equal(activeProduct.variants[0]?.priceCents, 1_000);
+  assert.deepEqual(activeProduct.variants[0]?.clearance, {
+    priceCents: 750,
+    perTonneCents: 750_000,
+    startsAt: '2037-07-28T11:30:00.000+01:00',
+    endsAt: '2037-07-28T13:30:00.000+01:00',
+  });
+});
+
 void test('legacy sort_order 0 variant reintroduced before seed is retired and product detail stays contract-valid', async (t) => {
   const tempDir = mkdtempSync(join(tmpdir(), 'shop-product-legacy-variant-'));
   const db = openDatabase({ path: join(tempDir, 'shop.db') });

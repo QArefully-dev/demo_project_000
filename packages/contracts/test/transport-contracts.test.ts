@@ -9,6 +9,7 @@ import {
   PaymentBody,
   PersistedCheckoutQuote,
   PersistedCheckoutQuoteV7,
+  PersistedCheckoutQuoteV8,
   parsePersistedCheckoutQuote,
 } from '../src/payments.js';
 
@@ -99,9 +100,9 @@ void test('cart and order transports accept product-only line collections', () =
   assert.equal(Value.Check(Order, { ...emptyOrder, retiredLegacyField: [] }), false);
 });
 
-void test('persisted checkout quotes accept only the strict v7 shape', () => {
-  const v7 = {
-    version: 7,
+void test('persisted checkout quotes accept only the strict V8 shape', () => {
+  const v8 = {
+    version: 8,
     cartId: uuid,
     customer: {
       name: 'Ada Shopper',
@@ -113,6 +114,8 @@ void test('persisted checkout quotes accept only the strict v7 shape', () => {
     promoCode: null,
     subtotalCents: 2500,
     discountCents: 0,
+    discountBaseCents: 2500,
+    promoCategoryScope: null,
     totalCents: 2500,
     lines: [],
     createdAt: '2026-07-14T00:00:00.000Z',
@@ -129,14 +132,20 @@ void test('persisted checkout quotes accept only the strict v7 shape', () => {
     purchaseOrderReference: null,
   };
 
+  assert.equal(Value.Check(PersistedCheckoutQuoteV8, v8), true);
+  assert.equal(Value.Check(PersistedCheckoutQuote, v8), true);
+  assert.deepEqual(parsePersistedCheckoutQuote(v8), v8);
+  const v7 = { ...v8, version: 7 };
+  Reflect.deleteProperty(v7, 'discountBaseCents');
+  Reflect.deleteProperty(v7, 'promoCategoryScope');
   assert.equal(Value.Check(PersistedCheckoutQuoteV7, v7), true);
-  assert.equal(Value.Check(PersistedCheckoutQuote, v7), true);
-  assert.deepEqual(parsePersistedCheckoutQuote(v7), v7);
+  assert.equal(Value.Check(PersistedCheckoutQuote, v7), false);
+  assert.throws(() => parsePersistedCheckoutQuote(v7));
   assert.equal(
-    Value.Check(PersistedCheckoutQuoteV7, { ...v7, unexpectedPersistedField: true }),
+    Value.Check(PersistedCheckoutQuoteV8, { ...v8, unexpectedPersistedField: true }),
     false,
   );
-  assert.throws(() => parsePersistedCheckoutQuote({ ...v7, unexpectedPersistedField: true }));
+  assert.throws(() => parsePersistedCheckoutQuote({ ...v8, unexpectedPersistedField: true }));
 });
 
 void test('current-user transport contract accepts public user or null', () => {

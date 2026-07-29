@@ -21,7 +21,9 @@ import type { CreateOrderParams, LifecycleEventInput, PersistedShipment } from '
 interface OrderRow {
   id: number;
   promo_code_applied: string | null;
+  promo_category_scope: string | null;
   subtotal_cents: number;
+  discount_base_cents: number | null;
   discount_cents: number;
   total_cents: number;
   created_at: string;
@@ -246,6 +248,8 @@ function mapOrder(row: OrderRow, items: ProductLineRow[]): Order {
     discountCents: row.discount_cents,
     totalCents: row.total_cents,
     promoApplied: row.promo_code_applied,
+    promoCategoryScope: row.promo_category_scope ?? undefined,
+    discountBaseCents: row.discount_base_cents ?? undefined,
     createdAt: row.created_at,
     deliveryMode: (row.delivery_mode as Order['deliveryMode']) ?? undefined,
     deliveryChargeCents: row.delivery_charge_cents ?? undefined,
@@ -290,7 +294,7 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
   const loadOrder = (orderId: number): OrderRow | undefined =>
     db
       .prepare(
-        `SELECT id, promo_code_applied, subtotal_cents, discount_cents, total_cents, created_at,
+        `SELECT id, promo_code_applied, promo_category_scope, subtotal_cents, discount_base_cents, discount_cents, total_cents, created_at,
             lifecycle_status, version, cancelled_at, user_id,
             delivery_mode, delivery_charge_cents, delivery_weight_grams,
             delivery_site_id, delivery_address_json, billing_entity_json,
@@ -367,20 +371,22 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
       const result = db
         .prepare(
           `INSERT INTO orders
-            (customer_name, customer_email, shipping_address, promo_code_applied,
-             subtotal_cents, discount_cents, total_cents,
+            (customer_name, customer_email, shipping_address, promo_code_applied, promo_category_scope,
+             subtotal_cents, discount_base_cents, discount_cents, total_cents,
              delivery_mode, delivery_charge_cents, delivery_weight_grams,
              delivery_site_id, delivery_address_json, billing_entity_json,
              delivery_slot_date, delivery_slot_window, purchase_order_reference,
              user_id, created_at, lifecycle_status, version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0)`,
         )
         .run(
           params.customerName,
           params.customerEmail,
           params.shippingAddress,
           params.promoApplied,
+          params.promoCategoryScope ?? null,
           params.subtotalCents,
+          params.discountBaseCents ?? null,
           params.discountCents,
           params.totalCents,
           params.deliveryMode ?? 'parcel',

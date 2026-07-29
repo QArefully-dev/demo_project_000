@@ -38,6 +38,10 @@ function getIsOnSale(product: ProductOrVariant): boolean {
   return product.compareAtPriceCents != null && product.compareAtPriceCents > priceMin;
 }
 
+function hasActiveClearance(product: ProductOrVariant): boolean {
+  return product.hasActiveClearance === true;
+}
+
 function getTotalStock(product: ProductOrVariant): number {
   if (hasVariants(product)) {
     let total = 0;
@@ -64,6 +68,7 @@ export function ProductCard({
   const priceRange = getPriceRange(product);
   const hasPriceRange = priceRange.min !== priceRange.max;
   const isOnSale = getIsOnSale(product);
+  const isClearance = hasActiveClearance(product);
   const isBestseller = product.salesCount >= 250;
   const packSize = product.packaging?.quantity;
   const isFood = hasVariants(product) && product.consumptionClassification === 'food';
@@ -100,6 +105,7 @@ export function ProductCard({
           />
         </Link>
         <div className="pointer-events-none absolute top-3 left-3 flex flex-wrap gap-1.5">
+          {isClearance && <Badge className="bg-sale px-2.5 text-sale-foreground">Clearance</Badge>}
           {isOnSale && <Badge className="bg-sale px-2.5 text-sale-foreground">Sale</Badge>}
           {isBestseller && (
             <Badge

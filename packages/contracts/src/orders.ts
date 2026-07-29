@@ -111,6 +111,8 @@ export const Order = Type.Object(
     discountCents: MoneyCents,
     totalCents: MoneyCents,
     promoApplied: Type.Union([Type.String(), Type.Null()]),
+    promoCategoryScope: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
+    discountBaseCents: Type.Optional(MoneyCents),
     createdAt: UtcIsoInstant,
     deliveryMode: Type.Optional(DeliveryMode),
     deliveryChargeCents: Type.Optional(Type.Integer({ minimum: 0 })),

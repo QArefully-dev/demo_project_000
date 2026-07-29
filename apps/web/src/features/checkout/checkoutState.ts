@@ -1,4 +1,5 @@
 import type { DeliverySlot } from '@shop/contracts/delivery';
+import type { PromoValidationErrorCode } from '@shop/contracts/promos';
 import {
   EMPTY_POSTAL_ADDRESS_DRAFT,
   type PostalAddressDraft,
@@ -70,8 +71,11 @@ export type CheckoutState = {
   appliedPromo: string | null;
   appliedPromoQuoteKey: string | null;
   discountCents: number;
+  discountBaseCents: number | null;
+  promoCategoryScope: string | null;
   promoTotalCents: number | null;
   promoError: string | null;
+  promoErrorCode: PromoValidationErrorCode | null;
   promoValidating: boolean;
   submitting: boolean;
   paymentError: string | null;
@@ -97,9 +101,11 @@ export type CheckoutEvent =
       promoCode: string;
       quoteKey: string;
       discountCents: number;
+      discountBaseCents: number | null;
+      promoCategoryScope: string | null;
       totalCents: number;
     }
-  | { type: 'promo-failed'; error: string }
+  | { type: 'promo-failed'; error: string; errorCode: PromoValidationErrorCode | null }
   | { type: 'promo-removed'; idempotencyKey: string }
   | { type: 'quote-changed'; idempotencyKey: string }
   | { type: 'cart-recovered'; message: string }
@@ -155,8 +161,11 @@ export function initialCheckoutState(): CheckoutState {
     appliedPromo: null,
     appliedPromoQuoteKey: null,
     discountCents: 0,
+    discountBaseCents: null,
+    promoCategoryScope: null,
     promoTotalCents: null,
     promoError: null,
+    promoErrorCode: null,
     promoValidating: false,
     submitting: false,
     paymentError: null,
@@ -256,24 +265,33 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         ...state,
         promoCode: event.value,
         promoError: null,
+        promoErrorCode: null,
         promoValidating: false,
         paymentError: null,
         idempotencyKey: event.idempotencyKey,
       };
     case 'promo-started':
-      return { ...state, promoValidating: true, promoError: null };
+      return { ...state, promoValidating: true, promoError: null, promoErrorCode: null };
     case 'promo-applied':
       return {
         ...state,
         promoValidating: false,
         promoError: null,
+        promoErrorCode: null,
         appliedPromo: event.promoCode,
         appliedPromoQuoteKey: event.quoteKey,
         discountCents: event.discountCents,
+        discountBaseCents: event.discountBaseCents,
+        promoCategoryScope: event.promoCategoryScope,
         promoTotalCents: event.totalCents,
       };
     case 'promo-failed':
-      return { ...state, promoValidating: false, promoError: event.error };
+      return {
+        ...state,
+        promoValidating: false,
+        promoError: event.error,
+        promoErrorCode: event.errorCode,
+      };
     case 'promo-removed':
       return {
         ...state,
@@ -281,8 +299,11 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         appliedPromo: null,
         appliedPromoQuoteKey: null,
         discountCents: 0,
+        discountBaseCents: null,
+        promoCategoryScope: null,
         promoTotalCents: null,
         promoError: null,
+        promoErrorCode: null,
         idempotencyKey: event.idempotencyKey,
       };
     case 'quote-changed':
@@ -291,8 +312,11 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         appliedPromo: null,
         appliedPromoQuoteKey: null,
         discountCents: 0,
+        discountBaseCents: null,
+        promoCategoryScope: null,
         promoTotalCents: null,
         promoError: null,
+        promoErrorCode: null,
         promoValidating: false,
         conflict: null,
         idempotencyKey: event.idempotencyKey,
