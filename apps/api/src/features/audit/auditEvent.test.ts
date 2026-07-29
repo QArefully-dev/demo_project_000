@@ -95,7 +95,6 @@ void test('rejects unknown actions and invalid scalar metadata values', () => {
       orderId: 1,
       totalCents: -1,
       itemCount: 1,
-      mixItemCount: 0,
     } as unknown as AuditEventInput),
   );
 });

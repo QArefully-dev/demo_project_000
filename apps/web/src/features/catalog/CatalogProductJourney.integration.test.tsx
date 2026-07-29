@@ -1,14 +1,20 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Link, MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import type { Cart } from '@shop/contracts/cart';
 import type { ProductWithVariants, CategoryFacts } from '@shop/contracts/products';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getProduct, getSimilarProducts } from '@/api/products';
+import { validatePromo } from '@/api/promo';
+import { useAuth } from '@/hooks/AuthContext';
+import { useCartContext } from '@/hooks/CartContext';
 import { useCategories } from '@/hooks/useCategories';
 import { useProductFilterOptions } from '@/hooks/useProductFilterOptions';
 import { useProducts } from '@/hooks/useProducts';
 import { CatalogPage } from './CatalogPage';
 import { ProductPage } from '../product/ProductPage';
+import { CartPage } from '../cart/CartPage';
+import { CheckoutPage } from '../checkout/CheckoutPage';
 import { ComparisonSelectionProvider } from '@/features/comparison/ComparisonSelectionContext';
 
 vi.mock('@/api/products', () => ({
@@ -19,17 +25,35 @@ vi.mock('@/hooks/useProducts', () => ({ useProducts: vi.fn() }));
 vi.mock('@/hooks/useCategories', () => ({ useCategories: vi.fn() }));
 vi.mock('@/hooks/useProductFilterOptions', () => ({ useProductFilterOptions: vi.fn() }));
 vi.mock('@/hooks/CartContext', () => ({
-  useCartContext: () => ({
-    error: null,
-    addItem: vi.fn().mockResolvedValue(true),
-    retryCart: vi.fn().mockResolvedValue(true),
-    isCartAvailable: true,
-    isActionPending: () => false,
-  }),
+  useCartContext: vi.fn(),
 }));
+vi.mock('@/api/promo', () => ({ validatePromo: vi.fn() }));
+vi.mock('@/hooks/AuthContext', () => ({ useAuth: vi.fn() }));
+vi.mock('@/api/deliverySlots', () => ({ getDeliverySlotOptions: vi.fn() }));
+vi.mock('@/api/payments', () => ({ pay: vi.fn() }));
 vi.mock('@/components/WishlistButton', () => ({
   WishlistButton: () => <button type="button">Wishlist</button>,
 }));
+
+const cartContext = {
+  cart: null as Cart | null,
+  cartId: null as string | null,
+  isInitializing: false,
+  isLoading: false,
+  error: null,
+  isCartAvailable: true,
+  pendingActions: {},
+  isActionPending: () => false,
+  addItem: vi.fn(),
+  addBundle: vi.fn(),
+  addCustomBlend: vi.fn(),
+  replaceCustomBlend: vi.fn(),
+  updateQuantity: vi.fn(),
+  removeItem: vi.fn(),
+  refreshCart: vi.fn(),
+  retryCart: vi.fn(),
+  clearCart: vi.fn(),
+};
 
 const defaultFacts: CategoryFacts = {
   texture: 'Fine',
@@ -57,7 +81,6 @@ const catalogProduct: ProductWithVariants = {
   backorderLeadDays: null,
   tags: [],
   specificationGroups: [],
-  mixable: false,
   variants: [
     {
       variantId: 1,
@@ -66,6 +89,9 @@ const catalogProduct: ProductWithVariants = {
       label: 'Standard',
       weightGrams: 500,
       priceCents: 1000,
+      moqSacks: 4,
+      perTonneCents: 2_000_000,
+      priceTiers: [{ minTonnes: 1, discountPct: 0 }],
       stockCount: 5,
       backorderable: false,
       backorderLeadDays: null,
@@ -82,6 +108,21 @@ const catalogProduct: ProductWithVariants = {
   baseAvailability: 'in_stock',
 };
 
+/**
+ * Two canonical Trade & Creative Materials products. Same category, adjacent canonical ids, so the
+ * per-category palette must give them different schemes on the catalog surface.
+ */
+function tradeProduct(id: string, name: string): ProductWithVariants {
+  return {
+    ...catalogProduct,
+    id,
+    name,
+    slug: name.toLowerCase().replaceAll(' ', '-'),
+    imageSetId: name.toLowerCase().replaceAll(' ', '-'),
+    category: 'Trade & Creative Materials',
+  };
+}
+
 function NavigationControls() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -95,8 +136,114 @@ function NavigationControls() {
   );
 }
 
+function JourneyControls() {
+  return (
+    <nav aria-label="Journey controls">
+      <Link to="/cart">Review order</Link>
+    </nav>
+  );
+}
+
+const clearanceJourneyProduct: ProductWithVariants = {
+  ...catalogProduct,
+  id: 'garden-clearance',
+  name: 'Lawn Feed',
+  category: 'Garden & Outdoors',
+  slug: 'lawn-feed',
+  hasActiveClearance: true,
+  variants: [
+    {
+      ...catalogProduct.variants[0]!,
+      variantId: 1043,
+      productId: 1043,
+      sku: 'GDN-1043-001',
+      label: '10 kg Bag',
+      weightGrams: 10_000,
+      priceCents: 3_000,
+      moqSacks: 2,
+      perTonneCents: 300_000,
+      clearance: {
+        priceCents: 2_400,
+        perTonneCents: 240_000,
+        startsAt: '2026-07-21T12:00:00.000Z',
+        endsAt: '2026-08-04T12:00:00.000Z',
+      },
+    },
+  ],
+  defaultVariantId: 1043,
+  priceCents: 3_000,
+  priceRange: { min: 3_000, max: 3_000 },
+};
+
+const clearanceJourneyCart: Cart = {
+  id: 'garden-clearance-cart',
+  items: [
+    {
+      productId: 'garden-clearance',
+      product: {
+        id: 'garden-clearance',
+        name: 'Lawn Feed',
+        description: clearanceJourneyProduct.description,
+        priceCents: 3_000,
+        imageSetId: clearanceJourneyProduct.imageSetId,
+        category: 'Garden & Outdoors',
+        stock: 5,
+        availability: 'in_stock',
+        backorderable: false,
+        backorderLeadDays: null,
+        slug: 'lawn-feed',
+        salesCount: 0,
+        createdAt: '2026-07-14T00:00:00.000Z',
+        available: true,
+        tags: [],
+        specificationGroups: [],
+      },
+      variantSnap: {
+        variantId: 1043,
+        sku: 'GDN-1043-001',
+        label: '10 kg Bag',
+        weightGrams: 10_000,
+        deliveryClass: 'parcel',
+      },
+      perTonneCents: 240_000,
+      resolvedUnitPriceCents: 2_400,
+      quantity: 5,
+      configKey: '',
+      materialSubtotalCents: 12_000,
+      blendingFeeCents: 0,
+      discountableTotalCents: 12_000,
+      lineTotalCents: 12_000,
+      clearance: clearanceJourneyProduct.variants[0]!.clearance,
+    },
+  ],
+  subtotalCents: 12_000,
+  discountableSubtotalCents: 12_000,
+  blendingFeeTotalCents: 0,
+  totalItems: 5,
+  deliveryPreview: {
+    mode: 'parcel',
+    chargeCents: 999,
+    weightGrams: 50_000,
+    reason: 'Standard parcel delivery',
+  },
+};
+
 describe('catalog to product journey', () => {
   beforeEach(() => {
+    vi.mocked(useCartContext).mockImplementation(() => cartContext);
+    cartContext.cart = null;
+    cartContext.cartId = null;
+    cartContext.addItem.mockReset();
+    cartContext.addItem.mockResolvedValue(true);
+    cartContext.retryCart.mockReset();
+    cartContext.retryCart.mockResolvedValue(true);
+    vi.mocked(useAuth).mockReturnValue({
+      user: null,
+      loading: false,
+      login: vi.fn(),
+      signup: vi.fn(),
+      logout: vi.fn(),
+    });
     vi.mocked(useCategories).mockReturnValue({
       categories: ['Impossible', 'Pantry Staples'],
       isLoading: false,
@@ -158,5 +305,140 @@ describe('catalog to product journey', () => {
       ),
     );
     expect(screen.getByRole('heading', { name: 'Pantry Staples' })).toBeVisible();
+  });
+
+  it('keeps two same-category products on different schemes and carries the card scheme into the gallery', async () => {
+    const user = userEvent.setup();
+    const first = tradeProduct('33', 'Portland Cement');
+    const second = tradeProduct('34', 'Plaster of Paris');
+    vi.mocked(useProducts).mockReturnValue({
+      products: [first, second],
+      isLoading: false,
+      error: null,
+      total: 2,
+      currentPage: 1,
+      currentPageSize: 24,
+      refetch: vi.fn().mockResolvedValue(undefined),
+    });
+    vi.mocked(getProduct).mockResolvedValue(first);
+
+    render(
+      <MemoryRouter initialEntries={['/catalog']}>
+        <ComparisonSelectionProvider
+          storage={{ getItem: () => null, setItem: () => undefined, removeItem: () => undefined }}
+        >
+          <NavigationControls />
+          <Routes>
+            <Route path="/catalog" element={<CatalogPage />} />
+            <Route path="/products/:id" element={<ProductPage />} />
+          </Routes>
+        </ComparisonSelectionProvider>
+      </MemoryRouter>,
+    );
+
+    const firstCardScheme = screen
+      .getByRole('img', { name: `${first.name} stitched kraft sack` })
+      .getAttribute('data-colour-scheme');
+    const secondCardScheme = screen
+      .getByRole('img', { name: `${second.name} stitched kraft sack` })
+      .getAttribute('data-colour-scheme');
+
+    expect(firstCardScheme).toMatch(/^[a-z]+(-[a-z]+)+$/);
+    expect(secondCardScheme).toMatch(/^[a-z]+(-[a-z]+)+$/);
+    expect(firstCardScheme).not.toBe(secondCardScheme);
+    // Exact Trade & Creative Materials rows at index `(Number(id) - 1) % 5`: 33 -> 2, 34 -> 3.
+    expect(firstCardScheme).toBe('ultramarine-blue');
+    expect(secondCardScheme).toBe('mineral-green');
+
+    await user.click(within(screen.getByRole('heading', { name: first.name })).getByRole('link'));
+    expect(await screen.findByRole('heading', { name: first.name, level: 1 })).toBeVisible();
+
+    const gallery = screen.getByRole('region', { name: `${first.name} images` });
+    expect(
+      within(gallery)
+        .getByRole('img', { name: `${first.name} stitched kraft sack` })
+        .getAttribute('data-colour-scheme'),
+    ).toBe(firstCardScheme);
+  });
+
+  it('carries a server-resolved clearance line from catalog through cart into the GARDEN10 checkout quote', async () => {
+    const user = userEvent.setup();
+    vi.mocked(useProducts).mockReturnValue({
+      products: [clearanceJourneyProduct],
+      isLoading: false,
+      error: null,
+      total: 1,
+      currentPage: 1,
+      currentPageSize: 24,
+      refetch: vi.fn().mockResolvedValue(undefined),
+    });
+    vi.mocked(getProduct).mockResolvedValue(clearanceJourneyProduct);
+    cartContext.addItem.mockImplementation(
+      (productId: string, variantId?: number, quantity?: number) => {
+        expect({ productId, variantId, quantity }).toEqual({
+          productId: 'garden-clearance',
+          variantId: 1043,
+          quantity: 5,
+        });
+        cartContext.cart = clearanceJourneyCart;
+        cartContext.cartId = clearanceJourneyCart.id;
+        return Promise.resolve(true);
+      },
+    );
+    vi.mocked(validatePromo).mockResolvedValue({
+      valid: true,
+      promoCode: {
+        code: 'GARDEN10',
+        kind: 'percent',
+        discountPercent: 10,
+        minItemCount: 0,
+        categoryScope: 'Garden & Outdoors',
+      },
+      discountBaseCents: 12_000,
+      discountCents: 1_200,
+      totalCents: 11_799,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/catalog']}>
+        <ComparisonSelectionProvider
+          storage={{ getItem: () => null, setItem: () => undefined, removeItem: () => undefined }}
+        >
+          <JourneyControls />
+          <Routes>
+            <Route path="/catalog" element={<CatalogPage />} />
+            <Route path="/products/:id" element={<ProductPage />} />
+            <Route path="/cart" element={<CartPage />} />
+            <Route path="/checkout" element={<CheckoutPage />} />
+          </Routes>
+        </ComparisonSelectionProvider>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Clearance')).toBeVisible();
+    await user.click(within(screen.getByRole('heading', { name: 'Lawn Feed' })).getByRole('link'));
+    expect(await screen.findByText('Clearance price $24.00')).toBeVisible();
+
+    await user.click(screen.getByRole('radio', { name: /10 kg Bag/ }));
+    await user.clear(screen.getByLabelText('Order quantity (10 kg Bag)'));
+    await user.type(screen.getByLabelText('Order quantity (10 kg Bag)'), '5');
+    await user.click(screen.getByRole('button', { name: 'Add to order' }));
+
+    await user.click(screen.getByRole('link', { name: 'Review order' }));
+    expect(await screen.findByText('Clearance price applied: $24.00 per pack')).toBeVisible();
+    expect(screen.getByText('Resolved order subtotal (5 units)')).toBeVisible();
+    expect(screen.getAllByText('$120.00')).toHaveLength(2);
+
+    await user.click(screen.getByRole('button', { name: 'Continue to checkout' }));
+    await user.type(await screen.findByLabelText('Order promotion'), 'GARDEN10');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+
+    await waitFor(() =>
+      expect(validatePromo).toHaveBeenCalledWith('garden-clearance-cart', 'GARDEN10'),
+    );
+    expect(await screen.findByText('Eligible subtotal (Garden & Outdoors)')).toBeVisible();
+    expect(screen.getByText(/Discount \(GARDEN10.*Garden & Outdoors\)/)).toBeVisible();
+    expect(screen.getByText('−$12.00')).toBeVisible();
+    expect(screen.getByText('$117.99')).toBeVisible();
   });
 });

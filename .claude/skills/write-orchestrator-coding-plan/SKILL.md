@@ -50,7 +50,9 @@ Cover relevant coding details:
 - contracts/API: shared schemas, request/response shape, status/error mapping, pagination, idempotency
 - UI: routes, state authority, loading/empty/error states, accessibility, responsive integration
 - cross-cutting: audit, logging, notifications, feature flags, seed/reset, security, privacy
-- verification: critical unit, contract, route, SQLite integration, React integration, accessibility, manual checks
+- verification: critical unit, contract, route, SQLite integration, React integration, accessibility — automated repository commands only
+
+Verification is automated-only. Never plan agent-driven browser work: no screenshots, no headless/manual click-through, no visual confirmation, no exploratory UI poking, no console/network inspection through a live app. UI behavior proven through React integration tests, route/contract tests, and unit rules. Applies to every packet, gate, fix, and convergence step including `S1` and final gate. Human-owned smoke checks may appear only under `Risks and Open Questions` as user-owned follow-up, never as packet test duty, verification, acceptance, or gate condition.
 
 Omit irrelevant layers. Prefer extension of established patterns over new abstractions. Name non-goals to prevent scope drift.
 
@@ -213,6 +215,8 @@ Reviewer report rules:
 
 ## Test and Review Protocol
 
+Every scheduled command is a repository script or focused test runner producing pass/fail without human or agent judgment. No browser-driving command, screenshot capture, dev-server click-through, or `browser-qa` invocation enters any test duty, verification, gate, or review policy. Reviewer likewise inspects code plus automated evidence only.
+
 Assign each test command to one packet or gate. Orchestrator maintains verification ledger across subagent sessions:
 
 - evidence ID
@@ -235,17 +239,16 @@ Schedule tests at deliberate points:
 
 Reviewer default: inspect exact assigned change set, invariants, contracts, and supplied relevant evidence without writes or test runs. Reviewer runs command only when assignment names command or evidence is missing/stale and verdict cannot finish through inspection. Never rerun full suite for review confidence alone.
 
-Review gate passes only after `verdict=pass`, or after every requested finding closes through worker fix plus targeted verification. Downstream dependency launch waits for gate. Do not require reviewer return after fix unless review target or acceptance criteria changed materially; completion/convergence review covers integrated result.
+Review gate passes after `verdict=pass`, or every requested finding closes through fresh-worker fix plus targeted verification. Downstream dependency launch waits for gate. Never re-review worker fix for code-reviewer finding.
 
-Issue flow: `stable reviewer finding ID -> worker-targeted fix directive with finding ID -> worker targeted verification -> orchestrator records closure change set/evidence -> next task`. Reviewer-targeted `fix` corrects report or protocol only. Do not send implementation fix back to originating reviewer. Final convergence or completion gate catches remaining regression; avoid reviewer-worker-reviewer loops.
+Issue flow: `stable reviewer finding ID -> fresh worker assignment + fix directive -> targeted verification -> orchestrator records closure -> next task`. Reviewer-targeted `fix` corrects report or protocol only. Never return implementation fix to reviewer.
 
 Fix worker selection:
 
-- default: route finding to originating implementation worker with `action=fix` directive referencing current packet and assignment revision. Reviewer supplies independent perspective; originating worker retains design and invariant context. Do not launch replacement solely for fresh context.
-- fresh replacement worker: use when finding exposes flawed architecture or security model, fix crosses packet ownership, originating worker fix attempt fails, or originating worker unavailable.
-- fresh replacement bootstrap: reissue full `worker_assignment_v1` with incremented `assignment_revision`, then send `action=fix` directive containing stable finding IDs, relevant finding facts, current change set, affected paths, and verification delta. Never send directive-only to context lacking active assignment.
-- context projection: current assignment + fix directive + relevant checkpoint and evidence only. Exclude full reviewer report, transcript, closed findings, global ledger, and unrelated packet state.
-- closure: worker freshness does not replace targeted verification or final convergence/completion gate.
+- every code-reviewer finding: assign to fresh worker
+- bootstrap: full `worker_assignment_v1` with incremented `assignment_revision` -> `action=fix` directive with stable finding IDs, finding facts, current change set, affected paths, verification delta
+- context: assignment + fix directive + relevant checkpoint/evidence only; exclude full reviewer report, transcript, closed findings, global ledger, unrelated state
+- closure: fresh worker runs targeted verification; no re-review
 
 ## Output Format
 
@@ -325,8 +328,8 @@ Repository baseline: `[commit/branch if useful, otherwise inspection date]`
   - [ordered coding step with symbols, schemas, routes, or components]
 - invariants: [rules packet must preserve]
 - relevant evidence: `[evidence ID]` -> [covered scope and change set; omit unrelated ledger entries]
-- test duty: [none, reuse evidence ID, or run exact command at packet completion]
-- verification: [non-test checks plus expected evidence]
+- test duty: [none, reuse evidence ID, or run exact automated command at packet completion]
+- verification: [automated checks plus expected evidence; no browser, screenshot, or manual UI step]
 - handoff: [artifacts/interfaces downstream packets receive]
 - review: `[review assignment]` -> [review gate blocking downstream consumer or fan-in]
 
@@ -342,8 +345,8 @@ Repository baseline: `[commit/branch if useful, otherwise inspection date]`
 - changes:
   - [integration steps]
 - relevant evidence: `[evidence IDs]` -> [fan-in scope; omit unrelated ledger entries]
-- test duty: [shared integration commands run once after fan-in]
-- verification: [non-test checks plus expected evidence]
+- test duty: [shared automated integration commands run once after fan-in]
+- verification: [automated checks plus expected evidence; no browser session, screenshot, or agent click-through at this gate]
 - handoff: [completion evidence]
 - review: `[review assignment]` -> [convergence review gate blocking completion]
 
@@ -386,6 +389,7 @@ Repeat review assignment for every implementation packet by default. State expli
 - `T1`: after `[packet]` changes settle -> owner: `[packet]` -> `[focused command]`
 - `T2`: after parallel fan-in -> owner: `[convergence packet]` -> `[shared integration command]`
 - `T3`: after all fixes settle -> owner: `[final gate]` -> `[broad command, once]`
+- policy: automated repository commands only; no browser, screenshot, or manual UI verification in any entry
 - reuse: [valid evidence rules and ledger handoff]
 - invalidation: `[paths/dependencies]` -> `[entries/commands to rerun]`
 
@@ -416,9 +420,9 @@ Repeat review assignment for every implementation packet by default. State expli
 6. Validate `G0`; project role-minimum context plus worktree context into assignments.
 7. Launch fresh/minimal worker contexts for `P1 || P2` inside worktree.
 8. Accept each report; update checkpoint/evidence; launch packet reviewer against exact settled change set before downstream consumption.
-9. Route stable findings through worker fix directives; close after targeted evidence. Validate each packet review gate.
+9. Route stable findings to fresh workers; close after targeted evidence. Do not re-review fixes. Validate each packet review gate.
 10. Validate reviewed fan-in `G1`; only then launch `S1` and run fan-in tests once.
-11. Review `S1` as separate integration target; close findings through worker fix plus targeted evidence.
+11. Review `S1` as separate integration target; close findings through fresh-worker fix plus targeted evidence. Do not re-review fixes.
 12. Validate convergence review gate and `G2`; run final suite once after fixes settle.
 13. Leave implementation branch and worktree intact. Reply with absolute worktree path, implementation branch, source branch, and base revision. State user owns merge.
 
@@ -501,6 +505,8 @@ Before saving plan, confirm:
 - reviewer packets include exact change set, scoped reads, acceptance criteria, invariants, risk focus, inspect-only write policy, test policy, and relevant evidence only
 - every reviewer assignment sets `review_skill=code-reviewer` and directs reviewer to invoke `code-reviewer` skill as review method
 - every test command has one owner, execution point, reuse rule, invalidation rule
+- every test duty, verification, gate, and review policy uses automated commands only; no agent browser session, screenshot, click-through, or exploratory UI confirmation anywhere, including `S1`, convergence, and final gate
+- UI-behavior acceptance backed by React integration/route/contract/unit tests, not visual inspection
 - new sessions reuse valid test evidence
 - reviewers avoid duplicate test runs
 - role-specific assignment/report contracts referenced; no obsolete shared contracts
@@ -510,7 +516,7 @@ Before saving plan, confirm:
 - runtime creates one dedicated worktree from current source branch `HEAD` before implementation writes
 - every implementation, review, fix, and verification action runs inside recorded worktree
 - source checkout receives no implementation changes and runtime performs no merge-back or worktree cleanup
-- reviewer findings close after worker fix and targeted verification; no return review loop
+- reviewer findings close after fresh-worker fix and targeted verification; no return review loop
 - migrations, contracts, transactions, auth, error paths covered where relevant
 - final integration and regression gate present
 - completion reply reports retained absolute worktree path, implementation branch, source branch, and base revision; user owns merge

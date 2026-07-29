@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
-import { calculateDiscount } from '../features/promos/promoService.js';
+import { calculateDiscount, resolvePromoScope } from '../features/promos/promoService.js';
 import { sendNotFound } from '../utils/errors.js';
 import { ValidatePromoResponse, ValidatePromoBody } from '@shop/contracts/promos';
 import { ErrorResponse } from '@shop/contracts/common';
@@ -31,12 +31,17 @@ export default function promoRoutes(app: FastifyInstance, { services }: AppConte
         userId,
       });
       if (result.valid && result.promoCode) {
+        const scope = resolvePromoScope({ promo: result.promoCode, cart });
         const discountCents = calculateDiscount({
           promo: result.promoCode,
-          subtotalCents: cart.subtotalCents,
+          discountableSubtotalCents: scope.discountBaseCents,
         });
-        const totalCents = cart.subtotalCents - discountCents;
-        return { ...result, discountCents, totalCents };
+        // Promotions discount merchandise only: blending fees stay out of the discount base but
+        // remain inside the payable subtotal. Reuse the cart's server-owned delivery quote so
+        // clients receive the same freight-inclusive total shown at checkout.
+        const totalCents =
+          cart.subtotalCents - discountCents + (cart.deliveryPreview?.chargeCents ?? 0);
+        return { ...result, discountBaseCents: scope.discountBaseCents, discountCents, totalCents };
       }
       return result;
     },

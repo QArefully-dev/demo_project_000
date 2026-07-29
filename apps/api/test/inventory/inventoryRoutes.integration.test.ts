@@ -55,10 +55,11 @@ function createBackorder(
         productName: 'Moon Rock',
         unitPriceCents: 500,
         quantity,
+        discountableTotalCents: 500 * quantity,
+        blendingFeeCents: 0,
         lineTotalCents: 500 * quantity,
       },
     ],
-    mixItems: [],
     createdAt,
   });
   const lineId = Number(repository.findDetailById(orderId)?.items[0]?.lineId);

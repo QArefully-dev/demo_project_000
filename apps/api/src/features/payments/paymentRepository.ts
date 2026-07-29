@@ -1,15 +1,21 @@
 import { createHash } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { parsePersistedCheckoutQuote as parseContractPersistedCheckoutQuote } from '@shop/contracts/payments';
-import type { PersistedCheckoutQuote } from '@shop/contracts/payments';
+import type {
+  BillingSelection,
+  DeliveryDestination,
+  PersistedCheckoutQuote,
+} from '@shop/contracts/payments';
+import type { DeliverySlot } from '@shop/contracts/delivery';
+import { formatPostalAddress } from '@shop/contracts/address';
+import {
+  normalizeOptionalText,
+  normalizePostalAddress,
+  normalizeText,
+} from '../tradeAccount/addressRules.js';
 import type { ValidCard } from './cardValidation.js';
 
-export type {
-  PersistedCheckoutQuote,
-  PersistedCheckoutQuoteV1,
-  PersistedCheckoutQuoteV2,
-  PersistedCheckoutQuoteV3,
-} from '@shop/contracts/payments';
+export type { PersistedCheckoutQuote, PersistedCheckoutQuoteV7 } from '@shop/contracts/payments';
 
 export type IntentPaymentStatus =
   | 'prepared'
@@ -80,24 +86,70 @@ export function serializePersistedCheckoutQuote(quote: PersistedCheckoutQuote): 
   return JSON.stringify(quote);
 }
 
+/**
+ * Stable rendering of a destination selection.
+ *
+ * A saved selection contributes its identifier, not the stored address: the fingerprint is computed
+ * before the preparation transaction resolves anything, so hashing the resolved address would force
+ * a database read onto the replay path — where a since-retired site would then break the idempotent
+ * replay of an order that already succeeded. Editing a saved site is not a change of destination
+ * selection, so it correctly leaves the fingerprint alone.
+ *
+ * An ad-hoc address is normalised with the same helper checkout resolution uses, so the casing and
+ * spacing variations that resolve to one destination also hash to one fingerprint.
+ */
+function fingerprintDestination(destination: DeliveryDestination): string {
+  return destination.kind === 'saved'
+    ? `site:${destination.deliverySiteId}`
+    : `address:${formatPostalAddress(normalizePostalAddress(destination.address))}`;
+}
+
+/**
+ * Same rule for the billed party: identifier when saved, the whole party when ad-hoc.
+ *
+ * Every ad-hoc part is hashed through the helper checkout resolution uses to build the billing
+ * snapshot, so one billed party re-typed with different casing or spacing stays one fingerprint
+ * instead of a spurious conflict, and every part that reaches the snapshot reaches the hash.
+ */
+function fingerprintBilling(billing: BillingSelection): string {
+  if (billing.kind === 'saved') return `entity:${billing.billingEntityId}`;
+  const entity = billing.billingEntity;
+  return [
+    `legalName:${normalizeText(entity.legalName)}`,
+    `registrationNumber:${normalizeOptionalText(entity.registrationNumber) ?? ''}`,
+    `vatNumber:${normalizeOptionalText(entity.vatNumber) ?? ''}`,
+    `address:${formatPostalAddress(normalizePostalAddress(entity.address))}`,
+  ].join('|');
+}
+
 export function createSafeFingerprint(
   params: {
     cartId: string;
     promoCode?: string;
     customerName: string;
     customerEmail: string;
-    shippingAddress: string;
+    deliveryDestination: DeliveryDestination;
+    billingSelection: BillingSelection;
+    deliverySlot: DeliverySlot;
+    purchaseOrderReference?: string;
     cardExpiry: string;
   },
   card: ValidCard,
 ): string {
   // PAN and CVC are deliberately absent. Last four and brand are display-safe payment metadata.
+  // Every other buyer-visible commitment is present, so replaying one key under a changed
+  // destination, billing party, slot, or buyer reference is a conflict rather than a silent repeat.
   const body = {
     cartId: params.cartId,
     promoCode: params.promoCode ?? null,
     customerName: params.customerName.trim(),
     customerEmail: params.customerEmail.trim().toLowerCase(),
-    shippingAddress: params.shippingAddress.trim(),
+    deliveryDestination: fingerprintDestination(params.deliveryDestination),
+    billingSelection: fingerprintBilling(params.billingSelection),
+    deliverySlotDate: params.deliverySlot.date,
+    deliverySlotWindow: params.deliverySlot.window,
+    // Same normalisation resolution applies, so `po  123` and `po 123` are one buyer reference.
+    purchaseOrderReference: normalizeOptionalText(params.purchaseOrderReference),
     cardExpiry: params.cardExpiry.trim(),
     cardBrand: card.brand,
     cardLast4: card.last4,

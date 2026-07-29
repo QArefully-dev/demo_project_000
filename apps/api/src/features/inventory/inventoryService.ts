@@ -185,9 +185,8 @@ export function createInventoryService(dependencies: {
         rows.push(line);
         linesByVariant.set(line.variantId, rows);
       }
-      const reservationProducts = reservations.filter((row) => row.demand_kind === 'product');
       for (const variantId of linesByVariant.keys()) {
-        if (!reservationProducts.some((row) => row.variant_id === variantId)) {
+        if (!reservations.some((row) => row.variant_id === variantId)) {
           throw new InventoryError(
             'INVENTORY_CORRUPTION',
             'Order variant has no inventory reservation.',
@@ -213,7 +212,6 @@ export function createInventoryService(dependencies: {
             orderId,
             occurredAt,
           });
-        if (reservation.demand_kind === 'powder_mix') continue;
         const lines = linesByVariant.get(reservation.variant_id) ?? [];
         const total = lines.reduce((sum, line) => sum + line.quantity, 0);
         if (total !== reservation.reserved_quantity + reservation.backordered_quantity) {

@@ -39,9 +39,15 @@ const defaultVariant: CatalogVariant = {
   variantId: 1,
   productId: 1,
   sku: 'PW-001',
-  label: '300g Bag',
-  weightGrams: 300,
+  label: '25 kg Sack',
+  weightGrams: 25_000,
   priceCents: 12999,
+  moqSacks: 4,
+  perTonneCents: 43330,
+  priceTiers: [
+    { minTonnes: 1, discountPct: 0 },
+    { minTonnes: 5, discountPct: 5 },
+  ],
   compareAtPriceCents: 16999,
   stockCount: 8,
   backorderable: false,
@@ -87,7 +93,6 @@ const product = (overrides: Partial<ProductWithVariants> = {}): ProductWithVaria
   available: overrides.available ?? true,
   tags: overrides.tags ?? [],
   specificationGroups: overrides.specificationGroups ?? [],
-  mixable: overrides.mixable ?? false,
   variants: overrides.variants ?? [{ ...defaultVariant }],
   defaultVariantId: overrides.defaultVariantId ?? 1,
   categoryFacts: overrides.categoryFacts ?? defaultFacts,
@@ -166,9 +171,9 @@ describe('ProductPurchasePanel', () => {
     );
 
     expect(screen.getAllByText('Sale').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('Save $40.00')).toBeInTheDocument();
     expect(screen.getAllByText('Not for consumption').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('300g')).toBeInTheDocument();
+    expect(screen.getByText('Material · Impossible')).toBeInTheDocument();
 
     const addButton = screen.getByRole('button', { name: 'Choose a bag option' });
     expect(addButton).toBeDisabled();
@@ -177,10 +182,12 @@ describe('ProductPurchasePanel', () => {
 
     const variantRadio = screen.getByRole('radio');
     await user.click(variantRadio);
-    expect(screen.getByRole('button', { name: 'Add powder' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Add to order' })).toBeEnabled();
+    await user.clear(screen.getByLabelText('Order quantity (25 kg Sack)'));
+    await user.type(screen.getByLabelText('Order quantity (25 kg Sack)'), '6');
 
-    await user.click(screen.getByRole('button', { name: 'Add powder' }));
-    expect(onAddToCart).toHaveBeenCalledWith(1);
+    await user.click(screen.getByRole('button', { name: 'Add to order' }));
+    expect(onAddToCart).toHaveBeenCalledWith(1, 6);
   });
 
   it('renders regular price without sale metadata', () => {
@@ -204,7 +211,49 @@ describe('ProductPurchasePanel', () => {
       </MemoryRouter>,
     );
     expect(screen.queryByText('Sale')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Save \$/)).not.toBeInTheDocument();
+  });
+
+  it('renders an API-supplied clearance price, list price, and end date', async () => {
+    const user = userEvent.setup();
+    renderPanel({
+      product: product({
+        variants: [
+          {
+            ...defaultVariant,
+            clearance: {
+              priceCents: 9999,
+              perTonneCents: 399960,
+              startsAt: '2026-07-01T00:00:00.000Z',
+              endsAt: '2026-08-01T00:00:00.000Z',
+            },
+          },
+        ],
+      }),
+    });
+
+    await user.click(screen.getByRole('radio', { name: /25 kg Sack/i }));
+
+    expect(screen.getAllByText('Clearance price $99.99').length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('Clearance ends 1 Aug 2026').length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText('$129.99').some((element) => element.classList.contains('line-through')),
+    ).toBe(true);
+  });
+
+  it('blocks below-MOQ sack quantities before sending an add request', async () => {
+    const user = userEvent.setup();
+    const { onAddToCart } = renderPanel();
+
+    await user.click(screen.getByRole('radio', { name: /25 kg Sack/i }));
+    const quantity = screen.getByLabelText('Order quantity (25 kg Sack)');
+    await user.clear(quantity);
+    await user.type(quantity, '1');
+
+    expect(quantity).toHaveAttribute('aria-invalid', 'true');
+    await user.click(screen.getByRole('button', { name: 'Add to order' }));
+
+    expect(onAddToCart).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Minimum order is 4 × 25 kg Sack.');
   });
 
   it('disables unavailable purchases and exposes pending and cart retry states', async () => {
@@ -292,7 +341,7 @@ describe('ProductPurchasePanel', () => {
 
     expect(screen.getByText('Available to backorder')).toBeInTheDocument();
     await user.click(screen.getByRole('radio'));
-    expect(screen.getByRole('button', { name: 'Add powder' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Add to order' })).toBeEnabled();
   });
 
   it('sends anonymous wishlist actions to sign-in and toggles authenticated favourites', async () => {
@@ -402,7 +451,77 @@ describe('ProductPurchasePanel', () => {
 
     await user.click(screen.getByRole('radio'));
     expect(screen.getAllByText(/SKU: PW-001/).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('8 in stock')).toBeInTheDocument();
+    expect(screen.getByText('8 pallets available')).toBeInTheDocument();
     expect(screen.getAllByText('$129.99').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('renders API-supplied pack, tonne, MOQ, tier, and freight details', async () => {
+    const user = userEvent.setup();
+    renderPanel({
+      product: product({
+        variants: [
+          {
+            ...defaultVariant,
+            label: '1,000 kg Pallet',
+            weightGrams: 1_000_000,
+            priceCents: 410000,
+            perTonneCents: 410000,
+            deliveryClass: 'freight',
+            backorderable: true,
+            stockCount: 0,
+            backorderLeadDays: 7,
+          },
+        ],
+      }),
+    });
+
+    await user.click(screen.getByRole('radio', { name: /1,000 kg Pallet/i }));
+    expect(screen.getAllByText('Pack price $4,100.00').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('$4,100.00 / tonne')).toBeInTheDocument();
+    expect(screen.getByText('Minimum order: 1 × 1,000 kg Pallet.')).toBeInTheDocument();
+    expect(screen.getByText('Total weight')).toBeInTheDocument();
+    expect(screen.getByLabelText('Volume pricing tiers')).toHaveTextContent('5 tonnes: 5% off');
+    expect(screen.getAllByText(/Pallet freight.*lead time 7 days/i).length).toBeGreaterThanOrEqual(
+      1,
+    );
+  });
+
+  it('surfaces a server minimum-order error', () => {
+    renderPanel({
+      belowMoqError: 'Quantity does not meet this variant minimum order quantity.',
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Quantity does not meet this variant minimum order quantity.',
+    );
+  });
+
+  it('derives MOQ units from the shared sack-weight floor for sacks and pallets', async () => {
+    const user = userEvent.setup();
+    renderPanel({
+      product: product({
+        variants: [
+          { ...defaultVariant, label: '25 kg Sack', weightGrams: 25_000 },
+          {
+            ...defaultVariant,
+            variantId: 2,
+            label: '1,000 kg Pallet',
+            weightGrams: 1_000_000,
+            priceCents: 410000,
+            perTonneCents: 410000,
+          },
+        ],
+      }),
+    });
+
+    await user.click(screen.getByRole('radio', { name: /25 kg Sack/i }));
+    expect(screen.getByLabelText('Order quantity (25 kg Sack)')).toHaveValue(4);
+    expect(screen.getByLabelText('Order quantity (25 kg Sack)')).toHaveAttribute('min', '4');
+    expect(screen.getByText('Minimum order: 4 × 25 kg Sack.')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: /1,000 kg Pallet/i }));
+    expect(screen.getByLabelText('Order quantity (1,000 kg Pallet)')).toHaveValue(1);
+    expect(screen.getByLabelText('Order quantity (1,000 kg Pallet)')).toHaveAttribute('min', '1');
+    expect(screen.getByText('Minimum order: 1 × 1,000 kg Pallet.')).toBeInTheDocument();
   });
 });

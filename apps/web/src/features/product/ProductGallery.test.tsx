@@ -36,7 +36,6 @@ const product = (overrides: Partial<ProductWithVariants> = {}): ProductWithVaria
   available: overrides.available ?? true,
   tags: overrides.tags ?? [],
   specificationGroups: overrides.specificationGroups ?? [],
-  mixable: overrides.mixable ?? false,
   availability: overrides.availability ?? 'in_stock',
   backorderable: overrides.backorderable ?? false,
   backorderLeadDays: overrides.backorderLeadDays ?? null,
@@ -48,6 +47,9 @@ const product = (overrides: Partial<ProductWithVariants> = {}): ProductWithVaria
       label: 'Standard',
       weightGrams: 500,
       priceCents: 12999,
+      moqSacks: 4,
+      perTonneCents: 25998,
+      priceTiers: [{ minTonnes: 1, discountPct: 0 }],
       stockCount: 8,
       backorderable: false,
       backorderLeadDays: null,
@@ -68,7 +70,7 @@ describe('ProductGallery', () => {
   it('renders one canonical live packaging artwork without raster thumbnails', () => {
     render(<ProductGallery product={product()} />);
 
-    expect(screen.getByRole('img', { name: 'Powdered Water powder bag' }).tagName).toBe('svg');
+    expect(screen.getByRole('img', { name: 'Powdered Water bag' }).tagName).toBe('svg');
     expect(screen.queryByRole('button', { name: /view image/i })).not.toBeInTheDocument();
   });
 });

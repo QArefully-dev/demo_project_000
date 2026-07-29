@@ -81,7 +81,7 @@ void test('prepared expiry boundary releases final unit and a second connection 
   db.transaction(() =>
     inventory.reserveCheckout({
       paymentIdempotencyKey: 'first',
-      demands: [{ variantId: variant1, quantity: 1, demandKind: 'product' }],
+      demands: [{ variantId: variant1, quantity: 1 }],
       now: '2026-07-19T12:00:00.000Z',
       expiresAt: '2026-07-19T12:15:00.000Z',
     }),
@@ -96,7 +96,7 @@ void test('prepared expiry boundary releases final unit and a second connection 
     db.transaction(() =>
       inventory.reserveCheckout({
         paymentIdempotencyKey: 'second',
-        demands: [{ variantId: variant1, quantity: 1, demandKind: 'product' }],
+        demands: [{ variantId: variant1, quantity: 1 }],
         now: '2026-07-19T12:15:00.000Z',
         expiresAt: '2026-07-19T12:30:00.000Z',
       }),
@@ -115,7 +115,7 @@ void test('commit creates exactly one ordinary allocation and receipt replay has
   db.transaction(() => {
     const split = inventory.reserveCheckout({
       paymentIdempotencyKey: 'backorder',
-      demands: [{ variantId: variant49, quantity: 3, demandKind: 'product' }],
+      demands: [{ variantId: variant49, quantity: 3 }],
       now: '2026-07-19T12:00:00.000Z',
       expiresAt: '2026-07-19T12:15:00.000Z',
     });
@@ -189,7 +189,7 @@ void test('outer rollback removes partial reservation and rejects corrupted comm
       db.transaction(() => {
         inventory.reserveCheckout({
           paymentIdempotencyKey: 'rollback',
-          demands: [{ variantId: variant1, quantity: 1, demandKind: 'product' }],
+          demands: [{ variantId: variant1, quantity: 1 }],
           now: '2026-07-19T12:00:00.000Z',
           expiresAt: '2026-07-19T12:15:00.000Z',
         });
@@ -240,7 +240,7 @@ void test('cancellation restores debited stock into oldest remaining backorder',
   db.transaction(() => {
     inventory.reserveCheckout({
       paymentIdempotencyKey: 'first-order',
-      demands: [{ variantId: variant49, quantity: 1, demandKind: 'product' }],
+      demands: [{ variantId: variant49, quantity: 1 }],
       now: '2026-07-19T12:00:00.000Z',
       expiresAt: '2026-07-19T12:15:00.000Z',
     });
@@ -257,7 +257,7 @@ void test('cancellation restores debited stock into oldest remaining backorder',
   db.transaction(() => {
     inventory.reserveCheckout({
       paymentIdempotencyKey: 'second-order',
-      demands: [{ variantId: variant49, quantity: 1, demandKind: 'product' }],
+      demands: [{ variantId: variant49, quantity: 1 }],
       now: '2026-07-19T12:02:00.000Z',
       expiresAt: '2026-07-19T12:17:00.000Z',
     });
@@ -304,7 +304,7 @@ void test('authorization at or after expiry cannot revive prepared reservation',
   db.transaction(() =>
     inventory.reserveCheckout({
       paymentIdempotencyKey: 'late-authorization',
-      demands: [{ variantId: variant1, quantity: 1, demandKind: 'product' }],
+      demands: [{ variantId: variant1, quantity: 1 }],
       now: '2026-07-19T12:00:00.000Z',
       expiresAt: '2026-07-19T12:15:00.000Z',
     }),
@@ -337,7 +337,7 @@ void test('receipt allocation becomes cancellable stock and reassigns FIFO', (t)
     db.transaction(() => {
       inventory.reserveCheckout({
         paymentIdempotencyKey: key,
-        demands: [{ variantId: variant49, quantity: 2, demandKind: 'product' }],
+        demands: [{ variantId: variant49, quantity: 2 }],
         now: occurredAt,
         expiresAt: '2026-07-19T12:15:00.000Z',
       });

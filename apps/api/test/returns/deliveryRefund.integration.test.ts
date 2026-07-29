@@ -8,7 +8,7 @@ import {
   type CheckoutParams,
 } from '../../src/features/checkout/checkoutService.js';
 import { createCartRepository } from '../../src/features/cart/cartRepository.js';
-import { addItem, createCart, getCart } from '../../src/features/cart/cartService.js';
+import { addItem, createCart } from '../../src/features/cart/cartService.js';
 import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
 import { createPromoRepository } from '../../src/features/promos/promoRepository.js';
 import { createPaymentRepository } from '../../src/features/payments/paymentRepository.js';
@@ -16,12 +16,17 @@ import { createOrderRepository } from '../../src/features/orders/orderRepository
 import { createMailboxRepository } from '../../src/features/mailbox/mailboxRepository.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { simulatedPaymentGateway } from '../../src/features/payments/paymentGateway.js';
-import { createPowderMixRepository } from '../../src/features/powderizer/powderMixRepository.js';
 import { createProductRepository } from '../../src/features/catalog/productRepository.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
+import {
+  adhocBilling,
+  adhocDestination,
+  bookableSlot,
+  checkoutDepthDependencies,
+} from '../checkout/checkoutDepthFixtures.js';
 
 function checkoutService(db: import('better-sqlite3').Database, now?: () => Date) {
   const carts = createCartRepository(db);
@@ -34,13 +39,13 @@ function checkoutService(db: import('better-sqlite3').Database, now?: () => Date
     mailbox: createMailboxRepository(db),
     gateway: simulatedPaymentGateway,
     clock: { now: now ?? (() => new Date()) },
-    mixes: createPowderMixRepository(db),
     products: createProductRepository(db),
     audit: createAuditWriter({
       repository: createAuditRepository(db),
       clock: { now: now ?? (() => new Date()) },
     }),
     inventory: createInventoryService({ repository: createInventoryRepository(db) }),
+    ...checkoutDepthDependencies(db, { now: now ?? (() => new Date()) }),
   });
 }
 
@@ -53,7 +58,9 @@ function paymentParams(
     cartId,
     customerName: 'Return Test',
     customerEmail: 'return@example.test',
-    shippingAddress: '1 Return Street',
+    deliveryDestination: adhocDestination,
+    billingSelection: adhocBilling,
+    deliverySlot: bookableSlot(),
     cardNumber: '4242 4242 4242 4242',
     cardExpiry: '12/99',
     cardCvc: '123',
@@ -130,6 +137,9 @@ void test('returns exclude delivery from refund', async (t) => {
     seedDatabase(db);
     const cartId = createCart(carts).cartId;
     const vId = getVariantId(db, 1);
+    db.prepare(
+      "UPDATE product_variants SET delivery_class = 'parcel', moq_sacks = 1 WHERE id = ?",
+    ).run(vId);
     addItem(carts, cartId, String(vId));
 
     const service = checkoutService(db);
@@ -143,12 +153,11 @@ void test('returns exclude delivery from refund', async (t) => {
     assert.equal(order.totalCents, order.subtotalCents - order.discountCents);
   });
 
-  await t.test('legacy orders load with default delivery fields', async () => {
+  await t.test('legacy orders load with default delivery fields', () => {
     resetDatabase(db);
     seedDatabase(db);
 
     // Seed orders (alice-processing) already has delivery columns
-    const orders = createOrderRepository(db);
     // Find alice-processing order (demo_seed_key)
     const orderRows = db
       .prepare(

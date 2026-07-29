@@ -8,20 +8,15 @@ import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter, type AuditWriter } from '../../src/features/audit/auditService.js';
 import { createBundleRepository } from '../../src/features/bundles/bundleRepository.js';
-import {
-  createBundleService,
-  type BundleUnavailable,
-} from '../../src/features/bundles/bundleService.js';
+import { createBundleService } from '../../src/features/bundles/bundleService.js';
 import {
   createCartRepository,
   type CartRepository,
 } from '../../src/features/cart/cartRepository.js';
 import { createCart, getCart } from '../../src/features/cart/cartService.js';
-import { createProductRepository } from '../../src/features/catalog/productRepository.js';
-import { createPowderMixRepository } from '../../src/features/powderizer/powderMixRepository.js';
-import { createPowderizerService } from '../../src/features/powderizer/powderizerService.js';
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
+import { validateMoq } from '../../src/features/pricing/pricingRules.js';
 
 function defaultVariantId(db: ReturnType<typeof openDatabase>, productId: number): string {
   const row = db
@@ -42,11 +37,9 @@ function createFixture(t: test.TestContext, audit?: AuditWriter) {
     rmSync(directory, { recursive: true, force: true });
   });
   const carts = createCartRepository(db);
-  const mixes = createPowderMixRepository(db);
   const service = createBundleService({
     bundles: createBundleRepository(db),
     carts,
-    mixes,
     unitOfWork: createUnitOfWork(db),
     audit:
       audit ??
@@ -55,7 +48,7 @@ function createFixture(t: test.TestContext, audit?: AuditWriter) {
         clock: { now: () => new Date('2026-07-18T12:00:00.000Z') },
       }),
   });
-  return { db, carts, mixes, service };
+  return { db, carts, service };
 }
 
 const context = { actor: { type: 'anonymous' as const, userId: null }, requestId: 'bundle-add' };
@@ -81,7 +74,7 @@ void test('lists visible bundles with current component prices and deterministic
     variant8,
   );
   const refreshed = service.list().find((bundle) => bundle.id === starter.id);
-  assert.equal(refreshed?.components[0]?.lineTotalCents, 4321);
+  assert.equal(refreshed?.components[0]?.lineTotalCents, 17_284);
   assert.equal(refreshed?.available, false);
   db.prepare('UPDATE products SET active = 0 WHERE id = 9').run();
   assert.equal(
@@ -95,13 +88,12 @@ void test('lists visible bundles with current component prices and deterministic
 });
 
 void test('bundle reads and cart eligibility use available-to-sell, with backorder opt-in permitted', (t) => {
-  const { db, carts, mixes } = createFixture(t);
+  const { db, carts } = createFixture(t);
   const now = new Date('2026-07-19T12:00:00.000Z');
   const inventory = createInventoryService({ repository: createInventoryRepository(db) });
   const service = createBundleService({
     bundles: createBundleRepository(db),
     carts,
-    mixes,
     unitOfWork: createUnitOfWork(db),
     audit: createAuditWriter({
       repository: createAuditRepository(db),
@@ -118,8 +110,8 @@ void test('bundle reads and cart eligibility use available-to-sell, with backord
   ).run();
   db.prepare(
     `INSERT INTO inventory_reservations
-      (payment_idempotency_key, variant_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
-     VALUES ('bundle-availability', ?, 'product', 1, 0, '2026-07-19T12:01:00.000Z', ?)`,
+      (payment_idempotency_key, variant_id, reserved_quantity, backordered_quantity, expires_at, created_at)
+     VALUES ('bundle-availability', ?, 1, 0, '2026-07-19T12:01:00.000Z', ?)`,
   ).run(variant8, now.toISOString());
   const starter = service.list().find((bundle) => bundle.id === '1');
   assert.equal(
@@ -144,7 +136,7 @@ void test('bundle reads and cart eligibility use available-to-sell, with backord
 });
 
 void test('adds a bundle as ordinary cart lines, increments repeats, and writes one audit fact', (t) => {
-  const { db, carts, mixes, service } = createFixture(t);
+  const { db, carts, service } = createFixture(t);
   const { cartId } = createCart(carts);
   const first = service.addToCart(cartId, '1', context);
   assert.equal(typeof first, 'object');
@@ -152,20 +144,30 @@ void test('adds a bundle as ordinary cart lines, increments repeats, and writes 
   assert.deepEqual(
     first.items.map((item) => [item.productId, item.quantity]),
     [
-      ['8', 1],
-      ['9', 1],
-      ['13', 1],
+      ['8', 4],
+      ['9', 4],
+      ['13', 4],
     ],
   );
-  assert.deepEqual(first.mixItems, []);
-  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM powder_mixes').get().count, 0);
+  assert.ok(
+    first.items.every((item) => {
+      const variant = db
+        .prepare('SELECT weight_grams, moq_sacks FROM product_variants WHERE id = ?')
+        .get(item.variantSnap?.variantId) as
+        { weight_grams: number; moq_sacks: number } | undefined;
+      return (
+        variant !== undefined && validateMoq(item.quantity, variant.weight_grams, variant.moq_sacks)
+      );
+    }),
+    'every bundle cart line must meet the checkout MOQ predicate',
+  );
   assert.notEqual(service.addToCart(cartId, '1', context), 'BUNDLE_NOT_FOUND');
   assert.deepEqual(
-    getCart(carts, cartId, mixes)?.items.map((item) => [item.productId, item.quantity]),
+    getCart(carts, cartId)?.items.map((item) => [item.productId, item.quantity]),
     [
-      ['8', 2],
-      ['9', 2],
-      ['13', 2],
+      ['8', 8],
+      ['9', 8],
+      ['13', 8],
     ],
   );
   const events = db
@@ -174,42 +176,13 @@ void test('adds a bundle as ordinary cart lines, increments repeats, and writes 
   assert.deepEqual(events, [
     {
       action: 'cart.bundle_added',
-      metadata_json: '{"bundleId":1,"componentCount":3,"quantity":3}',
+      metadata_json: '{"bundleId":1,"componentCount":3,"quantity":12}',
     },
     {
       action: 'cart.bundle_added',
-      metadata_json: '{"bundleId":1,"componentCount":3,"quantity":3}',
+      metadata_json: '{"bundleId":1,"componentCount":3,"quantity":12}',
     },
   ]);
-});
-
-void test('bundle add preserves existing Powderizer mix items', (t) => {
-  const { db, carts, mixes, service } = createFixture(t);
-  const { cartId } = createCart(carts);
-  const powderizer = createPowderizerService({
-    unitOfWork: createUnitOfWork(db),
-    carts,
-    products: createProductRepository(db),
-    mixes,
-  });
-  const mixId = powderizer.create(cartId, {
-    components: [
-      { productId: '1', percentage: 50 },
-      { productId: '2', percentage: 50 },
-    ],
-    bagSizeGrams: 500,
-    fineness: 'standard',
-  });
-  if (typeof mixId !== 'string') throw new Error('Expected powder mix ID');
-
-  const result = service.addToCart(cartId, '1', context);
-  if (typeof result === 'string' || !('mixItems' in result)) throw new Error('Expected cart');
-  assert.equal(result.mixItems.length, 1);
-  assert.equal(result.mixItems[0]?.mixId, mixId);
-  assert.deepEqual(
-    result.items.map((item) => item.productId),
-    ['8', '9', '13'],
-  );
 });
 
 void test('rejects every unavailable component without touching ordinary cart lines or audit', (t) => {
@@ -224,9 +197,7 @@ void test('rejects every unavailable component without touching ordinary cart li
   assert.equal(typeof result, 'object');
   if (typeof result === 'string' || !('error' in result))
     throw new Error('Expected unavailable bundle');
-  const sortedVariantIds = (result).variantIds.sort(
-    (a, b) => Number(a) - Number(b),
-  );
+  const sortedVariantIds = result.variantIds.sort((a, b) => Number(a) - Number(b));
   const expected = [variant8, variant13].map(String).sort((a, b) => Number(a) - Number(b));
   assert.deepEqual(sortedVariantIds, expected);
   assert.equal(carts.lineQuantity(cartId, variant8), 2);
@@ -253,7 +224,7 @@ void test('rolls back all component writes and cart touch when audit append fail
 });
 
 void test('rolls back prior component writes when a later component write fails', (t) => {
-  const { db, carts, mixes } = createFixture(t);
+  const { db, carts } = createFixture(t);
   const { cartId } = createCart(carts);
   let writes = 0;
   const failingCarts: CartRepository = {
@@ -267,7 +238,6 @@ void test('rolls back prior component writes when a later component write fails'
   const service = createBundleService({
     bundles: createBundleRepository(db),
     carts: failingCarts,
-    mixes,
     unitOfWork: createUnitOfWork(db),
     audit: createAuditWriter({
       repository: createAuditRepository(db),

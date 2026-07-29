@@ -96,8 +96,6 @@ function hydrateBundles(rows: readonly BundleJoinRow[]): BundleRow[] {
               slug: row.slug,
               compare_at_price_cents: row.compare_at_price_cents,
               sales_count: row.sales_count,
-              mixable: row.mixable,
-              mix_unit_grams: row.mix_unit_grams,
               active: row.active,
               created_at: row.created_at,
               consumption_classification: row.consumption_classification,

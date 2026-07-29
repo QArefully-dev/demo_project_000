@@ -7,9 +7,7 @@ void test('canonical powder catalog satisfies grounded catalog constraints', () 
   assert.equal(CATALOG_PRODUCTS.length, 100);
   assert.equal(CATALOG_PRODUCTS.filter((product) => product.onSale).length > 0, true);
   assert.equal(
-    (CATALOG_PRODUCTS).find(
-      (product) => product.slug === 'all-purpose-flour',
-    )?.category,
+    CATALOG_PRODUCTS.find((product) => product.slug === 'all-purpose-flour')?.category,
     'Baking & Pantry',
   );
   assert.equal(

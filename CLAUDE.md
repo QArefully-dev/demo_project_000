@@ -2,14 +2,16 @@
 
 ## Scope
 
-Local B2B bulk-powder wholesale codebase for QA education and repository-scale agent demos. Non-live runtime; production-grade boundaries.
+Local B2B bulk-materials wholesale codebase (`QArefully Materials Exchange`) for QA education and repository-scale agent demos. Non-live runtime; production-grade boundaries.
 
-- Product: wholesale ordering portal; trade buyers (shops, supermarkets) order powders by pallet, sugar -> cement. Browse -> quote/cart -> bulk checkout -> order
-- Live trading: real-time auctions/bidding on selected pallet lots
+- Product: wholesale ordering portal; trade buyers (shops, supermarkets) order materials by sack/pallet, sugar -> cement. Browse -> cart -> bulk checkout -> order
+- Cart-only; no persisted quote/RFQ object
+- No live trading, auctions, or bidding; rejected direction, do not add
 - Runtime: deterministic, local-first, low setup
 - Engineering: realistic rules; strict validation, auth, migrations, transactions, errors
+- Lifecycle: WIP, pre-release. No students, no users, no production instance
 
-Direction note: repo originally built as B2C powder retail (`QArefully Powder Co.`). Now pivoting to B2B bulk/wholesale pallet ordering + live trading. Reason: more grounded in real-world commerce -> richer, more realistic QA learning material (concurrency, bidding, bulk pricing, minimum-order rules). Pivot is additive; reuse catalog/domain foundations, do not rewrite storefront.
+Phase note: repo originally B2C powder retail (`QArefully Powder Co.`). Materials Exchange rebrand + gap closure + packaging pigments: complete. Landed brand/copy, sack/pallet unit model, `£/tonne` display, MOQ + qty-break tier engine, heavy-duty vessel artwork, legacy-variant retirement, Custom Small Order placeholder. Current phase: additive expansion per `plans/demo_project_high_level_plan.md`. Reuse catalog/domain foundations; do not rewrite storefront.
 
 ## Context
 
@@ -27,6 +29,7 @@ Read task-relevant plans only. Ignore old status, evidence, handoff, completed o
 - Support Windows and macOS; no Docker, cloud service, account, API key, or post-install network.
 - Keep one install flow, one dev command, deterministic seed/reset.
 - Keep simulated integrations local and controllable; retain production boundaries.
+- Local SQLite is disposable. No stored row has preservation value; recovery from any migration problem is `rm apps/api/data/shop.db` -> `npm run reset`. This licenses destructive migrations, not lax ones — see Architecture and Change Rules.
 
 ## Architecture
 
@@ -35,12 +38,17 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
 - Default: modular monolith. Split service only for named distributed-behavior demo.
 - Flow: frontend -> API contracts -> domain -> persistence.
 - Backend owns money, inventory, orders, payments, permissions, delivery classification/charge. Money uses integer minor units.
-- Purchasable identity is variant/SKU-scoped: base product owns merchandising/reviews/favourites/comparison; variant owns SKU, pack, price, stock, weight, delivery class. Cart/inventory/order lines key on variant; contracts retain productId for navigation.
+- Purchasable identity is variant/SKU-scoped: base product owns merchandising/reviews/favourites/comparison; variant owns SKU, pack, price, stock, weight, MOQ, tier ladder, delivery class. Cart/inventory/order lines key on variant; contracts retain productId for navigation.
+- Unit model: purchase unit = 25 kg sack; 40 sacks = 1 t pallet. `packages/contracts/src/pricing.ts` owns `SACK_WEIGHT_GRAMS`, `PALLET_WEIGHT_GRAMS`, `SACKS_PER_PALLET`, `MOQ_DEFAULT_SACKS`, `TIER_LADDER`. Backend derives `perTonneCents` + tier discount from line weight; tiers never compound; MOQ enforced as line-weight floor.
+- Variant `sortOrder` contract-floor is 1; rows below it are retired (`active = 0`), never deleted (migration `020`). Seeded lots are all `deliveryClass 'freight'`; enum retains `parcel`.
+- Packaging artwork is web-side only: resolver keys on category + facts. Contract `ProductPackaging` stays optional and unpopulated by API.
 - Contracts own transport types/schemas; shared data owns canonical static catalog/content.
 - Web never imports API source. Packages/scripts never import app-private source.
 - Backend: thin routes -> workflow services -> repositories owning SQL/row types. One transport mapper per record type.
 - Composition root owns database, clock, IDs, config, adapters. Imports perform no listen, seed, migration, or persistent-resource opening.
-- Use ordered versioned migrations; preserve data; surface unknown migration errors.
+- Use ordered versioned migrations, append-only, forward-only; surface unknown migration errors. Never edit or renumber a landed migration; undo forward with a new one.
+- Migration runner (`apps/api/src/db/migrate.ts`) suspends foreign keys around migration loop and runs `PRAGMA foreign_key_check` per migration. Table rebuilds use runner; never toggle `foreign_keys` inside migration transaction.
+- Data preservation is a per-task decision, not a default. A migration may drop tables, columns, and rows when the plan says the feature is gone; it must still be correct, transactional, idempotent, and FK-clean (`PRAGMA foreign_key_check`, indexes recreated). Retire-not-delete stays the default for catalog rows referenced by orders (variant `sortOrder`, migration `020`).
 - Transaction owner covers full business invariant.
 
 ## Repository Map (update after new implementations if needed - keep the map general, not detailed)
@@ -49,19 +57,21 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
   - `src/api/`: typed HTTP clients; validate successful responses against shared schemas
   - `src/features/`: page and workflow ownership by domain
   - `src/components/`: shared UI and shell; `src/components/ui/` contains framework primitives
+  - `src/components/packaging/`: vessel artwork (kraft sack, woven sack, HDPE keg), spec resolver, per-category colour/pigment palettes; food bag stays in `src/components/BagArtwork.tsx`
   - `src/hooks/`: cross-feature auth, cart, catalog, favourites state
+  - `src/features/designs/`: `/bag-designs` internal artwork fixture page; outside customer journey
   - tests: colocated `*.test.ts(x)`; browser journeys use `*.integration.test.tsx`
 - `apps/api/`: Fastify API and SQLite runtime
   - `src/app.ts`: composition root; services, plugins, routes
-  - `src/routes/`: HTTP schemas, auth gates, transport mapping
-  - `src/features/`: domain services, repositories, workflow rules
+  - `src/routes/`: HTTP schemas, auth gates, transport mapping; `tradeAccount.ts` = saved delivery sites + billing entities, `deliverySlots.ts` = offered delivery slots
+  - `src/features/`: domain services, repositories, workflow rules; `tradeAccount/` = delivery site + billing entity rules, shared address normalisation
   - `src/db/`: database lifecycle, unit of work, migrations, seed/reset
   - `test/`: SQLite and `app.inject()` integration tests grouped by domain
 - `packages/contracts/`: TypeBox transport schemas/types and public subpath exports
 - `packages/catalog/`: canonical product/category/packaging content plus validation
-- `data/`: ignored local SQLite runtime files; default `data/shop.db`
-- `plans/`: active product/course plans; `plans/old/` historical context only
-- `.claude/skills/`: repo-local agent skills; load only when task matches
+- `apps/api/data/`: ignored local SQLite runtime files; default `apps/api/data/shop.db`
+- `plans/`: `demo_project_high_level_plan.md` = current direction; `custom_additives_handoff.md` = item 16 product input; `plans/old/powderizer_removal_coding_plan.md` = completed item 11; `plans/old/` = completed/historical context
+- `.claude/skills/`: repo-local agent skills; load only when task matches. `browser-qa` = required entry point for all browser work (see Quality)
 - root configs: workspaces/scripts in `package.json`; shared TypeScript, ESLint, Prettier configuration
 
 Dependency direction: `packages/contracts` -> `apps/api` + `apps/web`; `packages/catalog` -> `apps/api`; `apps/api` -> HTTP -> `apps/web`.
@@ -114,8 +124,9 @@ Keep `--configLoader runner` on Vite/Vitest commands. Root scripts already suppl
 ## Quality
 
 - Use repository scripts; run format, typecheck, lint, build, seed/reset, tests proportional to change.
-- Browser QA: serve app on loopback -> use Codex internal browser + bundled Playwright.
-- Never use, control, capture, or activate user's Chrome. Internal browser unavailable -> report blocker; no Chrome fallback.
+- Any browser task (screenshot, visual check, journey click-through, console/network read, UI bug repro) -> load `.claude/skills/browser-qa` and follow it. Mandatory entry point; no ad-hoc browser driving.
+- Viewport scope: 1080p (`1920x1080`) only. No mobile/tablet/responsive checks unless user names explicit size.
+- Never use, control, capture, or activate user's Chrome. `browser-qa` headless Chromium unavailable -> report blocker; no Chrome fallback.
 - Prettier formats code and config only; Markdown (`*.md`) stays excluded through `.prettierignore`.
 - Keep Vite/Vitest `--configLoader runner`; bundled config loader traverses sandbox-blocked Windows ancestors.
 - Tests: pure rule -> unit; repository/transaction -> SQLite integration; route/schema/auth -> Fastify `app.inject()`.

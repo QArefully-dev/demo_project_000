@@ -27,14 +27,6 @@ export const wishlistItem: NavItem = {
   enabled: true,
 };
 
-export const customPowderItem: NavItem = {
-  key: 'customPowder',
-  label: 'Custom Powder',
-  icon: 'FlaskConical',
-  enabled: true,
-  className: 'powderizer-nav-link',
-};
-
 export const bundlesItem: NavItem = {
   key: 'bundles',
   label: 'Bundles',
@@ -42,10 +34,22 @@ export const bundlesItem: NavItem = {
   enabled: true,
 };
 
+/**
+ * Custom Blend owns the reserved iridescent nav treatment. `className` carries the frozen
+ * `.custom-blend-nav-link` contract from `index.css`; `CategoryNav` is its single consumer.
+ */
+export const customBlendItem: NavItem = {
+  key: 'customBlend',
+  label: 'Custom Blend',
+  icon: 'Blend',
+  enabled: true,
+  className: 'custom-blend-nav-link',
+};
+
 export const navItems: Record<string, NavItem> = {
   search: searchItem,
   account: accountItem,
   wishlist: wishlistItem,
-  customPowder: customPowderItem,
   bundles: bundlesItem,
+  customBlend: customBlendItem,
 };

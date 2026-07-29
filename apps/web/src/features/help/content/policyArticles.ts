@@ -11,7 +11,7 @@ export const privacyArticle = defineHelpArticle({
     {
       kind: 'paragraph',
       id: 'privacy-local-demo',
-      text: 'QArefully Powder Co. is a local QA demo, not a production service. Use fictional or otherwise non-sensitive test data while exploring it.',
+      text: 'QArefully Materials Exchange is a local QA demo, not a production service. Use fictional or otherwise non-sensitive test data while exploring it.',
     },
     {
       kind: 'section',
@@ -35,7 +35,7 @@ export const privacyArticle = defineHelpArticle({
       paragraphs: [
         {
           id: 'privacy-browser-storage-local-storage',
-          text: 'This browser can keep a cart identifier and a bounded Custom Powder history in local storage so the demo can restore those features between visits.',
+          text: 'This browser can keep a cart identifier in local storage so the demo can restore your order between visits. Blend configurations are held against that cart on the local backend, not in browser storage.',
         },
         {
           id: 'privacy-browser-storage-session-cookie',
@@ -54,7 +54,7 @@ export const privacyArticle = defineHelpArticle({
         },
         {
           id: 'privacy-clearing-data-database',
-          text: 'Likewise, resetting local database data does not promise to remove cart identifiers or Custom Powder blend history already stored in a browser. Clear browser storage separately when needed.',
+          text: 'Likewise, resetting local database data does not promise to remove a cart identifier already stored in a browser. Clear browser storage separately when needed.',
         },
       ],
     },
@@ -73,7 +73,7 @@ export const termsArticle = defineHelpArticle({
     {
       kind: 'paragraph',
       id: 'terms-demo-purpose',
-      text: 'QArefully Powder Co. is an educational local QA demo for exploring a storefront interface. Its catalog content, product descriptions, and checkout flow are fictional or simulated.',
+      text: 'QArefully Materials Exchange is an educational local QA demo for exploring a materials-supply interface. Its catalogue content, product descriptions, and checkout flow are fictional or simulated.',
     },
     {
       kind: 'notice',

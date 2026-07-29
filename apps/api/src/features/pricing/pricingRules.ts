@@ -1,0 +1,166 @@
+import {
+  MOQ_DEFAULT_SACKS,
+  PALLET_WEIGHT_GRAMS,
+  SACK_WEIGHT_GRAMS,
+  TIER_LADDER,
+  type PriceTier,
+} from '@shop/contracts/pricing';
+
+function requireNonNegativeSafeInteger(value: number, name: string): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new RangeError(`${name} must be a non-negative safe integer.`);
+  }
+}
+
+function requirePositiveSafeInteger(value: number, name: string): void {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new RangeError(`${name} must be a positive safe integer.`);
+  }
+}
+
+function totalWeightGramsFor(quantity: number, weightGrams: number): number {
+  requireNonNegativeSafeInteger(quantity, 'quantity');
+  requirePositiveSafeInteger(weightGrams, 'weightGrams');
+  const totalWeightGrams = quantity * weightGrams;
+  if (!Number.isSafeInteger(totalWeightGrams)) {
+    throw new RangeError('Total weight is outside the safe integer range.');
+  }
+  return totalWeightGrams;
+}
+
+function tierMinimumWeightGrams(tier: PriceTier): number {
+  requirePositiveSafeInteger(tier.minTonnes, 'tier minTonnes');
+  requireNonNegativeSafeInteger(tier.discountPct, 'tier discountPct');
+  if (tier.discountPct > 100) {
+    throw new RangeError('tier discountPct must not exceed 100.');
+  }
+  const minimumWeightGrams = tier.minTonnes * PALLET_WEIGHT_GRAMS;
+  if (!Number.isSafeInteger(minimumWeightGrams)) {
+    throw new RangeError('Tier minimum weight is outside the safe integer range.');
+  }
+  return minimumWeightGrams;
+}
+
+function roundHalfUp(numerator: number, denominator: number): number {
+  requireNonNegativeSafeInteger(numerator, 'rounding numerator');
+  requirePositiveSafeInteger(denominator, 'rounding denominator');
+  const rounded = Math.floor((numerator + Math.floor(denominator / 2)) / denominator);
+  if (!Number.isSafeInteger(rounded)) {
+    throw new RangeError('Calculated price is outside the safe integer range.');
+  }
+  return rounded;
+}
+
+/** Resolves the highest qualifying discount from the uniform tonne-based ladder. */
+export function resolveTierDiscountPct(
+  quantity: number,
+  weightGrams: number,
+  tiers: readonly PriceTier[] = TIER_LADDER,
+): number {
+  const totalWeightGrams = totalWeightGramsFor(quantity, weightGrams);
+
+  let highestQualifyingMinTonnes = 0;
+  let discountPct = 0;
+  for (const tier of tiers) {
+    const minimumWeightGrams = tierMinimumWeightGrams(tier);
+    if (totalWeightGrams >= minimumWeightGrams && tier.minTonnes > highestQualifyingMinTonnes) {
+      highestQualifyingMinTonnes = tier.minTonnes;
+      discountPct = tier.discountPct;
+    }
+  }
+  return discountPct;
+}
+
+/** Progress from the current line weight to the next unqualified price tier. */
+export interface NextTierProgress {
+  minTonnes: number;
+  discountPct: number;
+  sacksToNextTier: number;
+  weightToNextTierGrams: number;
+}
+
+/**
+ * Returns the nearest tier that has not yet qualified, or null when no next tier remains.
+ */
+export function nextTierProgress(
+  quantity: number,
+  weightGrams: number,
+  tiers: readonly PriceTier[] = TIER_LADDER,
+): NextTierProgress | null {
+  const currentWeightGrams = totalWeightGramsFor(quantity, weightGrams);
+  let nextTier: PriceTier | null = null;
+  let nextTierWeightGrams: number | null = null;
+
+  for (const tier of tiers) {
+    const minimumWeightGrams = tierMinimumWeightGrams(tier);
+    if (
+      minimumWeightGrams > currentWeightGrams &&
+      (nextTierWeightGrams === null || minimumWeightGrams < nextTierWeightGrams)
+    ) {
+      nextTier = tier;
+      nextTierWeightGrams = minimumWeightGrams;
+    }
+  }
+
+  if (nextTier === null || nextTierWeightGrams === null) return null;
+
+  const weightToNextTierGrams = nextTierWeightGrams - currentWeightGrams;
+  return {
+    minTonnes: nextTier.minTonnes,
+    discountPct: nextTier.discountPct,
+    sacksToNextTier: Math.ceil(weightToNextTierGrams / SACK_WEIGHT_GRAMS),
+    weightToNextTierGrams,
+  };
+}
+
+/** Resolves the per-unit price from the base price; tiers never compound. */
+export function resolveUnitPriceCents(
+  baseUnitPriceCents: number,
+  quantity: number,
+  weightGrams: number,
+): number {
+  requireNonNegativeSafeInteger(baseUnitPriceCents, 'baseUnitPriceCents');
+  const discountPct = resolveTierDiscountPct(quantity, weightGrams);
+  const multiplier = 100 - discountPct;
+  if (baseUnitPriceCents > Number.MAX_SAFE_INTEGER / multiplier) {
+    throw new RangeError('Calculated price is outside the safe integer range.');
+  }
+  return roundHalfUp(baseUnitPriceCents * multiplier, 100);
+}
+
+/** Derives an informational base-price-per-tonne figure using half-up minor-unit rounding. */
+export function perTonneCents(baseUnitPriceCents: number, weightGrams: number): number {
+  requireNonNegativeSafeInteger(baseUnitPriceCents, 'baseUnitPriceCents');
+  requirePositiveSafeInteger(weightGrams, 'weightGrams');
+  if (baseUnitPriceCents > Number.MAX_SAFE_INTEGER / PALLET_WEIGHT_GRAMS) {
+    throw new RangeError('Calculated price is outside the safe integer range.');
+  }
+  return roundHalfUp(baseUnitPriceCents * PALLET_WEIGHT_GRAMS, weightGrams);
+}
+
+/** Checks a per-variant sack MOQ as a total line-weight floor. */
+export function validateMoq(
+  quantity: number,
+  weightGrams: number,
+  moqSacks: number = MOQ_DEFAULT_SACKS,
+): boolean {
+  requirePositiveSafeInteger(moqSacks, 'moqSacks');
+
+  const totalWeightGrams = totalWeightGramsFor(quantity, weightGrams);
+  const minimumWeightGrams = moqSacks * SACK_WEIGHT_GRAMS;
+  if (!Number.isSafeInteger(minimumWeightGrams)) {
+    throw new RangeError('MOQ weight is outside the safe integer range.');
+  }
+  return totalWeightGrams >= minimumWeightGrams;
+}
+
+/** Returns the number of additional same-weight packs needed to satisfy the line MOQ. */
+export function moqShortfallSacks(quantity: number, weightGrams: number, moqSacks: number): number {
+  requirePositiveSafeInteger(moqSacks, 'moqSacks');
+  const totalWeightGrams = totalWeightGramsFor(quantity, weightGrams);
+  const minimumWeightGrams = moqSacks * SACK_WEIGHT_GRAMS;
+  if (!Number.isSafeInteger(minimumWeightGrams)) {
+    throw new RangeError('MOQ weight is outside the safe integer range.');
+  }
+  return Math.max(0, Math.ceil((minimumWeightGrams - totalWeightGrams) / weightGrams));
+}

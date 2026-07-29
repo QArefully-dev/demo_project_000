@@ -23,7 +23,6 @@ const product = {
   backorderLeadDays: null,
   slug: 'protein-powder',
   salesCount: 10,
-  mixable: true,
   createdAt: '2026-07-14T00:00:00.000Z',
   available: true,
   tags: [],

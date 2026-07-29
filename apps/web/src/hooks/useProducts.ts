@@ -12,6 +12,7 @@ export function useProducts(params?: UseProductsParams) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
+  const [fulfilledParamsKey, setFulfilledParamsKey] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(params?.page ?? 1);
   const [currentPageSize, setCurrentPageSize] = useState(params?.pageSize ?? 12);
 
@@ -29,8 +30,13 @@ export function useProducts(params?: UseProductsParams) {
       const isCurrentRequest = () =>
         mountedRef.current && requestId === requestIdRef.current && !abortController.signal.aborted;
 
+      // A pending query must not be presented with the prior query's cards. This also gives
+      // manual refreshes the same unambiguous loading state as query transitions.
+      setProducts([]);
+      setTotal(0);
       setIsLoading(true);
       setError(null);
+      setFulfilledParamsKey(null);
       try {
         const data = await getProducts(fetchParams ?? params, abortController.signal);
         if (!isCurrentRequest()) return;
@@ -38,6 +44,7 @@ export function useProducts(params?: UseProductsParams) {
         setTotal(data.total);
         setCurrentPage(data.page);
         setCurrentPageSize(data.pageSize);
+        setFulfilledParamsKey(paramsKey);
       } catch (err) {
         if (!isCurrentRequest()) return;
         setError(err instanceof Error ? err.message : 'Failed to load products');
@@ -58,11 +65,13 @@ export function useProducts(params?: UseProductsParams) {
     };
   }, [fetchProducts]);
 
+  const hasFulfilledCurrentParams = fulfilledParamsKey === paramsKey;
+
   return {
-    products,
-    isLoading,
-    error,
-    total,
+    products: hasFulfilledCurrentParams ? products : [],
+    isLoading: isLoading || !hasFulfilledCurrentParams,
+    error: hasFulfilledCurrentParams ? error : null,
+    total: hasFulfilledCurrentParams ? total : 0,
     currentPage,
     currentPageSize,
     refetch: () => fetchProducts(),

@@ -81,7 +81,7 @@ Each checkout request includes an idempotency key. Retrying the same key with th
 - **100 products** across 6 categories: Sports Nutrition, Baking & Pantry, Drinks, Household & Cleaning, Garden & Outdoors, Trade & Creative Materials
 - **14 sale products** with compare-at prices
 - **3 users** (credentials below)
-- **7 promo codes** (details below)
+- **9 promo codes** (details below)
 
 Every product represents a real-world powder or dry powdered mixture. Food-grade products (Sports Nutrition, Baking & Pantry, Drinks) show ingredients, allergens, nutrition information, and serving sizes. Non-food products (Household & Cleaning, Garden & Outdoors, Trade & Creative Materials) are clearly marked "Not for consumption" and include handling and PPE guidance.
 
@@ -99,17 +99,6 @@ Variant examples: `Whey Protein Isolate — 1 kg (SKU: SN-WHEY-1000)`, `Cement M
 
 Most variants ship as standard parcel. Heavy variants or orders exceeding a combined weight threshold are classified as freight with a simulated freight charge applied at checkout. Cart and checkout display parcel or freight labels per item.
 
-### Custom Powder
-
-The Custom Powder feature (canonical route `/custom-powder`, legacy `/powderizer` redirect preserved) lets you blend compatible catalogue ingredients into a custom mix:
-
-- **Mixing groups**: Food-grade, Cleaning, Garden treatment, Cementitious materials, Casting materials, Pigments, Theatrical effects, Absorbents
-- **Compatibility**: products sharing a compatible mixing group can be blended; cross-category mixing is allowed when groups match (e.g. protein with matcha via Food-grade)
-- **Blend building**: select ingredients, assign percentages totalling 100%, choose bag size, fineness, colour scheme, and optional label
-- **Featured blend**: a starting configuration shown at the top of the page
-- **Safety**: server-derived usage label always applies; any non-food ingredient makes the entire blend "Not for consumption"
-- **Returns**: Custom Powder blends are excluded from the returns workflow
-
 ### User Credentials
 
 | Email               | Password      | Role     |
@@ -119,6 +108,27 @@ The Custom Powder feature (canonical route `/custom-powder`, legacy `/powderizer
 | admin@example.com   | Password123!  | admin    |
 
 Alice has 3 pre-seeded favourite products.
+
+### Trade Delivery Sites and Billing Entities
+
+Every seeded account signs in with a saved trade profile so checkout can be completed without typing an address. Manage these under **Account** (`/account`): add, edit, choose the default, or retire a record. Retiring keeps the record on any order that already used it.
+
+| Account             | Delivery sites                                          | Billing entities                                                        |
+| ------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------- |
+| alice@example.com   | `Bakery yard` (default, Manchester), `Depot annexe` (Salford) | `Fournier Bakeries Ltd` (default), `Fournier Contract Catering Ltd`      |
+| bob@example.com     | `Store loading bay` (default, Bristol), `Warehouse north` (Gloucester) | `Ashby Convenience Stores Ltd` (default)                     |
+| admin@example.com   | `Head office dock` (default, London)                     | `QArefully Materials Exchange Ltd` (default)                            |
+
+Exactly one delivery site and one billing entity per account is the default. Limits are 25 live delivery sites and 10 live billing entities per account. `npm run seed` inserts a missing record once and never overwrites a later edit; `npm run reset` restores the table above exactly.
+
+### Delivery Slot Booking
+
+Checkout runs in three steps: **Delivery** -> **Schedule and billing** -> **Payment**.
+
+- Step 1 picks a saved delivery site (or enters a one-off address), which is what triggers slot generation.
+- Step 2 shows the earliest delivery date the API derived from the consignment, then offers `am` and `pm` slots on business days only, across a 15-business-day horizon. Lead time is 1 business day for parcel, 3 for freight, and 5 for freight consignments of 1 tonne or more. Weekends are never offered, and slots have no capacity limit — two buyers may book the same slot.
+- Step 2 also captures the billing entity and an optional purchase-order reference (up to 64 characters). The reference is shown on the order confirmation page and against the order in `/orders`.
+- Slots come from `GET /api/delivery/slots`; the booked slot is re-validated by the same rules when payment is submitted, so a stale browser tab cannot book an expired date.
 
 ### Order Lifecycle Fixtures
 
@@ -271,6 +281,18 @@ Refunds are simulated only — no real money, postage, carrier, or payment gatew
 | `EXPIRED10`| Percent| 10%   | Already expired — always rejected   |
 | `SOON10`  | Percent | 10%   | Not yet active — always rejected    |
 | `LIMITED5`| Percent | 5%    | Exhausted (0 redemptions left)      |
+| `GARDEN10`| Percent | 10%   | Garden & Outdoors material lines only |
+| `CLEANFIVE`| Fixed  | $5.00 | Household & Cleaning material lines only |
+
+### Clearance Fixtures
+
+`npm run reset` restores three clearance-window fixtures. Clearance pricing replaces a variant's list-price base before quantity tiers; any promotion then applies only to its eligible material subtotal. Blending fees remain outside every discount.
+
+- `GDN-1043-001` (Lawn Feed, 10 kg Bag): active at the fixture clock, $240.00
+- `HCL-1038-001` (Carpet Cleaner, 500 g Shaker): expired fixture, $72.00
+- `TCM-1049-001` (Rapid-Set Cement, 5 kg Tub): future fixture, $120.00
+
+Fixture windows are anchored to `2026-07-28T12:00:00.000Z`: GDN runs through `2026-08-04T12:00:00.000Z`, HCL ended on `2026-07-27T12:00:00.000Z`, and TCM starts on `2026-07-29T12:00:00.000Z`. Run `npm run reset` to restore these records; their active state is resolved from the server clock.
 
 ### Test Payment Cards
 

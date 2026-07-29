@@ -6,12 +6,13 @@ export const faqArticle = {
   slug: 'faq',
   path: '/help/faq',
   title: 'Frequently asked questions',
-  summary: 'How this local QArefully Powder Co. demo handles browsing, checkout, and saved data.',
+  summary:
+    'How this local QArefully Materials Exchange demo handles browsing, checkout, and saved data.',
   blocks: [
     {
       kind: 'paragraph',
       id: 'demo-context',
-      text: 'QArefully Powder Co. is a local QA demo with a credible powder catalogue, Custom Powder blend builder, and simulated commerce.',
+      text: 'QArefully Materials Exchange is a local QA demo with a credible materials catalogue, a Custom Blend configurator, and simulated commerce.',
     },
     {
       kind: 'faq',
@@ -65,16 +66,6 @@ export const faqArticle = {
             {
               id: 'cart-answer',
               text: 'The browser stores a cart identifier in local storage so the demo can reconnect to its local cart. It is not a real purchase reservation or fulfilment record.',
-            },
-          ],
-        },
-        {
-          id: 'custom-powder-history',
-          question: 'Does Custom Powder remember my mixes?',
-          answerParagraphs: [
-            {
-              id: 'custom-powder-history-answer',
-              text: "Custom Powder can save a bounded history of blend configurations in this browser's local storage. Clearing browser storage removes that local history.",
             },
           ],
         },

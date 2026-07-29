@@ -128,20 +128,20 @@ export function CatalogPage() {
   const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const end = Math.min(page * pageSize, total);
   const resultSummary =
-    total === 0 ? 'No powders' : `${total} ${total === 1 ? 'powder' : 'powders'}`;
+    total === 0 ? 'No materials' : `${total} ${total === 1 ? 'material' : 'materials'}`;
   const title = category ?? (q ? `Results for “${q}”` : 'Shop all products');
 
-  const powderTitle =
+  const catalogTitle =
     category ??
-    (q ? `Powder search results: ${q}` : title.replace('Shop all products', 'All powders'));
+    (q ? `Material search results: ${q}` : title.replace('Shop all products', 'All materials'));
 
   return (
     <div className="pb-12">
       <header className="mb-7 max-w-3xl">
-        <p className="section-eyebrow">The powder catalogue</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">{powderTitle}</h1>
+        <p className="section-eyebrow">The materials catalogue</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">{catalogTitle}</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          From pantry staples to conceptual quantities. All powders are clearly labelled.
+          All materials are clearly labelled for bulk and pallet order.
         </p>
       </header>
       <CatalogToolbar
@@ -294,14 +294,14 @@ function CatalogEmptyState({
 }) {
   return (
     <div className="rounded-2xl border bg-surface-raised px-6 py-16 text-center">
-      <h2 className="text-xl font-semibold">No powders match those filters</h2>
+      <h2 className="text-xl font-semibold">No materials match those filters</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-        Try another powder, category, or return to the full catalogue.
+        Try another material, category, or return to the full catalogue.
       </p>
       <div className="mt-6 flex flex-wrap justify-center gap-3">
         {hasFilters && <Button onClick={onClearFilters}>Clear filters</Button>}
         <Button variant="outline" nativeButton={false} render={<Link to="/catalog" />}>
-          Browse all powders
+          Browse all materials
         </Button>
       </div>
     </div>
@@ -310,7 +310,7 @@ function CatalogEmptyState({
 
 function CatalogSkeleton() {
   return (
-    <ProductGrid aria-label="Loading powders" aria-busy="true">
+    <ProductGrid aria-label="Loading materials" aria-busy="true">
       {Array.from({ length: 8 }, (_, index) => (
         <div key={index} className="overflow-hidden rounded-xl border bg-surface-raised p-4 sm:p-5">
           <div className="aspect-4/5 animate-pulse rounded-xl bg-muted" />

@@ -1,6 +1,6 @@
-import { type CatalogProduct, makeVariant } from '../model.js';
+import { industrializeProducts, type CatalogProduct, makeVariant } from '../model.js';
 
-export const householdCleaningProducts: readonly CatalogProduct[] = [
+export const householdCleaningProducts: readonly CatalogProduct[] = industrializeProducts([
   {
     id: 20,
     slug: 'laundry-detergent-powder',
@@ -621,4 +621,4 @@ export const householdCleaningProducts: readonly CatalogProduct[] = [
       makeVariant('HCL-1041-002', '250 g Shaker', 250, 745, 30, 2),
     ],
   },
-];
+]);

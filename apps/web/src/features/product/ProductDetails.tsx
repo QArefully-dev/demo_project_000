@@ -9,13 +9,16 @@ function formatFactValue(value: unknown): string {
   if (value === null || value === undefined) return 'Not specified';
   if (typeof value === 'number') return String(value);
   if (typeof value === 'string') return value;
-  if (Array.isArray(value)) return value.join(', ');
+  if (Array.isArray(value)) return value.map(formatFactValue).join(', ');
   if (typeof value === 'object') {
     return Object.entries(value as Record<string, unknown>)
-      .map(([k, v]) => `${k}: ${v}`)
+      .map(([k, v]) => `${k}: ${formatFactValue(v)}`)
       .join('\u00A0\u00B7 ');
   }
-  return String(value);
+  if (typeof value === 'boolean' || typeof value === 'bigint' || typeof value === 'symbol') {
+    return value.toString();
+  }
+  return 'Not specified';
 }
 
 function factDisplayPairs(facts: CategoryFacts): { label: string; value: string }[] {
@@ -80,9 +83,9 @@ export function ProductDetails({ description, categoryFacts }: ProductDetailsPro
       aria-labelledby="product-details-heading"
       className="rounded-2xl border bg-surface-raised p-6 sm:p-8"
     >
-      <p className="section-eyebrow">Powder facts</p>
+      <p className="section-eyebrow">Material facts</p>
       <h2 id="product-details-heading" className="mt-2 text-2xl font-semibold tracking-tight">
-        What is in this bag
+        What this material contains
       </h2>
       {description.trim() && (
         <p className="mt-4 max-w-3xl leading-7 text-muted-foreground">{description}</p>

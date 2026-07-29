@@ -1,6 +1,11 @@
 import type Database from 'better-sqlite3';
+import type { TSchema } from '@sinclair/typebox';
+import { Value } from '@sinclair/typebox/value';
+import { PostalAddress } from '@shop/contracts/address';
+import { CustomBlendSnapshot } from '@shop/contracts/custom-blends';
+import { DeliverySlot } from '@shop/contracts/delivery';
+import { BillingEntitySnapshot } from '@shop/contracts/trade-account';
 import type {
-  NormalizedOrderPowderMixItem,
   Order,
   OrderDetailResponse,
   OrderLifecycleEvent,
@@ -11,16 +16,14 @@ import type {
   OrderSummary,
   ShipmentStatus,
 } from '@shop/contracts/orders';
-import {
-  DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
-  parsePowderMixOrderItemSnapshot,
-} from '@shop/contracts/powderizer';
 import type { CreateOrderParams, LifecycleEventInput, PersistedShipment } from './orderTypes.js';
 
 interface OrderRow {
   id: number;
   promo_code_applied: string | null;
+  promo_category_scope: string | null;
   subtotal_cents: number;
+  discount_base_cents: number | null;
   discount_cents: number;
   total_cents: number;
   created_at: string;
@@ -31,6 +34,12 @@ interface OrderRow {
   delivery_mode: string | null;
   delivery_charge_cents: number | null;
   delivery_weight_grams: number | null;
+  delivery_site_id: number | null;
+  delivery_address_json: string | null;
+  billing_entity_json: string | null;
+  delivery_slot_date: string | null;
+  delivery_slot_window: string | null;
+  purchase_order_reference: string | null;
 }
 interface ProductLineRow {
   id: number;
@@ -39,6 +48,9 @@ interface ProductLineRow {
   product_price_cents: number;
   quantity: number;
   line_total_cents: number;
+  discountable_total_cents: number;
+  blending_fee_cents: number;
+  custom_blend_json: string | null;
   allocated_quantity?: number | null;
   backordered_quantity?: number | null;
   cancelled_quantity?: number | null;
@@ -48,10 +60,6 @@ interface ProductLineRow {
   weight_grams?: number | null;
   consumption_classification?: string | null;
   delivery_class?: string | null;
-}
-interface MixLineRow {
-  id: number;
-  snapshot_json: string;
 }
 interface ShipmentRow {
   id: number;
@@ -101,9 +109,7 @@ export interface OrderRepository extends OrderAccessRepository {
   ): { id: number; status: OrderStatus; version: number; cancelledAt: string | null } | undefined;
   getShipment(shipmentId: number): PersistedShipment | undefined;
   listShipments(orderId: number): PersistedShipment[];
-  listAllocatableLines(
-    orderId: number,
-  ): Array<{ lineKind: 'product' | 'powder_mix'; lineId: string; quantity: number }>;
+  listAllocatableLines(orderId: number): Array<{ lineId: string; quantity: number }>;
   hasOutstandingBackorder(orderId: number): boolean;
   insertShipment(input: {
     orderId: number;
@@ -111,12 +117,7 @@ export interface OrderRepository extends OrderAccessRepository {
     trackingReference: string | null;
     createdAt: string;
   }): number;
-  insertShipmentLine(input: {
-    shipmentId: number;
-    lineId: number;
-    lineKind: 'product' | 'powder_mix';
-    quantity: number;
-  }): void;
+  insertShipmentLine(input: { shipmentId: number; lineId: number; quantity: number }): void;
   updateShipmentStatus(input: {
     shipmentId: number;
     expectedVersion: number;
@@ -137,77 +138,142 @@ export interface OrderRepository extends OrderAccessRepository {
   ): { orderId: number; requestFingerprint: string } | undefined;
 }
 
-function parseMixSnapshot(value: string): NormalizedOrderPowderMixItem {
+/**
+ * Storage-boundary parser for the frozen Custom Blend specification on an order line.
+ *
+ * Fails closed: an order is a financial record, so unreadable, schema-invalid, or
+ * money-inconsistent snapshot JSON must surface as an error rather than degrade the line
+ * into an ordinary one. Backfilled and plain rows store `NULL` and hydrate to `undefined`.
+ */
+function hydrateOrderCustomBlend(row: ProductLineRow): CustomBlendSnapshot | undefined {
+  if (row.custom_blend_json === null) return undefined;
+  let parsed: unknown;
   try {
-    const parsed = parsePowderMixOrderItemSnapshot(JSON.parse(value));
-    return parsed.snapshotVersion === 1
-      ? {
-          ...parsed,
-          bagColourScheme: DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
-          usageLabel: 'Check ingredient labels',
-        }
-      : parsed;
+    parsed = JSON.parse(row.custom_blend_json);
   } catch {
-    throw new Error('Invalid order mix snapshot');
+    throw new Error(`Order line ${row.id} has an unreadable Custom Blend snapshot`);
   }
+  if (!Value.Check(CustomBlendSnapshot, parsed)) {
+    throw new Error(`Order line ${row.id} has an invalid Custom Blend snapshot`);
+  }
+  if (parsed.blendingFeeCents !== row.blending_fee_cents) {
+    throw new Error(
+      `Order line ${row.id} Custom Blend fee disagrees with its persisted line money`,
+    );
+  }
+  return parsed;
 }
 
-function mapOrder(row: OrderRow, items: ProductLineRow[], mixes: MixLineRow[]): Order {
+/**
+ * Storage-boundary parser for a JSON snapshot column on an order.
+ *
+ * Fails closed for the same reason as the Custom Blend snapshot: an order is a financial record, so
+ * unreadable or schema-invalid delivery/billing JSON must surface as an error rather than silently
+ * hydrate as an order that was never told where it was going or who was billed.
+ */
+function hydrateOrderSnapshot<T>(
+  orderId: number,
+  column: string,
+  schema: TSchema,
+  json: string | null,
+): T | undefined {
+  if (json === null) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    throw new Error(`Order ${orderId} has an unreadable ${column}`);
+  }
+  if (!Value.Check(schema, parsed)) {
+    throw new Error(`Order ${orderId} has an invalid ${column}`);
+  }
+  return parsed as T;
+}
+
+/** Slot identity is date plus window; a half-written pair is corruption, not a partial booking. */
+function hydrateOrderSlot(row: OrderRow): DeliverySlot | undefined {
+  if (row.delivery_slot_date === null && row.delivery_slot_window === null) return undefined;
+  const slot = { date: row.delivery_slot_date, window: row.delivery_slot_window };
+  if (!Value.Check(DeliverySlot, slot)) {
+    throw new Error(`Order ${row.id} has an invalid delivery slot`);
+  }
+  return slot;
+}
+
+function mapOrder(row: OrderRow, items: ProductLineRow[]): Order {
   return {
     id: String(row.id),
     status: row.lifecycle_status,
     version: row.version,
-    items: items.map((item): OrderLineItem => ({
-      lineId: String(item.id),
-      productId: String(item.product_id),
-      productName: item.product_name,
-      unitPriceCents: item.product_price_cents,
-      quantity: item.quantity,
-      lineTotalCents: item.line_total_cents,
-      inventoryStatus:
-        (item.cancelled_quantity ?? 0) > 0
-          ? 'cancelled'
-          : (item.backordered_quantity ?? 0) === 0
-            ? 'allocated'
-            : (item.allocated_quantity ?? 0) === 0
-              ? 'backordered'
-              : 'partially_backordered',
-      allocatedQuantity: item.allocated_quantity ?? item.quantity,
-      backorderedQuantity: item.backordered_quantity ?? 0,
-      variantSnapshot:
-        item.variant_id != null
-          ? {
-              variantId: item.variant_id,
-              sku: item.sku ?? '',
-              label: item.variant_label ?? item.product_name,
-              unitPriceCents: item.product_price_cents,
-              weightGrams: item.weight_grams ?? 1000,
-              consumptionClassification:
-                (item.consumption_classification as OrderLineVariantSnapshot['consumptionClassification']) ??
-                'non-food',
-              deliveryClass:
-                (item.delivery_class as OrderLineVariantSnapshot['deliveryClass']) ?? 'parcel',
-            }
-          : undefined,
-    })),
-    mixItems: mixes.map((mix) => ({
-      ...parseMixSnapshot(mix.snapshot_json),
-      lineId: String(mix.id),
-    })),
+    items: items.map((item): OrderLineItem => {
+      const customBlend = hydrateOrderCustomBlend(item);
+      return {
+        lineId: String(item.id),
+        productId: String(item.product_id),
+        productName: item.product_name,
+        unitPriceCents: item.product_price_cents,
+        quantity: item.quantity,
+        discountableTotalCents: item.discountable_total_cents,
+        blendingFeeCents: item.blending_fee_cents,
+        lineTotalCents: item.line_total_cents,
+        inventoryStatus:
+          (item.cancelled_quantity ?? 0) > 0
+            ? 'cancelled'
+            : (item.backordered_quantity ?? 0) === 0
+              ? 'allocated'
+              : (item.allocated_quantity ?? 0) === 0
+                ? 'backordered'
+                : 'partially_backordered',
+        allocatedQuantity: item.allocated_quantity ?? item.quantity,
+        backorderedQuantity: item.backordered_quantity ?? 0,
+        variantSnapshot:
+          item.variant_id != null
+            ? {
+                variantId: item.variant_id,
+                sku: item.sku ?? '',
+                label: item.variant_label ?? item.product_name,
+                unitPriceCents: item.product_price_cents,
+                weightGrams: item.weight_grams ?? 1000,
+                consumptionClassification:
+                  (item.consumption_classification as OrderLineVariantSnapshot['consumptionClassification']) ??
+                  'non-food',
+                deliveryClass:
+                  (item.delivery_class as OrderLineVariantSnapshot['deliveryClass']) ?? 'parcel',
+              }
+            : undefined,
+        ...(customBlend ? { customBlend } : {}),
+      };
+    }),
     subtotalCents: row.subtotal_cents,
     discountCents: row.discount_cents,
     totalCents: row.total_cents,
     promoApplied: row.promo_code_applied,
+    promoCategoryScope: row.promo_category_scope ?? undefined,
+    discountBaseCents: row.discount_base_cents ?? undefined,
     createdAt: row.created_at,
     deliveryMode: (row.delivery_mode as Order['deliveryMode']) ?? undefined,
     deliveryChargeCents: row.delivery_charge_cents ?? undefined,
     deliveryWeightGrams: row.delivery_weight_grams ?? undefined,
+    deliveryAddress: hydrateOrderSnapshot<PostalAddress>(
+      row.id,
+      'delivery address snapshot',
+      PostalAddress,
+      row.delivery_address_json,
+    ),
+    billingEntity: hydrateOrderSnapshot<BillingEntitySnapshot>(
+      row.id,
+      'billing entity snapshot',
+      BillingEntitySnapshot,
+      row.billing_entity_json,
+    ),
+    deliverySlot: hydrateOrderSlot(row),
+    purchaseOrderReference: row.purchase_order_reference ?? undefined,
   };
 }
 
 function mapShipment(
   row: ShipmentRow,
-  lines: Array<{ line_kind: 'product' | 'powder_mix'; line_id: number; quantity: number }>,
+  lines: Array<{ line_id: number; quantity: number }>,
 ): OrderShipment {
   return {
     id: String(row.id),
@@ -216,7 +282,6 @@ function mapShipment(
     trackingReference: row.tracking_reference,
     version: row.version,
     lines: lines.map((line) => ({
-      lineKind: line.line_kind,
       lineId: String(line.line_id),
       quantity: line.quantity,
     })),
@@ -229,17 +294,20 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
   const loadOrder = (orderId: number): OrderRow | undefined =>
     db
       .prepare(
-        `SELECT id, promo_code_applied, subtotal_cents, discount_cents, total_cents, created_at,
+        `SELECT id, promo_code_applied, promo_category_scope, subtotal_cents, discount_base_cents, discount_cents, total_cents, created_at,
             lifecycle_status, version, cancelled_at, user_id,
-            delivery_mode, delivery_charge_cents, delivery_weight_grams
+            delivery_mode, delivery_charge_cents, delivery_weight_grams,
+            delivery_site_id, delivery_address_json, billing_entity_json,
+            delivery_slot_date, delivery_slot_window, purchase_order_reference
          FROM orders WHERE id = ?`,
       )
       .get(orderId) as OrderRow | undefined;
-  const loadLines = (orderId: number) => ({
-    items: db
+  const loadLineItems = (orderId: number) =>
+    db
       .prepare(
         `SELECT line.id, line.product_id, line.product_name, line.product_price_cents,
            line.quantity, line.line_total_cents,
+           line.discountable_total_cents, line.blending_fee_cents, line.custom_blend_json,
            line.variant_id, line.sku, line.variant_label, line.weight_grams,
            line.consumption_classification, line.delivery_class,
            allocation.allocated_quantity, allocation.backordered_quantity, allocation.cancelled_quantity
@@ -247,13 +315,7 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
          LEFT JOIN order_inventory_allocations allocation ON allocation.order_line_item_id = line.id
          WHERE line.order_id = ? ORDER BY line.id ASC`,
       )
-      .all(orderId) as ProductLineRow[],
-    mixes: db
-      .prepare(
-        'SELECT id, snapshot_json FROM order_powder_mix_items WHERE order_id = ? ORDER BY id ASC',
-      )
-      .all(orderId) as MixLineRow[],
-  });
+      .all(orderId) as ProductLineRow[];
   const loadShipments = (orderId: number): ShipmentRow[] =>
     db
       .prepare(
@@ -263,16 +325,15 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
   const findDetail = (orderId: number): OrderDetailResponse | undefined => {
     const row = loadOrder(orderId);
     if (!row) return undefined;
-    const lines = loadLines(orderId);
+    const items = loadLineItems(orderId);
     const shipments = loadShipments(orderId);
     const shipmentLines = db
       .prepare(
-        `SELECT shipment_id, order_line_item_id, order_powder_mix_item_id, quantity FROM order_shipment_items WHERE shipment_id IN (SELECT id FROM order_shipments WHERE order_id = ?) ORDER BY shipment_id ASC, order_line_item_id ASC, order_powder_mix_item_id ASC`,
+        `SELECT shipment_id, order_line_item_id, quantity FROM order_shipment_items WHERE shipment_id IN (SELECT id FROM order_shipments WHERE order_id = ?) ORDER BY shipment_id ASC, order_line_item_id ASC`,
       )
       .all(orderId) as Array<{
       shipment_id: number;
-      order_line_item_id: number | null;
-      order_powder_mix_item_id: number | null;
+      order_line_item_id: number;
       quantity: number;
     }>;
     const events = db
@@ -281,25 +342,13 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
       )
       .all(orderId) as EventRow[];
     return {
-      ...mapOrder(row, lines.items, lines.mixes),
+      ...mapOrder(row, items),
       shipments: shipments.map((shipment) =>
         mapShipment(
           shipment,
           shipmentLines
             .filter((line) => line.shipment_id === shipment.id)
-            .map((line) =>
-              line.order_line_item_id === null
-                ? {
-                    line_kind: 'powder_mix',
-                    line_id: line.order_powder_mix_item_id!,
-                    quantity: line.quantity,
-                  }
-                : {
-                    line_kind: 'product',
-                    line_id: line.order_line_item_id,
-                    quantity: line.quantity,
-                  },
-            ),
+            .map((line) => ({ line_id: line.order_line_item_id, quantity: line.quantity })),
         ),
       ),
       events: events.map((event) => ({
@@ -322,23 +371,33 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
       const result = db
         .prepare(
           `INSERT INTO orders
-            (customer_name, customer_email, shipping_address, promo_code_applied,
-             subtotal_cents, discount_cents, total_cents,
+            (customer_name, customer_email, shipping_address, promo_code_applied, promo_category_scope,
+             subtotal_cents, discount_base_cents, discount_cents, total_cents,
              delivery_mode, delivery_charge_cents, delivery_weight_grams,
+             delivery_site_id, delivery_address_json, billing_entity_json,
+             delivery_slot_date, delivery_slot_window, purchase_order_reference,
              user_id, created_at, lifecycle_status, version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0)`,
         )
         .run(
           params.customerName,
           params.customerEmail,
           params.shippingAddress,
           params.promoApplied,
+          params.promoCategoryScope ?? null,
           params.subtotalCents,
+          params.discountBaseCents ?? null,
           params.discountCents,
           params.totalCents,
           params.deliveryMode ?? 'parcel',
           params.deliveryChargeCents ?? 0,
           params.deliveryWeightGrams ?? 0,
+          params.deliverySiteId ?? null,
+          params.deliveryAddress ? JSON.stringify(params.deliveryAddress) : null,
+          params.billingEntity ? JSON.stringify(params.billingEntity) : null,
+          params.deliverySlot?.date ?? null,
+          params.deliverySlot?.window ?? null,
+          params.purchaseOrderReference ?? null,
           params.userId,
           params.createdAt,
         );
@@ -346,8 +405,9 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
       const addItem = db.prepare(
         `INSERT INTO order_line_items
           (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents,
+           discountable_total_cents, blending_fee_cents, custom_blend_json,
            variant_id, sku, variant_label, weight_grams, consumption_classification, delivery_class)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       for (const item of params.items)
         addItem.run(
@@ -357,6 +417,9 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
           item.unitPriceCents,
           item.quantity,
           item.lineTotalCents,
+          item.discountableTotalCents,
+          item.blendingFeeCents,
+          item.customBlend ? JSON.stringify(item.customBlend) : null,
           item.variantSnapshot?.variantId ?? null,
           item.variantSnapshot?.sku ?? null,
           item.variantSnapshot?.label ?? null,
@@ -364,10 +427,6 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
           item.variantSnapshot?.consumptionClassification ?? null,
           item.variantSnapshot?.deliveryClass ?? null,
         );
-      const addMix = db.prepare(
-        'INSERT INTO order_powder_mix_items (order_id, snapshot_json) VALUES (?, ?)',
-      );
-      for (const mix of params.mixItems) addMix.run(orderId, JSON.stringify(mix));
       db.prepare(
         `INSERT INTO order_lifecycle_events (order_id, event_type, title, occurred_at) VALUES (?, 'order_created', 'Order created', ?)`,
       ).run(orderId, params.createdAt);
@@ -376,8 +435,7 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
     findById(orderId) {
       const row = loadOrder(orderId);
       if (!row) return undefined;
-      const lines = loadLines(orderId);
-      return mapOrder(row, lines.items, lines.mixes);
+      return mapOrder(row, loadLineItems(orderId));
     },
     findDetailById: findDetail,
     findOwnedDetail(orderId, userId) {
@@ -391,8 +449,8 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
       const items = db
         .prepare(
           `SELECT o.id, o.lifecycle_status, o.version, o.total_cents, o.created_at,
-          COALESCE((SELECT SUM(quantity) FROM order_line_items WHERE order_id = o.id), 0) +
-          COALESCE((SELECT SUM(CAST(json_extract(snapshot_json, '$.quantity') AS INTEGER)) FROM order_powder_mix_items WHERE order_id = o.id), 0) AS total_items,
+          o.purchase_order_reference,
+          COALESCE((SELECT SUM(quantity) FROM order_line_items WHERE order_id = o.id), 0) AS total_items,
           EXISTS(SELECT 1 FROM order_inventory_allocations allocation
             JOIN order_line_items line ON line.id = allocation.order_line_item_id
             WHERE line.order_id = o.id AND allocation.backordered_quantity > 0) AS has_backorder
@@ -406,6 +464,7 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
         total_items: number;
         has_backorder: number;
         created_at: string;
+        purchase_order_reference: string | null;
       }>;
       const count = db
         .prepare('SELECT COUNT(*) AS count FROM orders WHERE user_id = ?')
@@ -419,6 +478,8 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
           totalItems: row.total_items,
           hasBackorder: row.has_backorder === 1,
           createdAt: row.created_at,
+          // Contract-optional: absent on every order placed before checkout captured a reference.
+          purchaseOrderReference: row.purchase_order_reference ?? undefined,
         })),
         total: count.count,
       };
@@ -466,31 +527,16 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
       }));
     },
     listAllocatableLines(orderId) {
-      const product = db
-        .prepare(
-          `SELECT line.id, COALESCE(allocation.allocated_quantity, line.quantity) AS quantity
+      return (
+        db
+          .prepare(
+            `SELECT line.id, COALESCE(allocation.allocated_quantity, line.quantity) AS quantity
            FROM order_line_items line
            LEFT JOIN order_inventory_allocations allocation ON allocation.order_line_item_id = line.id
            WHERE line.order_id = ? ORDER BY line.id`,
-        )
-        .all(orderId) as Array<{ id: number; quantity: number }>;
-      const mix = db
-        .prepare(
-          'SELECT id, snapshot_json FROM order_powder_mix_items WHERE order_id = ? ORDER BY id',
-        )
-        .all(orderId) as MixLineRow[];
-      return [
-        ...product.map((line) => ({
-          lineKind: 'product' as const,
-          lineId: String(line.id),
-          quantity: line.quantity,
-        })),
-        ...mix.map((line) => ({
-          lineKind: 'powder_mix' as const,
-          lineId: String(line.id),
-          quantity: parseMixSnapshot(line.snapshot_json).quantity,
-        })),
-      ];
+          )
+          .all(orderId) as Array<{ id: number; quantity: number }>
+      ).map((line) => ({ lineId: String(line.id), quantity: line.quantity }));
     },
     hasOutstandingBackorder(orderId) {
       return !!db
@@ -510,15 +556,10 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
           .run(orderId, shipmentNumber, trackingReference, createdAt, createdAt).lastInsertRowid,
       );
     },
-    insertShipmentLine({ shipmentId, lineId, lineKind, quantity }) {
-      if (lineKind === 'product')
-        db.prepare(
-          'INSERT INTO order_shipment_items (shipment_id, order_line_item_id, quantity) VALUES (?, ?, ?)',
-        ).run(shipmentId, lineId, quantity);
-      else
-        db.prepare(
-          'INSERT INTO order_shipment_items (shipment_id, order_powder_mix_item_id, quantity) VALUES (?, ?, ?)',
-        ).run(shipmentId, lineId, quantity);
+    insertShipmentLine({ shipmentId, lineId, quantity }) {
+      db.prepare(
+        'INSERT INTO order_shipment_items (shipment_id, order_line_item_id, quantity) VALUES (?, ?, ?)',
+      ).run(shipmentId, lineId, quantity);
     },
     updateShipmentStatus({ shipmentId, expectedVersion, status, updatedAt }) {
       return (

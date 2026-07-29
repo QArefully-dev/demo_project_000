@@ -18,32 +18,57 @@ import {
 } from '../../src/features/payments/paymentRepository.js';
 import { createPromoRepository } from '../../src/features/promos/promoRepository.js';
 import { validatePromo } from '../../src/features/promos/promoService.js';
+import { testPostalAddress } from './checkoutDepthFixtures.js';
 
 const createdAt = '2026-07-14T10:00:00.000Z';
 
 function quote(cartId: string, totalCents = 1200): PersistedCheckoutQuote {
   return {
-    version: 1,
+    version: 8,
     cartId,
     customer: {
       name: 'Checkout test',
       email: 'checkout@example.test',
-      shippingAddress: '1 Test Street',
+      deliveryAddress: testPostalAddress,
+      shippingAddress: '1 Test Street, Testville, TS1 1TS, GB',
     },
     userId: null,
     promoCode: null,
     subtotalCents: totalCents,
+    discountBaseCents: 0,
+    promoCategoryScope: null,
     discountCents: 0,
     totalCents,
-    lines: [
+    lines: [],
+    variantLines: [
       {
         productId: '1',
+        variantId: 1,
         productName: 'Test product',
+        variantLabel: '25 kg sack',
         unitPriceCents: totalCents,
+        weightGrams: 25_000,
+        deliveryClass: 'freight',
         quantity: 1,
         lineTotalCents: totalCents,
+        consumptionClassification: 'non-food',
       },
     ],
+    deliverySummary: {
+      mode: 'freight',
+      chargeCents: 0,
+      weightGrams: 25_000,
+      reason: 'A freight-class item requires freight delivery',
+    },
+    inventoryAllocations: [{ productId: '1', reservedQuantity: 1, backorderedQuantity: 0 }],
+    billingEntity: {
+      legalName: 'Test Buyer Ltd',
+      registrationNumber: null,
+      vatNumber: null,
+      address: testPostalAddress,
+    },
+    deliverySlot: { date: '2026-07-20', window: 'am' },
+    purchaseOrderReference: null,
     createdAt,
   };
 }

@@ -33,21 +33,32 @@ void test('product repository owns catalog SQL and variant methods', (t) => {
   assert.ok(baking > 0);
 
   const onSaleItems = products.list({ onSale: true, sort: 'newest', pageSize: 48 });
-  assert.ok(onSaleItems.items.every((product) => product.compare_at_price_cents !== null));
+  // onSale covers both legacy compare-at pricing and an active variant clearance window.
+  const hasActiveClearance = db.prepare(
+    `SELECT 1
+     FROM product_variants pv
+     WHERE pv.product_id = ?
+       AND pv.active = 1
+       AND pv.clearance_price_cents IS NOT NULL
+       AND pv.clearance_price_cents > 0
+       AND pv.clearance_price_cents < pv.price_cents
+       AND pv.clearance_starts_at IS NOT NULL
+       AND pv.clearance_ends_at IS NOT NULL
+       AND julianday(pv.clearance_starts_at) <= julianday('now')
+       AND julianday(pv.clearance_ends_at) > julianday('now')
+     LIMIT 1`,
+  );
+  assert.ok(
+    onSaleItems.items.every(
+      (product) =>
+        product.compare_at_price_cents !== null || hasActiveClearance.get(product.id) !== undefined,
+    ),
+  );
 
   db.prepare('UPDATE products SET active = 0 WHERE id IN (1, 2)').run();
   assert.equal(products.findById(1)?.active, 0);
   assert.equal(products.findActiveById(1), undefined);
   assert.equal(products.list({ sort: 'newest', pageSize: 48 }).total, 98);
-  assert.equal(
-    products.listEligibleMixProducts().some((product) => product.id === 1),
-    false,
-  );
-  assert.deepEqual(products.listActiveMixProducts([1, 2]), []);
-  assert.deepEqual(
-    products.listMixProducts([1, 2]).map((product) => product.id),
-    [1, 2],
-  );
 
   // Variant methods
   const variants = products.findAllVariants(8);
@@ -98,9 +109,9 @@ void test('customer reads hydrate persisted metadata in stable catalog order', (
   db.prepare(
     `INSERT INTO products
       (id, name, description, price_cents, category, stock_count, image_set_id, slug,
-       compare_at_price_cents, sales_count, mixable, mix_unit_grams, active, created_at)
+       compare_at_price_cents, sales_count, active, created_at)
      VALUES (99, 'Local powder', 'Local metadata', 999, 'Baking & Pantry', 3, NULL, 'local-powder',
-       NULL, 0, 0, NULL, 1, '2026-07-01T00:00:00.000Z')`,
+       NULL, 0, 1, '2026-07-01T00:00:00.000Z')`,
   ).run();
   db.prepare('INSERT INTO catalog_tags (key, label) VALUES (?, ?), (?, ?)').run(
     'z-local',
@@ -294,8 +305,10 @@ void test('advanced catalog predicates are inclusive, composable, and stable', (
     'price_desc',
     'bestselling',
   ] as const) {
-    const ties = [1, 2]
-      .flatMap((page) => products.list({ sort, page, pageSize: 48 }).items)
+    const pageSize = 48;
+    const pageCount = Math.ceil(products.list({ sort, pageSize }).total / pageSize);
+    const ties = Array.from({ length: pageCount }, (_, index) => index + 1)
+      .flatMap((page) => products.list({ sort, page, pageSize }).items)
       .filter((row) => row.id === 1 || row.id === tieId);
     assert.deepEqual(
       ties.map((row) => row.id),
@@ -369,8 +382,8 @@ void test('reservation-aware availability filters count and paginate against one
   );
   const reservation = db.prepare(
     `INSERT INTO inventory_reservations
-      (payment_idempotency_key, variant_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
-     VALUES (?, ?, 'product', 1, 0, ?, ?)`,
+      (payment_idempotency_key, variant_id, reserved_quantity, backordered_quantity, expires_at, created_at)
+     VALUES (?, ?, 1, 0, ?, ?)`,
   );
   payment.run('catalog-live', 'catalog-live');
   reservation.run('catalog-live', variant1Id, future, now);

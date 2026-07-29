@@ -14,7 +14,7 @@ export type HelpArticleId =
   | 'powder-safety'
   | 'storage'
   | 'pack-sizes'
-  | 'custom-powder'
+  | 'custom-blend'
   | 'privacy'
   | 'terms';
 
@@ -24,7 +24,6 @@ export const faqEntryIds = [
   'shipping',
   'account-data',
   'cart',
-  'custom-powder-history',
 ] as const;
 
 export type FaqEntryId = (typeof faqEntryIds)[number];

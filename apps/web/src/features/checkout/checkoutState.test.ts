@@ -27,6 +27,8 @@ describe('checkoutState', () => {
       promoCode: 'SAVE10',
       quoteKey: 'quote-a',
       discountCents: 100,
+      discountBaseCents: 1000,
+      promoCategoryScope: 'aggregates',
       totalCents: 900,
     });
     state = checkoutReducer(state, { type: 'submission-started' });
@@ -37,6 +39,8 @@ describe('checkoutState', () => {
       promoCode: 'SAVE10',
       appliedPromo: 'SAVE10',
       discountCents: 100,
+      discountBaseCents: 1000,
+      promoCategoryScope: 'aggregates',
       submitting: true,
       idempotencyKey: 'promo',
     });
@@ -47,11 +51,116 @@ describe('checkoutState', () => {
     expect(state).toMatchObject({
       appliedPromo: null,
       discountCents: 0,
+      discountBaseCents: null,
+      promoCategoryScope: null,
       promoValidating: false,
       submitting: false,
       paymentError: 'declined',
       idempotencyKey: 'cart-change',
     });
+  });
+
+  it('rotates the idempotency key for every new checkout field group', () => {
+    let state = initialCheckoutState();
+    state = checkoutReducer(state, {
+      type: 'delivery-changed',
+      patch: { destinationKind: 'saved', deliverySiteId: '4' },
+      idempotencyKey: 'after-destination',
+    });
+    expect(state.idempotencyKey).toBe('after-destination');
+    expect(state.delivery).toMatchObject({ destinationKind: 'saved', deliverySiteId: '4' });
+
+    state = checkoutReducer(state, {
+      type: 'schedule-changed',
+      slot: { date: '2026-08-03', window: 'am' },
+      idempotencyKey: 'after-slot',
+    });
+    expect(state.idempotencyKey).toBe('after-slot');
+
+    state = checkoutReducer(state, {
+      type: 'billing-changed',
+      patch: { purchaseOrderReference: 'PO-42' },
+      idempotencyKey: 'after-po',
+    });
+    expect(state.idempotencyKey).toBe('after-po');
+    expect(state.billing.purchaseOrderReference).toBe('PO-42');
+  });
+
+  it('clears a category-mismatch code when a promo retry succeeds', () => {
+    let state = checkoutReducer(initialCheckoutState(), {
+      type: 'promo-failed',
+      error: 'This code only applies to aggregates.',
+      errorCode: 'CATEGORY_MISMATCH',
+    });
+    expect(state.promoErrorCode).toBe('CATEGORY_MISMATCH');
+
+    state = checkoutReducer(state, { type: 'promo-started' });
+    expect(state).toMatchObject({ promoError: null, promoErrorCode: null, promoValidating: true });
+
+    state = checkoutReducer(state, {
+      type: 'promo-applied',
+      promoCode: 'AGG10',
+      quoteKey: 'quote-retry',
+      discountCents: 100,
+      discountBaseCents: 1000,
+      promoCategoryScope: 'aggregates',
+      totalCents: 900,
+    });
+    expect(state).toMatchObject({
+      appliedPromo: 'AGG10',
+      promoError: null,
+      promoErrorCode: null,
+      promoValidating: false,
+    });
+  });
+
+  it('preselects a default site only until the buyer chooses for themselves', () => {
+    let state = initialCheckoutState();
+    state = checkoutReducer(state, {
+      type: 'delivery-sites-loaded',
+      defaultSiteId: '2',
+      idempotencyKey: 'preselect',
+    });
+    expect(state.delivery).toMatchObject({ destinationKind: 'saved', deliverySiteId: '2' });
+
+    state = checkoutReducer(state, {
+      type: 'delivery-changed',
+      patch: { destinationKind: 'adhoc', deliverySiteId: '' },
+      idempotencyKey: 'buyer-choice',
+    });
+    const afterChoice = checkoutReducer(state, {
+      type: 'delivery-sites-loaded',
+      defaultSiteId: '2',
+      idempotencyKey: 'late-reload',
+    });
+    expect(afterChoice).toBe(state);
+  });
+
+  it('clears only a slot-unavailable conflict when a new slot is chosen', () => {
+    let state = initialCheckoutState();
+    state = checkoutReducer(state, {
+      type: 'conflict',
+      conflict: { code: 'DELIVERY_SLOT_UNAVAILABLE', earliestDate: '2026-08-05' },
+      idempotencyKey: 'conflict',
+    });
+    state = checkoutReducer(state, {
+      type: 'schedule-changed',
+      slot: { date: '2026-08-05', window: 'pm' },
+      idempotencyKey: 'reschedule',
+    });
+    expect(state.conflict).toBeNull();
+
+    state = checkoutReducer(state, {
+      type: 'conflict',
+      conflict: { code: 'INSUFFICIENT_STOCK', productIds: ['1'] },
+      idempotencyKey: 'stock',
+    });
+    state = checkoutReducer(state, {
+      type: 'schedule-changed',
+      slot: { date: '2026-08-06', window: 'am' },
+      idempotencyKey: 'reschedule-2',
+    });
+    expect(state.conflict).toEqual({ code: 'INSUFFICIENT_STOCK', productIds: ['1'] });
   });
 
   it('creates an order-stable quote key', () => {
@@ -62,7 +171,6 @@ describe('checkoutState', () => {
         { productId: 'b', quantity: 1, lineTotalCents: 200 },
         { productId: 'a', quantity: 1, lineTotalCents: 100 },
       ],
-      mixItems: [],
     };
     const reordered = { ...first, items: [...first.items].reverse() };
 

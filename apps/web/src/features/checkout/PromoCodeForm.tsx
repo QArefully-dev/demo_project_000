@@ -1,10 +1,12 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import type { PromoValidationErrorCode } from '@shop/contracts/promos';
 
 interface PromoCodeFormProps {
   promoCode: string;
   appliedPromo: string | null;
   error: string | null;
+  errorCode: PromoValidationErrorCode | null;
   validating: boolean;
   eligible: boolean;
   onChange: (value: string) => void;
@@ -16,16 +18,22 @@ export function PromoCodeForm({
   promoCode,
   appliedPromo,
   error,
+  errorCode,
   validating,
   eligible,
   onChange,
   onApply,
   onRemove,
 }: PromoCodeFormProps) {
+  const errorMessage =
+    errorCode === 'CATEGORY_MISMATCH'
+      ? 'This promo does not apply to any items in your cart.'
+      : error;
+
   return (
     <div className="space-y-2">
       <label htmlFor="promoCode" className="text-sm font-medium">
-        Powder promotion
+        Order promotion
       </label>
       <p className="text-xs text-muted-foreground">
         SAVE10 takes 10% off when this cart contains at least five bags.
@@ -45,8 +53,8 @@ export function PromoCodeForm({
                 onApply();
               }
             }}
-            aria-describedby={error ? 'promo-error' : undefined}
-            aria-invalid={Boolean(error)}
+            aria-describedby={errorMessage ? 'promo-error' : undefined}
+            aria-invalid={Boolean(errorMessage)}
           />
           <Button
             type="button"
@@ -65,9 +73,9 @@ export function PromoCodeForm({
           </Button>
         </div>
       )}
-      {error && (
+      {errorMessage && (
         <p id="promo-error" role="alert" className="text-xs text-destructive">
-          {error}
+          {errorMessage}
         </p>
       )}
     </div>

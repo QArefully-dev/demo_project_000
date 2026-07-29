@@ -55,7 +55,6 @@ const catalogProduct: ProductWithVariants = {
   available: true,
   tags: [],
   specificationGroups: [],
-  mixable: false,
   variants: [
     {
       variantId: 1,
@@ -64,6 +63,9 @@ const catalogProduct: ProductWithVariants = {
       label: 'Standard',
       weightGrams: 500,
       priceCents: 1000,
+      moqSacks: 4,
+      perTonneCents: 2_000_000,
+      priceTiers: [{ minTonnes: 1, discountPct: 0 }],
       stockCount: 5,
       backorderable: false,
       backorderLeadDays: null,
@@ -285,6 +287,16 @@ describe('CatalogPage URL state', () => {
     );
   });
 
+  it('sizes price range inputs to their grid columns', () => {
+    renderCatalog('/catalog');
+
+    for (const label of ['Minimum (cents)', 'Maximum (cents)']) {
+      const input = screen.getByLabelText(label);
+      expect(input).toHaveClass('min-w-0', 'w-full');
+      expect(input.closest('label')).toHaveClass('min-w-0');
+    }
+  });
+
   it('uses only loaded filter-option values and cleans unsupported values on the next mutation', async () => {
     const user = userEvent.setup();
     renderCatalog('/catalog?tag=pantry&tag=unknown&spec=texture%3Afine&spec=missing%3Avalue');
@@ -314,7 +326,7 @@ describe('CatalogPage URL state', () => {
 
     expect(screen.getByText('More filters are unavailable.')).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Powdered Water' })).toBeVisible();
-    expect(screen.getByRole('searchbox', { name: 'Search powders' })).toHaveValue('water');
+    expect(screen.getByRole('searchbox', { name: 'Search materials' })).toHaveValue('water');
   });
 
   it.each([
@@ -392,7 +404,7 @@ describe('CatalogPage URL state', () => {
     vi.useFakeTimers();
     renderCatalog('/catalog');
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search powders' }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search materials' }), {
       target: { value: 'water' },
     });
     await act(async () => {

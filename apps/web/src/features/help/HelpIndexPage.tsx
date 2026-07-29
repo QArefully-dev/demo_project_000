@@ -19,13 +19,13 @@ export function HelpIndexPage() {
   return (
     <section aria-labelledby="help-index-title" className="mx-auto max-w-3xl space-y-10 pb-12">
       <header className="space-y-3">
-        <p className="section-eyebrow">QArefully Powder Co.</p>
+        <p className="section-eyebrow">QArefully Materials Exchange</p>
         <h1 id="help-index-title" className="text-3xl font-semibold tracking-tight sm:text-4xl">
           Help center
         </h1>
         <p className="max-w-2xl leading-7 text-muted-foreground">
-          Find local QA demo guidance, including simulated commerce, fictional catalog content, and
-          local data behavior.
+          Find local QA demo guidance for material sourcing, simulated orders, fictional catalogue
+          content, and local data behaviour.
         </p>
       </header>
 

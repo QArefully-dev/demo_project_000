@@ -10,7 +10,9 @@ export function NotFoundPage() {
       <p className="text-muted-foreground">
         The page you are looking for does not exist or has been moved.
       </p>
-      <Button render={(props) => <Link to="/" {...props} />}>Back to Home</Button>
+      <Button nativeButton={false} render={(props) => <Link to="/" {...props} />}>
+        Back to Home
+      </Button>
     </div>
   );
 }

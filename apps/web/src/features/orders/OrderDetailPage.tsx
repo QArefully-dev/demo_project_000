@@ -123,7 +123,7 @@ export function OrderDetailPage() {
   if (!order) return <ErrorMessage message="Order not found" />;
   return (
     <div className="mx-auto max-w-3xl space-y-5">
-      <Button variant="link" render={<Link to="/orders" />}>
+      <Button variant="link" nativeButton={false} render={<Link to="/orders" />}>
         ← My Orders
       </Button>
       <p aria-live="polite" className="sr-only">

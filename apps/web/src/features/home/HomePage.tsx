@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getBestsellers, getCategories, getProducts } from '@/api/products';
+import { BundleBanner } from '@/components/home/BundleBanner';
 import { CategoryTiles } from '@/components/home/CategoryTiles';
+import { CustomBlendBanner } from '@/components/home/CustomBlendBanner';
 import { HeroSection } from '@/components/home/HeroSection';
-import { PowderizerBanner } from '@/components/home/PowderizerBanner';
 import { ProductShelf } from '@/components/home/ProductShelf';
 import { PromoBanner } from '@/components/home/PromoBanner';
 import { useCartContext } from '@/hooks/CartContext';
@@ -101,21 +102,24 @@ export function HomePage() {
   return (
     <div className="space-y-16 pb-12 lg:space-y-20">
       <HeroSection />
-      <PowderizerBanner />
+      <CustomBlendBanner />
+      <BundleBanner />
       <section
         aria-label="Store assurances"
         className="grid divide-y rounded-2xl border bg-surface-raised text-center shadow-sm sm:grid-cols-3 sm:divide-x sm:divide-y-0"
       >
         <p className="p-4 text-sm">
-          <strong className="block text-foreground">Blended to order</strong>
-          <span className="text-muted-foreground">Every bag receives a batch mark</span>
+          <strong className="block text-foreground">Clear product data</strong>
+          <span className="text-muted-foreground">
+            Specifications and pack formats in one place
+          </span>
         </p>
         <p className="p-4 text-sm">
-          <strong className="block text-foreground">Professionally packed</strong>
-          <span className="text-muted-foreground">Measured, sealed, and plainly labelled</span>
+          <strong className="block text-foreground">Supply-ready catalogue</strong>
+          <span className="text-muted-foreground">Availability signals for practical sourcing</span>
         </p>
         <p className="p-4 text-sm">
-          <strong className="block text-foreground">Simulated checkout</strong>
+          <strong className="block text-foreground">Demo ordering</strong>
           <span className="text-muted-foreground">No real payment is processed</span>
         </p>
       </section>

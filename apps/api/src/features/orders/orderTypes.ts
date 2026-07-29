@@ -1,3 +1,7 @@
+import type { PostalAddress } from '@shop/contracts/address';
+import type { CustomBlendSnapshot } from '@shop/contracts/custom-blends';
+import type { DeliverySlot } from '@shop/contracts/delivery';
+import type { BillingEntitySnapshot } from '@shop/contracts/trade-account';
 import type {
   OrderLifecycleEventType,
   OrderShipmentLine,
@@ -5,7 +9,6 @@ import type {
   ShipmentStatus,
   TrackingEventCode,
 } from '@shop/contracts/orders';
-import type { PowderMixOrderItem } from '@shop/contracts/powderizer';
 
 export interface CreateOrderLineVariantSnapshot {
   variantId: number;
@@ -21,7 +24,9 @@ export interface CreateOrderParams {
   customerEmail: string;
   shippingAddress: string;
   promoApplied: string | null;
+  promoCategoryScope?: string | null;
   subtotalCents: number;
+  discountBaseCents?: number | null;
   discountCents: number;
   totalCents: number;
   userId: number | null;
@@ -30,13 +35,32 @@ export interface CreateOrderParams {
     productName: string;
     unitPriceCents: number;
     quantity: number;
+    /**
+     * Promotion base for this line. Equals `lineTotalCents` on ordinary lines; on a configured
+     * Custom Blend line it excludes the blending fee, which is a service charge and never
+     * discountable, refundable, or a weight in refund discount proration.
+     */
+    discountableTotalCents: number;
+    /** One-off blending service charge. Always `0` on ordinary lines. */
+    blendingFeeCents: number;
     lineTotalCents: number;
     variantSnapshot?: CreateOrderLineVariantSnapshot;
+    /** Frozen Custom Blend specification. Present only on configured lines. */
+    customBlend?: CustomBlendSnapshot;
   }>;
-  mixItems: PowderMixOrderItem[];
   deliveryMode?: 'parcel' | 'freight';
   deliveryChargeCents?: number;
   deliveryWeightGrams?: number;
+  /**
+   * The B2B checkout commitments, all optional so an order created by a path that does not capture
+   * them (seed data, historic rows) stays representable. `shippingAddress` above is the rendering
+   * of `deliveryAddress`; the caller derives it through the shared formatter, never independently.
+   */
+  deliverySiteId?: number | null;
+  deliveryAddress?: PostalAddress | null;
+  billingEntity?: BillingEntitySnapshot | null;
+  deliverySlot?: DeliverySlot | null;
+  purchaseOrderReference?: string | null;
   createdAt: string;
 }
 

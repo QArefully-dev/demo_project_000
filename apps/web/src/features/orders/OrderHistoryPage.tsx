@@ -8,7 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatMoney } from '@/lib/formatMoney';
 import type { OrderListResponse } from '@shop/contracts/orders';
-import { formatOrderDate, orderStatusLabel } from './orderPresentation';
+import {
+  formatOrderDate,
+  formatPurchaseOrderReference,
+  orderStatusLabel,
+} from './orderPresentation';
 
 const pageSize = 10;
 
@@ -66,43 +70,56 @@ export function OrderHistoryPage() {
           <CardContent className="py-12 text-center">
             <p className="font-medium">No orders yet</p>
             <p className="mt-1 text-sm text-muted-foreground">Completed orders will appear here.</p>
-            <Button className="mt-4" render={<Link to="/catalog" />}>
-              Browse powders
+            <Button className="mt-4" nativeButton={false} render={<Link to="/catalog" />}>
+              Browse materials
             </Button>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-3">
-          {result.items.map((order) => (
-            <Card key={order.id}>
-              <CardContent className="flex flex-wrap items-center justify-between gap-4 py-4">
-                <div>
-                  <Link
-                    className="font-medium underline-offset-4 hover:underline"
-                    to={`/orders/${order.id}`}
-                  >
-                    Order #{order.id}
-                  </Link>
-                  <p className="text-sm text-muted-foreground">
-                    {formatOrderDate(order.createdAt)} · {order.totalItems}{' '}
-                    {order.totalItems === 1 ? 'item' : 'items'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="font-medium">{formatMoney(order.totalCents)}</span>
-                  <Badge
-                    variant={
-                      order.status === 'cancelled' || order.status === 'delivery_failed'
-                        ? 'destructive'
-                        : 'secondary'
-                    }
-                  >
-                    {orderStatusLabel(order.status)}
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          {result.items.map((order) => {
+            const purchaseOrderReference = formatPurchaseOrderReference(
+              order.purchaseOrderReference,
+            );
+            return (
+              <Card key={order.id}>
+                <CardContent className="flex flex-wrap items-center justify-between gap-4 py-4">
+                  <div>
+                    <Link
+                      className="font-medium underline-offset-4 hover:underline"
+                      to={`/orders/${order.id}`}
+                    >
+                      Order #{order.id}
+                    </Link>
+                    <p className="text-sm text-muted-foreground">
+                      {formatOrderDate(order.createdAt)} · {order.totalItems}{' '}
+                      {order.totalItems === 1 ? 'item' : 'items'}
+                    </p>
+                    {purchaseOrderReference && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        PO reference{' '}
+                        <span className="font-medium text-foreground">
+                          {purchaseOrderReference}
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-medium">{formatMoney(order.totalCents)}</span>
+                    <Badge
+                      variant={
+                        order.status === 'cancelled' || order.status === 'delivery_failed'
+                          ? 'destructive'
+                          : 'secondary'
+                      }
+                    >
+                      {orderStatusLabel(order.status)}
+                    </Badge>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
       <nav className="flex items-center justify-between" aria-label="Order pages">

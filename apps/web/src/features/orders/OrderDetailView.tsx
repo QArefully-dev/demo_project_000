@@ -1,13 +1,25 @@
-import { BagArtwork } from '@/components/BagArtwork';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { powderMixBagSchemePresentation } from '@/components/powderMixBagScheme';
 import { formatMoney } from '@/lib/formatMoney';
 import type { OrderDetailResponse } from '@shop/contracts/orders';
+import type { Product } from '@shop/contracts/products';
 import type { LegacyRef } from 'react';
-import { formatOrderDate, orderStatusLabel } from './orderPresentation';
+import {
+  CUSTOM_BLEND_MADE_TO_ORDER_NOTE,
+  CustomBlendPackaging,
+  customBlendCompositionLabel,
+} from '@/features/customBlend/CustomBlendPackaging';
+import {
+  formatBillingIdentifiers,
+  formatAddressLine,
+  formatDeliverySlot,
+  formatOrderDate,
+  formatPurchaseOrderReference,
+  hasOrderTradeDetails,
+  orderStatusLabel,
+} from './orderPresentation';
 
 type Props = {
   order: OrderDetailResponse;
@@ -27,6 +39,32 @@ function deliveryModeLabel(mode: string): string {
   return mode === 'freight' ? 'Freight' : 'Parcel';
 }
 
+function orderPackagingProduct(item: OrderDetailResponse['items'][number]): Product {
+  const presentation = item.customBlend?.basePresentation;
+  return {
+    id: item.productId,
+    name: item.productName,
+    description: '',
+    priceCents: item.unitPriceCents,
+    imageSetId: `order-${item.productId}`,
+    category: presentation?.category ?? '',
+    stock: 0,
+    availability: 'out_of_stock',
+    backorderable: false,
+    backorderLeadDays: null,
+    slug: `order-${item.productId}`,
+    salesCount: 0,
+    createdAt: '1970-01-01T00:00:00.000Z',
+    available: false,
+    tags: [],
+    specificationGroups: [],
+    consumptionClassification:
+      presentation?.consumptionClassification ?? item.variantSnapshot?.consumptionClassification,
+    mixingGroup: item.customBlend?.mixingGroup,
+    ...(presentation ? { categoryFacts: presentation.categoryFacts } : {}),
+  };
+}
+
 export function OrderDetailView({
   order,
   allowCancellation = false,
@@ -34,13 +72,14 @@ export function OrderDetailView({
   onRequestCancellation,
   cancelTriggerRef,
 }: Props) {
-  const namesByLineId = new Map<string, string>([
-    ...order.items.map((line): [string, string] => [`product:${line.lineId}`, line.productName]),
-    ...order.mixItems.map((line): [string, string] => [
-      `powder_mix:${line.lineId}`,
-      line.customLabel ?? 'Custom powder mix',
-    ]),
-  ]);
+  const namesByLineId = new Map<string, string>(
+    order.items.map((line): [string, string] => [line.lineId, line.productName]),
+  );
+  const hasCustomBlend = order.items.some((line) => line.customBlend !== undefined);
+  const deliveryAddress = formatAddressLine(order.deliveryAddress);
+  const deliverySlot = formatDeliverySlot(order.deliverySlot);
+  const billingIdentifiers = formatBillingIdentifiers(order.billingEntity);
+  const purchaseOrderReference = formatPurchaseOrderReference(order.purchaseOrderReference);
 
   return (
     <section className="space-y-6" aria-label={`Order ${order.id}`}>
@@ -63,13 +102,37 @@ export function OrderDetailView({
           <div className="space-y-3" aria-label="Purchased items">
             {order.items.map((item) => (
               <div key={item.lineId} className="flex items-center justify-between gap-4 text-sm">
-                <span className="min-w-0">
+                {item.customBlend && (
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+                    <CustomBlendPackaging
+                      product={orderPackagingProduct(item)}
+                      variant={item.variantSnapshot}
+                      blend={item.customBlend}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                )}
+                <span className="min-w-0 flex-1">
                   {item.productName}{' '}
                   <span className="text-muted-foreground">× {item.quantity}</span>
                   {item.variantSnapshot && (
                     <span className="block text-xs text-muted-foreground">
                       {item.variantSnapshot.label} · SKU: {item.variantSnapshot.sku} ·{' '}
                       {item.variantSnapshot.weightGrams}g
+                    </span>
+                  )}
+                  {item.customBlend && (
+                    <span className="block text-xs text-muted-foreground" data-testid="order-blend">
+                      <Badge variant="outline" className="mb-0.5 w-fit text-[10px]">
+                        Custom blend
+                      </Badge>
+                      <span className="block">
+                        {customBlendCompositionLabel(item.productName, item.customBlend)}
+                      </span>
+                      <span className="block">
+                        Base material: {formatMoney(item.discountableTotalCents)} · Blending fee:{' '}
+                        {formatMoney(item.blendingFeeCents)}
+                      </span>
                     </span>
                   )}
                   {item.inventoryStatus === 'partially_backordered' && (
@@ -94,42 +157,12 @@ export function OrderDetailView({
                 <span className="shrink-0">{formatMoney(item.lineTotalCents)}</span>
               </div>
             ))}
-            {order.mixItems.map((item) => {
-              const scheme = powderMixBagSchemePresentation(item.bagColourScheme);
-              return (
-                <div key={item.lineId} className="flex items-center justify-between gap-3 text-sm">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <BagArtwork
-                      name={item.customLabel ?? 'Custom powder mix'}
-                      category="Custom mix"
-                      quantity={`${item.bagSizeGrams}g`}
-                      batchCode={item.priceVersion}
-                      mark="MIX"
-                      paint={scheme.paint}
-                      powderAccent={scheme.paint.colors[1]}
-                      consumptionLabel={null}
-                      ariaLabel=""
-                      className="h-12 w-12 shrink-0"
-                    />
-                    <span>
-                      {item.customLabel ?? 'Custom powder mix'}{' '}
-                      <span className="text-muted-foreground">× {item.quantity}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        {item.components
-                          .map(({ productName, percentage }) => `${productName} ${percentage}%`)
-                          .join(' · ')}{' '}
-                        · {item.bagSizeGrams}g · {item.fineness}
-                      </span>
-                      <span className="block text-xs font-medium">
-                        {scheme.label} · {item.usageLabel}
-                      </span>
-                    </span>
-                  </div>
-                  <span className="shrink-0">{formatMoney(item.lineTotalCents)}</span>
-                </div>
-              );
-            })}
           </div>
+          {hasCustomBlend && (
+            <p className="custom-blend-notice rounded-md px-3 py-2 text-xs">
+              {CUSTOM_BLEND_MADE_TO_ORDER_NOTE}
+            </p>
+          )}
           <Separator />
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
@@ -162,6 +195,60 @@ export function OrderDetailView({
           </div>
         </CardContent>
       </Card>
+
+      {hasOrderTradeDetails(order) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Delivery and billing</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <dl className="grid gap-4 text-sm sm:grid-cols-2">
+              {deliveryAddress && (
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Delivery address
+                  </dt>
+                  <dd className="mt-1">{deliveryAddress}</dd>
+                </div>
+              )}
+              {deliverySlot && (
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Delivery slot
+                  </dt>
+                  <dd className="mt-1">{deliverySlot}</dd>
+                </div>
+              )}
+              {order.billingEntity && (
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Billing details
+                  </dt>
+                  <dd className="mt-1">
+                    <span className="block font-medium">{order.billingEntity.legalName}</span>
+                    <span className="block text-muted-foreground">
+                      {formatAddressLine(order.billingEntity.address)}
+                    </span>
+                    {billingIdentifiers && (
+                      <span className="block text-xs text-muted-foreground">
+                        {billingIdentifiers}
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              )}
+              {purchaseOrderReference && (
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Purchase order reference
+                  </dt>
+                  <dd className="mt-1 font-medium">{purchaseOrderReference}</dd>
+                </div>
+              )}
+            </dl>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -202,9 +289,8 @@ export function OrderDetailView({
                   aria-label={`Shipment ${shipment.shipmentNumber} items`}
                 >
                   {shipment.lines.map((line) => (
-                    <li key={`${line.lineKind}-${line.lineId}`}>
-                      {namesByLineId.get(`${line.lineKind}:${line.lineId}`) ?? 'Purchased item'} ×{' '}
-                      {line.quantity}
+                    <li key={line.lineId}>
+                      {namesByLineId.get(line.lineId) ?? 'Purchased item'} × {line.quantity}
                     </li>
                   ))}
                 </ul>

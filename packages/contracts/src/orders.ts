@@ -1,19 +1,9 @@
 import { Type, type Static } from '@sinclair/typebox';
-import {
-  CustomerName,
-  EmailAddress,
-  MoneyCents,
-  PositiveIntegerString,
-  PromoCodeValue,
-  ShippingAddress,
-  Uuid,
-} from './common.js';
-import {
-  DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME,
-  PowderMixOrderItemSnapshotV1,
-  PowderMixOrderItemSnapshotV2,
-} from './powderizer.js';
-import { DeliveryClass, DeliveryMode } from './delivery.js';
+import { MoneyCents, PositiveIntegerString, PurchaseOrderReference, Uuid } from './common.js';
+import { DeliveryClass, DeliveryMode, DeliverySlot } from './delivery.js';
+import { CustomBlendSnapshot } from './customBlends.js';
+import { PostalAddress } from './address.js';
+import { BillingEntitySnapshot } from './tradeAccount.js';
 
 const UtcIsoInstant = Type.String({
   minLength: 24,
@@ -65,10 +55,6 @@ export const TrackingEventCode = Type.Union([
 ]);
 export type TrackingEventCode = Static<typeof TrackingEventCode>;
 
-/** Distinguishes independently-numbered product and Powderizer purchase-line tables. */
-export const OrderLineKind = Type.Union([Type.Literal('product'), Type.Literal('powder_mix')]);
-export type OrderLineKind = Static<typeof OrderLineKind>;
-
 export const OrderInventoryStatus = Type.Union([
   Type.Literal('allocated'),
   Type.Literal('partially_backordered'),
@@ -102,44 +88,18 @@ export const OrderLineItem = Type.Object(
     productName: Type.String({ minLength: 1 }),
     unitPriceCents: MoneyCents,
     quantity: Type.Integer({ minimum: 1 }),
+    discountableTotalCents: MoneyCents,
+    blendingFeeCents: MoneyCents,
     lineTotalCents: MoneyCents,
     inventoryStatus: OrderInventoryStatus,
     allocatedQuantity: Type.Integer({ minimum: 0 }),
     backorderedQuantity: Type.Integer({ minimum: 0 }),
     variantSnapshot: Type.Optional(OrderLineVariantSnapshot),
+    customBlend: Type.Optional(CustomBlendSnapshot),
   },
   { additionalProperties: false },
 );
 export type OrderLineItem = Static<typeof OrderLineItem>;
-
-const NormalizedOrderPowderMixItemSnapshotV1 = Type.Object(
-  {
-    ...Type.Omit(PowderMixOrderItemSnapshotV1, ['snapshotVersion']).properties,
-    bagColourScheme: Type.Literal(DEFAULT_POWDER_MIX_BAG_COLOUR_SCHEME),
-    usageLabel: Type.Literal('Check ingredient labels'),
-    snapshotVersion: Type.Literal(1),
-  },
-  { additionalProperties: false },
-);
-export const NormalizedOrderPowderMixItem = Type.Union([
-  NormalizedOrderPowderMixItemSnapshotV1,
-  PowderMixOrderItemSnapshotV2,
-]);
-export type NormalizedOrderPowderMixItem = Static<typeof NormalizedOrderPowderMixItem>;
-
-const OrderPowderMixLineItemV1 = Type.Object(
-  { ...NormalizedOrderPowderMixItemSnapshotV1.properties, lineId: PositiveIntegerString },
-  { additionalProperties: false },
-);
-const OrderPowderMixLineItemV2 = Type.Object(
-  { ...PowderMixOrderItemSnapshotV2.properties, lineId: PositiveIntegerString },
-  { additionalProperties: false },
-);
-export const OrderPowderMixLineItem = Type.Union([
-  OrderPowderMixLineItemV1,
-  OrderPowderMixLineItemV2,
-]);
-export type OrderPowderMixLineItem = Static<typeof OrderPowderMixLineItem>;
 
 export const Order = Type.Object(
   {
@@ -147,15 +107,21 @@ export const Order = Type.Object(
     status: OrderStatus,
     version: NonNegativeVersion,
     items: Type.Array(OrderLineItem),
-    mixItems: Type.Array(OrderPowderMixLineItem),
     subtotalCents: MoneyCents,
     discountCents: MoneyCents,
     totalCents: MoneyCents,
     promoApplied: Type.Union([Type.String(), Type.Null()]),
+    promoCategoryScope: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
+    discountBaseCents: Type.Optional(MoneyCents),
     createdAt: UtcIsoInstant,
     deliveryMode: Type.Optional(DeliveryMode),
     deliveryChargeCents: Type.Optional(Type.Integer({ minimum: 0 })),
     deliveryWeightGrams: Type.Optional(Type.Integer({ minimum: 0 })),
+    // Optional so orders placed before checkout captured these values stay representable.
+    deliveryAddress: Type.Optional(PostalAddress),
+    billingEntity: Type.Optional(BillingEntitySnapshot),
+    deliverySlot: Type.Optional(DeliverySlot),
+    purchaseOrderReference: Type.Optional(PurchaseOrderReference),
   },
   { additionalProperties: false },
 );
@@ -170,6 +136,8 @@ export const OrderSummary = Type.Object(
     totalItems: Type.Integer({ minimum: 0 }),
     hasBackorder: Type.Boolean(),
     createdAt: UtcIsoInstant,
+    // Optional so orders placed before checkout captured a reference stay representable.
+    purchaseOrderReference: Type.Optional(PurchaseOrderReference),
   },
   { additionalProperties: false },
 );
@@ -194,9 +162,9 @@ export const OrderListResponse = Type.Object(
 );
 export type OrderListResponse = Static<typeof OrderListResponse>;
 
+/** Allocation of one order line item to a shipment. `lineId` always names an order line item. */
 export const OrderShipmentLine = Type.Object(
   {
-    lineKind: OrderLineKind,
     lineId: PositiveIntegerString,
     quantity: Type.Integer({ minimum: 1 }),
   },
@@ -244,18 +212,6 @@ export const OrderDetailResponse = Type.Object(
   { additionalProperties: false },
 );
 export type OrderDetailResponse = Static<typeof OrderDetailResponse>;
-
-export const PlaceOrderBody = Type.Object(
-  {
-    cartId: Uuid,
-    promoCode: Type.Optional(PromoCodeValue),
-    customerName: CustomerName,
-    customerEmail: EmailAddress,
-    shippingAddress: ShippingAddress,
-  },
-  { additionalProperties: false },
-);
-export type PlaceOrderBody = Static<typeof PlaceOrderBody>;
 
 export const CancelOrderBody = Type.Object(
   { version: NonNegativeVersion, idempotencyKey: Uuid },

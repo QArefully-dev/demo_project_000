@@ -12,8 +12,6 @@ import authRoutes from './routes/auth.js';
 import favouritesRoutes from './routes/favourites.js';
 import paymentRoutes from './routes/payments.js';
 import mailboxRoutes from './routes/mailbox.js';
-import powderizerRoutes from './routes/powderizer.js';
-import customPowderRoutes from './routes/customPowder.js';
 import bundleRoutes from './routes/bundles.js';
 import { createAuthService, type AuthService, type Clock } from './features/auth/authService.js';
 import { createSessionRepository } from './features/auth/sessionRepository.js';
@@ -60,12 +58,6 @@ import {
   createAuditWriter,
   type AuditReadService,
 } from './features/audit/auditService.js';
-import { createPowderMixRepository } from './features/powderizer/powderMixRepository.js';
-import {
-  createPowderizerService,
-  type PowderizerService,
-} from './features/powderizer/powderizerService.js';
-import { PowderMixDomainError } from './features/powderizer/powderizerTypes.js';
 import auditRoutes from './routes/audit.js';
 import { createBundleRepository } from './features/bundles/bundleRepository.js';
 import { createBundleService, type BundleService } from './features/bundles/bundleService.js';
@@ -85,6 +77,37 @@ import type { ReturnService } from './features/returns/returnService.js';
 import { createReturnRepository } from './features/returns/returnRepository.js';
 import { createReturnService } from './features/returns/returnService.js';
 import { createRefundGateway } from './features/returns/refundGateway.js';
+import { createCustomBlendRepository } from './features/customBlend/customBlendRepository.js';
+import {
+  createCustomBlendService,
+  type CustomBlendService,
+} from './features/customBlend/customBlendService.js';
+import customBlendRoutes from './routes/customBlends.js';
+import tradeAccountRoutes from './routes/tradeAccount.js';
+import deliverySlotRoutes from './routes/deliverySlots.js';
+import { createDeliverySiteRepository } from './features/tradeAccount/deliverySiteRepository.js';
+import {
+  createDeliverySiteService,
+  type DeliverySiteService,
+} from './features/tradeAccount/deliverySiteService.js';
+import { createBillingEntityRepository } from './features/tradeAccount/billingEntityRepository.js';
+import {
+  createBillingEntityService,
+  type BillingEntityService,
+} from './features/tradeAccount/billingEntityService.js';
+import {
+  createDeliverySlotService,
+  type DeliverySlotService,
+} from './features/delivery/deliverySlotService.js';
+
+/**
+ * The buyer's saved trade records, grouped because they are always wired, injected, and consumed
+ * as one account surface (routes and checkout both need both halves).
+ */
+export interface TradeAccountServices {
+  sites: DeliverySiteService;
+  billingEntities: BillingEntityService;
+}
 
 export interface AppDependencies {
   db: Database.Database;
@@ -107,12 +130,14 @@ export interface AppServices {
   checkout: CheckoutService;
   audit: AuditReadService;
   favourites: FavouritesService;
-  powderizer: PowderizerService;
   bundles: BundleService;
   reviews: ReviewService;
   inventory: InventoryService;
   inventoryUnitOfWork: UnitOfWork;
   returns: ReturnService;
+  customBlends: CustomBlendService;
+  tradeAccount: TradeAccountServices;
+  deliverySlots: DeliverySlotService;
   clock: Clock;
 }
 
@@ -125,13 +150,30 @@ function createAppServices(dependencies: AppDependencies): AppServices {
   const promos = createPromoRepository(dependencies.db);
   const orders = createOrderRepository(dependencies.db);
   const products = createProductRepository(dependencies.db);
-  const mixes = createPowderMixRepository(dependencies.db);
   const unitOfWork = createUnitOfWork(dependencies.db);
   const inventory = createInventoryService({
     repository: createInventoryRepository(dependencies.db),
   });
   const auditRepository = createAuditRepository(dependencies.db);
   const audit = createAuditWriter({ repository: auditRepository, clock });
+  // Hoisted: the slot service reads carts through the same cart service the routes use, so the
+  // slot quote can never see a different view of a cart than the cart endpoints do.
+  const cartService = createCartService(carts, { unitOfWork, audit }, { inventory, clock });
+  // Hoisted: checkout resolves saved destinations and re-validates slots through the very same
+  // service instances the account and slot routes answer from, so no second view can exist.
+  const tradeAccount: TradeAccountServices = {
+    sites: createDeliverySiteService({
+      repository: createDeliverySiteRepository(dependencies.db),
+      unitOfWork,
+      clock,
+    }),
+    billingEntities: createBillingEntityService({
+      repository: createBillingEntityRepository(dependencies.db),
+      unitOfWork,
+      clock,
+    }),
+  };
+  const deliverySlots = createDeliverySlotService({ cart: cartService, clock });
   return {
     auth: createAuthService({
       users: createUserRepository(dependencies.db),
@@ -156,8 +198,8 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     }),
     mailbox,
     products: createProductService(products, { clock }),
-    carts: createCartService(carts, mixes, { unitOfWork, audit }, { inventory, clock }),
-    promos: createPromoService({ promos, carts, mixes, clock }),
+    carts: cartService,
+    promos: createPromoService({ promos, carts, clock }),
     orders: createOrderService({ repository: orders, unitOfWork, clock, audit, inventory }),
     orderAccess: createOrderAccessService({
       repository: orders,
@@ -173,23 +215,16 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       mailbox,
       gateway: simulatedPaymentGateway,
       clock,
-      mixes,
       products,
       audit,
       inventory,
+      tradeAccount,
+      deliverySlots,
     }),
     favourites: createFavouritesService(createFavouritesRepository(dependencies.db)),
-    powderizer: createPowderizerService({
-      unitOfWork,
-      carts,
-      products,
-      mixes,
-      utcDateProvider: () => clock.now(),
-    }),
     bundles: createBundleService({
       bundles: createBundleRepository(dependencies.db),
       carts,
-      mixes,
       unitOfWork,
       audit,
       availability: { inventory, clock },
@@ -217,6 +252,9 @@ function createAppServices(dependencies: AppDependencies): AppServices {
         return row?.variant_id ?? undefined;
       },
     }),
+    customBlends: createCustomBlendService(createCustomBlendRepository(dependencies.db)),
+    tradeAccount,
+    deliverySlots,
     clock,
     audit: createAuditReadService(auditRepository),
   };
@@ -231,10 +269,6 @@ export async function buildApp(dependencies: AppDependencies) {
   const context: AppContext = { services: createAppServices(dependencies) };
 
   app.setErrorHandler((error: FastifyError, _request, reply) => {
-    if (error instanceof PowderMixDomainError) {
-      reply.code(400).send({ code: error.code, error: error.message, field: error.field });
-      return;
-    }
     if (error.validation) {
       reply.code(400).send({
         error: error.message,
@@ -268,13 +302,14 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(favouritesRoutes, context);
   await app.register(paymentRoutes, context);
   await app.register(mailboxRoutes, context);
-  await app.register(powderizerRoutes, context);
-  await app.register(customPowderRoutes, context);
   await app.register(bundleRoutes, context);
   await app.register(auditRoutes, context);
   await app.register(reviewsRoutes, context);
   await app.register(returnsRoutes, context);
   await app.register(adminReturnsRoutes, context);
+  await app.register(customBlendRoutes, context);
+  await app.register(tradeAccountRoutes, context);
+  await app.register(deliverySlotRoutes, context);
 
   return app;
 }

@@ -16,7 +16,7 @@ export function Layout() {
             <ToastProvider>
               <div className="flex min-h-screen flex-col bg-background">
                 <Header />
-                <main className="content-shell w-full flex-1 py-6 sm:py-8">
+                <main className="content-shell flex-1 py-6 sm:py-8">
                   <Outlet />
                 </main>
                 <Footer />

@@ -3,6 +3,7 @@ import type {
   DeliverySummary,
   DeliveryQuoteInputLine,
 } from '@shop/contracts/delivery';
+import type { Cart } from '@shop/contracts/cart';
 import {
   FREIGHT_WEIGHT_THRESHOLD_GRAMS,
   FREIGHT_CHARGE_CENTS,
@@ -38,4 +39,15 @@ export function quoteDelivery(lines: readonly DeliveryLine[]): DeliverySummary {
       : `Total weight ${totalWeight}g is under ${FREIGHT_WEIGHT_THRESHOLD_GRAMS}g freight threshold`;
 
   return { mode, chargeCents, weightGrams: totalWeight, reason };
+}
+
+/** Maps current cart lines to the same server-side delivery quote used at checkout. */
+export function quoteCartDelivery(cart: Pick<Cart, 'items'>): DeliverySummary {
+  return quoteDelivery(
+    cart.items.map((item) => ({
+      deliveryClass: item.variantSnap?.deliveryClass ?? 'parcel',
+      unitWeightGrams: item.variantSnap?.weightGrams ?? 1000,
+      quantity: item.quantity,
+    })),
+  );
 }

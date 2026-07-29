@@ -93,12 +93,16 @@ export type CatalogVariant = {
   weightGrams: number;
   priceCents: number;
   compareAtPriceCents?: number;
+  clearancePriceCents?: number;
+  clearanceStartsAt?: string;
+  clearanceEndsAt?: string;
   stockCount: number;
   backorderable: boolean;
   backorderLeadDays?: number;
   deliveryClass: DeliveryClass;
   active: boolean;
   sortOrder: number;
+  moqSacks: number;
 };
 
 export type CatalogProduct = {
@@ -238,27 +242,74 @@ export const CATALOG_CREATED_AT_BY_ID: Readonly<Record<number, string>> = {
 
 export const makeVariant = (
   sku: string,
-  label: string,
-  weightGrams: number,
+  _label: string,
+  _weightGrams: number,
   priceCents: number,
   stockCount: number,
   sortOrder: number,
   opts?: {
     compareAtPriceCents?: number;
+    clearancePriceCents?: number;
+    clearanceStartsAt?: string;
+    clearanceEndsAt?: string;
     backorderable?: boolean;
     backorderLeadDays?: number;
     active?: boolean;
   },
-): CatalogVariant => ({
-  sku,
-  label,
-  weightGrams,
-  priceCents,
-  compareAtPriceCents: opts?.compareAtPriceCents,
-  stockCount,
-  backorderable: opts?.backorderable ?? false,
-  backorderLeadDays: opts?.backorderable ? (opts?.backorderLeadDays ?? undefined) : undefined,
-  deliveryClass: weightGrams >= FREIGHT_WEIGHT_THRESHOLD_GRAMS ? 'freight' : 'parcel',
-  active: opts?.active ?? true,
-  sortOrder,
-});
+): CatalogVariant => {
+  const sackPriceCents = Math.max(priceCents * 12, 2_500);
+  return {
+    sku,
+    label: sortOrder === 1 ? '25 kg Sack' : '1,000 kg Pallet',
+    weightGrams: sortOrder === 1 ? 25_000 : 1_000_000,
+    priceCents: sortOrder === 1 ? sackPriceCents : sackPriceCents * 32,
+    compareAtPriceCents: opts?.compareAtPriceCents,
+    clearancePriceCents: opts?.clearancePriceCents,
+    clearanceStartsAt: opts?.clearanceStartsAt,
+    clearanceEndsAt: opts?.clearanceEndsAt,
+    stockCount,
+    backorderable: opts?.backorderable ?? false,
+    backorderLeadDays: opts?.backorderable ? (opts?.backorderLeadDays ?? undefined) : undefined,
+    deliveryClass: 'freight',
+    active: opts?.active ?? true,
+    sortOrder,
+    moqSacks: 4,
+  };
+};
+
+const withoutPowder = (value: string): string =>
+  value
+    .replace(/\bpowdered\b/gi, 'dry')
+    .replace(/\bpowder\b/gi, 'material')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([,.;:])/g, '$1')
+    .trim();
+
+/** Converts retail-pack facts into consistent industrial sack and pallet catalog facts. */
+export const industrializeProducts = (
+  products: readonly CatalogProduct[],
+): readonly CatalogProduct[] =>
+  products.map((product) => ({
+    ...product,
+    name: withoutPowder(product.name),
+    description: withoutPowder(product.description),
+    variants: product.variants.slice(0, 2).map((variant, index) => {
+      const priceCents =
+        index === 0
+          ? variant.priceCents
+          : Math.max(variant.priceCents, product.variants[0]!.priceCents * 32, 10_000);
+      return {
+        ...variant,
+        label: index === 0 ? '25 kg Sack' : '1,000 kg Pallet',
+        weightGrams: index === 0 ? 25_000 : 1_000_000,
+        priceCents,
+        compareAtPriceCents:
+          variant.compareAtPriceCents === undefined
+            ? undefined
+            : Math.max(variant.compareAtPriceCents, priceCents + Math.ceil(priceCents / 10)),
+        deliveryClass: 'freight' as const,
+        sortOrder: index + 1,
+        moqSacks: 4,
+      };
+    }),
+  }));

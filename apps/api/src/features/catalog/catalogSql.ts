@@ -36,7 +36,26 @@ export function buildCatalogPredicate(
     conditions.push('LOWER(p.category) = LOWER(?)');
     params.push(query.category);
   }
-  if (query.onSale) conditions.push('p.compare_at_price_cents IS NOT NULL');
+  if (query.onSale) {
+    conditions.push(`(
+      p.compare_at_price_cents IS NOT NULL
+      OR EXISTS (
+        SELECT 1
+        FROM product_variants pv
+        WHERE pv.product_id = p.id
+          AND pv.active = 1
+          AND pv.clearance_price_cents IS NOT NULL
+          AND pv.clearance_price_cents > 0
+          AND pv.clearance_price_cents < pv.price_cents
+          AND pv.clearance_starts_at IS NOT NULL
+          AND pv.clearance_ends_at IS NOT NULL
+          AND julianday(pv.clearance_starts_at) < julianday(pv.clearance_ends_at)
+          AND julianday(pv.clearance_starts_at) <= julianday(?)
+          AND julianday(pv.clearance_ends_at) > julianday(?)
+      )
+    )`);
+    params.push(now, now);
+  }
   if (query.minPriceCents !== undefined) {
     conditions.push('p.price_cents >= ?');
     params.push(query.minPriceCents);

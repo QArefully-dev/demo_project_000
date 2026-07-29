@@ -9,6 +9,14 @@ import { fetchReturnOverview } from '@/api/returns';
 import { OrderDetailPage } from './OrderDetailPage';
 import { OrderHistoryPage } from './OrderHistoryPage';
 import { OrderConfirmationPage } from '@/features/checkout/OrderConfirmationPage';
+import { formatPostalAddress } from '@shop/contracts/address';
+import {
+  formatAddressLine,
+  formatBillingIdentifiers,
+  formatDeliverySlot,
+  formatPurchaseOrderReference,
+  hasOrderTradeDetails,
+} from './orderPresentation';
 
 vi.mock('@/api/orders', () => ({ getOrders: vi.fn(), getOrder: vi.fn(), cancelOrder: vi.fn() }));
 vi.mock('@/api/returns', () => ({ fetchReturnOverview: vi.fn(), createReturnRequest: vi.fn() }));
@@ -30,27 +38,25 @@ const detail: OrderDetailResponse = {
       productName: 'Oat powder',
       unitPriceCents: 1000,
       quantity: 1,
+      discountableTotalCents: 1000,
+      blendingFeeCents: 0,
       lineTotalCents: 1000,
       inventoryStatus: 'partially_backordered',
       allocatedQuantity: 1,
       backorderedQuantity: 0,
     },
-  ],
-  mixItems: [
     {
       lineId: '32',
-      mixId: 'mix-1',
-      components: [{ productId: 'pea', productName: 'Pea', percentage: 100, allocatedGrams: 500 }],
-      bagSizeGrams: 500,
-      fineness: 'standard',
-      customLabel: 'Lunch mix',
-      priceVersion: 'powderizer-v1',
+      productId: 'pea',
+      productName: 'Pea powder',
       unitPriceCents: 1200,
       quantity: 1,
+      discountableTotalCents: 1200,
+      blendingFeeCents: 0,
       lineTotalCents: 1200,
-      bagColourScheme: 'deep-space',
-      usageLabel: 'Not for consumption',
-      snapshotVersion: 2,
+      inventoryStatus: 'allocated',
+      allocatedQuantity: 1,
+      backorderedQuantity: 0,
     },
   ],
   shipments: [
@@ -60,7 +66,7 @@ const detail: OrderDetailResponse = {
       status: 'shipped',
       trackingReference: 'SIM-ONE',
       version: 1,
-      lines: [{ lineKind: 'product', lineId: '31', quantity: 1 }],
+      lines: [{ lineId: '31', quantity: 1 }],
       createdAt: '2026-07-14T01:00:00.000Z',
       updatedAt: '2026-07-14T02:00:00.000Z',
     },
@@ -70,7 +76,7 @@ const detail: OrderDetailResponse = {
       status: 'delivery_failed',
       trackingReference: 'SIM-TWO',
       version: 2,
-      lines: [{ lineKind: 'powder_mix', lineId: '32', quantity: 1 }],
+      lines: [{ lineId: '32', quantity: 1 }],
       createdAt: '2026-07-14T01:00:00.000Z',
       updatedAt: '2026-07-14T03:00:00.000Z',
     },
@@ -103,6 +109,31 @@ const list: OrderListResponse = {
   ],
   page: 1,
   pageSize: 10,
+};
+
+const tradeDetail: OrderDetailResponse = {
+  ...detail,
+  deliveryAddress: {
+    line1: 'Unit 4 Foundry Park',
+    line2: 'Kiln Road',
+    city: 'Sheffield',
+    region: 'South Yorkshire',
+    postcode: 'S9 1TQ',
+    countryCode: 'GB',
+  },
+  billingEntity: {
+    legalName: 'Northgate Building Supplies Ltd',
+    registrationNumber: '09876543',
+    vatNumber: 'GB123456789',
+    address: {
+      line1: '12 Cathedral Street',
+      city: 'Sheffield',
+      postcode: 'S1 2LH',
+      countryCode: 'GB',
+    },
+  },
+  deliverySlot: { date: '2026-08-07', window: 'am' },
+  purchaseOrderReference: 'PO-55120',
 };
 
 function ConfirmationRoutes() {
@@ -173,6 +204,32 @@ describe('customer order UI', () => {
     expect(await screen.findByRole('link', { name: 'Order #12' })).toBeInTheDocument();
   });
 
+  it('shows the purchase order reference on a history row that carries one', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      ...list,
+      items: [{ ...list.items[0]!, purchaseOrderReference: 'PO-55120' }],
+    });
+    render(
+      <MemoryRouter>
+        <OrderHistoryPage />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole('link', { name: 'Order #12' })).toBeInTheDocument();
+    expect(screen.getByText('PO-55120')).toBeInTheDocument();
+    expect(screen.getByText(/PO reference/)).toBeInTheDocument();
+  });
+
+  it('renders a legacy history row with no purchase order reference markup', async () => {
+    vi.mocked(getOrders).mockResolvedValue(list);
+    render(
+      <MemoryRouter>
+        <OrderHistoryPage />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole('link', { name: 'Order #12' })).toBeInTheDocument();
+    expect(screen.queryByText(/PO reference/)).not.toBeInTheDocument();
+  });
+
   it('renders split shipments and requires a second cancellation confirmation', async () => {
     vi.mocked(getOrder).mockResolvedValue(detail);
     vi.mocked(cancelOrder).mockResolvedValue({
@@ -202,6 +259,115 @@ describe('customer order UI', () => {
         'Order #12 was cancelled. Simulated fulfilment has stopped; unshipped allocated stock was released and no refund was issued.',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('keeps blend composition, the fee split, and the made-to-order terms on the order record', async () => {
+    const configKey = 'c'.repeat(64);
+    vi.mocked(getOrder).mockResolvedValue({
+      ...detail,
+      items: [
+        {
+          ...detail.items[0]!,
+          discountableTotalCents: 1000,
+          blendingFeeCents: 2500,
+          lineTotalCents: 3500,
+          customBlend: {
+            configKey,
+            basePercentage: 75,
+            mixingGroup: 'mineral',
+            basePresentation: {
+              category: 'Trade & Creative Materials',
+              consumptionClassification: 'non-food',
+              categoryFacts: {
+                texture: 'Fine powder',
+                colour: 'White',
+                source: 'Mineral',
+                intendedUse: 'Construction',
+                storage: 'Cool dry',
+                consumptionClassification: 'non-food',
+              },
+            },
+            ingredients: [
+              {
+                variantId: 601,
+                productId: '11',
+                productName: 'Chalk Filler',
+                productDescription: 'Filler',
+                mixingGroup: 'mineral',
+                percentage: 25,
+              },
+            ],
+            blendingFeeCents: 2500,
+            madeToOrder: true,
+            returnable: false,
+          },
+        },
+      ],
+    });
+    render(
+      <MemoryRouter initialEntries={['/orders/12']}>
+        <Routes>
+          <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/75% Oat powder — 25% Chalk Filler/)).toBeInTheDocument();
+    expect(screen.getByText('Custom blend')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-blend-livery')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute('data-vessel', 'kraft-sack');
+    expect(screen.getByText('Mineral')).toBeInTheDocument();
+    expect(screen.getByText(/Base material: \$10.00 · Blending fee: \$25.00/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Made to order\. Custom blends cannot be returned/),
+    ).toBeInTheDocument();
+  });
+
+  it('uses a neutral Custom Blend presentation for legacy order snapshots', async () => {
+    vi.mocked(getOrder).mockResolvedValue({
+      ...detail,
+      items: [
+        {
+          ...detail.items[0]!,
+          blendingFeeCents: 2500,
+          lineTotalCents: 3500,
+          customBlend: {
+            configKey: 'd'.repeat(64),
+            basePercentage: 75,
+            mixingGroup: 'mineral',
+            ingredients: [
+              {
+                variantId: 601,
+                productId: '11',
+                productName: 'Chalk Filler',
+                productDescription: 'Filler',
+                mixingGroup: 'mineral',
+                percentage: 25,
+              },
+            ],
+            blendingFeeCents: 2500,
+            madeToOrder: true,
+            returnable: false,
+          },
+        },
+      ],
+    });
+    render(
+      <MemoryRouter initialEntries={['/orders/12']}>
+        <Routes>
+          <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByTestId('custom-blend-livery')).toHaveAttribute(
+      'data-vessel',
+      'neutral',
+    );
+    expect(screen.getByTestId('custom-blend-livery')).not.toHaveAttribute(
+      'data-vessel',
+      'food-bag',
+    );
   });
 
   it('shows order allocation state without an estimated delivery date', async () => {
@@ -355,5 +521,107 @@ describe('customer order UI', () => {
     expect(await screen.findByText('(3 of 3 available)')).toBeInTheDocument();
     // Oat powder appears in both order detail and return panel
     expect(screen.getAllByText('Oat powder')).toHaveLength(2);
+  });
+
+  it('shows delivery address, booked slot, billing entity, and PO reference on a trade order', async () => {
+    vi.mocked(getOrder).mockResolvedValue(tradeDetail);
+    render(
+      <MemoryRouter initialEntries={['/orders/12']}>
+        <Routes>
+          <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Delivery and billing')).toBeInTheDocument();
+    expect(
+      screen.getByText('Unit 4 Foundry Park, Kiln Road, Sheffield, South Yorkshire, S9 1TQ, GB'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Friday, August 7, 2026 · Morning')).toBeInTheDocument();
+    expect(screen.getByText('Northgate Building Supplies Ltd')).toBeInTheDocument();
+    expect(screen.getByText('12 Cathedral Street, Sheffield, S1 2LH, GB')).toBeInTheDocument();
+    expect(screen.getByText('Reg. 09876543 · VAT GB123456789')).toBeInTheDocument();
+    expect(screen.getByText('PO-55120')).toBeInTheDocument();
+  });
+
+  it('omits the delivery and billing section entirely for a legacy order', async () => {
+    vi.mocked(getOrder).mockResolvedValue(detail);
+    render(
+      <MemoryRouter initialEntries={['/orders/12']}>
+        <Routes>
+          <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Order #12')).toBeInTheDocument();
+    expect(screen.queryByText('Delivery and billing')).not.toBeInTheDocument();
+    expect(screen.queryByText('Delivery address')).not.toBeInTheDocument();
+    expect(screen.queryByText('Delivery slot')).not.toBeInTheDocument();
+    expect(screen.queryByText('Billing details')).not.toBeInTheDocument();
+    expect(screen.queryByText('Purchase order reference')).not.toBeInTheDocument();
+  });
+
+  it('renders only the captured fields when a trade order is partially populated', async () => {
+    vi.mocked(getOrder).mockResolvedValue({
+      ...detail,
+      deliverySlot: { date: '2026-08-08', window: 'pm' },
+      purchaseOrderReference: 'PO-77',
+    });
+    render(
+      <MemoryRouter initialEntries={['/orders/12']}>
+        <Routes>
+          <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Delivery and billing')).toBeInTheDocument();
+    expect(screen.getByText('Saturday, August 8, 2026 · Afternoon')).toBeInTheDocument();
+    expect(screen.getByText('PO-77')).toBeInTheDocument();
+    expect(screen.queryByText('Delivery address')).not.toBeInTheDocument();
+    expect(screen.queryByText('Billing details')).not.toBeInTheDocument();
+  });
+});
+
+describe('order trade detail presentation', () => {
+  it('delegates address rendering to the shared contracts formatter', () => {
+    expect(formatAddressLine(undefined)).toBeUndefined();
+    expect(formatAddressLine(tradeDetail.deliveryAddress)).toBe(
+      formatPostalAddress(tradeDetail.deliveryAddress!),
+    );
+  });
+
+  it('renders a booked slot on its calendar day regardless of host timezone', () => {
+    expect(formatDeliverySlot(undefined)).toBeUndefined();
+    expect(formatDeliverySlot({ date: '2026-08-07', window: 'am' })).toBe(
+      'Friday, August 7, 2026 · Morning',
+    );
+    expect(formatDeliverySlot({ date: '2026-08-07', window: 'pm' })).toBe(
+      'Friday, August 7, 2026 · Afternoon',
+    );
+  });
+
+  it('drops billing identifiers that were never recorded', () => {
+    expect(formatBillingIdentifiers(undefined)).toBeUndefined();
+    const base = tradeDetail.billingEntity!;
+    expect(formatBillingIdentifiers(base)).toBe('Reg. 09876543 · VAT GB123456789');
+    expect(formatBillingIdentifiers({ ...base, registrationNumber: null })).toBe('VAT GB123456789');
+    expect(formatBillingIdentifiers({ ...base, vatNumber: null })).toBe('Reg. 09876543');
+    expect(
+      formatBillingIdentifiers({ ...base, registrationNumber: null, vatNumber: null }),
+    ).toBeUndefined();
+  });
+
+  it('treats a blank purchase order reference as absent', () => {
+    expect(formatPurchaseOrderReference(undefined)).toBeUndefined();
+    expect(formatPurchaseOrderReference('   ')).toBeUndefined();
+    expect(formatPurchaseOrderReference('  PO-55120 ')).toBe('PO-55120');
+  });
+
+  it('reports no trade details for a legacy order', () => {
+    expect(hasOrderTradeDetails(detail)).toBe(false);
+    expect(hasOrderTradeDetails(tradeDetail)).toBe(true);
+    expect(hasOrderTradeDetails({ purchaseOrderReference: '   ' })).toBe(false);
   });
 });

@@ -15,7 +15,7 @@ interface SimilarProductsSectionProps {
 function SimilarProductsHeading() {
   return (
     <h2 id="similar-products-heading" className="section-heading">
-      Similar powders
+      Similar materials
     </h2>
   );
 }
@@ -45,7 +45,7 @@ export function SimilarProductsSection({
       .catch((loadError: unknown) => {
         if (!current || controller.signal.aborted) return;
         setError(
-          loadError instanceof Error ? loadError.message : 'Could not load similar powders.',
+          loadError instanceof Error ? loadError.message : 'Could not load similar materials.',
         );
       });
 
@@ -59,7 +59,7 @@ export function SimilarProductsSection({
     return (
       <section className="mt-16" aria-labelledby="similar-products-heading" aria-busy="true">
         <SimilarProductsHeading />
-        <p className="text-sm text-muted-foreground">Finding similar powders...</p>
+        <p className="text-sm text-muted-foreground">Finding similar materials...</p>
       </section>
     );
   }
@@ -69,7 +69,7 @@ export function SimilarProductsSection({
       <section className="mt-16" aria-labelledby="similar-products-heading">
         <SimilarProductsHeading />
         <p role="alert" className="text-sm text-muted-foreground">
-          Could not load similar powders.
+          Could not load similar materials.
         </p>
         <button
           type="button"
@@ -87,7 +87,7 @@ export function SimilarProductsSection({
       <section className="mt-16" aria-labelledby="similar-products-heading">
         <SimilarProductsHeading />
         <p className="mt-2 text-sm text-muted-foreground">
-          No similar powders available right now.
+          No similar materials available right now.
         </p>
       </section>
     );
@@ -99,11 +99,11 @@ export function SimilarProductsSection({
         <div>
           <p className="section-eyebrow">Chosen for their shared traits</p>
           <h2 id="similar-products-heading" className="section-heading mt-2">
-            Similar powders
+            Similar materials
           </h2>
         </div>
         <Link to="/catalog" className="section-link">
-          Browse all powders
+          Browse all materials
         </Link>
       </div>
       <ProductGrid>

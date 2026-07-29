@@ -86,7 +86,11 @@ describe('usePromoQuote', () => {
     resolveSecond({ valid: false, error: 'New promo invalid' });
     await second;
     await waitFor(() =>
-      expect(dispatch).toHaveBeenCalledWith({ type: 'promo-failed', error: 'New promo invalid' }),
+      expect(dispatch).toHaveBeenCalledWith({
+        type: 'promo-failed',
+        error: 'New promo invalid',
+        errorCode: null,
+      }),
     );
   });
 
@@ -120,7 +124,11 @@ describe('usePromoQuote', () => {
     resolveCurrentA({ valid: false, error: 'Current A invalid' });
     await currentA;
     await waitFor(() =>
-      expect(dispatch).toHaveBeenCalledWith({ type: 'promo-failed', error: 'Current A invalid' }),
+      expect(dispatch).toHaveBeenCalledWith({
+        type: 'promo-failed',
+        error: 'Current A invalid',
+        errorCode: null,
+      }),
     );
   });
 });

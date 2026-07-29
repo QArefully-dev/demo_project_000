@@ -81,7 +81,6 @@ const product = (overrides: Partial<ProductWithVariants> = {}): ProductWithVaria
   available: overrides.available ?? true,
   tags: overrides.tags ?? [],
   specificationGroups: overrides.specificationGroups ?? [],
-  mixable: overrides.mixable ?? false,
   availability: overrides.availability ?? 'in_stock',
   backorderable: overrides.backorderable ?? false,
   backorderLeadDays: overrides.backorderLeadDays ?? null,
@@ -91,8 +90,11 @@ const product = (overrides: Partial<ProductWithVariants> = {}): ProductWithVaria
       productId: 1,
       sku: 'PW-001',
       label: 'Standard',
-      weightGrams: 500,
+      weightGrams: 25_000,
       priceCents: 12999,
+      moqSacks: 4,
+      perTonneCents: 25998,
+      priceTiers: [{ minTonnes: 1, discountPct: 0 }],
       compareAtPriceCents: 16999,
       stockCount: 8,
       backorderable: false,
@@ -177,7 +179,7 @@ describe('ProductPage', () => {
 
     response.resolve(product());
     expect(await screen.findByRole('heading', { name: 'Powdered Water' })).toBeInTheDocument();
-    expect(screen.getByText('Finding similar powders...')).toBeInTheDocument();
+    expect(screen.getByText('Finding similar materials...')).toBeInTheDocument();
   });
 
   it('renders API and not-found failures distinctly', async () => {
@@ -195,7 +197,7 @@ describe('ProductPage', () => {
     productApi.getProduct.mockResolvedValueOnce(product());
     productApi.getSimilarProducts.mockResolvedValueOnce([]);
     const { unmount } = renderPage();
-    expect(await screen.findByText('Save $40.00')).toBeInTheDocument();
+    expect(await screen.findByText('Sale')).toBeInTheDocument();
     unmount();
 
     productApi.getProduct.mockResolvedValueOnce(
@@ -211,8 +213,11 @@ describe('ProductPage', () => {
             productId: 1,
             sku: 'PW-001',
             label: 'Standard',
-            weightGrams: 500,
+            weightGrams: 25_000,
             priceCents: 12999,
+            moqSacks: 4,
+            perTonneCents: 25998,
+            priceTiers: [{ minTonnes: 1, discountPct: 0 }],
             stockCount: 0,
             backorderable: false,
             backorderLeadDays: null,
@@ -246,7 +251,7 @@ describe('ProductPage', () => {
 
     // Select variant first
     await user.click(screen.getByRole('radio'));
-    const addButton = screen.getByRole('button', { name: 'Add powder' });
+    const addButton = screen.getByRole('button', { name: 'Add to order' });
     await user.click(addButton);
     await user.click(addButton);
     expect(cart.addItem).toHaveBeenCalledOnce();
@@ -254,7 +259,7 @@ describe('ProductPage', () => {
     pendingAdd.resolve(false);
     expect(await screen.findByText('Could not add this item. Try again.')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Add powder' }));
+    await user.click(screen.getByRole('button', { name: 'Add to order' }));
     await waitFor(() => expect(cart.addItem).toHaveBeenCalledTimes(2));
     expect(screen.queryByText('Could not add this item. Try again.')).not.toBeInTheDocument();
   });
@@ -267,11 +272,23 @@ describe('ProductPage', () => {
 
     renderPage();
     await screen.findByRole('heading', { name: 'Powdered Water' });
-    expect(await screen.findByRole('alert')).toHaveTextContent('Could not load similar powders.');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not load similar materials.');
 
     await user.click(screen.getByRole('radio'));
-    await user.click(screen.getByRole('button', { name: 'Add powder' }));
-    expect(cart.addItem).toHaveBeenCalledWith('powdered-water', 1);
+    await user.click(screen.getByRole('button', { name: 'Add to order' }));
+    expect(cart.addItem).toHaveBeenCalledWith('powdered-water', 1, 4);
+  });
+
+  it('surfaces the server minimum-order error in the purchase panel', async () => {
+    cart.error = 'Minimum order quantity not met. Adjust pallet quantity and try again.';
+    productApi.getProduct.mockResolvedValueOnce(product());
+    productApi.getSimilarProducts.mockResolvedValueOnce([]);
+
+    renderPage();
+
+    expect(await screen.findByRole('alert', { name: '' })).toHaveTextContent(
+      'Minimum order quantity not met. Adjust pallet quantity and try again.',
+    );
   });
 
   it('aborts and ignores a stale similar response after the route product changes', async () => {
@@ -317,7 +334,9 @@ describe('ProductPage', () => {
     productApi.getSimilarProducts.mockResolvedValueOnce([]);
     const { unmount } = renderPage();
     await screen.findByRole('heading', { name: 'Powdered Water' });
-    expect(await screen.findByText('No similar powders available right now.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('No similar materials available right now.'),
+    ).toBeInTheDocument();
     unmount();
 
     productApi.getProduct.mockResolvedValueOnce(product());
@@ -348,8 +367,8 @@ describe('ProductPage', () => {
     expect(screen.queryByText('Shared bundle cart error')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('radio'));
-    await user.click(screen.getByRole('button', { name: 'Add powder' }));
-    expect(cart.addItem).toHaveBeenCalledWith('powdered-water', 1);
+    await user.click(screen.getByRole('button', { name: 'Add to order' }));
+    expect(cart.addItem).toHaveBeenCalledWith('powdered-water', 1, 4);
   });
 
   it('composes product sections in journey order with current specification data', async () => {
@@ -403,7 +422,7 @@ describe('ProductPage', () => {
     expect(await screen.findByText('Product not found')).toBeInTheDocument();
     expect(screen.queryByTestId('bundles-section')).not.toBeInTheDocument();
     expect(screen.queryByTestId('reviews-section')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Similar powders')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Similar materials')).not.toBeInTheDocument();
     expect(productApi.getSimilarProducts).not.toHaveBeenCalled();
   });
 

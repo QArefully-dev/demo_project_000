@@ -24,6 +24,22 @@ describe('BagArtwork', () => {
     );
     expect(screen.getByText('SUPERCALIFRAGILISTIC')).toBeInTheDocument();
     expect(screen.getByText('TINY TINY')).toBeInTheDocument();
+    expect(screen.getByText('QAREFULLY MATERIALS EXCHANGE')).toBeInTheDocument();
+  });
+
+  it('defaults the accessible label to the bag without the retired "powder" wording', () => {
+    render(
+      <BagArtwork
+        name="Portland Cement"
+        category="Trade & Creative Materials"
+        quantity="25 kg"
+        batchCode="TCM-01"
+        mark="CEM"
+        consumptionLabel={null}
+      />,
+    );
+
+    expect(screen.getByRole('img', { name: 'Portland Cement bag' })).toBeInTheDocument();
   });
 
   it('gives independently rendered painted bags distinct gradient identifiers', () => {
@@ -33,7 +49,7 @@ describe('BagArtwork', () => {
           name="First mix"
           category="Custom mix"
           quantity="500g"
-          batchCode="powderizer-v1"
+          batchCode="batch-v1"
           mark="MIX"
           paint={{ kind: 'linear-gradient', colors: ['#9b5de5', '#00d9ff'] }}
           consumptionLabel={null}
@@ -42,7 +58,7 @@ describe('BagArtwork', () => {
           name="Second mix"
           category="Custom mix"
           quantity="500g"
-          batchCode="powderizer-v1"
+          batchCode="batch-v1"
           mark="MIX"
           paint={{ kind: 'linear-gradient', colors: ['#ff7b00', '#ffe66d'] }}
           consumptionLabel={null}

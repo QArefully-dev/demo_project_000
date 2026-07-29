@@ -13,6 +13,12 @@ export interface BagArtworkProps {
   mark: string;
   accent?: string;
   powderAccent?: string;
+  /**
+   * Stable key of the decorative catalog scheme these colours came from, exposed on the root SVG as
+   * `data-colour-scheme` for deterministic tests and browser inspection. Optional: explicit legacy
+   * `product.packaging` colours do not come from the scheme registry and omit it.
+   */
+  schemeKey?: string;
   paint?: BagArtworkPaint;
   consumptionLabel: string | null;
   ariaLabel?: string;
@@ -28,8 +34,8 @@ function ProductLabel({
   mark,
   accent = '#9fb3aa',
   consumptionLabel,
-}: Omit<BagArtworkProps, 'ariaLabel' | 'className' | 'style' | 'powderAccent'>) {
-  const normalizedName = name.trim().toUpperCase() || 'POWDER';
+}: Omit<BagArtworkProps, 'ariaLabel' | 'className' | 'style' | 'powderAccent' | 'schemeKey'>) {
+  const normalizedName = name.trim().toUpperCase() || 'MATERIAL';
   const titleWords = normalizedName.split(/\s+/);
   const splitIndex =
     titleWords.length > 1
@@ -67,7 +73,7 @@ function ProductLabel({
         fontWeight="800"
         letterSpacing="1.5"
       >
-        QAREFULLY POWDER CO.
+        QAREFULLY MATERIALS EXCHANGE
       </text>
       <circle cx="53" cy="91" r="26" fill="#dcecf0" stroke="#fffaf0" strokeWidth="3" />
       <text
@@ -187,6 +193,7 @@ export function BagArtwork({
   mark,
   accent = '#9fb3aa',
   powderAccent = accent,
+  schemeKey,
   paint,
   consumptionLabel,
   ariaLabel,
@@ -201,9 +208,10 @@ export function BagArtwork({
       viewBox="0 0 720 720"
       role={ariaLabel === '' ? undefined : 'img'}
       aria-hidden={ariaLabel === '' ? true : undefined}
-      aria-label={ariaLabel === '' ? undefined : (ariaLabel ?? `${name} powder bag`)}
+      aria-label={ariaLabel === '' ? undefined : (ariaLabel ?? `${name} bag`)}
       className={className}
       style={style}
+      data-colour-scheme={schemeKey}
       xmlns="http://www.w3.org/2000/svg"
     >
       {paint && (
@@ -225,7 +233,8 @@ export function BagArtwork({
       <path d="M174 130H546" stroke="#c5bbac" strokeWidth="5" />
       <path d="M562 159L579 592L532 574" fill="#d6cdbf" stroke="#333530" strokeWidth="5" />
       <path d="M185 584Q360 614 532 574" fill="none" stroke="#bdb3a4" strokeWidth="5" />
-      <g fill={powderAccent}>
+      {/* Decorative pigment sample: geometry unchanged, filled from the resolved scheme pigment. */}
+      <g fill={powderAccent} aria-hidden="true" data-pigment={powderAccent}>
         <ellipse cx="330" cy="544" rx="76" ry="25" opacity="0.65" />
         <ellipse cx="399" cy="548" rx="88" ry="28" opacity="0.9" />
       </g>

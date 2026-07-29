@@ -16,12 +16,17 @@ import { createOrderRepository } from '../../src/features/orders/orderRepository
 import { createMailboxRepository } from '../../src/features/mailbox/mailboxRepository.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { simulatedPaymentGateway } from '../../src/features/payments/paymentGateway.js';
-import { createPowderMixRepository } from '../../src/features/powderizer/powderMixRepository.js';
 import { createProductRepository } from '../../src/features/catalog/productRepository.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
+import {
+  adhocBilling,
+  adhocDestination,
+  bookableSlot,
+  checkoutDepthDependencies,
+} from './checkoutDepthFixtures.js';
 
 function checkoutService(db: import('better-sqlite3').Database, now?: () => Date) {
   const carts = createCartRepository(db);
@@ -34,13 +39,13 @@ function checkoutService(db: import('better-sqlite3').Database, now?: () => Date
     mailbox: createMailboxRepository(db),
     gateway: simulatedPaymentGateway,
     clock: { now: now ?? (() => new Date()) },
-    mixes: createPowderMixRepository(db),
     products: createProductRepository(db),
     audit: createAuditWriter({
       repository: createAuditRepository(db),
       clock: { now: now ?? (() => new Date()) },
     }),
     inventory: createInventoryService({ repository: createInventoryRepository(db) }),
+    ...checkoutDepthDependencies(db, { now: now ?? (() => new Date()) }),
   });
 }
 
@@ -53,7 +58,9 @@ function paymentParams(
     cartId,
     customerName: 'Delivery Test',
     customerEmail: 'delivery@example.test',
-    shippingAddress: '1 Test Street',
+    deliveryDestination: adhocDestination,
+    billingSelection: adhocBilling,
+    deliverySlot: bookableSlot(),
     cardNumber: '4242 4242 4242 4242',
     cardExpiry: '12/99',
     cardCvc: '123',
@@ -116,6 +123,9 @@ void test('checkout delivery integration', async (t) => {
     setupFresh();
     const cartId = createCart(carts).cartId;
     const vId = getVariantId(db, 1);
+    db.prepare(
+      "UPDATE product_variants SET delivery_class = 'parcel', moq_sacks = 1 WHERE id = ?",
+    ).run(vId);
     const variant = getVariantInfo(db, vId)!;
     assert.equal(variant.delivery_class, 'parcel');
     addItem(carts, cartId, String(vId));

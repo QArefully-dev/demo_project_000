@@ -41,7 +41,6 @@ function product(id: string): Product {
     backorderLeadDays: null,
     tags: [],
     specificationGroups: [],
-    mixable: false,
   };
 }
 
@@ -68,16 +67,26 @@ describe('HomePage', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('Blended to order')).toBeInTheDocument();
-    expect(screen.getByText('Professionally packed')).toBeInTheDocument();
-    expect(screen.getByText('Simulated checkout')).toBeInTheDocument();
+    expect(screen.getByText('Clear product data')).toBeInTheDocument();
+    expect(screen.getByText('Supply-ready catalogue')).toBeInTheDocument();
+    expect(screen.getByText('Demo ordering')).toBeInTheDocument();
     expect(screen.getByText('No real payment is processed')).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Custom Powder builder' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /open custom powder/i })).toHaveAttribute(
-      'href',
-      '/custom-powder',
-    );
+    expect(
+      screen.getByRole('heading', { name: 'Order a whole set, save 10%.' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Bundle sets: browse curated bundles' }),
+    ).toHaveAttribute('href', '/bundles');
+    const customBlendBanner = screen.getByRole('heading', {
+      name: 'Build material to your spec.',
+    });
+    expect(
+      screen.getByRole('link', { name: 'Custom Blend: configure your blend' }),
+    ).toHaveAttribute('href', '/custom-blend');
     expect(screen.getByText('Bestsellers')).toBeInTheDocument();
+    expect(customBlendBanner.compareDocumentPosition(screen.getByText('Bestsellers'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
     expect(screen.getByText('Just in')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Product new')).toBeInTheDocument());
     expect(screen.getByText('This collection is temporarily unavailable.')).toBeInTheDocument();

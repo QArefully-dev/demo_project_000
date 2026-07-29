@@ -50,10 +50,10 @@ export function CatalogSidebarControls({
   return (
     <>
       <fieldset>
-        <legend className="mb-2 text-sm font-semibold">Powder type</legend>
+        <legend className="mb-2 text-sm font-semibold">Material type</legend>
         <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 lg:mx-0 lg:block lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">
           <CategoryChoice checked={!category} onChange={() => onCategoryChange(undefined)}>
-            All powders
+            All materials
           </CategoryChoice>
           {categories.map((item) => (
             <CategoryChoice
@@ -272,7 +272,7 @@ function DraftInput({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="grid gap-1 text-xs font-medium text-muted-foreground" htmlFor={id}>
+    <label className="grid min-w-0 gap-1 text-xs font-medium text-muted-foreground" htmlFor={id}>
       {label}
       <input
         id={id}
@@ -282,7 +282,7 @@ function DraftInput({
         inputMode={type === 'number' ? 'numeric' : undefined}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 rounded-lg border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="h-10 min-w-0 w-full rounded-lg border bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
     </label>
   );

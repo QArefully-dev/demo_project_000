@@ -5,14 +5,10 @@ import { Separator } from '@/components/ui/separator';
 import { LoadingSpinner } from './LoadingSpinner';
 import { ErrorMessage } from './ErrorMessage';
 import { CartLineItem } from './CartLineItem';
-import { PowderMixCartLineItem } from '@/features/cart/PowderMixCartLineItem';
 import { formatMoney } from '@/lib/formatMoney';
 import { useCartContext } from '@/hooks/CartContext';
+import { cartItemKey, pendingConfigKey } from '@/lib/cartLineIdentity';
 import { Link } from 'react-router-dom';
-
-function cartItemKey(item: { productId: string; variantSnap?: { variantId: number } }): string {
-  return `${item.productId}:${item.variantSnap?.variantId ?? 'no-variant'}`;
-}
 
 function deliveryLabel(mode: string): string {
   return mode === 'freight' ? 'Freight' : 'Parcel';
@@ -27,8 +23,6 @@ export function CartSheet() {
     error,
     updateQuantity,
     removeItem,
-    updateMixQuantity,
-    removeMix,
     retryCart,
     isActionPending,
   } = useCartContext();
@@ -55,7 +49,7 @@ export function CartSheet() {
       </SheetTrigger>
       <SheetContent className="flex flex-col w-full sm:w-auto">
         <SheetHeader>
-          <SheetTitle>Powder cart ({itemCount} bags)</SheetTitle>
+          <SheetTitle>Order ({itemCount} units)</SheetTitle>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto py-4">
           {isInitializing && <LoadingSpinner />}
@@ -75,58 +69,102 @@ export function CartSheet() {
             </div>
           )}
           {!isInitializing && !isLoading && cart && cart.totalItems === 0 && (
-            <p className="py-8 text-center text-muted-foreground">Your powder cart is empty</p>
+            <p className="py-8 text-center text-muted-foreground">Your order is empty</p>
           )}
           {!isInitializing &&
             !isLoading &&
             cart &&
             cart.items.map((item) => (
-              <CartLineItem
-                key={cartItemKey(item)}
-                item={item}
-                isUpdating={isActionPending(item.productId, 'update')}
-                isRemoving={isActionPending(item.productId, 'remove')}
-                onUpdateQuantity={updateQuantity}
-                onRemove={removeItem}
-              />
-            ))}
-          {!isInitializing &&
-            !isLoading &&
-            cart &&
-            cart.mixItems.map((item) => (
-              <PowderMixCartLineItem
-                key={item.mixId}
-                item={item}
-                isUpdating={isActionPending(`mix:${item.mixId}`, 'mix-update')}
-                isRemoving={isActionPending(`mix:${item.mixId}`, 'mix-remove')}
-                onUpdateQuantity={updateMixQuantity}
-                onRemove={removeMix}
-              />
+              <div key={cartItemKey(item)}>
+                <CartLineItem
+                  item={item}
+                  isUpdating={isActionPending(
+                    item.productId,
+                    'update',
+                    item.variantSnap?.variantId,
+                    pendingConfigKey(item),
+                  )}
+                  isRemoving={isActionPending(
+                    item.productId,
+                    'remove',
+                    item.variantSnap?.variantId,
+                    pendingConfigKey(item),
+                  )}
+                  onUpdateQuantity={updateQuantity}
+                  onRemove={removeItem}
+                />
+                {item.variantSnap && (
+                  <p className="-mt-1 pb-3 text-xs text-muted-foreground">
+                    {formatMoney(item.perTonneCents)} / tonne · {item.variantSnap.weightGrams}g pack
+                  </p>
+                )}
+                {item.clearance && (
+                  <p
+                    className="-mt-2 pb-3 text-xs font-medium text-sale"
+                    aria-label="Clearance price applied"
+                  >
+                    Clearance price applied: {formatMoney(item.clearance.priceCents)} per pack
+                  </p>
+                )}
+                {item.nextTierProgress && (
+                  <p
+                    className="-mt-2 pb-3 text-xs text-muted-foreground"
+                    aria-label="Next volume tier progress"
+                  >
+                    {item.nextTierProgress.sacksToNextTier} sack
+                    {item.nextTierProgress.sacksToNextTier === 1 ? '' : 's'} to{' '}
+                    {item.nextTierProgress.minTonnes}-tonne tier (
+                    {item.nextTierProgress.discountPct}% off)
+                  </p>
+                )}
+              </div>
             ))}
         </div>
         {!isInitializing && cart && cart.totalItems > 0 && (
           <div className="border-t pt-4 space-y-3">
+            {cart.blendingFeeTotalCents > 0 && (
+              <>
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>Material subtotal</span>
+                  <span>{formatMoney(cart.discountableSubtotalCents)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>Blending fees</span>
+                  <span>{formatMoney(cart.blendingFeeTotalCents)}</span>
+                </div>
+              </>
+            )}
             <div className="flex items-center justify-between text-sm">
-              <span>Subtotal</span>
+              <span>Resolved order subtotal</span>
               <span className="font-semibold">{formatMoney(cart.subtotalCents)}</span>
             </div>
             {cart.deliveryPreview && (
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <span>{deliveryLabel(cart.deliveryPreview.mode)} delivery</span>
-                <span>
-                  {cart.deliveryPreview.chargeCents === 0
-                    ? 'Free'
-                    : formatMoney(cart.deliveryPreview.chargeCents)}
-                </span>
-              </div>
+              <>
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>
+                    {deliveryLabel(cart.deliveryPreview.mode) === 'Freight'
+                      ? 'Pallet freight'
+                      : 'Parcel delivery'}
+                  </span>
+                  <span>
+                    {cart.deliveryPreview.chargeCents === 0
+                      ? 'Free'
+                      : formatMoney(cart.deliveryPreview.chargeCents)}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Total order weight: {cart.deliveryPreview.weightGrams.toLocaleString()}g
+                </p>
+              </>
             )}
             <Separator />
             <Button
               className="w-full"
               variant="outline"
+              nativeButton={false}
               render={<Link to="/cart" onClick={() => setOpen(false)} />}
             >
-              View Full Cart
+              Review order
             </Button>
           </div>
         )}

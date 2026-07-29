@@ -2,13 +2,13 @@ import { useCallback, useEffect, useReducer, useRef } from 'react';
 import type { Cart } from '@shop/contracts/cart';
 import * as api from '../api/cart';
 import * as bundlesApi from '../api/bundles';
-import * as powderizerApi from '../api/powderizer';
+import * as customBlendsApi from '../api/customBlends';
 import { ApiError, isMissingCartError } from '../api/client';
 import { clearCartId, getCartId } from '../lib/cartStorage';
 import { createCartClient } from './cartClient';
+import type { CreateCustomBlendBody, ReplaceCustomBlendBody } from '@shop/contracts/custom-blends';
 
-export type CartAction =
-  'add' | 'bundle-add' | 'update' | 'remove' | 'mix-update' | 'mix-remove' | 'mix-requote';
+export type CartAction = 'add' | 'bundle-add' | 'update' | 'remove' | 'blend-add' | 'blend-replace';
 
 type CartStatus = 'initializing' | 'ready' | 'refreshing' | 'error';
 
@@ -56,7 +56,28 @@ function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError && error.isNetworkError) {
     return 'Unable to reach the shop server. Check that it is running and try again.';
   }
+  if (
+    error instanceof ApiError &&
+    (error.response as { code?: unknown } | null)?.code === 'BELOW_MOQ'
+  ) {
+    return 'Minimum order quantity not met. Adjust pallet quantity and try again.';
+  }
   return error instanceof Error ? error.message : fallback;
+}
+
+/**
+ * Configured lines share a product and variant with their plain counterpart, so pending
+ * identity carries the config key. Plain lines keep their historic key shape.
+ */
+function cartLinePendingKey(productId: string, variantId?: number, configKey?: string): string {
+  if (variantId === undefined) return productId;
+  const lineKey = `line:${productId}:${variantId}`;
+  return configKey ? `${lineKey}:${configKey}` : lineKey;
+}
+
+function customBlendPendingKey(baseVariantId: number, configKey?: string): string {
+  const blendKey = `blend:${baseVariantId}`;
+  return configKey ? `${blendKey}:${configKey}` : blendKey;
 }
 
 export function useCart() {
@@ -148,7 +169,7 @@ export function useCart() {
       pendingKey: string,
       operation: (activeCartId: string) => Promise<Cart>,
       retryAfterRecovery: boolean,
-    ): Promise<boolean> => {
+    ): Promise<Cart | false> => {
       const mutationSequence = ++mutationSequenceRef.current;
       if (mountedRef.current) dispatch({ type: 'action-started', pendingKey, action });
 
@@ -163,7 +184,7 @@ export function useCart() {
         try {
           const cart = await operation(activeCartId);
           if (getCartId() === cart.id) applyMutationCart(cart, mutationSequence);
-          return true;
+          return cart;
         } catch (error) {
           if (!isMissingCartError(error)) throw error;
 
@@ -175,7 +196,7 @@ export function useCart() {
 
           const cart = await operation(replacementCart.id);
           if (getCartId() === cart.id) applyMutationCart(cart, mutationSequence);
-          return true;
+          return cart;
         }
       } catch (error) {
         if (mountedRef.current) {
@@ -192,67 +213,88 @@ export function useCart() {
     [applyCart, applyMutationCart, loadCart, recoverCart],
   );
 
+  // Most callers only need success/failure. Custom Blend also needs the server-returned line so
+  // its recap cannot reuse the pre-edit key.
+  const runCartActionSucceeded = useCallback(
+    async (
+      action: CartAction,
+      pendingKey: string,
+      operation: (activeCartId: string) => Promise<Cart>,
+      retryAfterRecovery: boolean,
+    ) => Boolean(await runCartAction(action, pendingKey, operation, retryAfterRecovery)),
+    [runCartAction],
+  );
+
   const addItem = useCallback(
-    (productId: string, variantId?: number) =>
-      runCartAction(
+    (productId: string, variantId?: number, quantity?: number) =>
+      runCartActionSucceeded(
         'add',
         productId,
-        (cartId) => api.addToCart(cartId, productId, variantId),
+        (cartId) =>
+          quantity === undefined
+            ? api.addToCart(cartId, productId, variantId)
+            : api.addToCart(cartId, productId, variantId, quantity),
         true,
       ),
-    [runCartAction],
+    [runCartActionSucceeded],
   );
   const addBundle = useCallback(
     (bundleId: string) =>
-      runCartAction(
+      runCartActionSucceeded(
         'bundle-add',
         `bundle:${bundleId}`,
         (cartId) => bundlesApi.addBundleToCart(cartId, bundleId),
         true,
       ),
-    [runCartAction],
+    [runCartActionSucceeded],
   );
   const updateQuantity = useCallback(
-    (productId: string, quantity: number) =>
-      runCartAction(
+    (productId: string, quantity: number, variantId?: number, configKey?: string) =>
+      runCartActionSucceeded(
         'update',
-        productId,
-        (cartId) => api.updateCartItem(cartId, productId, quantity),
+        cartLinePendingKey(productId, variantId, configKey),
+        (cartId) => {
+          if (variantId === undefined) return api.updateCartItem(cartId, productId, quantity);
+          if (configKey === undefined)
+            return api.updateCartItem(cartId, productId, quantity, variantId);
+          return api.updateCartItem(cartId, productId, quantity, variantId, configKey);
+        },
         false,
       ),
-    [runCartAction],
+    [runCartActionSucceeded],
   );
   const removeItem = useCallback(
-    (productId: string) =>
-      runCartAction('remove', productId, (cartId) => api.removeFromCart(cartId, productId), false),
-    [runCartAction],
-  );
-  const updateMixQuantity = useCallback(
-    (mixId: string, quantity: number) =>
-      runCartAction(
-        'mix-update',
-        `mix:${mixId}`,
-        (cartId) => powderizerApi.updatePowderMixQuantity(cartId, mixId, quantity),
+    (productId: string, variantId?: number, configKey?: string) =>
+      runCartActionSucceeded(
+        'remove',
+        cartLinePendingKey(productId, variantId, configKey),
+        (cartId) => {
+          if (variantId === undefined) return api.removeFromCart(cartId, productId);
+          if (configKey === undefined) return api.removeFromCart(cartId, productId, variantId);
+          return api.removeFromCart(cartId, productId, variantId, configKey);
+        },
         false,
+      ),
+    [runCartActionSucceeded],
+  );
+  const addCustomBlend = useCallback(
+    (body: CreateCustomBlendBody) =>
+      runCartAction(
+        'blend-add',
+        customBlendPendingKey(body.baseVariantId),
+        (cartId) => customBlendsApi.createCustomBlend(cartId, body),
+        true,
       ),
     [runCartAction],
   );
-  const removeMix = useCallback(
-    (mixId: string) =>
+  // A replace targets one existing configured line, so a recovered empty cart has
+  // nothing to retry against; the caller is told the line is gone instead.
+  const replaceCustomBlend = useCallback(
+    (body: ReplaceCustomBlendBody) =>
       runCartAction(
-        'mix-remove',
-        `mix:${mixId}`,
-        (cartId) => powderizerApi.removePowderMix(cartId, mixId),
-        false,
-      ),
-    [runCartAction],
-  );
-  const requoteMix = useCallback(
-    (mixId: string) =>
-      runCartAction(
-        'mix-requote',
-        `mix:${mixId}`,
-        (cartId) => powderizerApi.requotePowderMix(cartId, mixId),
+        'blend-replace',
+        customBlendPendingKey(body.baseVariantId, body.configKey),
+        (cartId) => customBlendsApi.replaceCustomBlend(cartId, body),
         false,
       ),
     [runCartAction],
@@ -267,8 +309,9 @@ export function useCart() {
   }, [initializeCart]);
 
   const isActionPending = useCallback(
-    (productId: string, action?: CartAction) => {
-      const pendingAction = state.pendingActions[productId];
+    (productId: string, action?: CartAction, variantId?: number, configKey?: string) => {
+      const pendingAction =
+        state.pendingActions[cartLinePendingKey(productId, variantId, configKey)];
       return action ? pendingAction === action : pendingAction !== undefined;
     },
     [state.pendingActions],
@@ -286,11 +329,10 @@ export function useCart() {
     isActionPending,
     addItem,
     addBundle,
+    addCustomBlend,
+    replaceCustomBlend,
     updateQuantity,
     removeItem,
-    updateMixQuantity,
-    removeMix,
-    requoteMix,
     refreshCart,
     retryCart,
     clearCart,

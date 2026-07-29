@@ -1,68 +1,118 @@
 import { ArrowUpRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { BagArtwork, type BagArtworkProps } from '@/components/BagArtwork';
+
+import { PackagingArtwork } from '@/components/packaging/PackagingArtwork';
+import { NEUTRAL_PACKAGING_SCHEME, type PackagingSpec } from '@/components/packaging/packagingSpec';
+import { INKS, titleLines } from '@/components/packaging/svgText';
 import { Button } from '@/components/ui/button';
 
-const tileArtwork: Readonly<Record<string, Omit<BagArtworkProps, 'ariaLabel' | 'className'>>> = {
+interface TileArtwork {
+  name: string;
+  spec: PackagingSpec;
+  mark: string;
+  accent?: string;
+  powderAccent?: string;
+  consumptionLabel: string | null;
+}
+
+const BRAND = 'QAREFULLY MATERIALS EXCHANGE';
+
+const foodSpec = (name: string, sub: string, lot: string, netWeight: string): PackagingSpec => ({
+  vessel: 'food-bag',
+  // Hand-authored marketing tiles are not canonical catalog products, so they carry the neutral
+  // scheme rather than a category palette entry.
+  ...NEUTRAL_PACKAGING_SCHEME,
+  ink: { ink: '#242522', alert: '#b0381a' },
+  brand: BRAND,
+  titleLines: titleLines(name),
+  sub,
+  lot,
+  netWeight,
+});
+
+const tileArtwork: Readonly<Record<string, TileArtwork>> = {
   'sports nutrition': {
-    name: 'Protein Powder',
-    category: 'Sports Nutrition',
-    quantity: '1kg',
-    batchCode: 'SN-01',
+    name: 'Protein Blend',
+    spec: foodSpec('Protein Blend', 'Sports Nutrition', 'SN-01', '25 kg'),
     mark: 'PRO',
     accent: '#78956c',
     powderAccent: '#d5dfbc',
     consumptionLabel: null,
   },
   'baking & pantry': {
-    name: 'Powdered Sugar',
-    category: 'Baking & Pantry',
-    quantity: '500g',
-    batchCode: 'BP-01',
+    name: 'Baking Sugar',
+    spec: foodSpec('Baking Sugar', 'Baking & Pantry', 'BP-01', '25 kg'),
     mark: 'SUG',
     accent: '#e1a156',
     powderAccent: '#f2d8a6',
     consumptionLabel: null,
   },
   drinks: {
-    name: 'Matcha Powder',
-    category: 'Drinks',
-    quantity: '200g',
-    batchCode: 'DRK-03',
+    name: 'Matcha Blend',
+    spec: foodSpec('Matcha Blend', 'Drinks', 'DRK-03', '25 kg'),
     mark: 'MTC',
     accent: '#849b58',
     powderAccent: '#c7d486',
     consumptionLabel: null,
   },
   'household & cleaning': {
-    name: 'Laundry Powder',
-    category: 'Household & Cleaning',
-    quantity: '500g',
-    batchCode: 'HC-04',
+    name: 'Laundry Detergent',
+    spec: {
+      vessel: 'keg',
+      tone: 'corrosive',
+      ...NEUTRAL_PACKAGING_SCHEME,
+      ink: INKS.clean,
+      brand: BRAND,
+      titleLines: titleLines('Laundry Detergent'),
+      sub: 'Household & Cleaning',
+      lot: 'HCL-0020',
+      netWeight: '1,000 kg',
+      grade: 'One scoop (60 g) per standard load',
+      hazard: 'Causes serious eye irritation',
+    },
     mark: 'LND',
     accent: '#6c9cb3',
     powderAccent: '#c8e0eb',
-    consumptionLabel: 'Not for consumption',
+    consumptionLabel: null,
   },
   'garden & outdoors': {
     name: 'Garden Lime',
-    category: 'Garden & Outdoors',
-    quantity: '2kg',
-    batchCode: 'GO-05',
+    spec: {
+      vessel: 'woven-sack',
+      ...NEUTRAL_PACKAGING_SCHEME,
+      ink: INKS.garden,
+      brand: BRAND,
+      titleLines: titleLines('Garden Lime'),
+      sub: 'Garden & Outdoors',
+      lot: 'GDN-0030',
+      netWeight: '1,000 kg',
+      grade: '0-0-0 (Calcium carbonate 90%+)',
+      hazard: 'Causes eye irritation',
+      yield: 'One 5 kg bag treats approximately 50 m2',
+    },
     mark: 'LIM',
     accent: '#c3774e',
     powderAccent: '#e7b78f',
-    consumptionLabel: 'Not for consumption',
+    consumptionLabel: null,
   },
   'trade & creative materials': {
-    name: 'Cement Mix',
-    category: 'Trade & Creative Materials',
-    quantity: '25kg',
-    batchCode: 'TC-06',
+    name: 'Portland Cement',
+    spec: {
+      vessel: 'kraft-sack',
+      ...NEUTRAL_PACKAGING_SCHEME,
+      ink: INKS.trade,
+      brand: BRAND,
+      titleLines: titleLines('Portland Cement'),
+      sub: 'Trade & Creative Materials',
+      lot: 'TCM-0033',
+      netWeight: '1,000 kg',
+      grade: 'CEM I 42.5N',
+      hazard: 'Dust mask, gloves, eye protection',
+    },
     mark: 'CEM',
     accent: '#8c7ba8',
     powderAccent: '#d0c3df',
-    consumptionLabel: 'Not for consumption',
+    consumptionLabel: null,
   },
 };
 
@@ -107,8 +157,13 @@ export function CategoryTiles({ categories, isLoading, error, onRetry }: Categor
                 className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-foreground/20 bg-surface-soft shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {artwork ? (
-                  <BagArtwork
-                    {...artwork}
+                  <PackagingArtwork
+                    name={artwork.name}
+                    spec={artwork.spec}
+                    mark={artwork.mark}
+                    accent={artwork.accent}
+                    powderAccent={artwork.powderAccent}
+                    consumptionLabel={artwork.consumptionLabel}
                     ariaLabel=""
                     className="h-full w-full object-cover p-3 transition-transform duration-200 group-hover:scale-105"
                   />

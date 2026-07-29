@@ -58,7 +58,6 @@ export interface DeliveredAllocation {
   shipmentId: string;
   shipmentStatus: string;
   orderLineItemId: string;
-  lineKind: 'product' | 'powder_mix';
   deliveredQuantity: number;
 }
 
@@ -71,7 +70,7 @@ export interface ActiveReservation {
 /**
  * Validates return selections against delivered allocations and active reservations.
  * Throws on duplicate selection keys, zero/negative quantity, non-delivered shipment,
- * powder_mix items, or exceeding available quantity per allocation.
+ * or exceeding available quantity per allocation.
  */
 export function assertEligibleSelections(
   selections: readonly EligibilitySelection[],
@@ -91,11 +90,11 @@ export function assertEligibleSelections(
     seen.add(key);
   }
 
-  // Build delivery index: only delivered ordinary products
+  // Build delivery index: only delivered lines
   const delivered = new Map<string, number>();
   for (const alloc of deliveredAllocations) {
     const key = `${alloc.shipmentId}:${alloc.orderLineItemId}`;
-    if (alloc.shipmentStatus === 'delivered' && alloc.lineKind === 'product') {
+    if (alloc.shipmentStatus === 'delivered') {
       delivered.set(key, alloc.deliveredQuantity);
     }
   }
@@ -150,14 +149,12 @@ export function returnFingerprint(operation: string, payload: unknown): string {
 // ---------------------------------------------------------------------------
 
 export interface DiscountLine {
-  kind: 'product' | 'powder_mix';
   lineId: string;
   grossTotalCents: number;
 }
 
 export interface DiscountAllocation {
   lineId: string;
-  kind: 'product' | 'powder_mix';
   grossTotalCents: number;
   allocatedDiscountCents: number;
 }
@@ -166,7 +163,7 @@ export interface DiscountAllocation {
  * Allocates a whole-order discount across every purchased line using largest-remainder.
  * Base allocation: floor(discount * lineGross / subtotal).
  * Remaining cents distributed to lines with largest fractional remainders.
- * Tiebreak: product before powder_mix, then numeric line ID.
+ * Tiebreak: numeric line ID.
  */
 export function allocateOrderDiscountByLine(
   subtotalCents: number,
@@ -180,7 +177,6 @@ export function allocateOrderDiscountByLine(
     const floor = Math.floor(share);
     return {
       lineId: line.lineId,
-      kind: line.kind,
       grossTotalCents: line.grossTotalCents,
       allocatedDiscountCents: floor,
       remainder: share - floor,
@@ -195,8 +191,6 @@ export function allocateOrderDiscountByLine(
   type AllocationWithRemainder = DiscountAllocation & { remainder: number };
   const sorted = [...(allocations as AllocationWithRemainder[])].sort((a, b) => {
     if (a.remainder !== b.remainder) return b.remainder - a.remainder;
-    // product before powder_mix
-    if (a.kind !== b.kind) return a.kind === 'product' ? -1 : 1;
     // numeric line ID
     return parseInt(a.lineId, 10) - parseInt(b.lineId, 10);
   });

@@ -17,17 +17,25 @@ import { createCartRepository } from '../../src/features/cart/cartRepository.js'
 import { addItem, createCart, getCart } from '../../src/features/cart/cartService.js';
 import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
 import { createPromoRepository } from '../../src/features/promos/promoRepository.js';
-import { createPaymentRepository } from '../../src/features/payments/paymentRepository.js';
+import {
+  createPaymentRepository,
+  parsePersistedCheckoutQuote,
+} from '../../src/features/payments/paymentRepository.js';
 import { createOrderRepository } from '../../src/features/orders/orderRepository.js';
 import { createMailboxRepository } from '../../src/features/mailbox/mailboxRepository.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { simulatedPaymentGateway } from '../../src/features/payments/paymentGateway.js';
-import { createPowderMixRepository } from '../../src/features/powderizer/powderMixRepository.js';
 import { createProductRepository } from '../../src/features/catalog/productRepository.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
+import {
+  adhocBilling,
+  adhocDestination,
+  bookableSlot,
+  checkoutDepthDependencies,
+} from './checkoutDepthFixtures.js';
 
 function checkout(
   params: CheckoutParams,
@@ -47,13 +55,15 @@ function checkout(
     mailbox: createMailboxRepository(dependencies.db),
     gateway: dependencies.gateway ?? simulatedPaymentGateway,
     clock: { now: dependencies.now ?? (() => new Date()) },
-    mixes: createPowderMixRepository(dependencies.db),
     products: createProductRepository(dependencies.db),
     audit: createAuditWriter({
       repository: createAuditRepository(dependencies.db),
       clock: { now: dependencies.now ?? (() => new Date()) },
     }),
     inventory: createInventoryService({ repository: createInventoryRepository(dependencies.db) }),
+    ...checkoutDepthDependencies(dependencies.db, {
+      now: dependencies.now ?? (() => new Date()),
+    }),
   }).process(params);
 }
 
@@ -95,11 +105,19 @@ void test('atomic checkout orchestration', async (t) => {
   const dbPath = join(dir, 'shop.db');
   const db = openDatabase({ path: dbPath });
   const carts = createCartRepository(db);
-  const payment = (cartId: string, idempotencyKey: string): CheckoutParams => ({
+  // `now` must match the clock the suite runs checkout under: the booked slot is re-validated
+  // against a lead time derived from that same instant.
+  const payment = (
+    cartId: string,
+    idempotencyKey: string,
+    now: Date = new Date(),
+  ): CheckoutParams => ({
     cartId,
     customerName: 'Checkout Test',
     customerEmail: 'checkout@example.test',
-    shippingAddress: '1 Test Street',
+    deliveryDestination: adhocDestination,
+    billingSelection: adhocBilling,
+    deliverySlot: bookableSlot(now),
     cardNumber: '4242 4242 4242 4242',
     cardExpiry: '12/99',
     cardCvc: '123',
@@ -124,10 +142,6 @@ void test('atomic checkout orchestration', async (t) => {
     return cartId;
   };
 
-  function addVariantById(cartId: string, variantId: number) {
-    addItem(carts, cartId, String(variantId));
-  }
-
   function addVariantForProduct(cartId: string, productId: number) {
     const row = db
       .prepare(
@@ -136,6 +150,23 @@ void test('atomic checkout orchestration', async (t) => {
       .get(productId) as { id: number } | undefined;
     if (!row) throw new Error(`No active variant for product ${productId}`);
     return addItem(carts, cartId, String(row.id));
+  }
+
+  function freshGardenClearanceCart() {
+    resetDatabase(db);
+    seedDatabase(db);
+    const { cartId } = createCart(carts);
+    const variant = db
+      .prepare(
+        `SELECT v.id, p.id AS product_id
+         FROM product_variants v
+         JOIN products p ON p.id = v.product_id
+         WHERE v.sku = 'GDN-1043-001'`,
+      )
+      .get() as { id: number; product_id: number } | undefined;
+    if (!variant) throw new Error('Expected active Garden clearance variant');
+    addItem(carts, cartId, String(variant.id));
+    return { cartId, productId: variant.product_id };
   }
 
   t.after(() => {
@@ -225,7 +256,7 @@ void test('atomic checkout orchestration', async (t) => {
       const first = await checkout(params, { db, gateway });
       const replay = await checkout(params, { db, gateway });
       assert.deepEqual(replay, first);
-      assert.equal(getCart(carts, cartId)?.totalItems, 1);
+      assert.equal(getCart(carts, cartId)?.totalItems, 4);
       const events = db
         .prepare('SELECT action, entity_id FROM audit_events WHERE request_id = ?')
         .all(params.auditContext.requestId) as Array<{ action: string; entity_id: string }>;
@@ -298,6 +329,25 @@ void test('atomic checkout orchestration', async (t) => {
     assert.equal(gateway.calls(), 0);
   });
 
+  await t.test('rejects a cart line below its variant MOQ before gateway processing', async () => {
+    resetDatabase(db);
+    seedDatabase(db);
+    const cartId = createCart(carts).cartId;
+    const variant = db
+      .prepare('SELECT id FROM product_variants WHERE active = 1 ORDER BY id LIMIT 1')
+      .get() as { id: number };
+    carts.addLineQuantity(cartId, String(variant.id), 1);
+    const gateway = spyGateway();
+
+    const result = await checkout(payment(cartId, 'below-moq-checkout'), {
+      db,
+      gateway: gateway.gateway,
+    });
+
+    assert.deepEqual(result, { success: false, error: 'BELOW_MOQ' });
+    assert.equal(gateway.calls(), 0);
+  });
+
   await t.test('does not call gateway for invalid or ineligible promos', async () => {
     const invalidCartId = freshCart();
     const invalidGateway = spyGateway();
@@ -324,7 +374,7 @@ void test('atomic checkout orchestration', async (t) => {
     const checkoutClock = new Date('2024-12-31T23:59:59.999Z');
 
     const result = await checkout(
-      { ...payment(cartId, 'clock-boundary'), promoCode: 'EXPIRED10' },
+      { ...payment(cartId, 'clock-boundary', checkoutClock), promoCode: 'EXPIRED10' },
       { db, now: () => checkoutClock },
     );
 
@@ -338,16 +388,123 @@ void test('atomic checkout orchestration', async (t) => {
   await t.test('charges the persisted server quote total', async () => {
     const cartId = freshCart();
     const gateway = spyGateway();
-    const expectedTotal = getCart(carts, cartId)?.subtotalCents;
     const result = await checkout(payment(cartId, 'quoted-amount'), {
       db,
       gateway: gateway.gateway,
     });
+    const quoteJson = createPaymentRepository(db).load('quoted-amount')?.quoteJson;
+    if (!quoteJson) throw new Error('Expected persisted checkout quote');
+    const expectedTotal = parsePersistedCheckoutQuote(quoteJson).totalCents;
 
     assert.equal(result.success, true);
     assert.equal(gateway.requests()[0]?.amountCents, expectedTotal);
     if (result.success) assert.equal(result.order.totalCents, expectedTotal);
   });
+
+  await t.test(
+    'checks out an active clearance scoped promo, persists its disclosure, and replays one key',
+    async () => {
+      const now = new Date('2026-07-28T12:00:00.000Z');
+      const { cartId } = freshGardenClearanceCart();
+      const gateway = spyGateway();
+      const params = {
+        ...payment(cartId, 'garden-clearance-scoped-replay', now),
+        promoCode: 'GARDEN10',
+      };
+
+      const completed = await checkout(params, { db, gateway: gateway.gateway, now: () => now });
+      assert.equal(completed.success, true, JSON.stringify(completed));
+      if (!completed.success) return;
+
+      const quoteJson = createPaymentRepository(db).load(params.idempotencyKey)?.quoteJson;
+      if (!quoteJson) throw new Error('Expected persisted scoped clearance quote');
+      const quote = parsePersistedCheckoutQuote(quoteJson);
+      assert.equal(quote.variantLines[0]?.unitPriceCents, 24_000);
+      assert.equal(quote.promoCode, 'GARDEN10');
+      assert.equal(quote.promoCategoryScope, 'Garden & Outdoors');
+      assert.equal(quote.discountBaseCents, quote.subtotalCents);
+      assert.equal(quote.deliverySummary.mode, 'freight');
+      assert.deepEqual(quote.deliverySlot, params.deliverySlot);
+      assert.equal(completed.order.promoApplied, 'GARDEN10');
+      assert.equal(completed.order.promoCategoryScope, 'Garden & Outdoors');
+      assert.equal(completed.order.discountBaseCents, quote.discountBaseCents);
+      assert.equal(completed.order.deliveryMode, 'freight');
+      assert.equal(completed.order.deliveryChargeCents, quote.deliverySummary.chargeCents);
+      assert.deepEqual(completed.order.deliverySlot, params.deliverySlot);
+
+      const persisted = db
+        .prepare(
+          `SELECT promo_category_scope, discount_base_cents, delivery_mode, delivery_charge_cents
+           FROM orders WHERE id = ?`,
+        )
+        .get(Number(completed.order.id)) as {
+        promo_category_scope: string;
+        discount_base_cents: number;
+        delivery_mode: string;
+        delivery_charge_cents: number;
+      };
+      assert.deepEqual(persisted, {
+        promo_category_scope: 'Garden & Outdoors',
+        discount_base_cents: quote.discountBaseCents,
+        delivery_mode: 'freight',
+        delivery_charge_cents: quote.deliverySummary.chargeCents,
+      });
+
+      assert.deepEqual(
+        await checkout(params, { db, gateway: gateway.gateway, now: () => now }),
+        completed,
+      );
+      assert.equal(gateway.calls(), 1);
+    },
+  );
+
+  await t.test(
+    'rejects a scoped promo after its cart category changes without held reservations',
+    async () => {
+      const now = new Date('2026-07-28T12:00:00.000Z');
+      const { cartId, productId } = freshGardenClearanceCart();
+      db.prepare("UPDATE products SET category = 'Building Materials' WHERE id = ?").run(productId);
+      const gateway = spyGateway();
+      const params = {
+        ...payment(cartId, 'garden-category-changed', now),
+        promoCode: 'GARDEN10',
+      };
+
+      const result = await checkout(params, { db, gateway: gateway.gateway, now: () => now });
+      assert.equal(result.success, false);
+      assert.equal(result.success === false && result.error, 'PROMO_INVALID');
+      assert.equal(result.success === false && result.promoErrorCode, 'CATEGORY_MISMATCH');
+      assert.equal(gateway.calls(), 0);
+      assert.equal(
+        (
+          db
+            .prepare(
+              'SELECT COUNT(*) AS count FROM inventory_reservations WHERE payment_idempotency_key = ?',
+            )
+            .get(params.idempotencyKey) as { count: number }
+        ).count,
+        0,
+      );
+      assert.equal(
+        (
+          db
+            .prepare(
+              'SELECT COUNT(*) AS count FROM promo_reservations WHERE payment_idempotency_key = ?',
+            )
+            .get(params.idempotencyKey) as { count: number }
+        ).count,
+        0,
+      );
+      assert.equal(
+        (
+          db
+            .prepare('SELECT COUNT(*) AS count FROM cart_reservations WHERE cart_id = ?')
+            .get(cartId) as { count: number }
+        ).count,
+        0,
+      );
+    },
+  );
 
   await t.test('locks the quote and promo reservation before the gateway wait', async () => {
     const cartId = freshCart();
@@ -377,8 +534,8 @@ void test('atomic checkout orchestration', async (t) => {
   await t.test('expires prepared reservations and rejects late gateway completion', async () => {
     const cartId = freshCart();
     const deferred = deferredGateway();
-    const params = payment(cartId, 'expired-reservation');
     let current = new Date('2026-07-14T10:00:00.000Z');
+    const params = payment(cartId, 'expired-reservation', current);
     const first = checkout(params, { db, gateway: deferred.gateway, now: () => current });
     current = new Date('2026-07-14T10:15:00.000Z');
     const expired = await checkout(params, { db, gateway: deferred.gateway, now: () => current });
@@ -407,8 +564,8 @@ void test('atomic checkout orchestration', async (t) => {
     async () => {
       const cartId = freshCart();
       const deferred = deferredGateway();
-      const params = payment(cartId, 'late-gateway-expiry');
       let current = new Date('2026-07-14T10:00:00.000Z');
+      const params = payment(cartId, 'late-gateway-expiry', current);
       const first = checkout(params, { db, gateway: deferred.gateway, now: () => current });
       current = new Date('2026-07-14T10:15:00.000Z');
       deferred.resolve({ status: 'success' });
@@ -452,7 +609,7 @@ void test('atomic checkout orchestration', async (t) => {
     );
     const result = await checkout({ ...payment(cartId, 'rollback'), promoCode: 'SAVE10' }, { db });
     assert.deepEqual(result, { success: false, error: 'IDEMPOTENT_IN_PROGRESS' });
-    assert.equal(getCart(carts, cartId)?.totalItems, 5);
+    assert.equal(getCart(carts, cartId)?.totalItems, 20);
     assert.equal(
       (
         db
@@ -521,7 +678,7 @@ void test('atomic checkout orchestration', async (t) => {
       ).count,
       0,
     );
-    assert.equal(getCart(carts, cartId)?.totalItems, 1);
+    assert.equal(getCart(carts, cartId)?.totalItems, 4);
     assert.equal(
       (
         db
@@ -562,7 +719,7 @@ void test('atomic checkout orchestration', async (t) => {
             promoCode: null,
             customerName: params.customerName,
             customerEmail: params.customerEmail,
-            shippingAddress: params.shippingAddress,
+            shippingAddress: '1 Test Street',
             cardNumber: '4242424242424242',
             cardExpiry: params.cardExpiry,
             cardCvc: params.cardCvc,

@@ -27,8 +27,6 @@ export interface ProductRow {
   slug: string;
   compare_at_price_cents: number | null;
   sales_count: number;
-  mixable?: number;
-  mix_unit_grams?: number | null;
   active: number;
   created_at: string;
   consumption_classification: string;
@@ -36,6 +34,7 @@ export interface ProductRow {
   details_json: string | null;
   default_variant_id: number | null;
   blend_source_variant_id: number | null;
+  has_active_clearance?: number;
 }
 
 export interface CustomerProductRow extends ProductRow {
@@ -50,7 +49,11 @@ export interface VariantRow {
   label: string;
   weight_grams: number;
   price_cents: number;
+  moq_sacks: number;
   compare_at_price_cents: number | null;
+  clearance_price_cents: number | null;
+  clearance_starts_at: string | null;
+  clearance_ends_at: string | null;
   stock_count: number;
   backorderable: number;
   backorder_lead_days: number | null;
@@ -77,9 +80,6 @@ export interface ProductRepository {
   listBestsellers(limit?: number, now?: string): CustomerProductRow[];
   listByIds(ids: readonly number[], now?: string): CustomerProductRow[];
   listActiveCandidatesExcluding(sourceId: number, now?: string): CustomerProductRow[];
-  listEligibleMixProducts(): ProductRow[];
-  listActiveMixProducts(productIds: readonly number[]): ProductRow[];
-  listMixProducts(productIds: readonly number[]): ProductRow[];
   findAllVariants(productId: number): VariantRow[];
   findVariantById(variantId: number): VariantRow | undefined;
   findVariantsByIds(variantIds: readonly number[]): VariantRow[];
@@ -177,9 +177,25 @@ export function createProductRepository(db: Database.Database): ProductRepositor
       ).count;
       const items = db
         .prepare(
-          `SELECT ${customerColumns} FROM products p ${predicate.where} ${catalogOrderBy(normalized.sort)} LIMIT ? OFFSET ?`,
+          `SELECT ${customerColumns},
+             EXISTS (
+               SELECT 1 FROM product_variants pv
+               WHERE pv.product_id = p.id
+                 AND pv.active = 1
+                 AND pv.clearance_price_cents IS NOT NULL
+                 AND pv.clearance_price_cents > 0
+                 AND pv.clearance_price_cents < pv.price_cents
+                 AND pv.clearance_starts_at IS NOT NULL
+                 AND pv.clearance_ends_at IS NOT NULL
+                 AND julianday(pv.clearance_starts_at) < julianday(pv.clearance_ends_at)
+                 AND julianday(pv.clearance_starts_at) <= julianday(?)
+                 AND julianday(pv.clearance_ends_at) > julianday(?)
+             ) AS has_active_clearance
+           FROM products p ${predicate.where} ${catalogOrderBy(normalized.sort)} LIMIT ? OFFSET ?`,
         )
         .all(
+          at,
+          at,
           at,
           ...predicate.params,
           normalized.pageSize,
@@ -297,31 +313,6 @@ export function createProductRepository(db: Database.Database): ProductRepositor
         )
         .all(currentTime(now), sourceId) as ProductRow[];
       return hydrateCustomerRows(rows);
-    },
-    listEligibleMixProducts() {
-      return db
-        .prepare(
-          `SELECT * FROM products
-           WHERE active = 1 AND mixable = 1 AND mix_unit_grams IS NOT NULL AND mix_unit_grams > 0
-           ORDER BY id ASC`,
-        )
-        .all() as ProductRow[];
-    },
-    listActiveMixProducts(productIds) {
-      if (productIds.length === 0) return [];
-      const placeholders = productIds.map(() => '?').join(', ');
-      return db
-        .prepare(
-          `SELECT * FROM products WHERE active = 1 AND id IN (${placeholders}) ORDER BY id ASC`,
-        )
-        .all(...productIds) as ProductRow[];
-    },
-    listMixProducts(productIds) {
-      if (productIds.length === 0) return [];
-      const placeholders = productIds.map(() => '?').join(', ');
-      return db
-        .prepare(`SELECT * FROM products WHERE id IN (${placeholders}) ORDER BY id ASC`)
-        .all(...productIds) as ProductRow[];
     },
     findAllVariants(productId) {
       return db

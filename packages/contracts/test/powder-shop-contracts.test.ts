@@ -2,18 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import {
-  PersistedCheckoutQuoteV1,
-  PersistedCheckoutQuoteV2,
-  PersistedCheckoutQuoteV3,
-  PersistedCheckoutQuoteV4,
-  PersistedCheckoutQuoteV5,
+  CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION,
+  PersistedCheckoutQuoteV7,
+  PersistedCheckoutQuoteV8,
   parsePersistedCheckoutQuote,
 } from '../src/payments.js';
-import {
-  parsePowderMixOrderItemSnapshotV1,
-  parsePowderMixOrderItemSnapshotV2,
-  parsePowderMixOrderItemSnapshot,
-} from '../src/powderizer.js';
 import {
   CatalogVariant,
   ProductWithVariants,
@@ -29,56 +22,49 @@ import {
   CategoryFacts,
 } from '../src/products.js';
 import {
+  MOQ_DEFAULT_SACKS,
+  PALLET_WEIGHT_GRAMS,
+  PriceTier,
+  SACKS_PER_PALLET,
+  SACK_WEIGHT_GRAMS,
+  TIER_LADDER,
+  TierLadder,
+} from '../src/pricing.js';
+import {
   DeliverySummary,
   DeliveryMode,
-  DeliveryClass,
   DeliveryQuoteInput,
   FREIGHT_WEIGHT_THRESHOLD_GRAMS,
   FREIGHT_CHARGE_CENTS,
   PARCEL_CHARGE_CENTS,
 } from '../src/delivery.js';
 import {
-  CustomPowderConfigRequest,
-  CustomPowderQuote,
-  CustomPowderLine,
-  CustomPowderQuoteRequest,
-  CustomPowderQuoteResponse,
-  IncompatibleGroupError,
-} from '../src/customPowder.js';
-import { CartLineVariantSnap, MixingGroupMismatchError } from '../src/cart.js';
-import { CustomPowderFeaturedBlend } from '../src/powderizer.js';
+  AddToCartBody,
+  BelowMoqError,
+  CartLine,
+  CartLineVariantSnap,
+  RemoveFromCartBody,
+  UpdateCartLineBody,
+} from '../src/cart.js';
 
 const uuid = '123e4567-e89b-42d3-a456-426614174000';
 const utc = '2026-07-14T00:00:00.000Z';
 
-const powderMixItemV1 = {
-  mixId: uuid,
-  components: [
-    { productId: '1', productName: 'Protein Powder', percentage: 50, allocatedGrams: 250 },
-    { productId: '3', productName: 'Cocoa Powder', percentage: 50, allocatedGrams: 250 },
-  ],
-  bagSizeGrams: 500,
-  fineness: 'fine',
-  customLabel: 'Breakfast blend',
-  priceVersion: 'powderizer-v1',
-  unitPriceCents: 2500,
-  quantity: 1,
-  lineTotalCents: 2500,
-  snapshotVersion: 1,
-};
-
-const powderMixItemV2 = {
-  ...powderMixItemV1,
-  ...{
-    bagColourScheme: 'solar-flare',
-    usageLabel: 'Consumable powder',
-    snapshotVersion: 2,
-  },
+const deliveryAddress = {
+  line1: '1 Example Street',
+  city: 'London',
+  postcode: 'EC1A 1BB',
+  countryCode: 'GB',
 };
 
 const baseQuote = {
   cartId: uuid,
-  customer: { name: 'Ada Shopper', email: 'ada@example.test', shippingAddress: '1 Example Street' },
+  customer: {
+    name: 'Ada Shopper',
+    email: 'ada@example.test',
+    deliveryAddress,
+    shippingAddress: '1 Example Street, London, EC1A 1BB, GB',
+  },
   userId: null,
   promoCode: null,
   subtotalCents: 2500,
@@ -86,6 +72,14 @@ const baseQuote = {
   totalCents: 2500,
   lines: [],
   createdAt: utc,
+  billingEntity: {
+    legalName: 'Example Trading Ltd',
+    registrationNumber: null,
+    vatNumber: null,
+    address: deliveryAddress,
+  },
+  deliverySlot: { date: '2026-08-03', window: 'am' },
+  purchaseOrderReference: null,
 };
 
 const product = {
@@ -101,7 +95,6 @@ const product = {
   backorderLeadDays: null,
   slug: 'protein-powder',
   salesCount: 10,
-  mixable: true,
   createdAt: utc,
   available: true,
   tags: [],
@@ -116,6 +109,22 @@ void test('G0 freight constants match spec', () => {
   assert.equal(FREIGHT_WEIGHT_THRESHOLD_GRAMS, 100_000);
   assert.equal(FREIGHT_CHARGE_CENTS, 999);
   assert.equal(PARCEL_CHARGE_CENTS, 0);
+});
+
+void test('pricing constants and tier transport match materials pricing policy', () => {
+  assert.equal(SACK_WEIGHT_GRAMS, 25_000);
+  assert.equal(PALLET_WEIGHT_GRAMS, 1_000_000);
+  assert.equal(SACKS_PER_PALLET, 40);
+  assert.equal(MOQ_DEFAULT_SACKS, 4);
+  assert.deepEqual(TIER_LADDER, [
+    { minTonnes: 1, discountPct: 0 },
+    { minTonnes: 5, discountPct: 5 },
+    { minTonnes: 10, discountPct: 10 },
+  ]);
+  assert.equal(Value.Check(PriceTier, TIER_LADDER[0]), true);
+  assert.equal(Value.Check(TierLadder, TIER_LADDER), true);
+  assert.equal(Value.Check(PriceTier, { minTonnes: 1, discountPct: 101 }), false);
+  assert.equal(Value.Check(PriceTier, { minTonnes: 1, discountPct: 0, extra: true }), false);
 });
 
 // ---------------------------------------------------------------------------
@@ -143,7 +152,7 @@ void test('DeliverySummary validates and rejects extra fields', () => {
   assert.equal(Value.Check(DeliverySummary, { ...delivery, extra: true }), false);
 });
 
-void test('DeliveryQuoteInput validates lines and optional customMix', () => {
+void test('DeliveryQuoteInput validates lines and rejects unknown properties', () => {
   assert.equal(
     Value.Check(DeliveryQuoteInput, {
       lines: [
@@ -153,12 +162,13 @@ void test('DeliveryQuoteInput validates lines and optional customMix', () => {
     }),
     true,
   );
+  assert.equal(Value.Check(DeliveryQuoteInput, { lines: [] }), true);
   assert.equal(
     Value.Check(DeliveryQuoteInput, {
       lines: [],
       customMixWeightGrams: 1000,
     }),
-    true,
+    false,
   );
   assert.equal(
     Value.Check(DeliveryQuoteInput, {
@@ -330,6 +340,9 @@ void test('CatalogVariant requires variantId, deliveryClass, sortOrder', () => {
     label: '500g Tub',
     weightGrams: 500,
     priceCents: 2500,
+    moqSacks: 4,
+    perTonneCents: 5_000_000,
+    priceTiers: TIER_LADDER,
     stockCount: 10,
     backorderable: false,
     backorderLeadDays: null,
@@ -378,6 +391,9 @@ void test('ProductWithVariants requires variants, defaultVariantId, categoryFact
         label: '500g Tub',
         weightGrams: 500,
         priceCents: 2500,
+        moqSacks: 4,
+        perTonneCents: 5_000_000,
+        priceTiers: TIER_LADDER,
         stockCount: 10,
         backorderable: false,
         backorderLeadDays: null,
@@ -431,403 +447,178 @@ void test('CartLineVariantSnap validates variant details', () => {
   assert.equal(Value.Check(CartLineVariantSnap, { ...snap, deliveryClass: 'express' }), false);
 });
 
-void test('MixingGroupMismatchError requires conflicting product IDs and groupInfo', () => {
-  const err = {
-    code: 'MIXING_GROUP_MISMATCH',
-    error: 'Cannot mix food-grade with cementitious-materials',
-    conflictingProductIds: ['1', '2'],
-    groupInfo: [
-      { productId: '1', mixingGroup: 'food-grade' },
-      { productId: '2', mixingGroup: 'cementitious-materials' },
-    ],
-  };
-  assert.equal(Value.Check(MixingGroupMismatchError, err), true);
-  assert.equal(
-    Value.Check(MixingGroupMismatchError, {
-      ...err,
-      conflictingProductIds: ['1'],
-    }),
-    false,
-  );
-});
-
-// ---------------------------------------------------------------------------
-// Custom Powder schemas
-// ---------------------------------------------------------------------------
-
-void test('CustomPowderConfigRequest validates component count and bag options', () => {
-  const config = {
-    components: [
-      { productId: '1', percentage: 50 },
-      { productId: '3', percentage: 50 },
-    ],
-    bagSizeGrams: 500,
-    fineness: 'fine',
-    customLabel: 'My blend',
-    bagColourScheme: 'solar-flare',
-  };
-  assert.equal(Value.Check(CustomPowderConfigRequest, config), true);
-  assert.equal(
-    Value.Check(CustomPowderConfigRequest, {
-      ...config,
-      components: [{ productId: '1', percentage: 100 }],
-    }),
-    false,
-  );
-});
-
-void test('CustomPowderQuote validates money and delivery class', () => {
-  const quote = {
-    mixId: uuid,
-    config: {
-      components: [
-        { productId: '1', percentage: 50 },
-        { productId: '3', percentage: 50 },
-      ],
-      bagSizeGrams: 500,
-      fineness: 'fine',
-    },
-    unitPriceCents: 2500,
-    packagingFeeCents: 200,
-    finenessSurchargeCents: 100,
-    deliveryClass: 'parcel',
-    usageLabel: 'Consumable powder',
-    priceVersion: 'powderizer-v1',
-  };
-  assert.equal(Value.Check(CustomPowderQuote, quote), true);
-  assert.equal(Value.Check(CustomPowderQuote, { ...quote, unitPriceCents: -1 }), false);
-});
-
-void test('CustomPowderLine includes sourceVariantIds and optional delivery', () => {
+void test('CartLine requires server-resolved pack and base tonne prices', () => {
   const line = {
-    mixId: uuid,
-    components: [
-      { productId: '1', percentage: 50 },
-      { productId: '3', percentage: 50 },
-    ],
-    sourceVariantIds: [1, 2],
-    bagSizeGrams: 500,
-    fineness: 'fine',
-    customLabel: null,
-    bagColourScheme: 'ultraviolet-cyan',
-    unitPriceCents: 2500,
-    quantity: 1,
-    lineTotalCents: 2500,
+    productId: '1',
+    configKey: '',
+    product,
+    variantSnap: {
+      variantId: 1,
+      sku: 'SN-0001-001',
+      label: '500g Tub',
+      weightGrams: 500,
+      deliveryClass: 'parcel',
+    },
+    perTonneCents: 5_000_000,
+    resolvedUnitPriceCents: 2_375,
+    quantity: 10,
+    materialSubtotalCents: 23_750,
+    blendingFeeCents: 0,
+    discountableTotalCents: 23_750,
+    lineTotalCents: 23_750,
   };
-  assert.equal(Value.Check(CustomPowderLine, line), true);
+  assert.equal(Value.Check(CartLine, line), true);
+  const withoutResolvedPrices = { ...line };
+  delete (withoutResolvedPrices as Partial<typeof withoutResolvedPrices>).perTonneCents;
+  assert.equal(Value.Check(CartLine, withoutResolvedPrices), false);
+  assert.equal(Value.Check(CartLine, { ...line, resolvedUnitPriceCents: -1 }), false);
+});
+
+void test('AddToCartBody accepts an optional positive quantity and rejects extras', () => {
+  assert.equal(Value.Check(AddToCartBody, { productId: '1', variantId: 1 }), true);
+  assert.equal(Value.Check(AddToCartBody, { productId: '1', variantId: 1, quantity: 4 }), true);
+  assert.equal(Value.Check(AddToCartBody, { productId: '1', quantity: 0 }), false);
   assert.equal(
-    Value.Check(CustomPowderLine, {
-      ...line,
-      deliverySummary: {
-        mode: 'parcel',
-        chargeCents: 0,
-        weightGrams: 500,
-        reason: 'Under threshold',
-      },
+    Value.Check(AddToCartBody, { productId: '1', quantity: Number.MAX_SAFE_INTEGER }),
+    true,
+  );
+  assert.equal(
+    Value.Check(AddToCartBody, { productId: '1', quantity: Number.MAX_SAFE_INTEGER + 1 }),
+    false,
+  );
+  assert.equal(Value.Check(AddToCartBody, { productId: '1', quantity: 1.5 }), false);
+  assert.equal(Value.Check(AddToCartBody, { productId: '1', quantity: 1, extra: true }), false);
+});
+
+void test('UpdateCartLineBody allows zero removal but rejects unsafe quantities', () => {
+  assert.equal(Value.Check(UpdateCartLineBody, { productId: '1', quantity: 0 }), true);
+  assert.equal(
+    Value.Check(UpdateCartLineBody, { productId: '1', variantId: 1, quantity: 4 }),
+    true,
+  );
+  assert.equal(
+    Value.Check(UpdateCartLineBody, { productId: '1', variantId: 0, quantity: 4 }),
+    false,
+  );
+  assert.equal(
+    Value.Check(UpdateCartLineBody, {
+      productId: '1',
+      variantId: Number.MAX_SAFE_INTEGER + 1,
+      quantity: 4,
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(UpdateCartLineBody, { productId: '1', quantity: Number.MAX_SAFE_INTEGER }),
+    true,
+  );
+  assert.equal(
+    Value.Check(UpdateCartLineBody, { productId: '1', quantity: Number.MAX_SAFE_INTEGER + 1 }),
+    false,
+  );
+  assert.equal(Value.Check(UpdateCartLineBody, { productId: '1', quantity: 1.5 }), false);
+});
+
+void test('RemoveFromCartBody supports optional safe variant targeting', () => {
+  assert.equal(Value.Check(RemoveFromCartBody, { productId: '1' }), true);
+  assert.equal(Value.Check(RemoveFromCartBody, { productId: '1', variantId: 1 }), true);
+  assert.equal(Value.Check(RemoveFromCartBody, { productId: '1', variantId: 0 }), false);
+  assert.equal(
+    Value.Check(RemoveFromCartBody, { productId: '1', variantId: Number.MAX_SAFE_INTEGER + 1 }),
+    false,
+  );
+});
+
+void test('BelowMoqError exposes a strict typed cart error', () => {
+  assert.equal(
+    Value.Check(BelowMoqError, {
+      code: 'BELOW_MOQ',
+      error: 'Minimum order quantity is four sacks',
     }),
     true,
   );
-});
-
-void test('CustomPowderQuoteRequest/Response validate', () => {
-  const req = {
-    config: {
-      components: [
-        { productId: '1', percentage: 50 },
-        { productId: '3', percentage: 50 },
-      ],
-      bagSizeGrams: 500,
-      fineness: 'fine',
-    },
-    quantity: 2,
-  };
-  assert.equal(Value.Check(CustomPowderQuoteRequest, req), true);
-  assert.equal(Value.Check(CustomPowderQuoteRequest, { ...req, quantity: 0 }), false);
-
-  const resp = {
-    quote: {
-      mixId: uuid,
-      config: req.config,
-      unitPriceCents: 2500,
-      packagingFeeCents: 200,
-      finenessSurchargeCents: 100,
-      deliveryClass: 'parcel',
-      usageLabel: 'Consumable powder',
-      priceVersion: 'powderizer-v1',
-    },
-    deliverySummary: {
-      mode: 'parcel',
-      chargeCents: 0,
-      weightGrams: 1000,
-      reason: 'Under threshold',
-    },
-  };
-  assert.equal(Value.Check(CustomPowderQuoteResponse, resp), true);
-});
-
-void test('IncompatibleGroupError requires error literal and group info', () => {
-  const err = {
-    error: 'MIXING_GROUP_MISMATCH',
-    conflictingProductIds: ['1', '2'],
-    groupInfo: [
-      { productId: '1', mixingGroup: 'food-grade' },
-      { productId: '2', mixingGroup: 'cleaning' },
-    ],
-  };
-  assert.equal(Value.Check(IncompatibleGroupError, err), true);
-  assert.equal(Value.Check(IncompatibleGroupError, { ...err, error: 'OTHER' }), false);
+  assert.equal(Value.Check(BelowMoqError, { code: 'SOME_OTHER_CODE', error: 'No' }), false);
+  assert.equal(Value.Check(BelowMoqError, { code: 'BELOW_MOQ', error: 'No', extra: true }), false);
 });
 
 // ---------------------------------------------------------------------------
-// CustomPowderFeaturedBlend (powderizer alias)
+// v6 persisted checkout quote
 // ---------------------------------------------------------------------------
 
-void test('CustomPowderFeaturedBlend validates featured blend shape', () => {
-  const blend = {
-    id: '1',
-    name: 'Power Breakfast',
-    description: 'Protein + Oats blend',
-    config: {
-      components: [
-        { productId: '1', percentage: 60 },
-        { productId: '3', percentage: 40 },
-      ],
-      bagSizeGrams: 500,
-      fineness: 'standard',
-      customLabel: null,
-      bagColourScheme: 'deep-space',
-    },
-    imageSetId: 'power-breakfast',
-    category: 'Sports Nutrition',
-  };
-  assert.equal(Value.Check(CustomPowderFeaturedBlend, blend), true);
-  assert.equal(Value.Check(CustomPowderFeaturedBlend, { ...blend, name: '' }), false);
-});
+const variantLine = {
+  productId: '1',
+  variantId: 1,
+  productName: 'Protein Powder',
+  variantLabel: '500g Tub',
+  unitPriceCents: 2500,
+  weightGrams: 500,
+  deliveryClass: 'parcel',
+  consumptionClassification: 'food',
+  quantity: 1,
+  lineTotalCents: 2500,
+};
 
-// ---------------------------------------------------------------------------
-// v5 persisted checkout quote roundtrip
-// ---------------------------------------------------------------------------
-
-void test('PersistedCheckoutQuoteV5 roundtrip with variant lines and delivery', () => {
-  const variantLineTotal = 2500;
-  const mixLineTotal = 3000;
-  const subtotal = variantLineTotal + mixLineTotal;
+void test('PersistedCheckoutQuoteV8 roundtrip with variant lines and delivery', () => {
+  const subtotal = variantLine.lineTotalCents;
   const deliveryCharge = 999;
-  const v5Total = subtotal + deliveryCharge;
+  const total = subtotal + deliveryCharge;
 
-  const v5 = {
-    version: 5,
+  const v8 = {
+    version: 8,
     ...baseQuote,
     subtotalCents: subtotal,
-    totalCents: v5Total,
-    variantLines: [
-      {
-        productId: '1',
-        variantId: 1,
-        productName: 'Protein Powder',
-        variantLabel: '500g Tub',
-        unitPriceCents: 2500,
-        weightGrams: 500,
-        deliveryClass: 'parcel',
-        quantity: 1,
-        lineTotalCents: variantLineTotal,
-      },
-    ],
-    mixLines: [
-      {
-        mixId: uuid,
-        unitPriceCents: 3000,
-        quantity: 1,
-        lineTotalCents: mixLineTotal,
-        deliveryClass: 'freight',
-        weightGrams: 25000,
-      },
-    ],
+    discountBaseCents: subtotal,
+    promoCategoryScope: null,
+    totalCents: total,
+    variantLines: [variantLine],
     deliverySummary: {
       mode: 'freight',
       chargeCents: deliveryCharge,
-      weightGrams: 25500,
+      weightGrams: 25_500,
       reason: 'Over 100kg freight threshold',
     },
     inventoryAllocations: [{ productId: '1', reservedQuantity: 1, backorderedQuantity: 0 }],
   };
-  assert.equal(Value.Check(PersistedCheckoutQuoteV5, v5), true);
-  assert.deepEqual(parsePersistedCheckoutQuote(v5), v5);
-  assert.equal(v5.subtotalCents, subtotal);
-  assert.equal(v5.totalCents, v5Total);
+  assert.equal(Value.Check(PersistedCheckoutQuoteV8, v8), true);
+  assert.deepEqual(parsePersistedCheckoutQuote(v8), v8);
+  assert.equal(v8.subtotalCents, subtotal);
+  assert.equal(v8.totalCents, total);
 });
 
-// ---------------------------------------------------------------------------
-// v1-v4 parsers unchanged (byte-for-behavior)
-// ---------------------------------------------------------------------------
+void test('V8 is the only version written and accepted', () => {
+  assert.equal(CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION, 8);
 
-void test('v1 persisted checkout quote parses identically', () => {
-  const v1 = { version: 1, ...baseQuote };
-  assert.equal(Value.Check(PersistedCheckoutQuoteV1, v1), true);
-  assert.deepEqual(parsePersistedCheckoutQuote(v1), v1);
-});
-
-void test('v2 persisted checkout quote parses identically with v1 mix snapshots', () => {
-  const v2 = { version: 2, ...baseQuote, mixLines: [powderMixItemV1] };
-  assert.equal(Value.Check(PersistedCheckoutQuoteV2, v2), true);
-  assert.deepEqual(parsePersistedCheckoutQuote(v2), v2);
-});
-
-void test('v3 persisted checkout quote parses identically with v2 mix snapshots', () => {
-  const v3 = { version: 3, ...baseQuote, mixLines: [powderMixItemV2] };
-  assert.equal(Value.Check(PersistedCheckoutQuoteV3, v3), true);
-  assert.deepEqual(parsePersistedCheckoutQuote(v3), v3);
-});
-
-void test('v4 persisted checkout quote parses identically with inventory allocations', () => {
-  const v4 = {
-    version: 4,
+  const v8 = {
+    version: 8,
     ...baseQuote,
-    mixLines: [powderMixItemV2],
-    inventoryAllocations: [{ productId: '1', reservedQuantity: 1, backorderedQuantity: 0 }],
-  };
-  assert.equal(Value.Check(PersistedCheckoutQuoteV4, v4), true);
-  assert.deepEqual(parsePersistedCheckoutQuote(v4), v4);
-});
-
-// ---------------------------------------------------------------------------
-// Legacy v1/v2 snapshot parsers unchanged
-// ---------------------------------------------------------------------------
-
-void test('legacy v1 powder mix snapshot parser unchanged', () => {
-  assert.deepEqual(parsePowderMixOrderItemSnapshotV1(powderMixItemV1), powderMixItemV1);
-  assert.throws(() => parsePowderMixOrderItemSnapshotV1(powderMixItemV2));
-  assert.throws(() => parsePowderMixOrderItemSnapshotV1({ ...powderMixItemV1, extra: true }));
-});
-
-void test('legacy v2 powder mix snapshot parser unchanged', () => {
-  assert.deepEqual(parsePowderMixOrderItemSnapshotV2(powderMixItemV2), powderMixItemV2);
-  assert.throws(() => parsePowderMixOrderItemSnapshotV2(powderMixItemV1));
-  assert.throws(() => parsePowderMixOrderItemSnapshotV2({ ...powderMixItemV2, extra: true }));
-});
-
-void test('parsePowderMixOrderItemSnapshot dispatches v1 and v2 correctly', () => {
-  const normV1 = {
-    ...powderMixItemV1,
-    bagColourScheme: 'ultraviolet-cyan',
-    usageLabel: 'Check ingredient labels',
-  };
-  assert.deepEqual(parsePowderMixOrderItemSnapshot(powderMixItemV1), normV1);
-  assert.deepEqual(parsePowderMixOrderItemSnapshot(powderMixItemV2), powderMixItemV2);
-  assert.throws(() => parsePowderMixOrderItemSnapshot(null));
-  assert.throws(() => parsePowderMixOrderItemSnapshot({ snapshotVersion: 3 }));
-});
-
-// ---------------------------------------------------------------------------
-// Invalid cross-version data rejection
-// ---------------------------------------------------------------------------
-
-void test('v5 rejects v4 shape (missing variantLines)', () => {
-  const v4 = {
-    version: 4,
-    ...baseQuote,
-    mixLines: [powderMixItemV2],
-    inventoryAllocations: [{ productId: '1', reservedQuantity: 1, backorderedQuantity: 0 }],
-  };
-  assert.equal(Value.Check(PersistedCheckoutQuoteV5, v4), false);
-  assert.equal(Value.Check(PersistedCheckoutQuoteV5, { ...v4, version: 5 }), false);
-});
-
-void test('v4 rejects v5 shape (variantLines present)', () => {
-  const v5Shape = {
-    version: 4,
-    ...baseQuote,
-    mixLines: [powderMixItemV2],
-    variantLines: [
-      {
-        productId: '1',
-        variantId: 1,
-        productName: 'P',
-        variantLabel: 'L',
-        unitPriceCents: 1000,
-        weightGrams: 500,
-        deliveryClass: 'parcel',
-        quantity: 1,
-        lineTotalCents: 1000,
-      },
-    ],
+    discountBaseCents: baseQuote.subtotalCents,
+    promoCategoryScope: null,
+    variantLines: [variantLine],
     deliverySummary: { mode: 'parcel', chargeCents: 0, weightGrams: 500, reason: 'ok' },
     inventoryAllocations: [{ productId: '1', reservedQuantity: 1, backorderedQuantity: 0 }],
   };
-  assert.equal(Value.Check(PersistedCheckoutQuoteV4, v5Shape), false);
-});
+  assert.doesNotThrow(() => parsePersistedCheckoutQuote(v8));
 
-void test('parsePersistedCheckoutQuote rejects unknown version', () => {
-  assert.throws(() => parsePersistedCheckoutQuote({ version: 6, ...baseQuote }));
+  for (const staleVersion of [1, 2, 3, 4, 5, 6, 7]) {
+    assert.throws(() => parsePersistedCheckoutQuote({ ...v8, version: staleVersion }));
+  }
   assert.throws(() => parsePersistedCheckoutQuote({ version: 0, ...baseQuote }));
   assert.throws(() => parsePersistedCheckoutQuote(null));
   assert.throws(() => parsePersistedCheckoutQuote(undefined));
 });
 
-void test('v2 rejects v3 mix shape (v2 snapshot in v2 slot)', () => {
-  const invalid = {
-    version: 2,
+void test('v7 rejects unknown persisted fields and missing variant lines', () => {
+  const v7 = {
+    version: 7,
     ...baseQuote,
-    mixLines: [powderMixItemV2],
-  };
-  assert.equal(Value.Check(PersistedCheckoutQuoteV2, invalid), false);
-});
-
-void test('v3 rejects v1 mix shape (v1 snapshot in v3 slot)', () => {
-  const invalid = {
-    version: 3,
-    ...baseQuote,
-    mixLines: [powderMixItemV1],
-  };
-  assert.equal(Value.Check(PersistedCheckoutQuoteV3, invalid), false);
-});
-
-void test('parsePersistedCheckoutQuote parses all valid v1-v5', () => {
-  const v1 = { version: 1, ...baseQuote };
-  assert.doesNotThrow(() => parsePersistedCheckoutQuote(v1));
-
-  const v2 = { version: 2, ...baseQuote, mixLines: [powderMixItemV1] };
-  assert.doesNotThrow(() => parsePersistedCheckoutQuote(v2));
-
-  const v3 = { version: 3, ...baseQuote, mixLines: [powderMixItemV2] };
-  assert.doesNotThrow(() => parsePersistedCheckoutQuote(v3));
-
-  const v4 = {
-    version: 4,
-    ...baseQuote,
-    mixLines: [powderMixItemV2],
+    variantLines: [variantLine],
+    deliverySummary: { mode: 'parcel', chargeCents: 0, weightGrams: 500, reason: 'ok' },
     inventoryAllocations: [{ productId: '1', reservedQuantity: 1, backorderedQuantity: 0 }],
   };
-  assert.doesNotThrow(() => parsePersistedCheckoutQuote(v4));
+  // Any field beyond the v7 shape is rejected, including those retired with the mix line model.
+  assert.equal(Value.Check(PersistedCheckoutQuoteV7, { ...v7, retiredLegacyField: [] }), false);
 
-  const v5 = {
-    version: 5,
-    ...baseQuote,
-    variantLines: [
-      {
-        productId: '1',
-        variantId: 1,
-        productName: 'P',
-        variantLabel: 'L',
-        unitPriceCents: 1000,
-        weightGrams: 500,
-        deliveryClass: 'parcel',
-        quantity: 1,
-        lineTotalCents: 1000,
-      },
-    ],
-    mixLines: [
-      {
-        mixId: uuid,
-        unitPriceCents: 3000,
-        quantity: 1,
-        lineTotalCents: 3000,
-        deliveryClass: 'parcel',
-        weightGrams: 500,
-      },
-    ],
-    deliverySummary: { mode: 'parcel', chargeCents: 0, weightGrams: 1000, reason: 'ok' },
-    inventoryAllocations: [{ productId: '1', reservedQuantity: 1, backorderedQuantity: 0 }],
-  };
-  assert.doesNotThrow(() => parsePersistedCheckoutQuote(v5));
+  const withoutVariantLines: Partial<typeof v7> = { ...v7 };
+  delete withoutVariantLines.variantLines;
+  assert.equal(Value.Check(PersistedCheckoutQuoteV7, withoutVariantLines), false);
 });

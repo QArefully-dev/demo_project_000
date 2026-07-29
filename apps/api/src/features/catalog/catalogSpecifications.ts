@@ -60,7 +60,8 @@ function specValueKey(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
-    .slice(0, 64);
+    .slice(0, 64)
+    .replace(/-+$/g, '');
 }
 
 function variantWeightLabel(grams: number): string {

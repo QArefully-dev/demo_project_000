@@ -72,10 +72,16 @@ export function usePromoQuote({
           promoCode: result.promoCode.code,
           quoteKey: requestedQuoteKey,
           discountCents: result.discountCents,
+          discountBaseCents: result.discountBaseCents ?? null,
+          promoCategoryScope: result.promoCode.categoryScope ?? null,
           totalCents: result.totalCents,
         });
       } else {
-        dispatch({ type: 'promo-failed', error: result.error ?? 'Invalid promo code' });
+        dispatch({
+          type: 'promo-failed',
+          error: result.error ?? 'Invalid promo code',
+          errorCode: result.errorCode ?? null,
+        });
       }
     } catch (error) {
       if (!isCurrent()) return;
@@ -92,6 +98,7 @@ export function usePromoQuote({
         dispatch({
           type: 'promo-failed',
           error: error instanceof Error ? error.message : 'Failed to validate promo',
+          errorCode: null,
         });
       }
     } finally {

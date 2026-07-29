@@ -1,4 +1,9 @@
+import { CUSTOM_BLEND_FEE_CENTS } from '@shop/contracts/pricing';
+import { formatMoney } from '@/lib/formatMoney';
 import { defineHelpArticle, type HelpArticle } from './helpContentTypes';
+
+/** Derived from the pricing contract so the published fee cannot drift from the charged one. */
+const BLENDING_FEE = formatMoney(CUSTOM_BLEND_FEE_CENTS);
 
 export const shippingArticle = defineHelpArticle({
   id: 'shipping',
@@ -11,7 +16,7 @@ export const shippingArticle = defineHelpArticle({
     {
       kind: 'paragraph',
       id: 'shipping-demo-purpose',
-      text: 'QArefully Powder Co. is a local QA demo. Checkout and order updates let you explore the interface, but they do not create a real shipment.',
+      text: 'QArefully Materials Exchange is a local QA demo. Checkout and order updates let you explore the interface, but they do not create a real shipment.',
     },
     {
       kind: 'section',
@@ -83,7 +88,7 @@ export const returnsArticle = defineHelpArticle({
     {
       kind: 'paragraph',
       id: 'returns-demo-purpose',
-      text: 'QArefully Powder Co. provides a simulated returns and refunds workflow for QA testing. All purchases, payments, and refunds are simulated only and do not represent real transactions.',
+      text: 'QArefully Materials Exchange provides a simulated returns and refunds workflow for QA testing. All purchases, payments, and refunds are simulated only and do not represent real transactions.',
     },
     {
       kind: 'notice',
@@ -107,7 +112,7 @@ export const returnsArticle = defineHelpArticle({
         },
         {
           id: 'returns-eligibility-products',
-          text: 'Only ordinary catalogue products are eligible. Custom Powder blends are excluded from returns. Only delivered shipment quantities can be returned; backordered, shipped, or failed-delivery items are not eligible.',
+          text: 'Only ordinary catalogue products are eligible. Custom Blend lines are made to order and are excluded from returns. Only delivered shipment quantities can be returned; backordered, shipped, or failed-delivery items are not eligible.',
         },
       ],
     },
@@ -138,6 +143,10 @@ export const returnsArticle = defineHelpArticle({
         {
           id: 'returns-cancellation-diff',
           text: 'Cancellation stops simulated fulfilment before shipping and releases allocated stock, but does not issue a refund. Returns apply after delivery and can result in a simulated refund when processed by an administrator. Cancellation and returns are separate workflows.',
+        },
+        {
+          id: 'returns-cancellation-custom-blend',
+          text: 'Being excluded from returns does not make an order final. An order containing a Custom Blend line cancels on exactly the same terms as any other order, at any point up to dispatch.',
         },
       ],
     },
@@ -202,64 +211,18 @@ export const packSizesArticle = defineHelpArticle({
         },
       ],
     },
-  ],
-});
-
-export const customPowderArticle = defineHelpArticle({
-  id: 'custom-powder',
-  group: 'help',
-  slug: 'custom-powder',
-  path: '/help/custom-powder',
-  title: 'Custom Powder',
-  summary: 'How to select compatible ingredients and build a custom powder blend.',
-  blocks: [
-    {
-      kind: 'paragraph',
-      id: 'custom-powder-intro',
-      text: 'Custom Powder lets you blend compatible ingredients from the catalogue into a custom mix. You select the ingredients, percentages, bag size, fineness, and label. The system derives combined ingredient, allergen, usage, and safety information from your selection.',
-    },
     {
       kind: 'section',
-      id: 'custom-powder-compatibility',
-      heading: 'Mixing groups and compatibility',
+      id: 'pack-sizes-pricing-promotions',
+      heading: 'Clearance pricing and promotions',
       paragraphs: [
         {
-          id: 'custom-powder-compatibility-groups',
-          text: 'Ingredients can only be combined if they share a compatible mixing group. Mixing groups are: Food-grade, Cleaning, Garden treatment, Cementitious materials, Casting materials, Pigments, Theatrical effects, and Absorbents.',
+          id: 'pack-sizes-pricing-clearance',
+          text: 'A clearance price is time-limited and is shown beside the ordinary list price when active. The clearance price becomes the starting price for the selected lot before any quantity-break tier is applied; an expired or upcoming clearance is not charged or shown as active.',
         },
         {
-          id: 'custom-powder-compatibility-cross',
-          text: 'Products from different catalogue categories can be mixed if they share a mixing group. For example, protein powder, matcha, and powdered milk can be combined through the Food-grade group. An edible and a cleaning product cannot be mixed together.',
-        },
-      ],
-    },
-    {
-      kind: 'notice',
-      id: 'custom-powder-safety',
-      heading: 'Safety and usage labels',
-      paragraphs: [
-        {
-          id: 'custom-powder-safety-label',
-          text: 'Server-derived usage labels always apply to a custom blend. If any component carries a "Not for consumption" warning, the entire blend is marked accordingly. Never consume a blend that contains a non-food ingredient.',
-        },
-        {
-          id: 'custom-powder-safety-handling',
-          text: 'Non-food blends such as cement, plaster, pigments, or cleaning mixtures require personal protective equipment during handling. Follow the individual product warnings for each ingredient in your blend.',
-        },
-      ],
-    },
-    {
-      kind: 'section',
-      id: 'custom-powder-building',
-      heading: 'Building a blend',
-      paragraphs: [
-        {
-          id: 'custom-powder-building-ingredients',
-          text: 'Select ingredients from the picker sidebar. Assign a percentage to each ingredient — the total must equal 100%. Choose a bag size, fineness level, bag colour scheme, and optional custom label.',
-        },
-        {
-          id: 'custom-powder-building-featured',
-          text: 'A featured blend is shown at the top of the page. Click to load its configuration as a starting point.',
+          id: 'pack-sizes-pricing-promotions',
+          text: 'Some promotion codes apply only to one catalog category. When a code has a category scope, its item requirements and discount are calculated only from matching material lines. The checkout summary shows the eligible subtotal and category; blending fees are never discounted.',
         },
       ],
     },
@@ -273,12 +236,12 @@ export const safetyArticle = defineHelpArticle({
   path: '/help/powder-safety',
   title: 'Product safety',
   summary:
-    'Consumption classification, handling guidance, and PPE requirements for QArefully Powder Co. products.',
+    'Consumption classification, handling guidance, and PPE requirements for QArefully Materials Exchange products.',
   blocks: [
     {
       kind: 'paragraph',
       id: 'safety-overview',
-      text: 'QArefully Powder Co. products fall into food and non-food categories. Each product page displays its consumption classification and any handling warnings.',
+      text: 'QArefully Materials Exchange products fall into food and non-food categories. Each product page displays its consumption classification and any handling warnings.',
     },
     {
       kind: 'section',
@@ -313,22 +276,92 @@ export const safetyArticle = defineHelpArticle({
       paragraphs: [
         {
           id: 'safety-ppe-guidance',
-          text: 'Non-food powders such as cement, plaster, mortar, pigments, garden lime, laundry powder, and spill absorbents require personal protective equipment during handling. Use eye protection, gloves, and a dust mask when handling these materials.',
+          text: 'Non-food materials such as cement, plaster, mortar, pigments, garden lime, laundry powder, and spill absorbents require personal protective equipment during handling. Use eye protection, gloves, and a dust mask when handling these materials.',
         },
         {
           id: 'safety-ppe-ventilation',
-          text: 'Work in a well-ventilated area. Avoid breathing dust. Keep powders dry and sealed when not in use.',
+          text: 'Work in a well-ventilated area. Avoid breathing dust. Keep materials dry and sealed when not in use.',
+        },
+      ],
+    },
+  ],
+});
+
+export const customBlendArticle = defineHelpArticle({
+  id: 'custom-blend',
+  group: 'help',
+  slug: 'custom-blend',
+  path: '/help/custom-blend',
+  title: 'Custom Blend',
+  summary:
+    'Configuring a made-to-order blend, its blending fee, and how it behaves after ordering.',
+  blocks: [
+    {
+      kind: 'paragraph',
+      id: 'custom-blend-overview',
+      text: 'Custom Blend lets you order a material blended to your own specification instead of picking a stocked lot. You choose one base material and the ingredients mixed into it, and the blend is produced against your order.',
+    },
+    {
+      kind: 'section',
+      id: 'custom-blend-configuring',
+      heading: 'Configuring a blend',
+      paragraphs: [
+        {
+          id: 'custom-blend-configuring-base',
+          text: 'Open Custom Blend from the main navigation, then choose a base material. Search by name or filter by category to narrow the list. Only the 25 kg sack of a material can act as a base, because the sack is the purchase unit a blend is produced in.',
+        },
+        {
+          id: 'custom-blend-configuring-ingredients',
+          text: 'With a base chosen, add between one and four ingredients and set each one to a whole percentage from 5% to 50%. Ingredients must total no more than 50% together, so the base always makes up at least half the blend. The summary shows the running base and ingredient percentages, and the configurator refuses to submit a ratio outside those limits.',
+        },
+        {
+          id: 'custom-blend-configuring-editing',
+          text: 'A blend already in your order can be reopened from its cart line. Editing keeps the base material and the quantity fixed and replaces only the recipe; two blends over the same base material stay separate lines.',
+        },
+      ],
+    },
+    {
+      kind: 'section',
+      id: 'custom-blend-pricing',
+      heading: 'Blending fee',
+      paragraphs: [
+        {
+          id: 'custom-blend-pricing-fee',
+          text: `A flat blending fee of ${BLENDING_FEE} is added once per blend line. It is charged per line rather than per sack, so raising the quantity on a blend does not multiply the fee.`,
+        },
+        {
+          id: 'custom-blend-pricing-discounts',
+          text: 'The fee sits outside the discountable amount. Cart, checkout, and order pages therefore show the material subtotal and the blending fees separately, and a promotion applies to the material subtotal only. Material pricing itself follows the ordinary per-tonne rate and quantity-break tiers for the base lot.',
+        },
+      ],
+    },
+    {
+      kind: 'section',
+      id: 'custom-blend-stock',
+      heading: 'Ingredient availability',
+      paragraphs: [
+        {
+          id: 'custom-blend-stock-selectable',
+          text: 'An ingredient that is out of stock is still selectable. Its availability is shown for information, and it does not block the blend.',
+        },
+        {
+          id: 'custom-blend-stock-asymmetry',
+          text: 'The base material behaves differently: it is a stocked lot, so its own availability and backorder rules apply exactly as they do when you buy that lot on its own.',
         },
       ],
     },
     {
       kind: 'notice',
-      id: 'safety-custom-powder',
-      heading: 'Custom Powder blends',
+      id: 'custom-blend-after-ordering',
+      heading: 'Cancellation and returns work differently',
       paragraphs: [
         {
-          id: 'safety-custom-powder-rule',
-          text: 'When building a Custom Powder blend, the system derives a combined safety label. If any single ingredient is non-food, the entire blend is marked "Not for consumption". Never consume a blend that contains a non-food ingredient.',
+          id: 'custom-blend-after-ordering-cancellation',
+          text: 'Cancellation is unaffected. An order containing a blend can be cancelled on the ordinary terms, at any point up to dispatch, in the same way as an order of stocked lots.',
+        },
+        {
+          id: 'custom-blend-after-ordering-returns',
+          text: 'Returns are the exception. A blend is produced to your specification and cannot be resold, so a blend line is never eligible for return. Once an order with a blend is dispatched, that line is final, while any ordinary lots in the same order remain returnable on the usual terms.',
         },
       ],
     },
@@ -339,6 +372,6 @@ export const serviceArticles = [
   shippingArticle,
   returnsArticle,
   packSizesArticle,
-  customPowderArticle,
   safetyArticle,
+  customBlendArticle,
 ] as const satisfies readonly HelpArticle<'help', string>[];

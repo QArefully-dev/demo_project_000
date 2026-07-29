@@ -6,6 +6,7 @@ import test from 'node:test';
 import { buildApp } from '../../src/app.js';
 import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import { createOrderRepository } from '../../src/features/orders/orderRepository.js';
+import { adhocBilling, adhocDestination, bookableSlot } from '../checkout/checkoutDepthFixtures.js';
 
 function cookieValue(response: { headers: Record<string, string | string[] | undefined> }): string {
   const header = response.headers['set-cookie'];
@@ -43,10 +44,11 @@ function createOrder(
         productName: 'Persisted line',
         unitPriceCents: 500,
         quantity: 1,
+        discountableTotalCents: 500,
+        blendingFeeCents: 0,
         lineTotalCents: 500,
       },
     ],
-    mixItems: [],
     createdAt: '2026-07-19T00:00:00.000Z',
   });
 }
@@ -141,7 +143,7 @@ void test('order routes enforce customer ownership and admin lifecycle authority
   const packPayload = {
     version: 0,
     idempotencyKey: '021ae3a0-354e-44be-8ae0-263c3e835bcf',
-    shipments: [{ lines: [{ lineKind: 'product', lineId, quantity: 1 }] }],
+    shipments: [{ lines: [{ lineId, quantity: 1 }] }],
   };
   assert.equal(
     (
@@ -296,7 +298,9 @@ void test('guest payment grants an exact-order, expiring capability cookie', asy
       cartId,
       customerName: 'Guest Buyer',
       customerEmail: 'guest@example.test',
-      shippingAddress: '1 Guest Street',
+      deliveryDestination: adhocDestination,
+      billingSelection: adhocBilling,
+      deliverySlot: bookableSlot(),
       cardNumber: '4242 4242 4242 4242',
       cardExpiry: '12/99',
       cardCvc: '123',
@@ -323,7 +327,9 @@ void test('guest payment grants an exact-order, expiring capability cookie', asy
       cartId,
       customerName: 'Changed Guest',
       customerEmail: 'guest@example.test',
-      shippingAddress: '1 Guest Street',
+      deliveryDestination: adhocDestination,
+      billingSelection: adhocBilling,
+      deliverySlot: bookableSlot(),
       cardNumber: '4242 4242 4242 4242',
       cardExpiry: '12/99',
       cardCvc: '123',

@@ -1,19 +1,30 @@
 import { getCart } from '../cart/cartService.js';
 import type { Cart } from '@shop/contracts/cart';
-import type { PowderMixCartItem } from '@shop/contracts/powderizer';
+import type { PostalAddress } from '@shop/contracts/address';
+import type { BillingEntitySnapshot } from '@shop/contracts/trade-account';
+import { CUSTOM_BLEND_FEE_CENTS } from '@shop/contracts';
+import { isSlotBookable } from '../delivery/deliverySlotRules.js';
+import {
+  normalizeOptionalText,
+  normalizePostalAddress,
+  normalizeText,
+} from '../tradeAccount/addressRules.js';
+import { toBillingEntitySnapshot } from '../tradeAccount/billingEntityRepository.js';
+import { normalizeCustomBlendSpec } from '../customBlend/customBlendRules.js';
 import { validateCard, type ValidCard } from '../payments/cardValidation.js';
 import { createSafeFingerprint, type PaymentRecord } from '../payments/paymentRepository.js';
 import { validatePromo } from '../promos/promoService.js';
 import { createCheckoutQuote } from './checkoutQuote.js';
 import { finalizeAuthorizedCheckout } from './checkoutFinalizer.js';
-import { prepareMixes } from './checkoutMixPreparation.js';
 import { InventoryError } from '../inventory/inventoryTypes.js';
+import { validateMoq } from '../pricing/pricingRules.js';
 import type { PreGatewayFailureCode } from '../audit/auditEvent.js';
 import type {
   CheckoutDependencies,
   CheckoutParams,
   CheckoutResult,
   CheckoutService,
+  ResolvedCheckoutCommitments,
 } from './checkoutTypes.js';
 
 export type {
@@ -21,6 +32,7 @@ export type {
   CheckoutParams,
   CheckoutResult,
   CheckoutService,
+  ResolvedCheckoutCommitments,
 } from './checkoutTypes.js';
 
 type Preparation = CheckoutResult | { quoteTotalCents: number; card: ValidCard } | { resume: true };
@@ -32,26 +44,11 @@ function preGatewayFailureCode(result: CheckoutResult): PreGatewayFailureCode {
       case 'CART_NOT_FOUND':
       case 'CART_EMPTY':
       case 'PROMO_INVALID':
-      case 'MIX_REQUOTE_REQUIRED':
-      case 'MIX_STOCK_UNAVAILABLE':
       case 'CHECKOUT_FAILED':
         return result.error;
     }
   }
   return 'CHECKOUT_FAILED';
-}
-
-function withPreparedMixes(cart: Cart, mixItems: PowderMixCartItem[]): Cart {
-  const subtotalCents = [...cart.items, ...mixItems].reduce(
-    (total, item) => total + item.lineTotalCents,
-    0,
-  );
-  return {
-    ...cart,
-    mixItems,
-    subtotalCents,
-    totalItems: [...cart.items, ...mixItems].reduce((total, item) => total + item.quantity, 0),
-  };
 }
 
 function replay(
@@ -79,6 +76,82 @@ function replay(
   return { success: false, error: 'CHECKOUT_FAILED' };
 }
 
+/**
+ * Resolves the buyer's delivery and billing commitments server-side and re-validates the submitted
+ * slot, inside the preparation transaction and before any reservation is taken.
+ *
+ * A `saved` selection is loaded from the buyer's own live records: an unknown id, a retired record,
+ * another user's record, and an anonymous checkout all collapse to the same failure so the response
+ * cannot be used to probe which records exist. A client-supplied address is never consulted for a
+ * saved selection.
+ *
+ * The slot is checked against a lead time re-derived from the live cart through the same service
+ * that answered the slot endpoint, so an offered slot and an accepted slot cannot drift.
+ */
+function resolveCommitments(
+  params: CheckoutParams,
+  dependencies: CheckoutDependencies,
+): { resolved: ResolvedCheckoutCommitments } | { failure: CheckoutResult } {
+  const destination = params.deliveryDestination;
+  let deliverySiteId: number | null = null;
+  let deliveryAddress: PostalAddress;
+  if (destination.kind === 'saved') {
+    if (params.userId === null)
+      return { failure: { success: false, error: 'DELIVERY_SITE_NOT_FOUND' } };
+    const siteId = Number(destination.deliverySiteId);
+    const site = dependencies.tradeAccount.sites.get(params.userId, siteId);
+    if (!site.ok) return { failure: { success: false, error: 'DELIVERY_SITE_NOT_FOUND' } };
+    deliverySiteId = siteId;
+    deliveryAddress = site.value.address;
+  } else {
+    // Saved addresses are normalized on the way into storage; an ad-hoc one is normalized here so
+    // both destinations produce the same rendering and the same fingerprint for the same place.
+    deliveryAddress = normalizePostalAddress(destination.address);
+  }
+
+  const billing = params.billingSelection;
+  let billingEntity: BillingEntitySnapshot;
+  if (billing.kind === 'saved') {
+    if (params.userId === null)
+      return { failure: { success: false, error: 'BILLING_ENTITY_INVALID' } };
+    const entity = dependencies.tradeAccount.billingEntities.get(
+      params.userId,
+      Number(billing.billingEntityId),
+    );
+    if (!entity.ok) return { failure: { success: false, error: 'BILLING_ENTITY_INVALID' } };
+    billingEntity = toBillingEntitySnapshot(entity.value);
+  } else {
+    billingEntity = {
+      legalName: normalizeText(billing.billingEntity.legalName),
+      registrationNumber: normalizeOptionalText(billing.billingEntity.registrationNumber),
+      vatNumber: normalizeOptionalText(billing.billingEntity.vatNumber),
+      address: normalizePostalAddress(billing.billingEntity.address),
+    };
+  }
+
+  const options = dependencies.deliverySlots.optionsForCart(params.cartId);
+  if (options === 'CART_NOT_FOUND') return { failure: { success: false, error: 'CART_NOT_FOUND' } };
+  if (!isSlotBookable(params.deliverySlot, options.leadTime, dependencies.clock.now())) {
+    return {
+      failure: {
+        success: false,
+        error: 'DELIVERY_SLOT_UNAVAILABLE',
+        earliestDate: options.leadTime.earliestDate,
+      },
+    };
+  }
+
+  return {
+    resolved: {
+      deliverySiteId,
+      deliveryAddress,
+      billingEntity,
+      deliverySlot: params.deliverySlot,
+      purchaseOrderReference: normalizeOptionalText(params.purchaseOrderReference),
+    },
+  };
+}
+
 function prepare(
   params: CheckoutParams,
   card: ValidCard,
@@ -96,11 +169,28 @@ function prepare(
       createdAt: dependencies.clock.now().toISOString(),
     });
     if (!reservation.reserved) return replay(reservation.payment, fingerprint, dependencies);
-    const cart = getCart(dependencies.carts, params.cartId, dependencies.mixes);
+    const cart = getCart(dependencies.carts, params.cartId, {
+      inventory: dependencies.inventory,
+      clock: dependencies.clock,
+    });
     if (!cart)
       return failPreparation(
         params.idempotencyKey,
-        { success: false, error: 'CART_NOT_FOUND' },
+        // An existing cart that will not resolve was invalidated by its configured lines: the read
+        // path refuses to price a blend whose facts are gone. Report that, not a missing cart.
+        {
+          success: false,
+          error: dependencies.carts.exists(params.cartId)
+            ? 'CUSTOM_BLEND_INVALID'
+            : 'CART_NOT_FOUND',
+        },
+        params.auditContext,
+        dependencies,
+      );
+    if (!customBlendLinesRemainEligible(cart, dependencies))
+      return failPreparation(
+        params.idempotencyKey,
+        { success: false, error: 'CUSTOM_BLEND_INVALID' },
         params.auditContext,
         dependencies,
       );
@@ -108,6 +198,23 @@ function prepare(
       return failPreparation(
         params.idempotencyKey,
         { success: false, error: 'CART_EMPTY' },
+        params.auditContext,
+        dependencies,
+      );
+    if (!cartMeetsVariantMoq(cart, dependencies))
+      return failPreparation(
+        params.idempotencyKey,
+        { success: false, error: 'BELOW_MOQ' },
+        params.auditContext,
+        dependencies,
+      );
+    // Destination, billing party, and slot are settled here: every branch below this point may take
+    // a cart, promo, or inventory reservation, and none of these failures may leave one held.
+    const commitments = resolveCommitments(params, dependencies);
+    if ('failure' in commitments)
+      return failPreparation(
+        params.idempotencyKey,
+        commitments.failure,
         params.auditContext,
         dependencies,
       );
@@ -135,15 +242,6 @@ function prepare(
         dependencies,
       );
     const validPromo = promo?.valid ? promo.promoCode : undefined;
-    const mixPreparation = prepareMixes(params.cartId, dependencies);
-    if ('error' in mixPreparation)
-      return failPreparation(
-        params.idempotencyKey,
-        mixPreparation,
-        params.auditContext,
-        dependencies,
-      );
-    const preparedCart = withPreparedMixes(cart, mixPreparation.mixItems);
     const createdAt = dependencies.clock.now().toISOString();
     if (!dependencies.carts.reserve(params.cartId, params.idempotencyKey, createdAt)) {
       return failPreparation(
@@ -177,21 +275,10 @@ function prepare(
     try {
       inventoryAllocations = dependencies.inventory.reserveCheckout({
         paymentIdempotencyKey: params.idempotencyKey,
-        demands: [
-          ...preparedCart.items.map((item) => ({
-            variantId: item.variantSnap?.variantId ?? 0,
-            quantity: item.quantity,
-            demandKind: 'product' as const,
-          })),
-          ...mixPreparation.requirements.map((requirement) => {
-            const defaultVariant = dependencies.products.findDefaultVariant(requirement.productId);
-            return {
-              variantId: defaultVariant?.id ?? 0,
-              quantity: requirement.bagEquivalents,
-              demandKind: 'powder_mix' as const,
-            };
-          }),
-        ],
+        demands: cart.items.map((item) => ({
+          variantId: item.variantSnap?.variantId ?? 0,
+          quantity: item.quantity,
+        })),
         now: createdAt,
         expiresAt: reservationExpiresAt,
       });
@@ -213,8 +300,9 @@ function prepare(
       throw error;
     }
     const quote = createCheckoutQuote({
-      cart: preparedCart,
+      cart,
       checkout: params,
+      resolved: commitments.resolved,
       promo: validPromo,
       createdAt,
       inventoryAllocations,
@@ -231,6 +319,64 @@ function prepare(
       throw new Error('Checkout intent quote persistence failed');
     }
     return { quoteTotalCents: quote.totalCents, card };
+  });
+}
+
+/**
+ * Re-resolves every configured line against live catalog facts inside the preparation
+ * transaction, before any reservation or gateway call. Checkout owns this gate rather than
+ * trusting the cart read path: a lot retired between configuration and payment must stop the
+ * charge, and it must stop it with no inventory mutation and no money movement.
+ */
+function customBlendLinesRemainEligible(cart: Cart, dependencies: CheckoutDependencies): boolean {
+  return cart.items.every((item) => {
+    const blend = item.customBlend;
+    if (!blend) return item.configKey === '' && item.blendingFeeCents === 0;
+    const baseVariantId = item.variantSnap?.variantId;
+    if (baseVariantId === undefined) return false;
+    if (
+      blend.configKey !== item.configKey ||
+      blend.blendingFeeCents !== CUSTOM_BLEND_FEE_CENTS ||
+      item.blendingFeeCents !== CUSTOM_BLEND_FEE_CENTS ||
+      item.discountableTotalCents !== item.materialSubtotalCents ||
+      item.materialSubtotalCents + item.blendingFeeCents !== item.lineTotalCents
+    ) {
+      return false;
+    }
+    let normalized;
+    try {
+      normalized = normalizeCustomBlendSpec(baseVariantId, blend.ingredients);
+    } catch {
+      return false;
+    }
+    if (
+      normalized.configKey !== item.configKey ||
+      normalized.basePercentage !== blend.basePercentage
+    ) {
+      return false;
+    }
+    const factVariantIds = [
+      baseVariantId,
+      ...normalized.ingredients.map((ingredient) => ingredient.variantId),
+    ];
+    const facts = dependencies.carts.listEligibleCustomBlendFacts(factVariantIds);
+    if (facts.length !== factVariantIds.length) return false;
+    const base = facts.find((fact) => fact.variant_id === baseVariantId);
+    if (!base || base.mixing_group !== blend.mixingGroup) return false;
+    return facts.every((fact) => fact.mixing_group === base.mixing_group);
+  });
+}
+
+function cartMeetsVariantMoq(cart: Cart, dependencies: CheckoutDependencies): boolean {
+  return cart.items.every((item) => {
+    const variantId = item.variantSnap?.variantId;
+    if (!variantId) return false;
+    const variant = dependencies.carts.getVariant(variantId);
+    return (
+      variant !== undefined &&
+      variant.active === 1 &&
+      validateMoq(item.quantity, variant.weight_grams, variant.moq_sacks)
+    );
   });
 }
 
@@ -304,7 +450,12 @@ export function createCheckoutService(dependencies: CheckoutDependencies): Check
       const prepared = prepare(params, card, dependencies);
       if ('success' in prepared) return prepared;
       if ('resume' in prepared)
-        return resumeFinalization(dependencies, params.idempotencyKey, params.auditContext);
+        return resumeFinalization(
+          dependencies,
+          params.idempotencyKey,
+          params.auditContext,
+          selectedDeliverySiteId(params),
+        );
       const gatewayResult = await dependencies.gateway.process({
         idempotencyKey: params.idempotencyKey,
         amountCents: prepared.quoteTotalCents,
@@ -369,7 +520,12 @@ export function createCheckoutService(dependencies: CheckoutDependencies): Check
           dependencies,
         ) as CheckoutResult;
       }
-      return resumeFinalization(dependencies, params.idempotencyKey, params.auditContext);
+      return resumeFinalization(
+        dependencies,
+        params.idempotencyKey,
+        params.auditContext,
+        selectedDeliverySiteId(params),
+      );
     },
   };
 }
@@ -419,13 +575,25 @@ function terminalizePreparedExpiry(
   return result;
 }
 
+/**
+ * The saved site an order should reference, taken from the request rather than the persisted quote:
+ * the quote snapshots the resolved address, not the record it came from. Safe on the resume path
+ * because the caller reaches it only after the request fingerprint matched the original attempt.
+ */
+function selectedDeliverySiteId(params: CheckoutParams): number | null {
+  return params.deliveryDestination.kind === 'saved'
+    ? Number(params.deliveryDestination.deliverySiteId)
+    : null;
+}
+
 function resumeFinalization(
   dependencies: CheckoutDependencies,
   idempotencyKey: string,
   auditContext: CheckoutParams['auditContext'],
+  deliverySiteId: number | null,
 ): CheckoutResult {
   try {
-    return finalizeAuthorizedCheckout(dependencies, idempotencyKey, auditContext);
+    return finalizeAuthorizedCheckout(dependencies, idempotencyKey, auditContext, deliverySiteId);
   } catch {
     // Authorization was committed separately; preserve it for same-key retry.
     return { success: false, error: 'IDEMPOTENT_IN_PROGRESS' };

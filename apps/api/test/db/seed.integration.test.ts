@@ -89,11 +89,11 @@ void test('seed installs deterministic lifecycle scenarios once and reset restor
   assert.deepEqual(
     db
       .prepare(
-        `SELECT shipment_number, product_quantity, mix_quantity
+        `SELECT shipment_number, product_quantity, line_count
          FROM (
            SELECT shipments.shipment_number,
-             SUM(CASE WHEN shipment_items.order_line_item_id IS NOT NULL THEN shipment_items.quantity ELSE 0 END) AS product_quantity,
-             SUM(CASE WHEN shipment_items.order_powder_mix_item_id IS NOT NULL THEN shipment_items.quantity ELSE 0 END) AS mix_quantity
+             SUM(shipment_items.quantity) AS product_quantity,
+             COUNT(*) AS line_count
            FROM order_shipments AS shipments
            JOIN order_shipment_items AS shipment_items ON shipment_items.shipment_id = shipments.id
            WHERE shipments.order_id = (SELECT id FROM orders WHERE demo_seed_key = 'alice-split-shipped')
@@ -102,9 +102,21 @@ void test('seed installs deterministic lifecycle scenarios once and reset restor
       )
       .all(),
     [
-      { shipment_number: 1, product_quantity: 1, mix_quantity: 0 },
-      { shipment_number: 2, product_quantity: 1, mix_quantity: 1 },
+      { shipment_number: 1, product_quantity: 1, line_count: 1 },
+      { shipment_number: 2, product_quantity: 2, line_count: 2 },
     ],
+  );
+  // Three sacks across two lots; the split-shipment scenario keeps its item count after the
+  // retired powder-mix line was replaced by a second product line.
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT SUM(quantity) AS total_items, COUNT(*) AS line_count
+         FROM order_line_items
+         WHERE order_id = (SELECT id FROM orders WHERE demo_seed_key = 'alice-split-shipped')`,
+      )
+      .get(),
+    { total_items: 3, line_count: 2 },
   );
   assert.deepEqual(
     db
@@ -143,12 +155,14 @@ void test('seed installs deterministic lifecycle scenarios once and reset restor
        WHERE order_id = (SELECT id FROM orders WHERE demo_seed_key = 'alice-packed')`,
     )
     .get();
-  const seededMixSnapshot = db
+  const seededSplitSnapshot = db
     .prepare(
-      `SELECT snapshot_json FROM order_powder_mix_items
-       WHERE order_id = (SELECT id FROM orders WHERE demo_seed_key = 'alice-split-shipped')`,
+      `SELECT product_id, product_name, product_price_cents, quantity, line_total_cents
+       FROM order_line_items
+       WHERE order_id = (SELECT id FROM orders WHERE demo_seed_key = 'alice-split-shipped')
+       ORDER BY id`,
     )
-    .get();
+    .all();
   // Pick a canonical product that exists in the new catalog (ID 1 = All-Purpose Flour)
   db.prepare("UPDATE products SET name = 'Changed Flour', price_cents = 1 WHERE id = 1").run();
   seedDatabase(db);
@@ -173,11 +187,13 @@ void test('seed installs deterministic lifecycle scenarios once and reset restor
   assert.deepEqual(
     db
       .prepare(
-        `SELECT snapshot_json FROM order_powder_mix_items
-         WHERE order_id = (SELECT id FROM orders WHERE demo_seed_key = 'alice-split-shipped')`,
+        `SELECT product_id, product_name, product_price_cents, quantity, line_total_cents
+         FROM order_line_items
+         WHERE order_id = (SELECT id FROM orders WHERE demo_seed_key = 'alice-split-shipped')
+         ORDER BY id`,
       )
-      .get(),
-    seededMixSnapshot,
+      .all(),
+    seededSplitSnapshot,
   );
 
   db.prepare(
@@ -439,14 +455,6 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
     (db.prepare('SELECT COUNT(*) AS count FROM users').get() as { count: number }).count,
     3,
   );
-  assert.equal(
-    (
-      db.prepare('SELECT COUNT(*) AS count FROM products WHERE mixable = 1').get() as {
-        count: number;
-      }
-    ).count,
-    CATALOG_PRODUCTS.length,
-  );
   db.prepare("UPDATE users SET display_name = 'Local' WHERE email = 'alice@example.com'").run();
   db.prepare(
     "INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id, slug, sales_count) VALUES (99, 'Local', 'Local row', 100, 'Local', 1, 'local', 'local', 0)",
@@ -520,9 +528,7 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   );
 
   // Verify idempotent re-seed restores canonical product facts
-  db.prepare(
-    "UPDATE products SET name = 'Changed Flour', mixable = 0, mix_unit_grams = NULL WHERE id = 1",
-  ).run();
+  db.prepare("UPDATE products SET name = 'Changed Flour', sales_count = 99 WHERE id = 1").run();
   db.prepare(
     `INSERT INTO curated_bundles (id, key, name, description, active, sort_order)
      VALUES (99, 'local-bundle', 'Local bundle', 'Local bundle definition', 1, 99)`,
@@ -534,10 +540,10 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   db.prepare("UPDATE curated_bundles SET name = 'Broken starter' WHERE id = 1").run();
   db.prepare('DELETE FROM curated_bundle_components WHERE bundle_id = 1').run();
   seedDatabase(db);
-  assert.deepEqual(
-    db.prepare('SELECT name, mixable, mix_unit_grams FROM products WHERE id = 1').get(),
-    { name: product1Catalog.name, mixable: 1, mix_unit_grams: variant1.weightGrams },
-  );
+  assert.deepEqual(db.prepare('SELECT name, sales_count FROM products WHERE id = 1').get(), {
+    name: product1Catalog.name,
+    sales_count: 0,
+  });
   assert.deepEqual(db.prepare('SELECT key, name FROM curated_bundles WHERE id = 1').get(), {
     key: CURATED_BUNDLES.find((b) => b.id === 1)!.key,
     name: CURATED_BUNDLES.find((b) => b.id === 1)!.name,
@@ -564,23 +570,14 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
 
   db.prepare("INSERT INTO carts (id) VALUES ('seed-reset-cart')").run();
   db.prepare(
-    `INSERT INTO powder_mixes
-      (id, cart_id, quantity, bag_size_grams, fineness, bag_colour_scheme, custom_label, price_version, quoted_unit_price_cents, created_at, updated_at)
-     VALUES ('seed-reset-mix', 'seed-reset-cart', 1, 500, 'standard', 'solar-flare', NULL, 'powderizer-v1', 1000, 'now', 'now')`,
-  ).run();
-  db.prepare(
-    `INSERT INTO powder_mix_components (mix_id, product_id, percentage, allocated_grams)
-     VALUES ('seed-reset-mix', 1, 100, 500)`,
-  ).run();
-  db.prepare(
     `INSERT INTO payments
       (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand)
      VALUES ('seed-reset-payment', 'seed-reset-fingerprint', 'pending', 1000, '4242', 'Visa')`,
   ).run();
   db.prepare(
     `INSERT INTO inventory_reservations
-      (payment_idempotency_key, variant_id, demand_kind, reserved_quantity, backordered_quantity, expires_at, created_at)
-     VALUES ('seed-reset-payment', (SELECT default_variant_id FROM products WHERE id = 1), 'powder_mix', 1, 0, NULL, '2026-07-19T12:00:00.000Z')`,
+      (payment_idempotency_key, variant_id, reserved_quantity, backordered_quantity, expires_at, created_at)
+     VALUES ('seed-reset-payment', (SELECT default_variant_id FROM products WHERE id = 1), 1, 0, NULL, '2026-07-19T12:00:00.000Z')`,
   ).run();
   db.prepare(
     `INSERT INTO orders
@@ -593,10 +590,6 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
       .pluck()
       .get(),
   );
-  db.prepare(
-    `INSERT INTO order_powder_mix_items (order_id, snapshot_json)
-     VALUES (?, '{"version":1}')`,
-  ).run(resetOrderId);
   db.prepare(
     `INSERT INTO order_shipments
       (order_id, shipment_number, status, tracking_reference, created_at, updated_at)
@@ -635,23 +628,12 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
     )
     .all() as Array<{ id: number; slug: string }>;
   assert.ok(canonicalProductIds.length >= CATALOG_PRODUCTS.length);
-  assert.equal(
-    (
-      db.prepare('SELECT COUNT(*) AS count FROM products WHERE mixable = 1').get() as {
-        count: number;
-      }
-    ).count,
-    CATALOG_PRODUCTS.length,
-  );
   for (const [table, expectedCount] of [
-    ['powder_mixes', 0],
-    ['powder_mix_components', 0],
     ['inventory_reservations', 0],
     ['order_access_grants', 0],
     ['order_lifecycle_events', 19],
     ['order_shipment_items', 6],
     ['order_shipments', 5],
-    ['order_powder_mix_items', 1],
   ] as const) {
     assert.equal(
       (db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count,
@@ -666,6 +648,171 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
     (db.prepare('SELECT COUNT(*) AS count FROM reviews').get() as { count: number }).count,
     3,
   );
+});
+
+void test('seed installs deterministic trade delivery sites and billing entities', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-trade-account-seed-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+
+  // Scoped to the seeded user emails: never assume these tables are otherwise empty.
+  const seededSites = () =>
+    db
+      .prepare(
+        `SELECT users.email, sites.label, sites.is_default, sites.active,
+                sites.address_city, sites.address_country_code
+         FROM delivery_sites AS sites
+         JOIN users ON users.id = sites.user_id
+         WHERE users.email IN ('alice@example.com', 'bob@example.com', 'admin@example.com')
+         ORDER BY sites.id`,
+      )
+      .all();
+  const seededEntities = () =>
+    db
+      .prepare(
+        `SELECT users.email, entities.legal_name, entities.is_default, entities.active,
+                entities.vat_number
+         FROM billing_entities AS entities
+         JOIN users ON users.id = entities.user_id
+         WHERE users.email IN ('alice@example.com', 'bob@example.com', 'admin@example.com')
+         ORDER BY entities.id`,
+      )
+      .all();
+
+  const firstSites = seededSites();
+  const firstEntities = seededEntities();
+  assert.deepEqual(firstSites, [
+    {
+      email: 'alice@example.com',
+      label: 'Bakery yard',
+      is_default: 1,
+      active: 1,
+      address_city: 'Manchester',
+      address_country_code: 'GB',
+    },
+    {
+      email: 'alice@example.com',
+      label: 'Depot annexe',
+      is_default: 0,
+      active: 1,
+      address_city: 'Salford',
+      address_country_code: 'GB',
+    },
+    {
+      email: 'bob@example.com',
+      label: 'Store loading bay',
+      is_default: 1,
+      active: 1,
+      address_city: 'Bristol',
+      address_country_code: 'GB',
+    },
+    {
+      email: 'bob@example.com',
+      label: 'Warehouse north',
+      is_default: 0,
+      active: 1,
+      address_city: 'Gloucester',
+      address_country_code: 'GB',
+    },
+    {
+      email: 'admin@example.com',
+      label: 'Head office dock',
+      is_default: 1,
+      active: 1,
+      address_city: 'London',
+      address_country_code: 'GB',
+    },
+  ]);
+  assert.deepEqual(firstEntities, [
+    {
+      email: 'alice@example.com',
+      legal_name: 'Fournier Bakeries Ltd',
+      is_default: 1,
+      active: 1,
+      vat_number: 'GB194672301',
+    },
+    {
+      email: 'alice@example.com',
+      legal_name: 'Fournier Contract Catering Ltd',
+      is_default: 0,
+      active: 1,
+      vat_number: null,
+    },
+    {
+      email: 'bob@example.com',
+      legal_name: 'Ashby Convenience Stores Ltd',
+      is_default: 1,
+      active: 1,
+      vat_number: 'GB288104553',
+    },
+    {
+      email: 'admin@example.com',
+      legal_name: 'QArefully Materials Exchange Ltd',
+      is_default: 1,
+      active: 1,
+      vat_number: 'GB402118997',
+    },
+  ]);
+
+  // Exactly one live default of each record type per seeded user.
+  const defaultCounts = (table: string) =>
+    db
+      .prepare(
+        `SELECT users.email, COUNT(*) AS count
+         FROM ${table} AS records
+         JOIN users ON users.id = records.user_id
+         WHERE records.is_default = 1 AND records.active = 1
+           AND users.email IN ('alice@example.com', 'bob@example.com', 'admin@example.com')
+         GROUP BY users.email ORDER BY users.email`,
+      )
+      .all();
+  const expectedDefaults = [
+    { email: 'admin@example.com', count: 1 },
+    { email: 'alice@example.com', count: 1 },
+    { email: 'bob@example.com', count: 1 },
+  ];
+  assert.deepEqual(defaultCounts('delivery_sites'), expectedDefaults);
+  assert.deepEqual(defaultCounts('billing_entities'), expectedDefaults);
+
+  // Repeat seed adds no duplicates and leaves buyer-owned edits alone.
+  const bobId = Number(
+    db.prepare("SELECT id FROM users WHERE email = 'bob@example.com'").pluck().get(),
+  );
+  db.prepare(
+    `INSERT INTO delivery_sites
+      (user_id, label, contact_name, contact_phone, address_line1, address_city,
+       address_postcode, address_country_code, is_default, active)
+     VALUES (?, 'Buyer added yard', 'Bob Ashby', NULL, '9 Local Way', 'Bristol', 'BS2 9AA', 'GB', 0, 1)`,
+  ).run(bobId);
+  db.prepare(
+    `INSERT INTO billing_entities
+      (user_id, legal_name, registration_number, vat_number, address_line1, address_city,
+       address_postcode, address_country_code, is_default, active)
+     VALUES (?, 'Buyer Added Trading Ltd', NULL, NULL, '9 Local Way', 'Bristol', 'BS2 9AA', 'GB', 0, 1)`,
+  ).run(bobId);
+  db.prepare("UPDATE delivery_sites SET label = 'Renamed yard' WHERE id = 1").run();
+
+  seedDatabase(db);
+
+  assert.equal(
+    (db.prepare('SELECT label FROM delivery_sites WHERE id = 1').get() as { label: string }).label,
+    'Renamed yard',
+  );
+  assert.equal(seededSites().length, firstSites.length + 1);
+  assert.equal(seededEntities().length, firstEntities.length + 1);
+  assert.deepEqual(defaultCounts('delivery_sites'), expectedDefaults);
+  assert.deepEqual(defaultCounts('billing_entities'), expectedDefaults);
+
+  // Reset restores the canonical rows exactly, buyer-added rows gone.
+  resetDatabase(db);
+  seedDatabase(db);
+  assert.deepEqual(seededSites(), firstSites);
+  assert.deepEqual(seededEntities(), firstEntities);
 });
 
 void test('seed installs variant rows and links default variant IDs', (t) => {
@@ -768,6 +915,40 @@ void test('seed is idempotent for canonical catalog and variants', (t) => {
   assert.equal(secondSpecs.count, firstSpecs.count);
 });
 
+void test('repeat seed keeps canonical defaults product-owned and preserves noncanonical products', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-repeat-seed-defaults-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+  db.prepare(
+    "INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id, slug, sales_count) VALUES (51, 'Local 51', 'User-created product', 500, 'Local', 10, 'local-51', 'local-51', 0)",
+  ).run();
+  seedDatabase(db);
+
+  const canonicalIds = CATALOG_PRODUCTS.map((product) => product.id);
+  const placeholders = canonicalIds.map(() => '?').join(',');
+  const foreignDefaults = (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS count
+         FROM products p
+         LEFT JOIN product_variants v ON v.id = p.default_variant_id
+         WHERE p.id IN (${placeholders})
+           AND (v.product_id IS NULL OR v.product_id <> p.id)`,
+      )
+      .get(...canonicalIds) as { count: number }
+  ).count;
+  assert.equal(foreignDefaults, 0);
+  assert.deepEqual(db.prepare('SELECT id, name FROM products WHERE id = 51').get(), {
+    id: 51,
+    name: 'Local 51',
+  });
+});
+
 void test('seed preserves local product ID 51 outside canonical sets', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-local-id-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
@@ -787,4 +968,94 @@ void test('seed preserves local product ID 51 outside canonical sets', (t) => {
     price_cents: number;
   };
   assert.deepEqual(local, { id: 51, name: 'Local 51', price_cents: 500 });
+});
+
+void test('seed installs deterministic clearance windows and category-scoped promos', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-pricing-promotions-seed-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+  const clearances = () =>
+    db
+      .prepare(
+        `SELECT sku, price_cents, clearance_price_cents, clearance_starts_at, clearance_ends_at
+         FROM product_variants
+         WHERE sku IN ('GDN-1043-001', 'HCL-1038-001', 'TCM-1049-001')
+         ORDER BY sku`,
+      )
+      .all();
+  const scopedPromos = () =>
+    db
+      .prepare(
+        `SELECT code, kind, discount_percent, amount_cents, category_scope
+         FROM promo_codes WHERE code IN ('GARDEN10', 'CLEANFIVE') ORDER BY code`,
+      )
+      .all();
+
+  const firstClearances = clearances();
+  assert.deepEqual(firstClearances, [
+    {
+      sku: 'GDN-1043-001',
+      price_cents: 27540,
+      clearance_price_cents: 24000,
+      clearance_starts_at: '2026-07-21T12:00:00.000Z',
+      clearance_ends_at: '2026-08-04T12:00:00.000Z',
+    },
+    {
+      sku: 'HCL-1038-001',
+      price_cents: 8940,
+      clearance_price_cents: 7200,
+      clearance_starts_at: '2026-07-07T12:00:00.000Z',
+      clearance_ends_at: '2026-07-27T12:00:00.000Z',
+    },
+    {
+      sku: 'TCM-1049-001',
+      price_cents: 14340,
+      clearance_price_cents: 12000,
+      clearance_starts_at: '2026-07-29T12:00:00.000Z',
+      clearance_ends_at: '2026-08-11T12:00:00.000Z',
+    },
+  ]);
+  assert.ok(
+    firstClearances.every(
+      (row) =>
+        (row as { clearance_price_cents: number; price_cents: number }).clearance_price_cents <
+        (row as { clearance_price_cents: number; price_cents: number }).price_cents,
+    ),
+  );
+  assert.deepEqual(scopedPromos(), [
+    {
+      code: 'CLEANFIVE',
+      kind: 'fixed',
+      discount_percent: 0,
+      amount_cents: 500,
+      category_scope: 'Household & Cleaning',
+    },
+    {
+      code: 'GARDEN10',
+      kind: 'percent',
+      discount_percent: 10,
+      amount_cents: null,
+      category_scope: 'Garden & Outdoors',
+    },
+  ]);
+
+  db.prepare(
+    `INSERT INTO promo_codes (code, discount_percent, min_item_count, active, category_scope)
+     VALUES ('LOCAL-SCOPE', 1, 0, 1, 'Drinks')`,
+  ).run();
+  seedDatabase(db);
+  assert.deepEqual(clearances(), firstClearances);
+  assert.equal(
+    (
+      db.prepare("SELECT category_scope FROM promo_codes WHERE code = 'LOCAL-SCOPE'").get() as {
+        category_scope: string;
+      }
+    ).category_scope,
+    'Drinks',
+  );
 });

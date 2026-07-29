@@ -9,6 +9,7 @@ export const PromoCode = Type.Object({
   kind: PromoCodeKind,
   amountCents: Type.Optional(MoneyCents),
   minSubtotalCents: Type.Optional(MoneyCents),
+  categoryScope: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
 });
 export type PromoCode = Static<typeof PromoCode>;
 
@@ -19,6 +20,7 @@ export const PromoValidationErrorCode = Type.Union([
   Type.Literal('MIN_SUBTOTAL'),
   Type.Literal('USAGE_LIMIT'),
   Type.Literal('AUTH_REQUIRED'),
+  Type.Literal('CATEGORY_MISMATCH'),
   Type.Literal('INVALID'),
 ]);
 export type PromoValidationErrorCode = Static<typeof PromoValidationErrorCode>;
@@ -30,6 +32,7 @@ export const ValidatePromoResponse = Type.Object({
   promoCode: Type.Optional(PromoCode),
   error: Type.Optional(Type.String({ minLength: 1, maxLength: 500 })),
   errorCode: Type.Optional(PromoValidationErrorCode),
+  discountBaseCents: Type.Optional(MoneyCents),
   discountCents: Type.Optional(MoneyCents),
   totalCents: Type.Optional(MoneyCents),
 });

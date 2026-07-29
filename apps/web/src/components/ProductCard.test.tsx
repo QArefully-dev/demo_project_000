@@ -23,6 +23,9 @@ const defaultVariant: CatalogVariant = {
   label: '300g Bag',
   weightGrams: 300,
   priceCents: 7999,
+  moqSacks: 4,
+  perTonneCents: 26_663_333,
+  priceTiers: [{ minTonnes: 1, discountPct: 0 }],
   compareAtPriceCents: 9999,
   stockCount: 10,
   backorderable: false,
@@ -68,7 +71,6 @@ const product = (overrides: Partial<ProductWithVariants> = {}): ProductWithVaria
   available: overrides.available ?? true,
   tags: overrides.tags ?? [],
   specificationGroups: overrides.specificationGroups ?? [],
-  mixable: overrides.mixable ?? false,
   variants: overrides.variants ?? [defaultVariant],
   defaultVariantId: overrides.defaultVariantId ?? 1,
   categoryFacts: overrides.categoryFacts ?? defaultFacts,
@@ -129,10 +131,36 @@ describe('ProductCard', () => {
     expect(screen.queryByText('$99.99')).not.toBeInTheDocument();
   });
 
+  it('renders the server-resolved clearance badge only when active', () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <ProductCard
+          product={product({ hasActiveClearance: true })}
+          onAddToCart={vi.fn().mockResolvedValue(true)}
+          isCartAvailable={true}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Clearance')).toBeInTheDocument();
+
+    rerender(
+      <MemoryRouter>
+        <ProductCard
+          product={product({ hasActiveClearance: false })}
+          onAddToCart={vi.fn().mockResolvedValue(true)}
+          isCartAvailable={true}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText('Clearance')).not.toBeInTheDocument();
+  });
+
   it('links image and title to the product while leaving wishlist and cart actions separate', () => {
     renderCard();
 
-    expect(screen.getByRole('link', { name: 'Powdered Water powder bag' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Powdered Water bag' })).toHaveAttribute(
       'href',
       '/products/powdered-water-1',
     );
@@ -143,7 +171,7 @@ describe('ProductCard', () => {
     expect(
       screen.getByRole('button', { name: 'Add powdered-water-1 to wishlist' }).closest('a'),
     ).toBeNull();
-    expect(screen.getByRole('button', { name: 'Add powder' }).closest('a')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Add to order' }).closest('a')).toBeNull();
   });
 
   it('disables purchase for unavailable stock and labels low stock', () => {
@@ -179,7 +207,7 @@ describe('ProductCard', () => {
     });
 
     expect(screen.getByText('Available to backorder')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Add powder' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Add to order' })).toBeEnabled();
     expect(screen.queryByText(/14 days/i)).not.toBeInTheDocument();
   });
 
@@ -187,7 +215,7 @@ describe('ProductCard', () => {
     const user = userEvent.setup();
     const onAddToCart = renderCard({}, { onAddToCart: vi.fn().mockResolvedValue(false) });
 
-    await user.click(screen.getByRole('button', { name: 'Add powder' }));
+    await user.click(screen.getByRole('button', { name: 'Add to order' }));
 
     expect(onAddToCart).toHaveBeenCalledWith('powdered-water-1', 1);
     expect(await screen.findByRole('alert')).toHaveTextContent(

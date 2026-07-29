@@ -26,7 +26,6 @@ const product = (id: string, overrides: Partial<Product> = {}): Product => ({
   available: true,
   tags: [],
   specificationGroups: [],
-  mixable: false,
   ...overrides,
   availability: overrides.availability ?? 'in_stock',
   backorderable: overrides.backorderable ?? false,
@@ -64,13 +63,13 @@ describe('SimilarProductsSection', () => {
     productsApi.getSimilarProducts.mockReturnValueOnce(response.promise);
 
     renderSection();
-    expect(screen.getByRole('heading', { name: 'Similar powders' })).toBeInTheDocument();
-    expect(screen.getByText('Finding similar powders...')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Similar materials' })).toBeInTheDocument();
+    expect(screen.getByText('Finding similar materials...')).toBeInTheDocument();
 
     response.resolve([product('third'), product('first')]);
     const cards = await screen.findAllByRole('heading', { level: 3 });
     expect(cards.map((card) => card.textContent)).toEqual(['Powder third', 'Powder first']);
-    expect(screen.getByRole('link', { name: 'Browse all powders' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Browse all materials' })).toHaveAttribute(
       'href',
       '/catalog',
     );
@@ -80,8 +79,8 @@ describe('SimilarProductsSection', () => {
     productsApi.getSimilarProducts.mockResolvedValueOnce([]);
     renderSection();
 
-    expect(await screen.findByRole('heading', { name: 'Similar powders' })).toBeInTheDocument();
-    expect(screen.getByText('No similar powders available right now.')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Similar materials' })).toBeInTheDocument();
+    expect(screen.getByText('No similar materials available right now.')).toBeInTheDocument();
   });
 
   it('keeps failures section-local and retries the request', async () => {
@@ -91,8 +90,8 @@ describe('SimilarProductsSection', () => {
       .mockResolvedValueOnce([product('retry')]);
     renderSection();
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Could not load similar powders.');
-    expect(screen.getByRole('heading', { name: 'Similar powders' })).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not load similar materials.');
+    expect(screen.getByRole('heading', { name: 'Similar materials' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByRole('heading', { name: 'Powder retry' })).toBeInTheDocument();
     expect(productsApi.getSimilarProducts).toHaveBeenCalledTimes(2);
@@ -146,7 +145,7 @@ describe('SimilarProductsSection', () => {
     );
 
     await screen.findByRole('heading', { name: 'Powder cart-failure' });
-    await user.click(screen.getByRole('button', { name: 'Add powder' }));
+    await user.click(screen.getByRole('button', { name: 'Add to order' }));
 
     expect(cart.onAddToCart).toHaveBeenCalledWith('cart-failure', undefined);
     expect(await screen.findByRole('alert')).toHaveTextContent(

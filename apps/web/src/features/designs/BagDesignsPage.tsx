@@ -13,7 +13,7 @@ const designs: ReadonlyArray<{
   {
     option: 'C2-D',
     title: 'Paired ovals',
-    note: 'The cleanest treatment: two overlapping powder shapes and very few dots.',
+    note: 'The cleanest treatment: two overlapping material forms and very few dots.',
   },
 ];
 
@@ -37,7 +37,7 @@ export function BagDesignsPage() {
         </p>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Locked design: C2-D</h1>
         <p className="text-muted-foreground">
-          Broad paper bag, coloured label, paired powder ovals, and the restrained sprinkle field.
+          Broad paper bag, coloured label, paired material forms, and the restrained sprinkle field.
         </p>
       </header>
 

@@ -1,6 +1,6 @@
+import type { Cart } from '@shop/contracts/cart';
 import type { CartRepository } from '../cart/cartRepository.js';
 import { getCart } from '../cart/cartService.js';
-import type { PowderMixRepository } from '../powderizer/powderMixRepository.js';
 import type { Clock } from '../auth/authService.js';
 import type { PromoRecord, PromoRepository } from './promoRepository.js';
 
@@ -11,6 +11,7 @@ export type PromoValidationError =
   | 'MIN_SUBTOTAL'
   | 'USAGE_LIMIT'
   | 'AUTH_REQUIRED'
+  | 'CATEGORY_MISMATCH'
   | 'INVALID';
 
 export interface ValidPromo {
@@ -20,6 +21,7 @@ export interface ValidPromo {
   kind: 'percent' | 'fixed';
   amountCents?: number;
   minSubtotalCents?: number;
+  categoryScope?: string;
 }
 
 export type PromoValidation =
@@ -33,7 +35,6 @@ export interface PromoService {
 export function createPromoService(dependencies: {
   promos: PromoRepository;
   carts: CartRepository;
-  mixes: PowderMixRepository;
   clock: Clock;
 }): PromoService {
   return {
@@ -53,7 +54,43 @@ function asValidPromo(promo: PromoRecord): ValidPromo {
     kind: promo.kind,
     amountCents: promo.amountCents ?? undefined,
     minSubtotalCents: promo.minSubtotalCents ?? undefined,
+    ...(promo.categoryScope ? { categoryScope: promo.categoryScope } : {}),
   };
+}
+
+export interface ResolvedPromoScope {
+  qualifyingItemCount: number;
+  discountBaseCents: number;
+}
+
+/**
+ * An unscoped promo deliberately reads the cart totals rather than recomputing them, preserving
+ * legacy promotion behavior exactly. Scoped promos count and discount only matching merchandise;
+ * each line's discountable total already excludes any Custom Blend service fee.
+ */
+export function resolvePromoScope(params: {
+  promo: Pick<ValidPromo, 'categoryScope'>;
+  cart: Pick<Cart, 'items' | 'totalItems' | 'discountableSubtotalCents'>;
+}): ResolvedPromoScope {
+  const categoryScope = params.promo.categoryScope?.trim();
+  if (!categoryScope) {
+    return {
+      qualifyingItemCount: params.cart.totalItems,
+      discountBaseCents: params.cart.discountableSubtotalCents,
+    };
+  }
+
+  const normalizedScope = categoryScope.toLowerCase();
+  return params.cart.items.reduce(
+    (resolved, item) => {
+      if (item.product.category.toLowerCase() !== normalizedScope) return resolved;
+      return {
+        qualifyingItemCount: resolved.qualifyingItemCount + item.quantity,
+        discountBaseCents: resolved.discountBaseCents + item.discountableTotalCents,
+      };
+    },
+    { qualifyingItemCount: 0, discountBaseCents: 0 },
+  );
 }
 
 export function validatePromo(
@@ -61,7 +98,6 @@ export function validatePromo(
   dependencies: {
     promos: PromoRepository;
     carts: CartRepository;
-    mixes?: PowderMixRepository;
   },
 ): PromoValidation {
   const promo = dependencies.promos.findByCode(params.code);
@@ -88,26 +124,39 @@ export function validatePromo(
       promo.maxRedemptions
   )
     return invalid('This promo code has reached its usage limit', 'USAGE_LIMIT');
-  const cart = getCart(dependencies.carts, params.cartId, dependencies.mixes);
+  const cart = getCart(dependencies.carts, params.cartId);
   if (!cart) return invalid('Cart not found', 'INVALID');
-  if (cart.totalItems < promo.minItemCount)
+  const validPromo = asValidPromo(promo);
+  const scope = resolvePromoScope({ promo: validPromo, cart });
+  if (validPromo.categoryScope && scope.qualifyingItemCount === 0)
     return invalid(
-      `Minimum ${promo.minItemCount} items required (have ${cart.totalItems})`,
+      `This promo code applies only to ${validPromo.categoryScope} products`,
+      'CATEGORY_MISMATCH',
+    );
+  if (scope.qualifyingItemCount < promo.minItemCount)
+    return invalid(
+      `Minimum ${promo.minItemCount} items required (have ${scope.qualifyingItemCount})`,
       'MIN_ITEMS',
     );
-  if (promo.minSubtotalCents !== null && cart.subtotalCents < promo.minSubtotalCents)
+  // Eligibility and discount both read the discountable subtotal: Custom Blend blending fees are
+  // a service charge, never merchandise, so they can neither unlock nor be reduced by a promotion.
+  if (promo.minSubtotalCents !== null && scope.discountBaseCents < promo.minSubtotalCents)
     return invalid(
       `Minimum subtotal of $${(promo.minSubtotalCents / 100).toFixed(2)} required`,
       'MIN_SUBTOTAL',
     );
-  return { valid: true, promoCode: asValidPromo(promo) };
+  return { valid: true, promoCode: validPromo };
 }
 
+/**
+ * Discount is computed against the discountable subtotal only, so a fixed-amount promo can never
+ * consume blending fees and a percentage promo never applies to them.
+ */
 export function calculateDiscount(params: {
   promo: Pick<ValidPromo, 'kind' | 'discountPercent' | 'amountCents'>;
-  subtotalCents: number;
+  discountableSubtotalCents: number;
 }): number {
   return params.promo.kind === 'fixed'
-    ? Math.min(params.promo.amountCents ?? 0, params.subtotalCents)
-    : Math.floor((params.subtotalCents * params.promo.discountPercent) / 100);
+    ? Math.min(params.promo.amountCents ?? 0, params.discountableSubtotalCents)
+    : Math.floor((params.discountableSubtotalCents * params.promo.discountPercent) / 100);
 }

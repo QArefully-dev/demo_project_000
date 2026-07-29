@@ -14,9 +14,25 @@
       "types": "./dist/common.d.ts",
       "import": "./dist/common.js"
     },
+    "./address": {
+      "types": "./dist/address.d.ts",
+      "import": "./dist/address.js"
+    },
+    "./trade-account": {
+      "types": "./dist/tradeAccount.d.ts",
+      "import": "./dist/tradeAccount.js"
+    },
     "./products": {
       "types": "./dist/products.d.ts",
       "import": "./dist/products.js"
+    },
+    "./pricing": {
+      "types": "./dist/pricing.d.ts",
+      "import": "./dist/pricing.js"
+    },
+    "./custom-blends": {
+      "types": "./dist/customBlends.d.ts",
+      "import": "./dist/customBlends.js"
     },
     "./cart": {
       "types": "./dist/cart.d.ts",
@@ -46,10 +62,6 @@
       "types": "./dist/mailbox.d.ts",
       "import": "./dist/mailbox.js"
     },
-    "./powderizer": {
-      "types": "./dist/powderizer.d.ts",
-      "import": "./dist/powderizer.js"
-    },
     "./audit": {
       "types": "./dist/audit.d.ts",
       "import": "./dist/audit.js"
@@ -73,10 +85,6 @@
     "./delivery": {
       "types": "./dist/delivery.d.ts",
       "import": "./dist/delivery.js"
-    },
-    "./customPowder": {
-      "types": "./dist/customPowder.d.ts",
-      "import": "./dist/customPowder.js"
     }
   },
   "dependencies": {

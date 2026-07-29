@@ -1,15 +1,20 @@
 import { FastifyInstance } from 'fastify';
+import { Type } from '@sinclair/typebox';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { sendNotFound } from '../utils/errors.js';
 import {
   Cart,
+  type Cart as CartResponse,
   AddToCartBody,
   UpdateCartLineBody,
   CreateCartResponse,
   CartIdParam,
   CartIdAndProductIdParam,
+  BelowMoqError,
+  RemoveFromCartBody,
 } from '@shop/contracts/cart';
 import { ErrorResponse } from '@shop/contracts/common';
+import { SACK_WEIGHT_GRAMS } from '@shop/contracts/pricing';
 import type { AppContext } from '../app.js';
 import type { AuditContext } from '../features/audit/auditEvent.js';
 
@@ -72,11 +77,16 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
       schema: {
         params: CartIdParam,
         body: AddToCartBody,
-        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse },
+        response: {
+          200: Cart,
+          400: Type.Union([BelowMoqError, ErrorResponse]),
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
       },
     },
     async (request, reply) => {
-      const { productId, variantId } = request.body;
+      const { productId, variantId, quantity } = request.body;
       let resolvedVariantId: string | null | undefined;
       if (variantId !== undefined) {
         resolvedVariantId = String(variantId);
@@ -104,7 +114,21 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
         });
       }
 
-      const cart = carts.add(request.params.cartId, resolvedVariantId, auditContext(request));
+      const selectedVariant = services.products
+        .listVariants(Number(productId))
+        .find((variant) => variant.id === Number(resolvedVariantId));
+      const requestedQuantity =
+        quantity ??
+        (selectedVariant
+          ? minimumMoqQuantity(selectedVariant.weight_grams, selectedVariant.moq_sacks)
+          : undefined);
+
+      const cart = carts.add(
+        request.params.cartId,
+        resolvedVariantId,
+        requestedQuantity,
+        auditContext(request),
+      );
       if (cart === 'CART_NOT_FOUND') {
         sendNotFound(reply, 'Cart');
         return;
@@ -115,6 +139,15 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
       }
       if (cart === 'CART_RESERVED')
         return reply.code(409).send({ error: 'Cart is reserved for checkout' });
+      if (cart === 'BELOW_MOQ') {
+        return reply.code(400).send({
+          code: 'BELOW_MOQ',
+          error: 'Quantity does not meet this variant minimum order quantity.',
+        });
+      }
+      if (cart === 'INVALID_QUANTITY') {
+        return reply.code(400).send({ error: 'Quantity exceeds supported cart limits.' });
+      }
       return cart;
     },
   );
@@ -126,23 +159,25 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
       schema: {
         params: CartIdParam,
         body: UpdateCartLineBody,
-        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse },
+        response: {
+          200: Cart,
+          400: Type.Union([BelowMoqError, ErrorResponse]),
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
       },
     },
     async (request, reply) => {
-      const { productId, quantity } = request.body;
+      const { productId, variantId, configKey, quantity } = request.body;
       const cartData = carts.get(request.params.cartId);
-      const cartLine = cartData?.items.find((item) => item.productId === productId);
-      const resolvedVariantId = cartLine?.variantSnap?.variantId
-        ? String(cartLine.variantSnap.variantId)
-        : (() => {
-            const active = services.products
-              .listVariants(Number(productId))
-              .filter((v) => v.active === 1);
-            return active.length === 1 ? String(active[0]!.id) : null;
-          })();
+      const resolvedVariantId = resolveCartLineVariant(cartData, productId, variantId, configKey);
 
-      if (resolvedVariantId === null || resolvedVariantId === undefined) {
+      if (resolvedVariantId === 'AMBIGUOUS') {
+        return reply.code(400).send({
+          error: `Product ${productId} has multiple cart lines. Specify a variantId.`,
+        });
+      }
+      if (resolvedVariantId === undefined) {
         sendNotFound(reply, 'Variant in cart');
         return;
       }
@@ -152,6 +187,69 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
         resolvedVariantId,
         quantity,
         auditContext(request),
+        configKey,
+      );
+      if (result === 'CART_NOT_FOUND') {
+        sendNotFound(reply, 'Cart');
+        return;
+      }
+      if (result === 'VARIANT_NOT_IN_CART') {
+        sendNotFound(reply, 'Variant in cart');
+        return;
+      }
+      if (result === 'CART_RESERVED')
+        return reply.code(409).send({ error: 'Cart is reserved for checkout' });
+      if (result === 'BELOW_MOQ') {
+        return reply.code(400).send({
+          code: 'BELOW_MOQ',
+          error: 'Quantity does not meet this variant minimum order quantity.',
+        });
+      }
+      if (result === 'INVALID_QUANTITY') {
+        return reply.code(400).send({ error: 'Quantity exceeds supported cart limits.' });
+      }
+      return result;
+    },
+  );
+
+  // Remove item from cart
+  typed.delete(
+    '/api/cart/:cartId/items/:productId',
+    {
+      schema: {
+        params: CartIdAndProductIdParam,
+        body: Type.Optional(RemoveFromCartBody),
+        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse },
+      },
+    },
+    async (request, reply) => {
+      const productId = request.body?.productId ?? request.params.productId;
+      if (request.body && request.body.productId !== request.params.productId) {
+        return reply.code(400).send({ error: 'Body productId must match the cart line path.' });
+      }
+      const cartData = carts.get(request.params.cartId);
+      const resolvedVariantId = resolveCartLineVariant(
+        cartData,
+        productId,
+        request.body?.variantId,
+        request.body?.configKey,
+      );
+
+      if (resolvedVariantId === 'AMBIGUOUS') {
+        return reply.code(400).send({
+          error: `Product ${productId} has multiple cart lines. Specify a variantId.`,
+        });
+      }
+      if (resolvedVariantId === undefined) {
+        sendNotFound(reply, 'Variant in cart');
+        return;
+      }
+
+      const result = carts.remove(
+        request.params.cartId,
+        resolvedVariantId,
+        auditContext(request),
+        request.body?.configKey,
       );
       if (result === 'CART_NOT_FOUND') {
         sendNotFound(reply, 'Cart');
@@ -166,46 +264,32 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
       return result;
     },
   );
+}
 
-  // Remove item from cart
-  typed.delete(
-    '/api/cart/:cartId/items/:productId',
-    {
-      schema: {
-        params: CartIdAndProductIdParam,
-        response: { 200: Cart, 400: ErrorResponse, 404: ErrorResponse, 409: ErrorResponse },
-      },
-    },
-    async (request, reply) => {
-      const { productId } = request.params;
-      const cartData = carts.get(request.params.cartId);
-      const cartLine = cartData?.items.find((item) => item.productId === productId);
-      const resolvedVariantId = cartLine?.variantSnap?.variantId
-        ? String(cartLine.variantSnap.variantId)
-        : (() => {
-            const active = services.products
-              .listVariants(Number(productId))
-              .filter((v) => v.active === 1);
-            return active.length === 1 ? String(active[0]!.id) : null;
-          })();
+function resolveCartLineVariant(
+  cart: CartResponse | undefined,
+  productId: string,
+  variantId: number | undefined,
+  configKey: string | undefined,
+): string | undefined {
+  const matchingLines =
+    cart?.items.filter(
+      (item) => item.productId === productId && item.configKey === (configKey ?? ''),
+    ) ?? [];
+  if (variantId !== undefined) {
+    return matchingLines.some((item) => item.variantSnap?.variantId === variantId)
+      ? String(variantId)
+      : undefined;
+  }
+  if (matchingLines.length !== 1) return matchingLines.length > 1 ? 'AMBIGUOUS' : undefined;
+  const selected = matchingLines[0]?.variantSnap?.variantId;
+  return selected ? String(selected) : undefined;
+}
 
-      if (resolvedVariantId === null || resolvedVariantId === undefined) {
-        sendNotFound(reply, 'Variant in cart');
-        return;
-      }
-
-      const result = carts.remove(request.params.cartId, resolvedVariantId, auditContext(request));
-      if (result === 'CART_NOT_FOUND') {
-        sendNotFound(reply, 'Cart');
-        return;
-      }
-      if (result === 'VARIANT_NOT_IN_CART') {
-        sendNotFound(reply, 'Variant in cart');
-        return;
-      }
-      if (result === 'CART_RESERVED')
-        return reply.code(409).send({ error: 'Cart is reserved for checkout' });
-      return result;
-    },
-  );
+function minimumMoqQuantity(weightGrams: number, moqSacks: number): number {
+  const quantity = Math.ceil((moqSacks * SACK_WEIGHT_GRAMS) / weightGrams);
+  if (!Number.isSafeInteger(quantity) || quantity < 1) {
+    throw new RangeError('MOQ quantity is outside the safe integer range.');
+  }
+  return quantity;
 }
