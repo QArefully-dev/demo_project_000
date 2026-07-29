@@ -1,4 +1,4 @@
-# AGENTS.md
+# AGENTS.md - Node.js 22, TypeScript 5.7, Fastify 5, SQLite via better-sqlite3 11 (WAL), React 18, Vite 6
 
 `QArefully Materials Exchange`-> local non-live powder ecommerce demo, QA-education + agentic-engineering testbed, zero external services.
 
