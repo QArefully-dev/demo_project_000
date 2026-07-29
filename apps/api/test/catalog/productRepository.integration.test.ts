@@ -33,7 +33,27 @@ void test('product repository owns catalog SQL and variant methods', (t) => {
   assert.ok(baking > 0);
 
   const onSaleItems = products.list({ onSale: true, sort: 'newest', pageSize: 48 });
-  assert.ok(onSaleItems.items.every((product) => product.compare_at_price_cents !== null));
+  // onSale covers both legacy compare-at pricing and an active variant clearance window.
+  const hasActiveClearance = db.prepare(
+    `SELECT 1
+     FROM product_variants pv
+     WHERE pv.product_id = ?
+       AND pv.active = 1
+       AND pv.clearance_price_cents IS NOT NULL
+       AND pv.clearance_price_cents > 0
+       AND pv.clearance_price_cents < pv.price_cents
+       AND pv.clearance_starts_at IS NOT NULL
+       AND pv.clearance_ends_at IS NOT NULL
+       AND julianday(pv.clearance_starts_at) <= julianday('now')
+       AND julianday(pv.clearance_ends_at) > julianday('now')
+     LIMIT 1`,
+  );
+  assert.ok(
+    onSaleItems.items.every(
+      (product) =>
+        product.compare_at_price_cents !== null || hasActiveClearance.get(product.id) !== undefined,
+    ),
+  );
 
   db.prepare('UPDATE products SET active = 0 WHERE id IN (1, 2)').run();
   assert.equal(products.findById(1)?.active, 0);
