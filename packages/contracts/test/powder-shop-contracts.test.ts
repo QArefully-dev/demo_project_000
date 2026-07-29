@@ -4,6 +4,7 @@ import { Value } from '@sinclair/typebox/value';
 import {
   CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION,
   PersistedCheckoutQuoteV7,
+  PersistedCheckoutQuoteV8,
   parsePersistedCheckoutQuote,
 } from '../src/payments.js';
 import {
@@ -557,15 +558,17 @@ const variantLine = {
   lineTotalCents: 2500,
 };
 
-void test('PersistedCheckoutQuoteV7 roundtrip with variant lines and delivery', () => {
+void test('PersistedCheckoutQuoteV8 roundtrip with variant lines and delivery', () => {
   const subtotal = variantLine.lineTotalCents;
   const deliveryCharge = 999;
   const total = subtotal + deliveryCharge;
 
-  const v7 = {
-    version: 7,
+  const v8 = {
+    version: 8,
     ...baseQuote,
     subtotalCents: subtotal,
+    discountBaseCents: subtotal,
+    promoCategoryScope: null,
     totalCents: total,
     variantLines: [variantLine],
     deliverySummary: {
@@ -576,26 +579,28 @@ void test('PersistedCheckoutQuoteV7 roundtrip with variant lines and delivery', 
     },
     inventoryAllocations: [{ productId: '1', reservedQuantity: 1, backorderedQuantity: 0 }],
   };
-  assert.equal(Value.Check(PersistedCheckoutQuoteV7, v7), true);
-  assert.deepEqual(parsePersistedCheckoutQuote(v7), v7);
-  assert.equal(v7.subtotalCents, subtotal);
-  assert.equal(v7.totalCents, total);
+  assert.equal(Value.Check(PersistedCheckoutQuoteV8, v8), true);
+  assert.deepEqual(parsePersistedCheckoutQuote(v8), v8);
+  assert.equal(v8.subtotalCents, subtotal);
+  assert.equal(v8.totalCents, total);
 });
 
-void test('v7 is the only version written and accepted', () => {
-  assert.equal(CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION, 7);
+void test('V8 is the only version written and accepted', () => {
+  assert.equal(CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION, 8);
 
-  const v7 = {
-    version: 7,
+  const v8 = {
+    version: 8,
     ...baseQuote,
+    discountBaseCents: baseQuote.subtotalCents,
+    promoCategoryScope: null,
     variantLines: [variantLine],
     deliverySummary: { mode: 'parcel', chargeCents: 0, weightGrams: 500, reason: 'ok' },
     inventoryAllocations: [{ productId: '1', reservedQuantity: 1, backorderedQuantity: 0 }],
   };
-  assert.doesNotThrow(() => parsePersistedCheckoutQuote(v7));
+  assert.doesNotThrow(() => parsePersistedCheckoutQuote(v8));
 
-  for (const staleVersion of [1, 2, 3, 4, 5, 6]) {
-    assert.throws(() => parsePersistedCheckoutQuote({ ...v7, version: staleVersion }));
+  for (const staleVersion of [1, 2, 3, 4, 5, 6, 7]) {
+    assert.throws(() => parsePersistedCheckoutQuote({ ...v8, version: staleVersion }));
   }
   assert.throws(() => parsePersistedCheckoutQuote({ version: 0, ...baseQuote }));
   assert.throws(() => parsePersistedCheckoutQuote(null));

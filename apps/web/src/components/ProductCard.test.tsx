@@ -131,6 +131,32 @@ describe('ProductCard', () => {
     expect(screen.queryByText('$99.99')).not.toBeInTheDocument();
   });
 
+  it('renders the server-resolved clearance badge only when active', () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <ProductCard
+          product={product({ hasActiveClearance: true })}
+          onAddToCart={vi.fn().mockResolvedValue(true)}
+          isCartAvailable={true}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Clearance')).toBeInTheDocument();
+
+    rerender(
+      <MemoryRouter>
+        <ProductCard
+          product={product({ hasActiveClearance: false })}
+          onAddToCart={vi.fn().mockResolvedValue(true)}
+          isCartAvailable={true}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText('Clearance')).not.toBeInTheDocument();
+  });
+
   it('links image and title to the product while leaving wishlist and cart actions separate', () => {
     renderCard();
 

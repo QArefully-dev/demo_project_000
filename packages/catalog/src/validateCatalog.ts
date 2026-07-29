@@ -218,6 +218,22 @@ const validateVariants = (product: CatalogProduct, allSkus: Set<string>): void =
       if (variant.compareAtPriceCents <= variant.priceCents)
         throw new Error(`Compare-at price must exceed price for variant ${variant.sku}`);
     }
+    if (variant.clearancePriceCents !== undefined) {
+      if (!isPositiveSafeInteger(variant.clearancePriceCents))
+        throw new Error(`Invalid clearance price for variant ${variant.sku}`);
+      if (variant.clearancePriceCents >= variant.priceCents)
+        throw new Error(`Clearance price must be below price for variant ${variant.sku}`);
+    }
+    if (variant.clearanceStartsAt !== undefined && !isUtcIsoInstant(variant.clearanceStartsAt))
+      throw new Error(`Invalid clearance start for variant ${variant.sku}`);
+    if (variant.clearanceEndsAt !== undefined && !isUtcIsoInstant(variant.clearanceEndsAt))
+      throw new Error(`Invalid clearance end for variant ${variant.sku}`);
+    if (
+      variant.clearanceStartsAt !== undefined &&
+      variant.clearanceEndsAt !== undefined &&
+      variant.clearanceStartsAt >= variant.clearanceEndsAt
+    )
+      throw new Error(`Clearance window must be ordered for variant ${variant.sku}`);
     if (typeof variant.backorderable !== 'boolean')
       throw new Error(`Invalid backorderable state for variant ${variant.sku}`);
     if (variant.backorderable && variant.backorderLeadDays !== undefined) {

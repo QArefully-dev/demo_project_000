@@ -1,10 +1,10 @@
 import type { Cart } from '@shop/contracts/cart';
 import {
   CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION,
-  type PersistedCheckoutQuoteV7,
+  type PersistedCheckoutQuoteV8,
 } from '@shop/contracts/payments';
 import { formatPostalAddress } from '@shop/contracts/address';
-import { calculateDiscount, type ValidPromo } from '../promos/promoService.js';
+import { calculateDiscount, resolvePromoScope, type ValidPromo } from '../promos/promoService.js';
 import type { PersistedCheckoutQuote } from '../payments/paymentRepository.js';
 import type { CheckoutParams, ResolvedCheckoutCommitments } from './checkoutTypes.js';
 import type { InventoryReservationAllocation } from '../inventory/inventoryTypes.js';
@@ -20,14 +20,17 @@ export function createCheckoutQuote(params: {
   createdAt: string;
   inventoryAllocations: readonly InventoryReservationAllocation[];
 }): PersistedCheckoutQuote {
+  const promoScope = params.promo
+    ? resolvePromoScope({ promo: params.promo, cart: params.cart })
+    : undefined;
   const discountCents = params.promo
     ? calculateDiscount({
         promo: params.promo,
-        discountableSubtotalCents: params.cart.discountableSubtotalCents,
+        discountableSubtotalCents: promoScope!.discountBaseCents,
       })
     : 0;
 
-  const variantLines: PersistedCheckoutQuoteV7['variantLines'] = params.cart.items.map((item) => {
+  const variantLines: PersistedCheckoutQuoteV8['variantLines'] = params.cart.items.map((item) => {
     const snap = item.variantSnap;
     const line = {
       productId: item.productId,
@@ -70,6 +73,8 @@ export function createCheckoutQuote(params: {
     userId: params.checkout.userId,
     promoCode: params.promo?.code ?? null,
     subtotalCents: params.cart.subtotalCents,
+    discountBaseCents: promoScope?.discountBaseCents ?? 0,
+    promoCategoryScope: params.promo?.categoryScope ?? null,
     discountCents,
     totalCents,
     lines: [],

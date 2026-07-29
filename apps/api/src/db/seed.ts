@@ -112,6 +112,71 @@ const PROMOS = [
   },
 ] as const;
 
+const SCOPED_PROMOS = [
+  {
+    code: 'GARDEN10',
+    discount_percent: 10,
+    min_item_count: 0,
+    active: 1,
+    kind: 'percent',
+    amount_cents: null,
+    min_subtotal_cents: null,
+    start_at: null,
+    end_at: null,
+    max_redemptions: null,
+    redemption_count: 0,
+    per_user_limit: null,
+    category_scope: 'Garden & Outdoors',
+  },
+  {
+    code: 'CLEANFIVE',
+    discount_percent: 0,
+    min_item_count: 0,
+    active: 1,
+    kind: 'fixed',
+    amount_cents: 500,
+    min_subtotal_cents: null,
+    start_at: null,
+    end_at: null,
+    max_redemptions: null,
+    redemption_count: 0,
+    per_user_limit: null,
+    category_scope: 'Household & Cleaning',
+  },
+] as const;
+
+/** Fixed clock makes active, expired, and future clearance fixtures deterministic on every reset. */
+const PRICING_PROMOTIONS_SEED_CLOCK = '2026-07-28T12:00:00.000Z';
+
+const atPricingPromotionsSeedOffset = (days: number): string => {
+  const instant = new Date(PRICING_PROMOTIONS_SEED_CLOCK);
+  instant.setUTCDate(instant.getUTCDate() + days);
+  return instant.toISOString();
+};
+
+const CLEARANCE_BY_SKU: Readonly<
+  Record<string, { priceCents: number; startsAt: string; endsAt: string }>
+> = {
+  // Active at the seed clock: Lawn Feed is a current clearance lot.
+  'GDN-1043-001': {
+    priceCents: 24_000,
+    startsAt: atPricingPromotionsSeedOffset(-7),
+    endsAt: atPricingPromotionsSeedOffset(7),
+  },
+  // Expired at the seed clock: Carpet Cleaner preserves an historical clearance fixture.
+  'HCL-1038-001': {
+    priceCents: 7_200,
+    startsAt: atPricingPromotionsSeedOffset(-21),
+    endsAt: atPricingPromotionsSeedOffset(-1),
+  },
+  // Future at the seed clock: Rapid-Set Cement exercises upcoming-clearance presentation.
+  'TCM-1049-001': {
+    priceCents: 12_000,
+    startsAt: atPricingPromotionsSeedOffset(1),
+    endsAt: atPricingPromotionsSeedOffset(14),
+  },
+};
+
 /**
  * Canonical trade delivery sites. Ids are fixed so a reset produces byte-identical rows and course
  * material can name a site by id. Exactly one row per user carries `is_default = 1`, which is what
@@ -310,15 +375,18 @@ export function seedDatabase(db: Database.Database): void {
 
     const upsertVariant = db.prepare(`
       INSERT INTO product_variants
-        (product_id, sku, label, weight_grams, price_cents, compare_at_price_cents, stock_count, backorderable, backorder_lead_days, delivery_class, active, sort_order, moq_sacks, created_at, updated_at)
+        (product_id, sku, label, weight_grams, price_cents, compare_at_price_cents, clearance_price_cents, clearance_starts_at, clearance_ends_at, stock_count, backorderable, backorder_lead_days, delivery_class, active, sort_order, moq_sacks, created_at, updated_at)
       VALUES
-        (@product_id, @sku, @label, @weight_grams, @price_cents, @compare_at_price_cents, @stock_count, @backorderable, @backorder_lead_days, @delivery_class, @active, @sort_order, @moq_sacks, @created_at, @updated_at)
+        (@product_id, @sku, @label, @weight_grams, @price_cents, @compare_at_price_cents, @clearance_price_cents, @clearance_starts_at, @clearance_ends_at, @stock_count, @backorderable, @backorder_lead_days, @delivery_class, @active, @sort_order, @moq_sacks, @created_at, @updated_at)
       ON CONFLICT(product_id, sort_order) DO UPDATE SET
         sku = excluded.sku,
         label = excluded.label,
         weight_grams = excluded.weight_grams,
         price_cents = excluded.price_cents,
         compare_at_price_cents = excluded.compare_at_price_cents,
+        clearance_price_cents = excluded.clearance_price_cents,
+        clearance_starts_at = excluded.clearance_starts_at,
+        clearance_ends_at = excluded.clearance_ends_at,
         stock_count = excluded.stock_count,
         backorderable = excluded.backorderable,
         backorder_lead_days = excluded.backorder_lead_days,
@@ -413,6 +481,7 @@ export function seedDatabase(db: Database.Database): void {
       });
 
       for (const variant of product.variants) {
+        const clearance = CLEARANCE_BY_SKU[variant.sku];
         upsertVariant.run({
           product_id: product.id,
           sku: variant.sku,
@@ -420,6 +489,9 @@ export function seedDatabase(db: Database.Database): void {
           weight_grams: variant.weightGrams,
           price_cents: variant.priceCents,
           compare_at_price_cents: variant.compareAtPriceCents ?? null,
+          clearance_price_cents: clearance?.priceCents ?? null,
+          clearance_starts_at: clearance?.startsAt ?? null,
+          clearance_ends_at: clearance?.endsAt ?? null,
           stock_count: variant.stockCount,
           backorderable: variant.backorderable ? 1 : 0,
           backorder_lead_days: variant.backorderable ? (variant.backorderLeadDays ?? null) : null,
@@ -506,6 +578,14 @@ export function seedDatabase(db: Database.Database): void {
         (@code, @discount_percent, @min_item_count, @active, @kind, @amount_cents, @min_subtotal_cents, @start_at, @end_at, @max_redemptions, @redemption_count, @per_user_limit)
     `);
     for (const promo of PROMOS) insertPromo.run(promo);
+
+    const insertScopedPromo = db.prepare(`
+      INSERT OR IGNORE INTO promo_codes
+        (code, discount_percent, min_item_count, active, kind, amount_cents, min_subtotal_cents, start_at, end_at, max_redemptions, redemption_count, per_user_limit, category_scope)
+      VALUES
+        (@code, @discount_percent, @min_item_count, @active, @kind, @amount_cents, @min_subtotal_cents, @start_at, @end_at, @max_redemptions, @redemption_count, @per_user_limit, @category_scope)
+    `);
+    for (const promo of SCOPED_PROMOS) insertScopedPromo.run(promo);
 
     const insertUser = db.prepare(`
       INSERT OR IGNORE INTO users (id, email, display_name, password_hash, password_salt, role)

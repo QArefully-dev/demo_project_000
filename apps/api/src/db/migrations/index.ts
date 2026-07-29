@@ -22,6 +22,7 @@ import { retireLegacyVariantsMigration } from './020_retire_legacy_variants.js';
 import { removePowderizerMigration } from './021_remove_powderizer.js';
 import { customBlendsMigration } from './022_custom_blends.js';
 import { tradeDeliveryAndCheckoutDepthMigration } from './023_trade_delivery_and_checkout_depth.js';
+import { pricingPromotionsMigration } from './024_pricing_promotions.js';
 
 export const migrations: readonly Migration[] = [
   initialMigration,
@@ -47,4 +48,5 @@ export const migrations: readonly Migration[] = [
   removePowderizerMigration,
   customBlendsMigration,
   tradeDeliveryAndCheckoutDepthMigration,
+  pricingPromotionsMigration,
 ];

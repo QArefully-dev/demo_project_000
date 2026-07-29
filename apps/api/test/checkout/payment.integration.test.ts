@@ -152,6 +152,23 @@ void test('atomic checkout orchestration', async (t) => {
     return addItem(carts, cartId, String(row.id));
   }
 
+  function freshGardenClearanceCart() {
+    resetDatabase(db);
+    seedDatabase(db);
+    const { cartId } = createCart(carts);
+    const variant = db
+      .prepare(
+        `SELECT v.id, p.id AS product_id
+         FROM product_variants v
+         JOIN products p ON p.id = v.product_id
+         WHERE v.sku = 'GDN-1043-001'`,
+      )
+      .get() as { id: number; product_id: number } | undefined;
+    if (!variant) throw new Error('Expected active Garden clearance variant');
+    addItem(carts, cartId, String(variant.id));
+    return { cartId, productId: variant.product_id };
+  }
+
   t.after(() => {
     closeDatabase(db);
     rmSync(dir, { recursive: true, force: true });
@@ -383,6 +400,111 @@ void test('atomic checkout orchestration', async (t) => {
     assert.equal(gateway.requests()[0]?.amountCents, expectedTotal);
     if (result.success) assert.equal(result.order.totalCents, expectedTotal);
   });
+
+  await t.test(
+    'checks out an active clearance scoped promo, persists its disclosure, and replays one key',
+    async () => {
+      const now = new Date('2026-07-28T12:00:00.000Z');
+      const { cartId } = freshGardenClearanceCart();
+      const gateway = spyGateway();
+      const params = {
+        ...payment(cartId, 'garden-clearance-scoped-replay', now),
+        promoCode: 'GARDEN10',
+      };
+
+      const completed = await checkout(params, { db, gateway: gateway.gateway, now: () => now });
+      assert.equal(completed.success, true, JSON.stringify(completed));
+      if (!completed.success) return;
+
+      const quoteJson = createPaymentRepository(db).load(params.idempotencyKey)?.quoteJson;
+      if (!quoteJson) throw new Error('Expected persisted scoped clearance quote');
+      const quote = parsePersistedCheckoutQuote(quoteJson);
+      assert.equal(quote.variantLines[0]?.unitPriceCents, 24_000);
+      assert.equal(quote.promoCode, 'GARDEN10');
+      assert.equal(quote.promoCategoryScope, 'Garden & Outdoors');
+      assert.equal(quote.discountBaseCents, quote.subtotalCents);
+      assert.equal(quote.deliverySummary.mode, 'freight');
+      assert.deepEqual(quote.deliverySlot, params.deliverySlot);
+      assert.equal(completed.order.promoApplied, 'GARDEN10');
+      assert.equal(completed.order.promoCategoryScope, 'Garden & Outdoors');
+      assert.equal(completed.order.discountBaseCents, quote.discountBaseCents);
+      assert.equal(completed.order.deliveryMode, 'freight');
+      assert.equal(completed.order.deliveryChargeCents, quote.deliverySummary.chargeCents);
+      assert.deepEqual(completed.order.deliverySlot, params.deliverySlot);
+
+      const persisted = db
+        .prepare(
+          `SELECT promo_category_scope, discount_base_cents, delivery_mode, delivery_charge_cents
+           FROM orders WHERE id = ?`,
+        )
+        .get(Number(completed.order.id)) as {
+        promo_category_scope: string;
+        discount_base_cents: number;
+        delivery_mode: string;
+        delivery_charge_cents: number;
+      };
+      assert.deepEqual(persisted, {
+        promo_category_scope: 'Garden & Outdoors',
+        discount_base_cents: quote.discountBaseCents,
+        delivery_mode: 'freight',
+        delivery_charge_cents: quote.deliverySummary.chargeCents,
+      });
+
+      assert.deepEqual(
+        await checkout(params, { db, gateway: gateway.gateway, now: () => now }),
+        completed,
+      );
+      assert.equal(gateway.calls(), 1);
+    },
+  );
+
+  await t.test(
+    'rejects a scoped promo after its cart category changes without held reservations',
+    async () => {
+      const now = new Date('2026-07-28T12:00:00.000Z');
+      const { cartId, productId } = freshGardenClearanceCart();
+      db.prepare("UPDATE products SET category = 'Building Materials' WHERE id = ?").run(productId);
+      const gateway = spyGateway();
+      const params = {
+        ...payment(cartId, 'garden-category-changed', now),
+        promoCode: 'GARDEN10',
+      };
+
+      const result = await checkout(params, { db, gateway: gateway.gateway, now: () => now });
+      assert.equal(result.success, false);
+      assert.equal(result.success === false && result.error, 'PROMO_INVALID');
+      assert.equal(result.success === false && result.promoErrorCode, 'CATEGORY_MISMATCH');
+      assert.equal(gateway.calls(), 0);
+      assert.equal(
+        (
+          db
+            .prepare(
+              'SELECT COUNT(*) AS count FROM inventory_reservations WHERE payment_idempotency_key = ?',
+            )
+            .get(params.idempotencyKey) as { count: number }
+        ).count,
+        0,
+      );
+      assert.equal(
+        (
+          db
+            .prepare(
+              'SELECT COUNT(*) AS count FROM promo_reservations WHERE payment_idempotency_key = ?',
+            )
+            .get(params.idempotencyKey) as { count: number }
+        ).count,
+        0,
+      );
+      assert.equal(
+        (
+          db
+            .prepare('SELECT COUNT(*) AS count FROM cart_reservations WHERE cart_id = ?')
+            .get(cartId) as { count: number }
+        ).count,
+        0,
+      );
+    },
+  );
 
   await t.test('locks the quote and promo reservation before the gateway wait', async () => {
     const cartId = freshCart();

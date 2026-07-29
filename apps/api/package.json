@@ -10,7 +10,7 @@
     "seed": "tsx src/db/run-seed.ts",
     "reset": "tsx src/db/run-reset.ts",
     "test": "npm run test:unit && npm run test:integration",
-    "test:unit": "tsx --test src/features/promos/promoService.test.ts src/features/inventory/inventoryRules.test.ts src/features/reviews/reviewRules.test.ts src/features/orders/orderLifecycle.test.ts src/db/powderCatalog.test.ts test/config.test.ts test/delivery/deliveryRules.test.ts test/delivery/deliverySlotRules.test.ts",
+    "test:unit": "tsx --test src/features/promos/promoService.test.ts src/features/pricing/pricingRules.test.ts src/features/pricing/clearanceRules.test.ts src/features/inventory/inventoryRules.test.ts src/features/reviews/reviewRules.test.ts src/features/orders/orderLifecycle.test.ts src/db/powderCatalog.test.ts test/config.test.ts test/delivery/deliveryRules.test.ts test/delivery/deliverySlotRules.test.ts",
     "test:integration": "tsx --test test/db/*.integration.test.ts test/catalog/*.integration.test.ts test/cart/*.integration.test.ts test/checkout/*.integration.test.ts test/inventory/*.integration.test.ts test/orders/*.integration.test.ts test/auth/*.integration.test.ts test/audit/*.integration.test.ts test/favourites/*.integration.test.ts test/http/*.integration.test.ts test/reviews/*.integration.test.ts test/returns/*.integration.test.ts test/tradeAccount/*.integration.test.ts test/delivery/*.integration.test.ts test/customBlend/*.integration.test.ts"
   },
   "dependencies": {

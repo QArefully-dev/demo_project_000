@@ -24,7 +24,9 @@ export interface CreateOrderParams {
   customerEmail: string;
   shippingAddress: string;
   promoApplied: string | null;
+  promoCategoryScope?: string | null;
   subtotalCents: number;
+  discountBaseCents?: number | null;
   discountCents: number;
   totalCents: number;
   userId: number | null;

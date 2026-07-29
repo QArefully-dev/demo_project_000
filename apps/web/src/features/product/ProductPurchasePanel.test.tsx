@@ -213,6 +213,33 @@ describe('ProductPurchasePanel', () => {
     expect(screen.queryByText('Sale')).not.toBeInTheDocument();
   });
 
+  it('renders an API-supplied clearance price, list price, and end date', async () => {
+    const user = userEvent.setup();
+    renderPanel({
+      product: product({
+        variants: [
+          {
+            ...defaultVariant,
+            clearance: {
+              priceCents: 9999,
+              perTonneCents: 399960,
+              startsAt: '2026-07-01T00:00:00.000Z',
+              endsAt: '2026-08-01T00:00:00.000Z',
+            },
+          },
+        ],
+      }),
+    });
+
+    await user.click(screen.getByRole('radio', { name: /25 kg Sack/i }));
+
+    expect(screen.getAllByText('Clearance price $99.99').length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('Clearance ends 1 Aug 2026').length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText('$129.99').some((element) => element.classList.contains('line-through')),
+    ).toBe(true);
+  });
+
   it('blocks below-MOQ sack quantities before sending an add request', async () => {
     const user = userEvent.setup();
     const { onAddToCart } = renderPanel();

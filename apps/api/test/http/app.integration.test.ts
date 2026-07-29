@@ -140,6 +140,7 @@ void test('app factory injects isolated databases without starting a server', as
   const promoBody: {
     valid: boolean;
     promoCode?: { code: string };
+    discountBaseCents?: number;
     discountCents?: number;
     totalCents?: number;
   } = promo.json();
@@ -149,6 +150,7 @@ void test('app factory injects isolated databases without starting a server', as
     minItemCount: 5,
     kind: 'percent',
   });
+  assert.equal(promoBody.discountBaseCents, freightCartBody.subtotalCents);
   assert.equal(promoBody.discountCents, Math.floor(freightCartBody.subtotalCents * 0.1));
   assert.equal(
     promoBody.totalCents,
@@ -214,4 +216,89 @@ void test('app factory injects isolated databases without starting a server', as
   assert.equal((await app.inject({ method: 'GET', url: '/missing' })).statusCode, 404);
   assert.equal(firstDb.open, true);
   assert.equal(secondDb.open, true);
+});
+
+void test('promo validation exposes a scoped discount base without discounting other categories', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-promo-route-scope-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
+  t.after(async () => {
+    await app.close();
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const cartResponse = await app.inject({ method: 'POST', url: '/api/cart' });
+  const { cartId } = cartResponse.json<{ cartId: string }>();
+  for (const productId of [27, 1]) {
+    const added = await app.inject({
+      method: 'POST',
+      url: `/api/cart/${cartId}/items`,
+      payload: { productId: String(productId), variantId: firstActiveVariantId(db, productId) },
+    });
+    assert.equal(added.statusCode, 200);
+  }
+  const cart = (await app.inject({ method: 'GET', url: `/api/cart/${cartId}` })).json<{
+    subtotalCents: number;
+    discountableSubtotalCents: number;
+    deliveryPreview?: { chargeCents: number };
+    items: Array<{ product: { category: string }; discountableTotalCents: number }>;
+  }>();
+  const gardenBaseCents = cart.items
+    .filter((item) => item.product.category === 'Garden & Outdoors')
+    .reduce((total, item) => total + item.discountableTotalCents, 0);
+  assert.ok(gardenBaseCents > 0);
+  assert.ok(gardenBaseCents < cart.discountableSubtotalCents);
+
+  const scoped = await app.inject({
+    method: 'POST',
+    url: '/api/promo/validate',
+    payload: { cartId, promoCode: 'GARDEN10' },
+  });
+  assert.equal(scoped.statusCode, 200);
+  const scopedBody = scoped.json<{
+    valid: boolean;
+    discountBaseCents: number;
+    discountCents: number;
+    totalCents: number;
+  }>();
+  assert.equal(scopedBody.valid, true);
+  assert.equal(scopedBody.discountBaseCents, gardenBaseCents);
+  assert.equal(scopedBody.discountCents, Math.floor(gardenBaseCents * 0.1));
+  assert.equal(
+    scopedBody.totalCents,
+    cart.subtotalCents - scopedBody.discountCents + (cart.deliveryPreview?.chargeCents ?? 0),
+  );
+
+  const mismatchCart = await app.inject({ method: 'POST', url: '/api/cart' });
+  const { cartId: mismatchCartId } = mismatchCart.json<{ cartId: string }>();
+  assert.equal(
+    (
+      await app.inject({
+        method: 'POST',
+        url: `/api/cart/${mismatchCartId}/items`,
+        payload: { productId: '1', variantId: firstActiveVariantId(db, 1) },
+      })
+    ).statusCode,
+    200,
+  );
+  const mismatch = await app.inject({
+    method: 'POST',
+    url: '/api/promo/validate',
+    payload: { cartId: mismatchCartId, promoCode: 'GARDEN10' },
+  });
+  assert.equal(mismatch.statusCode, 200);
+  assert.deepEqual(mismatch.json(), {
+    valid: false,
+    error: 'This promo code applies only to Garden & Outdoors products',
+    errorCode: 'CATEGORY_MISMATCH',
+  });
+
+  const missingCart = await app.inject({
+    method: 'POST',
+    url: '/api/promo/validate',
+    payload: { cartId: '00000000-0000-4000-8000-000000000000', promoCode: 'GARDEN10' },
+  });
+  assert.equal(missingCart.statusCode, 404);
 });

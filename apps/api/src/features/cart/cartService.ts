@@ -12,7 +12,13 @@ import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
 import type { InventoryService } from '../inventory/inventoryService.js';
-import { perTonneCents, resolveUnitPriceCents, validateMoq } from '../pricing/pricingRules.js';
+import {
+  nextTierProgress,
+  perTonneCents,
+  resolveUnitPriceCents,
+  validateMoq,
+} from '../pricing/pricingRules.js';
+import { resolveClearance } from '../pricing/clearanceRules.js';
 import { quoteCartDelivery } from '../delivery/deliveryRules.js';
 import {
   calculateCustomBlendLinePricing,
@@ -291,10 +297,10 @@ export function getCart(
   if (!repository.exists(cartId)) return undefined;
   const rows = repository.listLines(cartId);
   const variantIds = rows.map((row) => row.variant_id);
-  const availability = availabilityDependencies?.inventory.availableToSell(
-    variantIds,
-    availabilityDependencies.clock.now().toISOString(),
-  );
+  const now = availabilityDependencies?.clock.now();
+  const availability = availabilityDependencies
+    ? availabilityDependencies.inventory.availableToSell(variantIds, now!.toISOString())
+    : undefined;
   const availableByVariant = new Map(availability?.map((v) => [v.variantId, v.availableToSell]));
   const customBlends = new Map<number, CustomBlendSnapshot>();
   for (let index = 0; index < rows.length; index += 1) {
@@ -311,8 +317,20 @@ export function getCart(
     const productBase = cartLineRowToProductBase(row);
     const available = availableByVariant.get(row.variant_id) ?? 0;
     const variantBackorderable = row.variant_backorderable === 1;
+    const clearanceResolution = now
+      ? resolveClearance({
+          priceCents: row.price_cents,
+          clearancePriceCents: row.variant_clearance_price_cents ?? null,
+          clearanceStartsAt: row.variant_clearance_starts_at ?? null,
+          clearanceEndsAt: row.variant_clearance_ends_at ?? null,
+          weightGrams: row.variant_weight_grams,
+          now,
+        })
+      : { basePriceCents: row.price_cents, clearance: null };
+    const resolvedBasePriceCents =
+      clearanceResolution.clearance?.priceCents ?? clearanceResolution.basePriceCents;
     const unitPriceCents = resolveUnitPriceCents(
-      row.price_cents,
+      resolvedBasePriceCents,
       row.quantity,
       row.variant_weight_grams,
     );
@@ -325,6 +343,7 @@ export function getCart(
           discountableTotalCents: unitPriceCents * row.quantity,
           lineTotalCents: unitPriceCents * row.quantity,
         };
+    const tierProgress = nextTierProgress(row.quantity, row.variant_weight_grams);
     return {
       productId: String(row.product_id),
       configKey: row.config_key,
@@ -335,8 +354,10 @@ export function getCart(
         backorder_lead_days: row.variant_backorder_lead_days,
       }),
       variantSnap: toVariantSnap(row),
-      perTonneCents: perTonneCents(row.price_cents, row.variant_weight_grams),
+      perTonneCents: perTonneCents(resolvedBasePriceCents, row.variant_weight_grams),
       resolvedUnitPriceCents: unitPriceCents,
+      ...(tierProgress ? { nextTierProgress: tierProgress } : {}),
+      ...(clearanceResolution.clearance ? { clearance: clearanceResolution.clearance } : {}),
       quantity: row.quantity,
       ...pricing,
       ...(customBlend ? { customBlend } : {}),

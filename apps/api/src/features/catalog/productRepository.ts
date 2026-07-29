@@ -34,6 +34,7 @@ export interface ProductRow {
   details_json: string | null;
   default_variant_id: number | null;
   blend_source_variant_id: number | null;
+  has_active_clearance?: number;
 }
 
 export interface CustomerProductRow extends ProductRow {
@@ -50,6 +51,9 @@ export interface VariantRow {
   price_cents: number;
   moq_sacks: number;
   compare_at_price_cents: number | null;
+  clearance_price_cents: number | null;
+  clearance_starts_at: string | null;
+  clearance_ends_at: string | null;
   stock_count: number;
   backorderable: number;
   backorder_lead_days: number | null;
@@ -173,9 +177,25 @@ export function createProductRepository(db: Database.Database): ProductRepositor
       ).count;
       const items = db
         .prepare(
-          `SELECT ${customerColumns} FROM products p ${predicate.where} ${catalogOrderBy(normalized.sort)} LIMIT ? OFFSET ?`,
+          `SELECT ${customerColumns},
+             EXISTS (
+               SELECT 1 FROM product_variants pv
+               WHERE pv.product_id = p.id
+                 AND pv.active = 1
+                 AND pv.clearance_price_cents IS NOT NULL
+                 AND pv.clearance_price_cents > 0
+                 AND pv.clearance_price_cents < pv.price_cents
+                 AND pv.clearance_starts_at IS NOT NULL
+                 AND pv.clearance_ends_at IS NOT NULL
+                 AND julianday(pv.clearance_starts_at) < julianday(pv.clearance_ends_at)
+                 AND julianday(pv.clearance_starts_at) <= julianday(?)
+                 AND julianday(pv.clearance_ends_at) > julianday(?)
+             ) AS has_active_clearance
+           FROM products p ${predicate.where} ${catalogOrderBy(normalized.sort)} LIMIT ? OFFSET ?`,
         )
         .all(
+          at,
+          at,
           at,
           ...predicate.params,
           normalized.pageSize,

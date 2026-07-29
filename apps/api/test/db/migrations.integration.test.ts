@@ -43,12 +43,14 @@ const expectedVersions = [
   '021',
   '022',
   '023',
+  '024',
 ];
 
 /** Every migration up to but excluding `021`, i.e. the schema powderizer still existed in. */
 const prePowderizerRemoval = migrations.filter((migration) => migration.version < '021');
 const preCustomBlendsMigration = migrations.filter((migration) => migration.version < '022');
 const preCheckoutDepthMigration = migrations.filter((migration) => migration.version < '023');
+const prePricingPromotionsMigration = migrations.filter((migration) => migration.version < '024');
 
 function migrationVersions(db: Database.Database): string[] {
   return db
@@ -2503,5 +2505,134 @@ void test('v23 trade-record uniqueness is scoped to live rows so a retired name 
     () => insertEntity.run(2311, 'Northern Builders Ltd', 1),
     /UNIQUE constraint failed/,
   );
+  assert.equal((db.pragma('foreign_key_check') as unknown[]).length, 0);
+});
+
+void test('v24 adds nullable clearance, scoped-promo, and order disclosure columns', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-migrations-v24-pricing-promotions-'));
+  // `openDatabase` applies the current chain. Start below 024 so this test exercises the upgrade.
+  const db = new Database(join(directory, 'shop.db'));
+  db.pragma('foreign_keys = ON');
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  migrateDatabase(db, prePricingPromotionsMigration);
+  db.exec(`
+    INSERT INTO products
+      (id, name, description, price_cents, category, stock_count, slug, sales_count, created_at)
+    VALUES (2401, 'V24 material', 'Pre-v24 row', 12000, 'Garden & Outdoors', 4,
+            'v24-material', 0, '2026-07-28T12:00:00.000Z');
+    INSERT INTO product_variants
+      (product_id, sku, label, weight_grams, price_cents, stock_count, backorderable,
+       delivery_class, active, sort_order, moq_sacks, created_at, updated_at)
+    VALUES (2401, 'V24-2401-001', '25 kg Sack', 25000, 12000, 4, 0,
+            'freight', 1, 1, 4, '2026-07-28T12:00:00.000Z', '2026-07-28T12:00:00.000Z');
+    INSERT INTO promo_codes (code, discount_percent, min_item_count, active)
+    VALUES ('V24LEGACY', 10, 0, 1);
+    INSERT INTO orders
+      (id, customer_name, customer_email, shipping_address, subtotal_cents, total_cents)
+    VALUES (2401, 'V24 legacy buyer', 'v24-legacy@example.test', '24 Migration Lane', 12000, 12000);
+  `);
+
+  migrateDatabase(db);
+  assert.deepEqual(migrationVersions(db), expectedVersions);
+  for (const column of ['clearance_price_cents', 'clearance_starts_at', 'clearance_ends_at']) {
+    assert.ok(columnNames(db, 'product_variants').includes(column), `product_variants.${column}`);
+  }
+  assert.ok(columnNames(db, 'promo_codes').includes('category_scope'));
+  assert.ok(columnNames(db, 'orders').includes('promo_category_scope'));
+  assert.ok(columnNames(db, 'orders').includes('discount_base_cents'));
+
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT clearance_price_cents, clearance_starts_at, clearance_ends_at
+         FROM product_variants WHERE sku = 'V24-2401-001'`,
+      )
+      .get(),
+    { clearance_price_cents: null, clearance_starts_at: null, clearance_ends_at: null },
+  );
+  assert.deepEqual(
+    db.prepare("SELECT category_scope FROM promo_codes WHERE code = 'V24LEGACY'").get(),
+    { category_scope: null },
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT promo_category_scope, discount_base_cents FROM orders
+         WHERE id = 2401`,
+      )
+      .get(),
+    { promo_category_scope: null, discount_base_cents: null },
+  );
+
+  db.prepare(
+    `UPDATE product_variants
+     SET clearance_price_cents = ?, clearance_starts_at = ?, clearance_ends_at = ?
+     WHERE sku = 'V24-2401-001'`,
+  ).run(9000, '2026-07-27T12:00:00.000Z', '2026-08-04T12:00:00.000Z');
+  db.prepare(
+    "UPDATE promo_codes SET category_scope = 'Garden & Outdoors' WHERE code = 'V24LEGACY'",
+  ).run();
+  db.prepare(
+    `UPDATE orders SET promo_category_scope = 'Garden & Outdoors', discount_base_cents = 9000
+     WHERE id = 2401`,
+  ).run();
+  assert.throws(
+    () =>
+      db
+        .prepare("UPDATE promo_codes SET category_scope = 'Unknown' WHERE code = 'V24LEGACY'")
+        .run(),
+    /CHECK constraint failed/,
+  );
+  assert.throws(
+    () =>
+      db
+        .prepare('UPDATE product_variants SET clearance_price_cents = 0 WHERE sku = ?')
+        .run('V24-2401-001'),
+    /CHECK constraint failed/,
+  );
+  assert.throws(
+    () =>
+      db
+        .prepare('UPDATE product_variants SET clearance_price_cents = -1 WHERE sku = ?')
+        .run('V24-2401-001'),
+    /CHECK constraint failed/,
+  );
+  for (const [price, startsAt, endsAt] of [
+    [9000, null, null],
+    [9000, '2026-07-27T12:00:00.000Z', null],
+    [9000, null, '2026-08-04T12:00:00.000Z'],
+    [null, '2026-07-27T12:00:00.000Z', null],
+    [null, null, '2026-08-04T12:00:00.000Z'],
+    [null, '2026-07-27T12:00:00.000Z', '2026-08-04T12:00:00.000Z'],
+    [9000, '2026-08-04T12:00:00.000Z', '2026-07-27T12:00:00.000Z'],
+    [12000, '2026-07-27T12:00:00.000Z', '2026-08-04T12:00:00.000Z'],
+  ]) {
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            `UPDATE product_variants
+             SET clearance_price_cents = ?, clearance_starts_at = ?, clearance_ends_at = ?
+             WHERE sku = 'V24-2401-001'`,
+          )
+          .run(price, startsAt, endsAt),
+      /CHECK constraint failed/,
+    );
+  }
+  assert.throws(
+    () => db.prepare("UPDATE orders SET promo_category_scope = 'Unknown' WHERE id = 2401").run(),
+    /CHECK constraint failed/,
+  );
+  assert.throws(
+    () => db.prepare('UPDATE orders SET discount_base_cents = -1 WHERE id = 2401').run(),
+    /CHECK constraint failed/,
+  );
+
+  const pricingPromotions = migrations.find((migration) => migration.version === '024')!;
+  assert.doesNotThrow(() => pricingPromotions.up(db));
   assert.equal((db.pragma('foreign_key_check') as unknown[]).length, 0);
 });

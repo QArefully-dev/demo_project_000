@@ -4,6 +4,7 @@ import { MoneyCents, Uuid } from './common.js';
 import { Product } from './products.js';
 import { DeliveryClass, DeliverySummary } from './delivery.js';
 import { CartLineConfigKey, CustomBlendSnapshot } from './customBlends.js';
+import { ClearanceWindow, NextTierProgress } from './pricing.js';
 
 const SafePositiveInteger = Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER });
 const SafeNonNegativeInteger = Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER });
@@ -30,6 +31,9 @@ const CartLineFields = Type.Object(
     perTonneCents: MoneyCents,
     /** Current server-resolved pack price after the line quantity's tier discount. */
     resolvedUnitPriceCents: MoneyCents,
+    /** Omitted when this line already qualifies for the top tier. */
+    nextTierProgress: Type.Optional(NextTierProgress),
+    clearance: Type.Optional(ClearanceWindow),
     quantity: SafePositiveInteger,
     materialSubtotalCents: MoneyCents,
     blendingFeeCents: MoneyCents,

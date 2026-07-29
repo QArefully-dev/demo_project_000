@@ -469,7 +469,7 @@ void test('checkout depth: destination, billing, slot, and buyer reference', asy
   });
 
   await t.test(
-    'the persisted quote is v7 and the confirmation names slot and reference',
+    'the persisted quote is v8 and the confirmation names slot and reference',
     async () => {
       const cartId = freshCart();
       const key = '00000000-0000-4000-8000-000000000020';
@@ -483,7 +483,9 @@ void test('checkout depth: destination, billing, slot, and buyer reference', asy
         }
       ).quote_json;
       const quote = parsePersistedCheckoutQuote(quoteJson);
-      assert.equal(quote.version, 7);
+      assert.equal(quote.version, 8);
+      assert.equal(quote.discountBaseCents, 0);
+      assert.equal(quote.promoCategoryScope, null);
       assert.equal(quote.customer.shippingAddress, formatPostalAddress(testPostalAddress));
       assert.deepEqual(quote.customer.deliveryAddress, testPostalAddress);
       assert.equal(quote.purchaseOrderReference, 'PO-4417');

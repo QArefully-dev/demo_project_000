@@ -211,6 +211,21 @@ export const packSizesArticle = defineHelpArticle({
         },
       ],
     },
+    {
+      kind: 'section',
+      id: 'pack-sizes-pricing-promotions',
+      heading: 'Clearance pricing and promotions',
+      paragraphs: [
+        {
+          id: 'pack-sizes-pricing-clearance',
+          text: 'A clearance price is time-limited and is shown beside the ordinary list price when active. The clearance price becomes the starting price for the selected lot before any quantity-break tier is applied; an expired or upcoming clearance is not charged or shown as active.',
+        },
+        {
+          id: 'pack-sizes-pricing-promotions',
+          text: 'Some promotion codes apply only to one catalog category. When a code has a category scope, its item requirements and discount are calculated only from matching material lines. The checkout summary shows the eligible subtotal and category; blending fees are never discounted.',
+        },
+      ],
+    },
   ],
 });
 

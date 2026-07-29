@@ -24,6 +24,7 @@ import { createAuditWriter, type AuditWriter } from '../../src/features/audit/au
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
 import { perTonneCents, resolveUnitPriceCents } from '../../src/features/pricing/pricingRules.js';
+import { SACKS_PER_PALLET } from '@shop/contracts/pricing';
 
 function defaultVariantId(db: ReturnType<typeof openDatabase>, productId: number): string {
   const row = db
@@ -123,6 +124,95 @@ void test('cart transports server-resolved default and discounted-tier prices', 
   );
   assert.equal(cart?.items[0]?.lineTotalCents, unitPriceCents * quantity);
   assert.equal(cart?.subtotalCents, unitPriceCents * quantity);
+});
+
+void test('cart applies only active clearance as the common tier and per-tonne base', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-clearance-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const now = new Date('2026-07-28T12:00:00.000Z');
+  const carts = createCartRepository(db);
+  const inventory = createInventoryService({ repository: createInventoryRepository(db) });
+  const service = createCartService(carts, undefined, { inventory, clock: { now: () => now } });
+  const variant = db
+    .prepare(
+      `SELECT id, price_cents, weight_grams
+       FROM product_variants WHERE sku = 'GDN-1043-001'`,
+    )
+    .get() as { id: number; price_cents: number; weight_grams: number };
+  const quantity = Math.ceil(5_000_000 / variant.weight_grams);
+  const cartId = createCart(carts).cartId;
+  carts.addLineQuantity(cartId, String(variant.id), quantity);
+
+  const line = service.get(cartId)?.items[0];
+  const clearanceBaseCents = 24_000;
+  assert.deepEqual(line?.clearance, {
+    priceCents: clearanceBaseCents,
+    perTonneCents: perTonneCents(clearanceBaseCents, variant.weight_grams),
+    startsAt: '2026-07-21T12:00:00.000Z',
+    endsAt: '2026-08-04T12:00:00.000Z',
+  });
+  assert.equal(line?.perTonneCents, perTonneCents(clearanceBaseCents, variant.weight_grams));
+  assert.equal(
+    line?.resolvedUnitPriceCents,
+    resolveUnitPriceCents(clearanceBaseCents, quantity, variant.weight_grams),
+  );
+  assert.equal(line?.materialSubtotalCents, line?.resolvedUnitPriceCents * quantity);
+  assert.equal(line?.discountableTotalCents, line?.materialSubtotalCents);
+  assert.equal(line?.lineTotalCents, line?.materialSubtotalCents);
+
+  db.prepare(
+    `UPDATE product_variants
+     SET clearance_ends_at = '2026-07-28T12:00:00.000Z'
+     WHERE id = ?`,
+  ).run(variant.id);
+  const inactiveLine = service.get(cartId)?.items[0];
+  assert.equal(inactiveLine?.clearance, undefined);
+  assert.equal(
+    inactiveLine?.perTonneCents,
+    perTonneCents(variant.price_cents, variant.weight_grams),
+  );
+  assert.equal(
+    inactiveLine?.resolvedUnitPriceCents,
+    resolveUnitPriceCents(variant.price_cents, quantity, variant.weight_grams),
+  );
+});
+
+void test('cart publishes server-resolved next-tier progress through the top tier', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-next-tier-progress-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const carts = createCartRepository(db);
+  const variant = db
+    .prepare(
+      `SELECT id, weight_grams FROM product_variants
+       WHERE active = 1 AND weight_grams = 25000 ORDER BY id LIMIT 1`,
+    )
+    .get() as { id: number; weight_grams: number } | undefined;
+  if (!variant) throw new Error('Expected an active 25kg variant');
+  const cartId = createCart(carts).cartId;
+  carts.addLineQuantity(cartId, String(variant.id), SACKS_PER_PALLET - 1);
+
+  const oneSackBelow = getCart(carts, cartId)?.items[0]?.nextTierProgress;
+  assert.deepEqual(oneSackBelow, {
+    minTonnes: 1,
+    discountPct: 0,
+    sacksToNextTier: 1,
+    weightToNextTierGrams: variant.weight_grams,
+  });
+
+  carts.updateLine(cartId, String(variant.id), SACKS_PER_PALLET * 10);
+  assert.equal(getCart(carts, cartId)?.items[0]?.nextTierProgress, undefined);
 });
 
 void test('cart reads batch available-to-sell and ignores only expired prepared locks', (t) => {

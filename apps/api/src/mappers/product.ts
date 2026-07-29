@@ -8,6 +8,7 @@ import type {
 import type { BaseAvailability } from '@shop/contracts/products';
 import { TIER_LADDER } from '@shop/contracts/pricing';
 import { perTonneCents } from '../features/pricing/pricingRules.js';
+import { resolveClearance } from '../features/pricing/clearanceRules.js';
 import type {
   CustomerProductRow,
   ProductRow,
@@ -60,7 +61,15 @@ function computeBaseAvailability(
   return 'out_of_stock';
 }
 
-function mapVariant(v: VariantRow): CatalogVariant {
+function mapVariant(v: VariantRow, now: Date): CatalogVariant {
+  const { clearance } = resolveClearance({
+    priceCents: v.price_cents,
+    clearancePriceCents: v.clearance_price_cents,
+    clearanceStartsAt: v.clearance_starts_at,
+    clearanceEndsAt: v.clearance_ends_at,
+    weightGrams: v.weight_grams,
+    now,
+  });
   return {
     variantId: v.id,
     productId: v.product_id,
@@ -72,6 +81,7 @@ function mapVariant(v: VariantRow): CatalogVariant {
     perTonneCents: perTonneCents(v.price_cents, v.weight_grams),
     priceTiers: TIER_LADDER,
     ...(v.compare_at_price_cents !== null ? { compareAtPriceCents: v.compare_at_price_cents } : {}),
+    ...(clearance ? { clearance } : {}),
     stockCount: v.stock_count,
     backorderable: v.backorderable === 1,
     backorderLeadDays: v.backorderable === 1 ? (v.backorder_lead_days ?? null) : null,
@@ -102,6 +112,9 @@ export function toProductContract(row: ProductRow | CustomerProductRow): Product
     backorderLeadDays: backorderable ? (row.backorder_lead_days ?? null) : null,
     slug: row.slug ?? '',
     compareAtPriceCents: row.compare_at_price_cents ?? undefined,
+    ...('has_active_clearance' in row
+      ? { hasActiveClearance: row.has_active_clearance === 1 }
+      : {}),
     salesCount: row.sales_count ?? 0,
     createdAt: toUtcIsoInstant(row.created_at),
     available: row.active === 1 && (stock > 0 || backorderable),
@@ -116,6 +129,7 @@ export function toProductContract(row: ProductRow | CustomerProductRow): Product
 export function toProductWithVariantsContract(
   row: ProductRow | CustomerProductRow,
   variants: readonly VariantRow[],
+  now: Date,
 ): ProductWithVariants {
   const base = toProductContract(row);
   const categoryFacts = parseDetailsJson(row.details_json);
@@ -130,7 +144,7 @@ export function toProductWithVariantsContract(
     available:
       row.active === 1 &&
       (variantStock > 0 || activeVariantsForAvailable.some((v) => v.backorderable === 1)),
-    variants: variants.map(mapVariant),
+    variants: variants.map((variant) => mapVariant(variant, now)),
     defaultVariantId:
       row.default_variant_id ??
       variants.find((v) => v.sort_order === 1)?.id ??

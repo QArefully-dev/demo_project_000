@@ -93,6 +93,9 @@ export type CatalogVariant = {
   weightGrams: number;
   priceCents: number;
   compareAtPriceCents?: number;
+  clearancePriceCents?: number;
+  clearanceStartsAt?: string;
+  clearanceEndsAt?: string;
   stockCount: number;
   backorderable: boolean;
   backorderLeadDays?: number;
@@ -246,6 +249,9 @@ export const makeVariant = (
   sortOrder: number,
   opts?: {
     compareAtPriceCents?: number;
+    clearancePriceCents?: number;
+    clearanceStartsAt?: string;
+    clearanceEndsAt?: string;
     backorderable?: boolean;
     backorderLeadDays?: number;
     active?: boolean;
@@ -258,6 +264,9 @@ export const makeVariant = (
     weightGrams: sortOrder === 1 ? 25_000 : 1_000_000,
     priceCents: sortOrder === 1 ? sackPriceCents : sackPriceCents * 32,
     compareAtPriceCents: opts?.compareAtPriceCents,
+    clearancePriceCents: opts?.clearancePriceCents,
+    clearanceStartsAt: opts?.clearanceStartsAt,
+    clearanceEndsAt: opts?.clearanceEndsAt,
     stockCount,
     backorderable: opts?.backorderable ?? false,
     backorderLeadDays: opts?.backorderable ? (opts?.backorderLeadDays ?? undefined) : undefined,

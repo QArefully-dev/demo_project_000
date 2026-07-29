@@ -22,7 +22,7 @@ import { ComparisonSelectionError } from '../features/catalog/productComparison.
 
 export default function productsRoutes(app: FastifyInstance, { services }: AppContext): void {
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
-  const { products } = services;
+  const { products, clock } = services;
 
   typed.get(
     '/api/products/filter-options',
@@ -144,7 +144,7 @@ export default function productsRoutes(app: FastifyInstance, { services }: AppCo
         return;
       }
       const variants = products.listVariants(productId);
-      return toProductWithVariantsContract(product, variants);
+      return toProductWithVariantsContract(product, variants, clock.now());
     },
   );
 

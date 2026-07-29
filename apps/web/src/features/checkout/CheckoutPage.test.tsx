@@ -355,6 +355,140 @@ describe('CheckoutPage', { timeout: 20_000 }, () => {
     expect(screen.getByText('$9.99')).toBeInTheDocument();
   });
 
+  it('renders server-provided scoped promo details without recalculating totals', async () => {
+    const eligibleCart = {
+      ...cart,
+      items: [{ ...cart.items[0]!, quantity: 5, lineTotalCents: 5000 }],
+      subtotalCents: 5000,
+      totalItems: 5,
+    };
+    const { useCartContext } = await import('@/hooks/CartContext');
+    vi.mocked(useCartContext).mockReturnValue({
+      ...cartContext,
+      cart: eligibleCart,
+      cartId: eligibleCart.id,
+    });
+    vi.mocked(validatePromo).mockResolvedValue({
+      valid: true,
+      promoCode: {
+        code: 'AGG10',
+        discountPercent: 10,
+        minItemCount: 1,
+        kind: 'percent',
+        categoryScope: 'aggregates',
+      },
+      discountBaseCents: 3200,
+      discountCents: 320,
+      totalCents: 4879,
+    });
+    const user = userEvent.setup();
+    renderCheckout();
+
+    await user.type(screen.getByLabelText('Order promotion'), 'AGG10');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+
+    expect(await screen.findByText('Eligible subtotal (aggregates)')).toBeInTheDocument();
+    expect(screen.getByText('$32.00')).toBeInTheDocument();
+    expect(screen.getByText('Discount (AGG10 · aggregates)')).toBeInTheDocument();
+    expect(screen.getByText('$48.79')).toBeInTheDocument();
+  });
+
+  it('carries a clearance-priced catalog line into a scoped-promo checkout total', async () => {
+    const clearanceCart = {
+      ...cart,
+      items: [
+        {
+          ...cart.items[0]!,
+          product: {
+            ...cart.items[0]!.product,
+            name: 'Lawn Feed',
+            category: 'Garden & Outdoors',
+          },
+          variantSnap: {
+            ...cart.items[0]!.variantSnap!,
+            sku: 'GDN-1043-001',
+            label: '10 kg Bag',
+            weightGrams: 10_000,
+          },
+          resolvedUnitPriceCents: 2_400,
+          perTonneCents: 240_000,
+          quantity: 5,
+          materialSubtotalCents: 12_000,
+          discountableTotalCents: 12_000,
+          lineTotalCents: 12_000,
+          clearance: {
+            priceCents: 2_400,
+            perTonneCents: 240_000,
+            startsAt: '2026-07-21T12:00:00.000Z',
+            endsAt: '2026-08-04T12:00:00.000Z',
+          },
+        },
+      ],
+      subtotalCents: 12_000,
+      discountableSubtotalCents: 12_000,
+      totalItems: 5,
+    };
+    const { useCartContext } = await import('@/hooks/CartContext');
+    vi.mocked(useCartContext).mockReturnValue({
+      ...cartContext,
+      cart: clearanceCart,
+      cartId: clearanceCart.id,
+    });
+    vi.mocked(validatePromo).mockResolvedValue({
+      valid: true,
+      promoCode: {
+        code: 'GARDEN10',
+        discountPercent: 10,
+        minItemCount: 0,
+        kind: 'percent',
+        categoryScope: 'Garden & Outdoors',
+      },
+      discountBaseCents: 12_000,
+      discountCents: 1_200,
+      totalCents: 11_799,
+    });
+    const user = userEvent.setup();
+    renderCheckout();
+
+    expect(screen.getByText(/Resolved pack price: \$24.00/)).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Order promotion'), 'GARDEN10');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+
+    expect(await screen.findByText('Eligible subtotal (Garden & Outdoors)')).toBeInTheDocument();
+    expect(screen.getAllByText('$120.00')).toHaveLength(3);
+    expect(screen.getByText('Discount (GARDEN10 · Garden & Outdoors)')).toBeInTheDocument();
+    expect(screen.getByText('$117.99')).toBeInTheDocument();
+  });
+
+  it('renders a category mismatch promo error', async () => {
+    const eligibleCart = {
+      ...cart,
+      items: [{ ...cart.items[0]!, quantity: 5, lineTotalCents: 5000 }],
+      subtotalCents: 5000,
+      totalItems: 5,
+    };
+    const { useCartContext } = await import('@/hooks/CartContext');
+    vi.mocked(useCartContext).mockReturnValue({
+      ...cartContext,
+      cart: eligibleCart,
+      cartId: eligibleCart.id,
+    });
+    vi.mocked(validatePromo).mockResolvedValue({
+      valid: false,
+      error: 'Promo cannot be used',
+      errorCode: 'CATEGORY_MISMATCH',
+    });
+    const user = userEvent.setup();
+    renderCheckout();
+
+    await user.type(screen.getByLabelText('Order promotion'), 'AGG10');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+
+    expect(
+      await screen.findByText('This promo does not apply to any items in your cart.'),
+    ).toBeInTheDocument();
+  });
+
   it('gates each step on the previous one and keeps browser back in checkout flow', async () => {
     const user = userEvent.setup();
     renderCheckout();

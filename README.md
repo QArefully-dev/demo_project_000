@@ -81,7 +81,7 @@ Each checkout request includes an idempotency key. Retrying the same key with th
 - **100 products** across 6 categories: Sports Nutrition, Baking & Pantry, Drinks, Household & Cleaning, Garden & Outdoors, Trade & Creative Materials
 - **14 sale products** with compare-at prices
 - **3 users** (credentials below)
-- **7 promo codes** (details below)
+- **9 promo codes** (details below)
 
 Every product represents a real-world powder or dry powdered mixture. Food-grade products (Sports Nutrition, Baking & Pantry, Drinks) show ingredients, allergens, nutrition information, and serving sizes. Non-food products (Household & Cleaning, Garden & Outdoors, Trade & Creative Materials) are clearly marked "Not for consumption" and include handling and PPE guidance.
 
@@ -281,6 +281,18 @@ Refunds are simulated only — no real money, postage, carrier, or payment gatew
 | `EXPIRED10`| Percent| 10%   | Already expired — always rejected   |
 | `SOON10`  | Percent | 10%   | Not yet active — always rejected    |
 | `LIMITED5`| Percent | 5%    | Exhausted (0 redemptions left)      |
+| `GARDEN10`| Percent | 10%   | Garden & Outdoors material lines only |
+| `CLEANFIVE`| Fixed  | $5.00 | Household & Cleaning material lines only |
+
+### Clearance Fixtures
+
+`npm run reset` restores three clearance-window fixtures. Clearance pricing replaces a variant's list-price base before quantity tiers; any promotion then applies only to its eligible material subtotal. Blending fees remain outside every discount.
+
+- `GDN-1043-001` (Lawn Feed, 10 kg Bag): active at the fixture clock, $240.00
+- `HCL-1038-001` (Carpet Cleaner, 500 g Shaker): expired fixture, $72.00
+- `TCM-1049-001` (Rapid-Set Cement, 5 kg Tub): future fixture, $120.00
+
+Fixture windows are anchored to `2026-07-28T12:00:00.000Z`: GDN runs through `2026-08-04T12:00:00.000Z`, HCL ended on `2026-07-27T12:00:00.000Z`, and TCM starts on `2026-07-29T12:00:00.000Z`. Run `npm run reset` to restore these records; their active state is resolved from the server clock.
 
 ### Test Payment Cards
 

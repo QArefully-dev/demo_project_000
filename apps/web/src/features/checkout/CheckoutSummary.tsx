@@ -1,5 +1,6 @@
 import type { Cart } from '@shop/contracts/cart';
 import type { DeliverySlot } from '@shop/contracts/delivery';
+import type { PromoValidationErrorCode } from '@shop/contracts/promos';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDeliverySlot } from '@/features/orders/orderPresentation';
 import { Separator } from '@/components/ui/separator';
@@ -18,8 +19,11 @@ interface CheckoutSummaryProps {
   promoCode: string;
   appliedPromo: string | null;
   discountCents: number;
+  discountBaseCents: number | null;
+  promoCategoryScope: string | null;
   totalCents: number;
   promoError: string | null;
+  promoErrorCode: PromoValidationErrorCode | null;
   promoValidating: boolean;
   isPromoEligible: boolean;
   /** Chosen saved site label, or the head of the ad-hoc address. `null` until step 1 completes. */
@@ -41,8 +45,11 @@ export function CheckoutSummary({
   promoCode,
   appliedPromo,
   discountCents,
+  discountBaseCents,
+  promoCategoryScope,
   totalCents,
   promoError,
+  promoErrorCode,
   promoValidating,
   isPromoEligible,
   destinationSummary,
@@ -152,6 +159,7 @@ export function CheckoutSummary({
           promoCode={promoCode}
           appliedPromo={appliedPromo}
           error={promoError}
+          errorCode={promoErrorCode}
           validating={promoValidating}
           eligible={isPromoEligible}
           onChange={onPromoChange}
@@ -159,10 +167,25 @@ export function CheckoutSummary({
           onRemove={onRemovePromo}
         />
         {discountCents > 0 && (
-          <div className="flex items-center justify-between text-sm text-green-700">
-            <span>Discount{appliedPromo ? ` (${appliedPromo})` : ''}</span>
-            <span>−{formatMoney(discountCents)}</span>
-          </div>
+          <>
+            {promoCategoryScope && discountBaseCents !== null && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">
+                  Eligible subtotal ({promoCategoryScope})
+                </span>
+                <span>{formatMoney(discountBaseCents)}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between text-sm text-green-700">
+              <span>
+                Discount
+                {appliedPromo
+                  ? ` (${appliedPromo}${promoCategoryScope ? ` · ${promoCategoryScope}` : ''})`
+                  : ''}
+              </span>
+              <span>−{formatMoney(discountCents)}</span>
+            </div>
+          </>
         )}
         {deliveryPreview && (
           <>

@@ -192,4 +192,49 @@ describe('CartSheet', () => {
     expect(screen.queryByText('Blending fees')).not.toBeInTheDocument();
     expect(screen.queryByText('Material subtotal')).not.toBeInTheDocument();
   });
+
+  it('renders server-supplied next-tier progress one sack below the next break', async () => {
+    const user = userEvent.setup();
+
+    renderSheet({
+      ...twoBlendCart,
+      items: [
+        {
+          ...plainLine,
+          nextTierProgress: {
+            minTonnes: 5,
+            discountPct: 5,
+            sacksToNextTier: 1,
+            weightToNextTierGrams: 25_000,
+          },
+        },
+      ],
+      totalItems: 1,
+      subtotalCents: 1000,
+      discountableSubtotalCents: 1000,
+      blendingFeeTotalCents: 0,
+    });
+    await openSheet(user);
+
+    expect(await screen.findByLabelText('Next volume tier progress')).toHaveTextContent(
+      '1 sack to 5-tonne tier (5% off)',
+    );
+  });
+
+  it('omits next-tier progress when the server omits it at the top tier', async () => {
+    const user = userEvent.setup();
+
+    renderSheet({
+      ...twoBlendCart,
+      items: [plainLine],
+      totalItems: 1,
+      subtotalCents: 1000,
+      discountableSubtotalCents: 1000,
+      blendingFeeTotalCents: 0,
+    });
+    await openSheet(user);
+
+    expect(await screen.findByText('Resolved order subtotal')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Next volume tier progress')).not.toBeInTheDocument();
+  });
 });

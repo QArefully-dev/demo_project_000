@@ -122,6 +122,66 @@ void test('Custom Blend cart lines deduplicate, rehydrate, merge edits, and addr
   assert.equal(remaining.blendingFeeTotalCents, 0);
 });
 
+void test('Custom Blend applies active clearance to material only and preserves its flat fee', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-custom-blend-cart-clearance-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  const now = new Date('2026-07-28T12:00:00.000Z');
+  const app = await buildApp({ db, resetBaseUrl: 'http://web.test', clock: { now: () => now } });
+  t.after(async () => {
+    await app.close();
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const lots = db
+    .prepare(
+      `SELECT pv.id, pv.moq_sacks, pv.price_cents, pv.weight_grams
+       FROM product_variants pv
+       INNER JOIN products p ON p.id = pv.product_id
+       WHERE p.active = 1 AND pv.active = 1 AND pv.sort_order = 1 AND pv.weight_grams = 25000
+         AND p.mixing_group = (
+           SELECT p2.mixing_group
+           FROM product_variants pv2 INNER JOIN products p2 ON p2.id = pv2.product_id
+           WHERE p2.active = 1 AND pv2.active = 1 AND pv2.sort_order = 1 AND pv2.weight_grams = 25000
+             AND p2.mixing_group IS NOT NULL
+           GROUP BY p2.mixing_group HAVING COUNT(*) >= 2 ORDER BY p2.mixing_group LIMIT 1
+         )
+       ORDER BY pv.id LIMIT 2`,
+    )
+    .all() as Array<{ id: number; moq_sacks: number; price_cents: number; weight_grams: number }>;
+  const [base, ingredient] = lots;
+  if (!base || !ingredient) throw new Error('Expected compatible Custom Blend lots');
+  const clearancePriceCents = base.price_cents - 1;
+  db.prepare(
+    `UPDATE product_variants
+     SET clearance_price_cents = ?, clearance_starts_at = ?, clearance_ends_at = ?
+     WHERE id = ?`,
+  ).run(clearancePriceCents, '2026-07-28T00:00:00.000Z', '2026-07-29T00:00:00.000Z', base.id);
+
+  const cartId = Value.Parse(
+    CreateCartResponse,
+    (await app.inject({ method: 'POST', url: '/api/cart' })).json(),
+  ).cartId;
+  const response = await app.inject({
+    method: 'POST',
+    url: `/api/cart/${cartId}/custom-blends`,
+    payload: {
+      baseVariantId: base.id,
+      ingredients: [{ variantId: ingredient.id, percentage: 5 }],
+      quantity: base.moq_sacks,
+    },
+  });
+  assert.equal(response.statusCode, 200);
+  const line = Value.Parse(Cart, response.json()).items[0];
+  assert.equal(line?.clearance?.priceCents, clearancePriceCents);
+  assert.equal(line?.resolvedUnitPriceCents, clearancePriceCents);
+  assert.equal(line?.materialSubtotalCents, clearancePriceCents * base.moq_sacks);
+  assert.equal(line?.discountableTotalCents, line?.materialSubtotalCents);
+  assert.equal(line?.blendingFeeCents, 2500);
+  assert.equal(line?.lineTotalCents, line?.materialSubtotalCents + line?.blendingFeeCents);
+});
+
 void test('Custom Blend rejects retired persisted facts and reserved-cart edits', async (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-custom-blend-cart-invalid-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
