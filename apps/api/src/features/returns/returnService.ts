@@ -491,6 +491,14 @@ export function createReturnService(deps: ReturnServiceDeps): ReturnService {
           throw new ReturnDomainError(ReturnErrorCode.PAYMENT_NOT_REFUNDABLE);
         }
 
+        // Payment-level cap spans return and standalone admin refunds in this transaction.
+        if (
+          returnRepository.getPaymentRefundedCents(payment.id) + netRefundCents >
+          payment.amountCents
+        ) {
+          throw new ReturnDomainError(ReturnErrorCode.PAYMENT_NOT_REFUNDABLE);
+        }
+
         // Normalize: adjust gross/discount so gross - discount == net exactly
         if (grossSubtotalCents - discountShareCents !== netRefundCents) {
           const diff = grossSubtotalCents - discountShareCents - netRefundCents;

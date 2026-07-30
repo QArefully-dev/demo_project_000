@@ -1,6 +1,6 @@
 # Secondary Admin Coding Plan
 
-Status: proposed
+Status: in progress -> checkpoint `GR8` closed
 Source: `plans/demo_project_high_level_plan.md` -> `9. Secondary admin`
 Repository baseline: `expansion_002` @ `8285c62`
 
@@ -11,6 +11,24 @@ Repository baseline: `expansion_002` @ `8285c62`
 - execution root: all worker/reviewer/test/fix/convergence work inside worktree
 - integration: no auto merge/rebase/cherry-pick/copy-back/cleanup; user handles merge
 - completion reply: absolute worktree path + implementation branch + source branch + base revision
+
+## Runtime Checkpoint (2026-07-29)
+
+- resume: `P9` -> `R9` -> `GR9`
+- closed: `G0`, `GR1`, `G1`, `GR8`
+- worktree: `C:\Users\iwano\Desktop\repos\demo_project_000-worktrees\secondary-admin-g0-20260729`
+- implementation branch: `codex/secondary-admin-g0-20260729`
+- source: `expansion_002` @ `0bd0fc10bcf14b5239c0439aec390e781410a9e5`
+- branch `HEAD`: `6fbf913e2b9b32841151a2a6502d42feb4a3cf25`; later packet artifacts uncommitted
+- preserve: all worktree changes; no reset, clean, rebase, merge, cherry-pick, copy-back, or new worktree; user owns merge + commit consolidation
+- completed corrections:
+  - P3: migration `028_retired_variant_sort_order.ts` -> retired `sort_order=0` supports multiple rows; default variant promoted atomically
+  - P5: suspension/session creation race closed; suspended-session lookup rejected
+  - P6: return + admin refunds share payment-level cap
+  - P8: contract subpath exports added; no `@shop/catalog` runtime import; category/mixing-group literals exact
+- evidence: P1-P8 focused checks pass; `npm run reset` pass after P3; P8 contract subpath imports, contracts typecheck, root typecheck pass
+- execution note: `npm exec -w @shop/api -- tsx --test` requires package-relative paths (`src/...`); `@shop/contracts` has no Vitest config -> P8 uses allowed typecheck substitute
+- review note: `code-reviewer` unavailable in configured skill roots during R1-R8; reviewers ran equivalent critical/high checks; route later critical/high findings to fresh workers; no re-review fixes
 
 ## Objective
 

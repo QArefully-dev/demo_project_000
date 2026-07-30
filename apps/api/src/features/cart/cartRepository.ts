@@ -282,8 +282,9 @@ export function createCartRepository(db: Database.Database): CartRepository {
     findDefaultVariantId(productId) {
       const row = db
         .prepare(
-          `SELECT v.id FROM product_variants v
-           WHERE v.product_id = ? AND v.active = 1 AND v.sort_order = 1 LIMIT 1`,
+          `SELECT v.id FROM products p
+           INNER JOIN product_variants v ON v.id = p.default_variant_id
+           WHERE p.id = ? AND v.active = 1`,
         )
         .get(productId) as { id: number } | undefined;
       return row?.id;

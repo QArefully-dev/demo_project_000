@@ -46,7 +46,8 @@ export type SignupResult =
       ok: false;
       error: 'EMAIL_EXISTS' | 'WEAK_PASSWORD' | 'INVALID_DISPLAY_NAME' | 'INVALID_EMAIL';
     };
-export type LoginResult = { ok: true; userId: number; user: PublicUser } | { ok: false };
+export type LoginResult =
+  { ok: true; userId: number; user: PublicUser } | { ok: false; error?: 'AUTH_SUSPENDED' };
 export type ChangePasswordResult =
   'SUCCESS' | 'INVALID_CURRENT' | 'SAME_PASSWORD' | 'WEAK_PASSWORD';
 
@@ -134,6 +135,7 @@ export function createAuthService(dependencies: {
         !(await passwords.verify(password, storedPassword(user)))
       )
         return { ok: false };
+      if (user.suspendedAt !== null) return { ok: false, error: 'AUTH_SUSPENDED' };
       return { ok: true, userId: user.id, user: toPublicUser(user) };
     },
     async changePassword({

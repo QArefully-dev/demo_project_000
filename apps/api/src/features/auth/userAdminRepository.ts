@@ -1,0 +1,112 @@
+import type Database from 'better-sqlite3';
+import type { PublicUser } from '@shop/contracts/auth';
+
+export interface AdminUserRecord {
+  id: number;
+  email: string;
+  displayName: string;
+  role: PublicUser['role'];
+  suspendedAt: string | null;
+  suspensionReason: string | null;
+  suspendedByUserId: number | null;
+}
+
+interface AdminUserRow {
+  id: number;
+  email: string;
+  display_name: string;
+  role: PublicUser['role'];
+  suspended_at: string | null;
+  suspension_reason: string | null;
+  suspended_by_user_id: number | null;
+}
+
+export interface UserAdminRepository {
+  list(query?: { search?: string }): AdminUserRecord[];
+  get(userId: number): AdminUserRecord | undefined;
+  updateDisplayName(userId: number, displayName: string): AdminUserRecord | undefined;
+  setRole(userId: number, role: PublicUser['role']): AdminUserRecord | undefined;
+  suspend(input: {
+    userId: number;
+    reason: string;
+    suspendedAt: string;
+    suspendedByUserId: number;
+  }): AdminUserRecord | undefined;
+  reactivate(userId: number): AdminUserRecord | undefined;
+  countActiveAdmins(): number;
+}
+
+function toRecord(row: AdminUserRow): AdminUserRecord {
+  return {
+    id: row.id,
+    email: row.email,
+    displayName: row.display_name,
+    role: row.role,
+    suspendedAt: row.suspended_at,
+    suspensionReason: row.suspension_reason,
+    suspendedByUserId: row.suspended_by_user_id,
+  };
+}
+
+export function createUserAdminRepository(db: Database.Database): UserAdminRepository {
+  const select = `SELECT id, email, display_name, role, suspended_at, suspension_reason,
+    suspended_by_user_id FROM users`;
+  const get = (userId: number): AdminUserRecord | undefined => {
+    const row = db.prepare(`${select} WHERE id = ?`).get(userId) as AdminUserRow | undefined;
+    return row ? toRecord(row) : undefined;
+  };
+
+  return {
+    list(query = {}) {
+      const search = query.search?.trim();
+      const where = search
+        ? ' WHERE email LIKE ? COLLATE NOCASE OR display_name LIKE ? COLLATE NOCASE'
+        : '';
+      const values = search ? [`%${search}%`, `%${search}%`] : [];
+      return db
+        .prepare(`${select}${where} ORDER BY id ASC`)
+        .all(...values)
+        .map((row) => toRecord(row as AdminUserRow));
+    },
+    get,
+    updateDisplayName(userId, displayName) {
+      const result = db
+        .prepare('UPDATE users SET display_name = ? WHERE id = ?')
+        .run(displayName, userId);
+      return result.changes === 1 ? get(userId) : undefined;
+    },
+    setRole(userId, role) {
+      const result = db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, userId);
+      return result.changes === 1 ? get(userId) : undefined;
+    },
+    suspend({ userId, reason, suspendedAt, suspendedByUserId }) {
+      const result = db
+        .prepare(
+          `UPDATE users
+           SET suspended_at = ?, suspension_reason = ?, suspended_by_user_id = ?
+           WHERE id = ?`,
+        )
+        .run(suspendedAt, reason, suspendedByUserId, userId);
+      return result.changes === 1 ? get(userId) : undefined;
+    },
+    reactivate(userId) {
+      const result = db
+        .prepare(
+          `UPDATE users
+           SET suspended_at = NULL, suspension_reason = NULL, suspended_by_user_id = NULL
+           WHERE id = ?`,
+        )
+        .run(userId);
+      return result.changes === 1 ? get(userId) : undefined;
+    },
+    countActiveAdmins() {
+      return (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND suspended_at IS NULL",
+          )
+          .get() as { count: number }
+      ).count;
+    },
+  };
+}

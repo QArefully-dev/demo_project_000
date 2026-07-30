@@ -32,7 +32,7 @@ interface SessionRow {
 }
 
 export interface SessionRepository {
-  create(session: SessionRecord): void;
+  create(session: SessionRecord): boolean;
   findUser(token: string): (SessionRecord & { user: SessionUser }) | null;
   listByUser(userId: number): SessionRecord[];
   findByShortId(sessionShortId: string): SessionRecord | null;
@@ -58,18 +58,28 @@ function toRecord(row: SessionRow): SessionRecord {
 export function createSessionRepository(db: Database.Database): SessionRepository {
   return {
     create({ token, userId, createdAt, expiresAt, lastSeenAt, userAgent, ipAddressHash }) {
-      db.prepare(
-        `INSERT INTO sessions
-          (token, user_id, created_at, expires_at, last_seen_at, user_agent, ip_address_hash)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ).run(token, userId, createdAt, expiresAt, lastSeenAt, userAgent, ipAddressHash);
+      // Guarded insert, not a read-then-write: a suspension landing between the check and the
+      // insert must lose, so the live-user test happens inside the same statement.
+      return (
+        db
+          .prepare(
+            `INSERT INTO sessions
+              (token, user_id, created_at, expires_at, last_seen_at, user_agent, ip_address_hash)
+             SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (
+               SELECT 1 FROM users WHERE id = ? AND suspended_at IS NULL
+             )`,
+          )
+          .run(token, userId, createdAt, expiresAt, lastSeenAt, userAgent, ipAddressHash, userId)
+          .changes === 1
+      );
     },
     findUser(token) {
       const row = db
         .prepare(
           `SELECT s.token, s.user_id, s.created_at, s.expires_at, s.last_seen_at, s.user_agent,
                   s.ip_address_hash, u.email, u.display_name, u.role
-           FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.token = ?`,
+           FROM sessions s JOIN users u ON s.user_id = u.id
+           WHERE s.token = ? AND u.suspended_at IS NULL`,
         )
         .get(token) as SessionRow | undefined;
       if (!row || !row.email || !row.display_name || !row.role) return null;

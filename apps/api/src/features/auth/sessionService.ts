@@ -17,7 +17,7 @@ export interface SessionAuditDetails {
 }
 
 export interface SessionService {
-  create(userId: number, audit?: SessionAuditDetails): { token: string; expiresAt: Date };
+  create(userId: number, audit?: SessionAuditDetails): { token: string; expiresAt: Date } | null;
   destroy(token: string, context?: AuditContext): boolean;
   getUser(token: string): SessionUser | null;
   listForUser(userId: number, currentToken: string): SessionSummary[];
@@ -89,10 +89,12 @@ export function createSessionService(dependencies: {
         }
       }
       if (!token) throw new Error('Unable to generate a unique session identifier');
+      const sessionToken = token;
       const expiresAt = new Date(now.getTime() + SESSION_DURATION_MS);
+      let created = false;
       const create = () => {
-        dependencies.sessions.create({
-          token,
+        created = dependencies.sessions.create({
+          token: sessionToken,
           userId,
           createdAt: now.toISOString(),
           expiresAt: expiresAt.toISOString(),
@@ -100,7 +102,7 @@ export function createSessionService(dependencies: {
           userAgent: null,
           ipAddressHash: null,
         });
-        if (audit)
+        if (created && audit)
           dependencies.audit!.append({
             action: 'auth.session_created',
             userId,
@@ -110,7 +112,7 @@ export function createSessionService(dependencies: {
       };
       if (audit) runAudited(create);
       else create();
-      return { token, expiresAt };
+      return created ? { token: sessionToken, expiresAt } : null;
     },
     destroy(token, context) {
       let destroyed = false;

@@ -25,6 +25,8 @@ import { tradeDeliveryAndCheckoutDepthMigration } from './023_trade_delivery_and
 import { pricingPromotionsMigration } from './024_pricing_promotions.js';
 import { accountSelfServiceMigration } from './025_account_self_service.js';
 import { companyAccountsApprovalsMigration } from './026_company_accounts_approvals.js';
+import { adminSurfaceMigration } from './027_admin_surface.js';
+import { retiredVariantSortOrderMigration } from './028_retired_variant_sort_order.js';
 
 export const migrations: readonly Migration[] = [
   initialMigration,
@@ -53,4 +55,6 @@ export const migrations: readonly Migration[] = [
   pricingPromotionsMigration,
   accountSelfServiceMigration,
   companyAccountsApprovalsMigration,
+  adminSurfaceMigration,
+  retiredVariantSortOrderMigration,
 ];

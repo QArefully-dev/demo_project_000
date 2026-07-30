@@ -47,7 +47,9 @@ void test('account-depth migrations add self-service and company schema with enf
     migrateDatabase(db);
 
     assert.deepEqual(
-      migrations.slice(-2).map((migration) => migration.version),
+      migrations
+        .map((migration) => migration.version)
+        .filter((version) => version === '025' || version === '026'),
       ['025', '026'],
     );
     for (const table of [

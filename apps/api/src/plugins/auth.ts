@@ -13,8 +13,10 @@ export function createSession(
   reply: FastifyReply,
   userId: number,
   audit?: SessionAuditDetails,
-): string {
-  const { token, expiresAt } = sessions.create(userId, audit);
+): string | null {
+  const session = sessions.create(userId, audit);
+  if (!session) return null;
+  const { token, expiresAt } = session;
   reply.setCookie('sid', token, {
     httpOnly: true,
     sameSite: 'lax',

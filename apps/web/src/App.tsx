@@ -24,10 +24,18 @@ import { CustomBlendPage } from './features/customBlend/CustomBlendPage';
 import { OrderHistoryPage } from './features/orders/OrderHistoryPage';
 import { OrderDetailPage } from './features/orders/OrderDetailPage';
 import { AdminRoute } from './components/AdminRoute';
+import { AdminLayout } from './features/admin/AdminLayout';
+import { AdminIndexPage } from './features/admin/AdminIndexPage';
 import { AdminReviewModerationPage } from './features/admin/reviews';
 import { CompanyPage } from './features/company/CompanyPage';
 import { AcceptInvitePage } from './features/company/AcceptInvitePage';
 import { ApprovalsPage } from './features/approvals/ApprovalsPage';
+import { AdminProductsPage } from './features/admin/products/AdminProductsPage';
+import { AdminVariantsPage } from './features/admin/lots/AdminVariantsPage';
+import { AdminPromosPage } from './features/admin/promos/AdminPromosPage';
+import { AdminUsersPage } from './features/admin/users';
+import { AdminOrdersPage } from './features/admin/orders';
+import { AdminFeatureFlagsPage } from './features/admin/featureFlags';
 
 export default function App() {
   return (
@@ -103,13 +111,22 @@ export default function App() {
           }
         />
         <Route
-          path="/admin/reviews"
+          path="/admin"
           element={
             <AdminRoute>
-              <AdminReviewModerationPage />
+              <AdminLayout />
             </AdminRoute>
           }
-        />
+        >
+          <Route index element={<AdminIndexPage />} />
+          <Route path="products" element={<AdminProductsPage />} />
+          <Route path="variants" element={<AdminVariantsPage />} />
+          <Route path="promos" element={<AdminPromosPage />} />
+          <Route path="users" element={<AdminUsersPage />} />
+          <Route path="orders" element={<AdminOrdersPage />} />
+          <Route path="feature-flags" element={<AdminFeatureFlagsPage />} />
+          <Route path="reviews" element={<AdminReviewModerationPage />} />
+        </Route>
         <Route path="/mailbox" element={<MailboxPage />} />
         <Route path="/bag-designs" element={<BagDesignsPage />} />
         <Route path="/help" element={<HelpIndexPage />} />
