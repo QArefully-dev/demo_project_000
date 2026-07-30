@@ -1,6 +1,6 @@
 # Demo Project High-Level Plan
 
-Status: current product direction. Last refresh 2026-07-29 @ `88fca8a` (branch `materials_exchange_refactor`).
+Status: current product direction. Last refresh 2026-07-30 @ `6d7b07e` (branch `expansion_002`).
 
 ## Direction Change
 
@@ -10,7 +10,7 @@ Reason: original consumer-shop idea works but B2B bulk trade is more grounded in
 
 Pivot is additive, not rewrite. Reuse catalog/pricing/inventory/checkout/orders foundations. Reframe UI + rules toward trade buyer; retain production boundaries.
 
-Phase status: rebrand pass COMPLETE. Three passes landed and merged -> B2B rebrand, gap closure, catalog colour schemes and pigments. Expansion items landed since the pivot: Custom Blend (16), Checkout depth (4), Pricing and promotions (5). Current phase: expansion per `Future Expansion Order` below.
+Phase status: rebrand pass COMPLETE. Three passes landed and merged -> B2B rebrand, gap closure, catalog colour schemes and pigments. Expansion items landed since the pivot: Custom Blend (16), Checkout depth (4), Pricing and promotions (5), Account depth (7), Secondary admin (9). Current phase: expansion per `Future Expansion Order` below.
 
 ## Purpose
 
@@ -49,6 +49,8 @@ Extended familiar journeys:
 - track, cancel, or return order
 - write verified-purchase review
 - manage watchlist, trade profile, sessions, and notification preferences
+- export account data or delete the account
+- invite colleagues to a company account and approve orders over its threshold
 
 Avoid visible platform complexity:
 
@@ -77,11 +79,15 @@ Avoid visible platform complexity:
 - implemented packaging artwork: web-side resolver on category + facts -> food bag, stitched kraft sack, woven PP sack, rigid HDPE keg; deterministic per-category colour schemes and pigment accents; `/bag-designs` fixture page
 - implemented delivery: freight-only seeded lots with simulated freight charge at checkout; `deliveryClass` enum retains `parcel` unused; freight lead-time calculation and bookable delivery slots (`apps/api/src/features/delivery/`)
 - implemented trade accounts: saved delivery sites and billing entities with shared address normalisation and defaults (`apps/api/src/features/tradeAccount/`, `apps/web/src/features/account/`), consumed at checkout alongside a buyer PO/reference number recorded on the order
-- implemented integrity: ordered migrations through `024` (`sort_order < 1` variants retired in `020`; obsolete Custom Small Order schema physically removed in `021`; custom blend tables plus cart/order line rebuild in `022`; trade delivery sites, billing entities, and order delivery/billing detail in `023`; clearance, scoped promo, and order discount-base columns in `024`), append-only audit ledger, sanitized admin audit reads
-- seed: 100 deterministic products across 6 categories (Sports Nutrition 20, Baking & Pantry 20, Drinks 15, Household & Cleaning 15, Garden & Outdoors 15, Trade & Creative Materials 15), each carrying a nullable `mixingGroup` from a fixed set of eight (`food-grade`, `cleaning`, `garden-treatment`, `cementitious-materials`, `casting-materials`, `pigments`, `theatrical-effects`, `absorbents`) validated in `packages/catalog`, plus users, promotions including `GARDEN10` and `CLEANFIVE`, active/expired/future clearance fixtures, favourites, catalog metadata, curated bundles, and inventory/backorder scenarios
+- implemented account depth: session list with device/last-seen metadata and selective revocation, notification preferences, JSON data export, account deletion with tombstoned identity and order retention (`features/preferences/`, `features/accountExport/`, `features/accountDeletion/`)
+- implemented company accounts: company record -> membership roles (`owner`, `buyer`, `approver`, one active membership per user) -> tokenised email invites, plus a per-company `approvalThresholdCents` gate that defers checkout into an approval request; approver inbox and buyer request list at `/approvals` (`features/companyAccounts/`, `features/orderApprovals/`)
+- implemented secondary admin: `/admin` shell over product and lot/variant management, promotion and clearance-window administration, user suspension and role changes, paginated/filtered order list plus detail, standalone idempotent refunds on an immutable ledger, and feature-flag toggles; every mutation writes the audit ledger (`routes/admin*.ts`, `apps/web/src/features/admin/`)
+- implemented integrity: ordered migrations through `028` (`sort_order < 1` variants retired in `020`; obsolete Custom Small Order schema physically removed in `021`; custom blend tables plus cart/order line rebuild in `022`; trade delivery sites, billing entities, and order delivery/billing detail in `023`; clearance, scoped promo, and order discount-base columns in `024`; session metadata, preferences, deletion events in `025`; company accounts, memberships, invites, order approvals in `026`; user suspension, feature flags, immutable `admin_refunds` in `027`; retired variants share `sort_order 0` while live positions stay unique per product in `028`), append-only audit ledger, sanitized admin audit reads
+- seed: 100 deterministic products across 6 categories (Sports Nutrition 20, Baking & Pantry 20, Drinks 15, Household & Cleaning 15, Garden & Outdoors 15, Trade & Creative Materials 15), each carrying a nullable `mixingGroup` from a fixed set of eight (`food-grade`, `cleaning`, `garden-treatment`, `cementitious-materials`, `casting-materials`, `pigments`, `theatrical-effects`, `absorbents`) validated in `packages/catalog`, plus users, promotions including `GARDEN10` and `CLEANFIVE`, active/expired/future clearance fixtures, favourites, catalog metadata, curated bundles, inventory/backorder scenarios, company-account fixtures with an approval threshold, and one disabled `admin.example_flag`
 - tests: focused unit, contract, route, SQLite integration, React integration, and accessibility coverage; broad E2E coverage reserved for course
 - completed expansion records under `plans/old/`: `powder_shop_catalog_expansion_plan.md`, `inventory_coding_plan.md`, `returns_and_refunds_coding_plan.md`, `order_history_and_lifecycle_coding_plan.md`, `review_depth_coding_plan.md`, `materials_exchange_gap_closure_coding_plan.md`, `catalog_bag_colour_schemes_and_pigments_coding_plan.md`, `powderizer_removal_coding_plan.md`, `heavy_duty_sack_prototypes.html`
 - completed plan records for Custom Blend (16), Checkout depth (4), and Pricing and promotions (5) are not tracked; implementation truth is the code, migrations `022`-`024`, and commits `f63e9bf` / `b1957ba` / `b537512`
+- completed plan records under `plans/`: `account_depth_coding_plan.md` (7), `secondary_admin_coding_plan.md` (9); implementation truth is the code, migrations `025`-`028`, and commits `3c0d6d7` / `d922c4e`
 
 ## Hard Constraints
 
@@ -102,7 +108,7 @@ Avoid visible platform complexity:
 
 Grow through depth behind familiar store actions. Prefer modular monolith until distributed behavior serves named demo.
 
-Domain shape, as built: domains are directories under `apps/api/src/features/` (`catalog`, `pricing`, `promos`, `inventory`, `checkout`, `orders`, `payments`, `delivery`, `returns`, `reviews`, `auth`, `audit`, `cart`, `bundles`, `favourites`, `mailbox`, `passwordReset`, `customBlend`). Workspace packages stay limited to `contracts` (transport) and `catalog` (canonical static content). Promote a domain to its own workspace package only when a second consumer needs it; do not pre-split.
+Domain shape, as built: domains are directories under `apps/api/src/features/` (`catalog`, `pricing`, `promos`, `inventory`, `checkout`, `orders`, `payments`, `delivery`, `returns`, `reviews`, `auth`, `audit`, `cart`, `bundles`, `favourites`, `mailbox`, `passwordReset`, `customBlend`, `tradeAccount`, `preferences`, `accountExport`, `accountDeletion`, `companyAccounts`, `orderApprovals`, `featureFlags`). Workspace packages stay limited to `contracts` (transport) and `catalog` (canonical static content). Promote a domain to its own workspace package only when a second consumer needs it; do not pre-split.
 
 Each domain may contain:
 
@@ -151,18 +157,31 @@ Precursor B2B rebrand pass: COMPLETE. Brand/copy, sack/pallet unit model, `£/to
    - dropped (B2B pivot): gift cards, loyalty points
    - rejected, do not re-add: RFQ/persisted quotes, trade-account net-price tiering, login-to-see-price
 6. Review depth: completed
-7. Account depth: partial
-   - completed: session creation, expiry, logout, password-change invalidation, profile read, password change
+7. Account depth: completed
+   - landed 2026-07-30 (`3c0d6d7`), merged `f2ee665`
+   - schema: migration `025` adds session metadata, `user_preferences`, `account_deletion_events`; `026` adds company accounts, memberships, invites, order approvals
+   - completed earlier: session creation, expiry, logout, password-change invalidation, profile read, password change
    - completed via 4: trade delivery sites + billing entities (address model, account UI)
-   - remaining: session list and selective revocation, preferences, data export, account deletion
-   - added (B2B): company accounts with multi-user roles (buyer, approver) and order-approval threshold workflow
+   - completed: session list carrying user agent, hashed IP, and last-seen; selective revocation and revoke-others; notification preferences; JSON data export; account deletion that tombstones identity, cascades personal data, and retains orders
+   - completed (B2B): company accounts with `owner`/`buyer`/`approver` roles, tokenised email invites with pending/accepted/revoked/expired states, one active membership per user, and a per-company `approvalThresholdCents`
+   - completed: checkout defers over-threshold carts into an approval request instead of paying; approver decision unlocks a retry keyed to the same requester, and quote drift, rejection, or lease expiry (`APPROVAL_LEASE_MS`, 24 h) forces re-quote
+   - QA surface, live: revoking the current session vs. another device, deletion with live orders and approvals outstanding, export completeness after deletion of related rows, threshold at exactly the quote total, approval granted then cart edited -> total drift, approved request replayed by a different buyer, invite accepted after expiry or by a user already in another company
 8. Async behavior: future
    - remaining: local job queue, notifications, retry policy, captured webhooks, failure injection
    - added consumers (B2B): standing/repeat order scheduling
-9. Secondary admin: partial
-   - completed: review moderation API and UI; paginated, filtered, read-only audit API
-   - remaining: product, order, refund, user, and feature-flag management
-   - added (B2B): lot management
+9. Secondary admin: completed
+   - landed 2026-07-30 (`d922c4e`), merged `6d7b07e`
+   - schema: migration `027` adds user suspension columns, `feature_flags`, and an immutable `admin_refunds` ledger with update/delete triggers; `028` frees `sort_order` for retired variants
+   - completed earlier: review moderation API and UI; paginated, filtered, read-only audit API
+   - completed: product administration and lot/variant management (create, edit, reorder, retire) writing MOQ, pricing, and clearance through the same server rules as 5
+   - completed: promotion administration covering scope, scheduling, limits, and clearance windows
+   - completed: user administration -> role change, suspension with reason and actor, session invalidation on suspend
+   - completed: paginated and filtered admin order list plus order detail; orders stay read-only, lifecycle transitions keep their existing guards
+   - completed: standalone admin refunds, idempotency-keyed against a simulated processor, recorded immutably and never editable
+   - completed: feature-flag CRUD and toggles with a cached resolver (`featureFlagResolver.ts`); the seeded `admin.example_flag` has no consumer yet, so no product behavior is flag-gated
+   - constraint: admin stays behind the `admin` role and off the customer journey; every mutation writes an audit event
+   - QA surface, live: retiring a variant held in a cart, editing a promo mid-redemption, suspension revoking live sessions, duplicate refund idempotency key, refund exceeding captured amount, admin acting on another admin, flag toggle visible to a cached resolver
+   - remaining: wire a flag to real checkout behavior when a named demo needs it (see Agentic AI and QA Surface)
 10. Country localisation: future
     - region profiles: USA, Europe, China; configurable catalog, stock, currency, trading hours, time zones, language, formatting, and policy text
     - behavior: region-aware availability, order validation, seeded scenarios, and deterministic time-zone boundaries
@@ -212,24 +231,28 @@ Landed 4 constrains later work: checkout now resolves a delivery site, billing e
 
 Landed 5 constrains later work: pricing is server-resolved as clearance -> tier -> promo over the material subtotal only, and checkout/order snapshots are strict V8 carrying promo scope plus discount base. Items 12-14 must re-resolve price from the server on every cart add rather than trusting a stored line price (price-drift disclosure in 12 reads the resolved figure); 9 administration UI writes clearance windows and promo scope through the same rules; 10 currency work extends the existing minor-unit money path, never a parallel one.
 
+Landed 7 constrains later work: checkout can now end in a deferred approval rather than a paid order. Item 12 reorder must re-enter checkout expecting that outcome, and 8 scheduling for standing orders re-evaluates the threshold per run instead of inheriting one approval. Account deletion tombstones identity while retaining orders -> any later surface reading order history must tolerate a deleted buyer.
+
+Landed 9 constrains later work: administration is the single write path for lots, promos, clearance windows, users, refunds, and flags, and every mutation writes an audit event. Later items add admin screens to that shell rather than new operator surfaces, and 10 region configuration is administered there too. `featureFlagResolver` caches per key -> any flag consumer added later must invalidate on toggle.
+
 ### Sequencing Guidelines
 
 Readiness favors `partial` items with self-contained remaining slices over greenfield `future` subsystems.
 
 Recommended order:
 
-1. Parallel: Account depth (7, remaining session/preferences/export/deletion slices) and Secondary admin (9). Both extend existing subsystems (auth/session; moderation + audit API) with additive, mostly disjoint boundaries. Assign the shared user/session domain lane (account deletion, session revocation in 7 vs. user management in 9) to a single owner to avoid conflicting edits.
-2. Reorder chain (12 -> 13 -> 14), now unblocked with the money path settled. Build 12 first; 13 and 14 reuse its multi-line cart-add path.
-3. Then Async behavior (8), Country localisation (10). Back-in-stock (15) waits on 8.
+1. Reorder chain (12 -> 13 -> 14), unblocked with the money path settled. Build 12 first; 13 and 14 reuse its multi-line cart-add path.
+2. Then Async behavior (8), Country localisation (10). Back-in-stock (15) waits on 8.
 
-Custom Small Order retirement (11), Custom Blend (16), Checkout depth (4), and Pricing and promotions (5) are complete. 16 landed before 4, taking 11's freed nav slot and Custom Blend CSS; 4 then landed on the settled checkout path, and 5 closed the money path.
+Custom Small Order retirement (11), Custom Blend (16), Checkout depth (4), Pricing and promotions (5), Account depth (7), and Secondary admin (9) are complete. 16 landed before 4, taking 11's freed nav slot and Custom Blend CSS; 4 then landed on the settled checkout path, 5 closed the money path, and 7 + 9 landed in parallel with the shared user/session lane owned by 7.
 
 Parallelization rules:
 
-- Safe: 7 + 9 concurrently, with the shared user/session lane owned by one side only.
-- Resolved: 4 landed the delivery-site/address model itself rather than consuming it from 7. Remaining 7 work no longer blocks anything in 4. Company accounts + approver roles (7) still gate any later order-approval threshold at checkout.
+- Resolved: 7 + 9 ran concurrently as planned; the shared user/session lane stayed with 7 (deletion, revocation) while 9 took user role and suspension on top of it.
+- Resolved: 4 landed the delivery-site/address model itself rather than consuming it from 7.
 - Resolved: 4 and 5 were serialized on the server-side total path (freight charge, tier discounts, MOQ validation, blending-fee exclusion, rounding). Both are landed, so the money path is settled; later items consume server-resolved pricing rather than re-deriving it.
-- 10 is now unblocked by the money path (4 and 5 landed) but still touches currency, availability, and policy across nearly everything -> keep it after 7/9 and the reorder chain.
+- 10 is unblocked by the money path (4 and 5 landed) but still touches currency, availability, and policy across nearly everything -> keep it after the reorder chain.
+- 8 is the only remaining subsystem with a queued consumer already named (15, plus standing/repeat orders that must re-check the 7 approval threshold per run).
 
 ## Agentic AI and QA Surface
 
@@ -251,7 +274,10 @@ High-value scenarios:
 - webhook arrives twice or out of order
 - background notification retries after transient failure
 - role lacks permission for refund or moderation action
-- feature flag changes checkout behavior
+- cart total crosses a company approval threshold, then drifts after approval is granted
+- session revoked on one device while a request is in flight; suspension invalidates live sessions
+- admin retires a lot or edits a promo while a buyer holds it in cart
+- feature flag changes checkout behavior (flag infrastructure live in 9; no consumer wired yet)
 - migration must preserve existing seeded and user-created data
 - search, order, and notification state becomes eventually consistent
 
@@ -268,6 +294,7 @@ Unit scope:
 - promotion eligibility and discount calculation
 - order transition guards
 - inventory quantity and reservation rules
+- approval threshold evaluation and its drift, rejection, and lease-expiry outcomes
 
 Integration scope:
 
@@ -301,7 +328,7 @@ Keep suite focused, stable, fast, and obvious. Test only critical happy paths, i
 
 Target: 150k+ meaningful authored LOC. Report production and test LOC separately.
 
-Measured 2026-07-28 @ `ec37390` (tracked `apps/**` + `packages/**`, `*.ts|*.tsx|*.css|*.sql`, excluding `node_modules`, `dist`, `coverage`): production ~47.2k across 332 files; test ~32.5k across 144 files; total ~79.7k. Roughly 53% of target -> expansion items 7-10 and 12-15 carry remaining growth.
+Measured 2026-07-30 @ `6d7b07e` (tracked `apps/**` + `packages/**`, `*.ts|*.tsx|*.css|*.sql`, excluding `node_modules`, `dist`, `coverage`): production ~58.8k across 427 files; test ~39.7k across 184 files; total ~98.4k. Roughly 66% of target -> expansion items 8, 10, and 12-15 carry remaining growth.
 
 Suggested allocation:
 
