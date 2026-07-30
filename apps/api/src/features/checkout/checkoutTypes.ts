@@ -18,6 +18,8 @@ import type { ProductRepository } from '../catalog/productRepository.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
 import type { InventoryService } from '../inventory/inventoryService.js';
+import type { ApprovalService } from '../orderApprovals/approvalService.js';
+import type { CompanyService } from '../companyAccounts/companyService.js';
 
 export type CheckoutErrorCode =
   | 'CART_NOT_FOUND'
@@ -43,6 +45,10 @@ export type CheckoutErrorCode =
   | 'BILLING_ENTITY_INVALID'
   /** The submitted slot is no longer bookable against the lead time re-derived at preparation. */
   | 'DELIVERY_SLOT_UNAVAILABLE'
+  | 'PENDING_APPROVAL'
+  | 'APPROVAL_REJECTED'
+  | 'APPROVAL_EXPIRED'
+  | 'APPROVAL_TOTAL_DRIFT'
   | 'CHECKOUT_FAILED';
 
 export type CheckoutResult =
@@ -51,13 +57,21 @@ export type CheckoutResult =
       success: false;
       error: Exclude<
         CheckoutErrorCode,
-        'RESERVATION_EXPIRED' | 'INSUFFICIENT_STOCK' | 'DELIVERY_SLOT_UNAVAILABLE'
+        | 'RESERVATION_EXPIRED'
+        | 'INSUFFICIENT_STOCK'
+        | 'DELIVERY_SLOT_UNAVAILABLE'
+        | 'PENDING_APPROVAL'
+        | 'APPROVAL_REJECTED'
+        | 'APPROVAL_EXPIRED'
+        | 'APPROVAL_TOTAL_DRIFT'
       >;
       promoError?: string;
       promoErrorCode?: string;
     }
   | { success: false; error: 'RESERVATION_EXPIRED'; reservationExpiresAt: string }
   | { success: false; error: 'INSUFFICIENT_STOCK'; productIds: string[] }
+  | { success: false; error: 'PENDING_APPROVAL'; approvalRequestId: string }
+  | { success: false; error: 'APPROVAL_REJECTED' | 'APPROVAL_EXPIRED' | 'APPROVAL_TOTAL_DRIFT' }
   /** Carries the freshly derived earliest bookable date so the buyer can rebook without a round trip. */
   | { success: false; error: 'DELIVERY_SLOT_UNAVAILABLE'; earliestDate: DeliveryDate };
 
@@ -109,6 +123,9 @@ export interface CheckoutDependencies {
   products: ProductRepository;
   audit: AuditWriter;
   inventory: InventoryService;
+  /** Optional only during composition convergence; production checkout wires both services. */
+  approvals?: ApprovalService;
+  companies?: CompanyService;
   /** Resolves saved destinations and billing parties owned by the authenticated buyer. */
   tradeAccount: { sites: DeliverySiteService; billingEntities: BillingEntityService };
   /**

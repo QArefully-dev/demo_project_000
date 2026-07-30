@@ -18,3 +18,6 @@ export * from './reviews.js';
 export * from './inventory.js';
 export * from './returns.js';
 export * from './delivery.js';
+export * from './accountDepth.js';
+export * from './companyAccounts.js';
+export * from './orderApprovals.js';

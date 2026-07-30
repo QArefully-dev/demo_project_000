@@ -106,7 +106,11 @@ export function createPasswordResetService(dependencies: {
         if (new Date(current.expiresAt) <= new Date(now)) return 'EXPIRED';
         if (!dependencies.repository.consume(current.id, now)) return 'ALREADY_USED';
 
-        dependencies.repository.updatePassword(current.userId, passwordHash);
+        // The guarded update is the final deletion boundary. It prevents a reset that began
+        // before account deletion from restoring credentials after the tombstone commits.
+        if (!dependencies.repository.updatePassword(current.userId, passwordHash)) {
+          return 'INVALID_TOKEN';
+        }
         dependencies.repository.invalidateSessions(current.userId);
         if (requestId !== undefined) {
           if (!dependencies.audit) {

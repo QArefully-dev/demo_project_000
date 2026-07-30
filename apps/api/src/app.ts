@@ -99,6 +99,38 @@ import {
   createDeliverySlotService,
   type DeliverySlotService,
 } from './features/delivery/deliverySlotService.js';
+import accountSessionRoutes from './routes/accountSessions.js';
+import accountPreferencesRoutes from './routes/accountPreferences.js';
+import accountExportRoutes from './routes/accountExport.js';
+import accountDeletionRoutes from './routes/accountDeletion.js';
+import companyAccountRoutes from './routes/companyAccounts.js';
+import orderApprovalRoutes from './routes/orderApprovals.js';
+import { createPreferencesRepository } from './features/preferences/preferencesRepository.js';
+import {
+  createPreferencesService,
+  type PreferencesService,
+} from './features/preferences/preferencesService.js';
+import {
+  createDataExportService,
+  type DataExportService,
+} from './features/accountExport/dataExportService.js';
+import { createAccountDeletionRepository } from './features/accountDeletion/deletionRepository.js';
+import {
+  createAccountDeletionService,
+  type AccountDeletionService,
+} from './features/accountDeletion/deletionService.js';
+import { createCompanyRepository } from './features/companyAccounts/companyRepository.js';
+import { createCompanyMembershipRepository } from './features/companyAccounts/companyMembershipRepository.js';
+import { createCompanyInviteRepository } from './features/companyAccounts/companyInviteRepository.js';
+import {
+  createCompanyService,
+  type CompanyService,
+} from './features/companyAccounts/companyService.js';
+import { createApprovalRepository } from './features/orderApprovals/approvalRepository.js';
+import {
+  createApprovalService,
+  type ApprovalService,
+} from './features/orderApprovals/approvalService.js';
 
 /**
  * The buyer's saved trade records, grouped because they are always wired, injected, and consumed
@@ -138,6 +170,11 @@ export interface AppServices {
   customBlends: CustomBlendService;
   tradeAccount: TradeAccountServices;
   deliverySlots: DeliverySlotService;
+  preferences: PreferencesService;
+  dataExport: DataExportService;
+  accountDeletion: AccountDeletionService;
+  companyAccounts: CompanyService;
+  approvals: ApprovalService;
   clock: Clock;
 }
 
@@ -156,6 +193,19 @@ function createAppServices(dependencies: AppDependencies): AppServices {
   });
   const auditRepository = createAuditRepository(dependencies.db);
   const audit = createAuditWriter({ repository: auditRepository, clock });
+  const users = createUserRepository(dependencies.db);
+  const sessions = createSessionService({
+    sessions: createSessionRepository(dependencies.db),
+    clock,
+    unitOfWork,
+    audit,
+  });
+  const preferences = createPreferencesService({
+    repository: createPreferencesRepository(dependencies.db),
+    unitOfWork,
+    audit,
+    clock,
+  });
   // Hoisted: the slot service reads carts through the same cart service the routes use, so the
   // slot quote can never see a different view of a cart than the cart endpoints do.
   const cartService = createCartService(carts, { unitOfWork, audit }, { inventory, clock });
@@ -174,19 +224,51 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     }),
   };
   const deliverySlots = createDeliverySlotService({ cart: cartService, clock });
+  const companyAccounts = createCompanyService({
+    companies: createCompanyRepository(dependencies.db),
+    memberships: createCompanyMembershipRepository(dependencies.db),
+    invites: createCompanyInviteRepository(dependencies.db),
+    mailbox,
+    unitOfWork,
+    audit,
+    clock,
+    baseUrl: dependencies.resetBaseUrl,
+  });
+  const approvals = createApprovalService({
+    approvals: createApprovalRepository(dependencies.db),
+    companies: companyAccounts,
+    mailbox,
+    unitOfWork,
+    audit,
+    clock,
+  });
+  const dataExport = createDataExportService({
+    unitOfWork,
+    audit,
+    clock,
+    sessions,
+    orders,
+    favourites: createFavouritesRepository(dependencies.db),
+    deliverySites: createDeliverySiteRepository(dependencies.db),
+    billingEntities: createBillingEntityRepository(dependencies.db),
+    preferences,
+    mailbox,
+  });
+  const accountDeletion = createAccountDeletionService({
+    users,
+    repository: createAccountDeletionRepository(dependencies.db),
+    unitOfWork,
+    audit,
+    clock,
+  });
   return {
     auth: createAuthService({
-      users: createUserRepository(dependencies.db),
+      users,
       clock,
       unitOfWork,
       audit,
     }),
-    sessions: createSessionService({
-      sessions: createSessionRepository(dependencies.db),
-      clock,
-      unitOfWork,
-      audit,
-    }),
+    sessions,
     passwordReset: createPasswordResetService({
       repository: createPasswordResetRepository(dependencies.db),
       mailbox,
@@ -218,6 +300,8 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       products,
       audit,
       inventory,
+      approvals,
+      companies: companyAccounts,
       tradeAccount,
       deliverySlots,
     }),
@@ -255,6 +339,11 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     customBlends: createCustomBlendService(createCustomBlendRepository(dependencies.db)),
     tradeAccount,
     deliverySlots,
+    preferences,
+    dataExport,
+    accountDeletion,
+    companyAccounts,
+    approvals,
     clock,
     audit: createAuditReadService(auditRepository),
   };
@@ -310,6 +399,12 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(customBlendRoutes, context);
   await app.register(tradeAccountRoutes, context);
   await app.register(deliverySlotRoutes, context);
+  await app.register(accountSessionRoutes, context);
+  await app.register(accountPreferencesRoutes, context);
+  await app.register(accountExportRoutes, context);
+  await app.register(accountDeletionRoutes, context);
+  await app.register(companyAccountRoutes, context);
+  await app.register(orderApprovalRoutes, context);
 
   return app;
 }

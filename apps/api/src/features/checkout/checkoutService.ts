@@ -13,7 +13,13 @@ import { toBillingEntitySnapshot } from '../tradeAccount/billingEntityRepository
 import { normalizeCustomBlendSpec } from '../customBlend/customBlendRules.js';
 import { validateCard, type ValidCard } from '../payments/cardValidation.js';
 import { createSafeFingerprint, type PaymentRecord } from '../payments/paymentRepository.js';
-import { validatePromo } from '../promos/promoService.js';
+import {
+  calculateDiscount,
+  resolvePromoScope,
+  validatePromo,
+  type PromoValidation,
+} from '../promos/promoService.js';
+import { quoteCartDelivery } from '../delivery/deliveryRules.js';
 import { createCheckoutQuote } from './checkoutQuote.js';
 import { finalizeAuthorizedCheckout } from './checkoutFinalizer.js';
 import { InventoryError } from '../inventory/inventoryTypes.js';
@@ -44,6 +50,7 @@ function preGatewayFailureCode(result: CheckoutResult): PreGatewayFailureCode {
       case 'CART_NOT_FOUND':
       case 'CART_EMPTY':
       case 'PROMO_INVALID':
+      case 'PENDING_APPROVAL':
       case 'CHECKOUT_FAILED':
         return result.error;
     }
@@ -74,6 +81,28 @@ function replay(
   if (payment.status === 'declined') return { success: false, error: 'DECLINED' };
   if (payment.status === 'timed_out') return { success: false, error: 'TIMEOUT' };
   return { success: false, error: 'CHECKOUT_FAILED' };
+}
+
+function isPendingApprovalPayment(payment: PaymentRecord): boolean {
+  if (payment.status !== 'failed_pre_gateway' || !payment.responseJson) return false;
+  try {
+    const result = JSON.parse(payment.responseJson) as { success?: unknown; error?: unknown };
+    return result.success === false && result.error === 'PENDING_APPROVAL';
+  } catch {
+    return false;
+  }
+}
+
+function quoteTotalBeforeReservation(cart: Cart, promo: PromoValidation | undefined): number {
+  const validPromo = promo && promo.valid ? promo.promoCode : undefined;
+  const promoScope = validPromo ? resolvePromoScope({ promo: validPromo, cart }) : undefined;
+  const discountCents = validPromo
+    ? calculateDiscount({
+        promo: validPromo,
+        discountableSubtotalCents: promoScope!.discountBaseCents,
+      })
+    : 0;
+  return cart.subtotalCents - discountCents + quoteCartDelivery(cart).chargeCents;
 }
 
 /**
@@ -160,15 +189,22 @@ function prepare(
   const fingerprint = createSafeFingerprint(params, card);
   expirePreparedReservations(dependencies);
   const existing = dependencies.payments.load(params.idempotencyKey);
-  if (existing) return replay(existing, fingerprint, dependencies);
+  const approvalRetry = existing !== undefined && isPendingApprovalPayment(existing);
+  if (existing) {
+    if (existing.fingerprint !== fingerprint)
+      return { success: false, error: 'IDEMPOTENT_CONFLICT' };
+    if (!approvalRetry) return replay(existing, fingerprint, dependencies);
+  }
   return dependencies.unitOfWork.run(() => {
-    const reservation = dependencies.payments.reservePreGateway({
-      idempotencyKey: params.idempotencyKey,
-      fingerprint,
-      card,
-      createdAt: dependencies.clock.now().toISOString(),
-    });
-    if (!reservation.reserved) return replay(reservation.payment, fingerprint, dependencies);
+    if (!approvalRetry) {
+      const reservation = dependencies.payments.reservePreGateway({
+        idempotencyKey: params.idempotencyKey,
+        fingerprint,
+        card,
+        createdAt: dependencies.clock.now().toISOString(),
+      });
+      if (!reservation.reserved) return replay(reservation.payment, fingerprint, dependencies);
+    }
     const cart = getCart(dependencies.carts, params.cartId, {
       inventory: dependencies.inventory,
       clock: dependencies.clock,
@@ -242,6 +278,64 @@ function prepare(
         dependencies,
       );
     const validPromo = promo?.valid ? promo.promoCode : undefined;
+    const approval = dependencies.approvals?.evaluate({
+      userId: params.userId,
+      cartId: params.cartId,
+      quoteTotalCents: quoteTotalBeforeReservation(cart, promo),
+      resolvedCommitments: commitments.resolved,
+      idempotencyKey: params.idempotencyKey,
+      context: params.auditContext,
+    });
+    if (approval?.gate === 'defer')
+      return failPreparation(
+        params.idempotencyKey,
+        {
+          success: false,
+          error: 'PENDING_APPROVAL',
+          approvalRequestId: approval.approvalRequestId,
+        },
+        params.auditContext,
+        dependencies,
+      );
+    if (approval?.gate === 'rejected')
+      return failPreparation(
+        params.idempotencyKey,
+        { success: false, error: 'APPROVAL_REJECTED' },
+        params.auditContext,
+        dependencies,
+      );
+    if (approval?.gate === 'expired')
+      return failPreparation(
+        params.idempotencyKey,
+        { success: false, error: 'APPROVAL_EXPIRED' },
+        params.auditContext,
+        dependencies,
+      );
+    if (approval?.gate === 'total-drift')
+      return failPreparation(
+        params.idempotencyKey,
+        { success: false, error: 'APPROVAL_TOTAL_DRIFT' },
+        params.auditContext,
+        dependencies,
+      );
+    if (approval?.gate === 'requester-mismatch')
+      return { success: false, error: 'CHECKOUT_FAILED' };
+    if (approvalRetry) {
+      if (approval?.gate !== 'approved-retry') return { success: false, error: 'CHECKOUT_FAILED' };
+      if (
+        !dependencies.payments.transition({
+          idempotencyKey: params.idempotencyKey,
+          expectedStatus: 'failed_pre_gateway',
+          nextStatus: 'prepared',
+          updatedAt: dependencies.clock.now().toISOString(),
+        })
+      ) {
+        const current = dependencies.payments.load(params.idempotencyKey);
+        return current
+          ? replay(current, fingerprint, dependencies)
+          : { success: false, error: 'CHECKOUT_FAILED' };
+      }
+    }
     const createdAt = dependencies.clock.now().toISOString();
     if (!dependencies.carts.reserve(params.cartId, params.idempotencyKey, createdAt)) {
       return failPreparation(

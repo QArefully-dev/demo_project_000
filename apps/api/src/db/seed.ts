@@ -4,11 +4,15 @@ import type Database from 'better-sqlite3';
 import { catalogProductSpecifications } from '../features/catalog/catalogSpecifications.js';
 import { seedOrderScenarios } from './orderSeedScenarios.js';
 import { seedReviewScenarios } from './reviewSeedScenarios.js';
+import { seedCompanyAccounts } from './companyAccountsSeed.js';
 
 const USERS = [
   { id: 1, email: 'alice@example.com', display_name: 'Alice', role: 'customer' },
   { id: 2, email: 'bob@example.com', display_name: 'Bob', role: 'customer' },
   { id: 3, email: 'admin@example.com', display_name: 'Admin', role: 'admin' },
+  { id: 4, email: 'acme@example.com', display_name: 'Acme Owner', role: 'customer' },
+  { id: 5, email: 'buyer@example.com', display_name: 'Acme Buyer', role: 'customer' },
+  { id: 6, email: 'approver@example.com', display_name: 'Acme Approver', role: 'customer' },
 ] as const;
 
 const PROMOS = [
@@ -594,6 +598,7 @@ export function seedDatabase(db: Database.Database): void {
     for (const user of USERS) {
       insertUser.run({ ...user, password_hash: seededPassword(user.email), password_salt: '' });
     }
+    seedCompanyAccounts(db);
 
     // Trade-account records are insert-only on a fixed id, so a buyer who renames, retires, or
     // re-points the default of a seeded row keeps that change across later `npm run seed` calls.

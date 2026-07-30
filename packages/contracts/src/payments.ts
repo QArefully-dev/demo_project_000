@@ -14,6 +14,7 @@ import { DeliveryClass, DeliveryDate, DeliverySlot, DeliverySummary } from './de
 import { CustomBlendSnapshot } from './customBlends.js';
 import { PostalAddress } from './address.js';
 import { BillingEntityInput, BillingEntitySnapshot } from './tradeAccount.js';
+import { PendingApprovalResult } from './orderApprovals.js';
 
 /**
  * Where the consignment goes. Discriminated on `kind`: a `saved` selection carries only an
@@ -71,6 +72,15 @@ export const PaymentErrorResponse = Type.Object({
 });
 export type PaymentErrorResponse = Static<typeof PaymentErrorResponse>;
 
+const PaymentConflictFallbackError = Type.String({
+  minLength: 1,
+  maxLength: 500,
+  // Detail-bearing conflict codes must select their dedicated schema. Generic legacy messages
+  // remain valid, but cannot make a required detail field optional through the catch-all member.
+  pattern:
+    '^(?!(?:RESERVATION_EXPIRED|INSUFFICIENT_STOCK|DELIVERY_SLOT_UNAVAILABLE|PENDING_APPROVAL|APPROVAL_REJECTED|APPROVAL_EXPIRED|APPROVAL_TOTAL_DRIFT|CUSTOM_BLEND_INVALID)$).+$',
+});
+
 export const PaymentConflictResponse = Type.Union([
   Type.Object(
     {
@@ -93,7 +103,18 @@ export const PaymentConflictResponse = Type.Union([
     },
     { additionalProperties: false },
   ),
-  Type.Object({ error: Type.String({ minLength: 1, maxLength: 500 }) }),
+  Type.Object(
+    {
+      error: Type.Literal('PENDING_APPROVAL'),
+      approvalRequestId: PositiveIntegerString,
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object({ error: Type.Literal('APPROVAL_REJECTED') }, { additionalProperties: false }),
+  Type.Object({ error: Type.Literal('APPROVAL_EXPIRED') }, { additionalProperties: false }),
+  Type.Object({ error: Type.Literal('APPROVAL_TOTAL_DRIFT') }, { additionalProperties: false }),
+  Type.Object({ error: Type.Literal('CUSTOM_BLEND_INVALID') }, { additionalProperties: false }),
+  Type.Object({ error: PaymentConflictFallbackError }),
 ]);
 export type PaymentConflictResponse = Static<typeof PaymentConflictResponse>;
 
@@ -217,3 +238,98 @@ export function parsePersistedCheckoutQuote(value: unknown): PersistedCheckoutQu
 /** Successful checkout response returned by the payment endpoint. */
 export const PaymentSuccessResponse = PlaceOrderResponse;
 export type PaymentSuccessResponse = Static<typeof PaymentSuccessResponse>;
+
+/** Shared checkout result shape. API routes still map success to the historic raw order response. */
+export const CheckoutErrorCode = Type.Union([
+  Type.Literal('CART_NOT_FOUND'),
+  Type.Literal('CART_EMPTY'),
+  Type.Literal('PROMO_INVALID'),
+  Type.Literal('CARD_INVALID'),
+  Type.Literal('DECLINED'),
+  Type.Literal('TIMEOUT'),
+  Type.Literal('IDEMPOTENT_CONFLICT'),
+  Type.Literal('IDEMPOTENT_IN_PROGRESS'),
+  Type.Literal('RESERVATION_EXPIRED'),
+  Type.Literal('INSUFFICIENT_STOCK'),
+  Type.Literal('BELOW_MOQ'),
+  Type.Literal('CUSTOM_BLEND_INVALID'),
+  Type.Literal('DELIVERY_SITE_NOT_FOUND'),
+  Type.Literal('BILLING_ENTITY_INVALID'),
+  Type.Literal('DELIVERY_SLOT_UNAVAILABLE'),
+  Type.Literal('CHECKOUT_FAILED'),
+  Type.Literal('PENDING_APPROVAL'),
+  Type.Literal('APPROVAL_REJECTED'),
+  Type.Literal('APPROVAL_EXPIRED'),
+  Type.Literal('APPROVAL_TOTAL_DRIFT'),
+]);
+export type CheckoutErrorCode = Static<typeof CheckoutErrorCode>;
+
+const CheckoutGenericErrorCode = Type.Union([
+  Type.Literal('CART_NOT_FOUND'),
+  Type.Literal('CART_EMPTY'),
+  Type.Literal('PROMO_INVALID'),
+  Type.Literal('CARD_INVALID'),
+  Type.Literal('DECLINED'),
+  Type.Literal('TIMEOUT'),
+  Type.Literal('IDEMPOTENT_CONFLICT'),
+  Type.Literal('IDEMPOTENT_IN_PROGRESS'),
+  Type.Literal('BELOW_MOQ'),
+  Type.Literal('CUSTOM_BLEND_INVALID'),
+  Type.Literal('DELIVERY_SITE_NOT_FOUND'),
+  Type.Literal('BILLING_ENTITY_INVALID'),
+  Type.Literal('CHECKOUT_FAILED'),
+]);
+
+export const CheckoutResult = Type.Union([
+  Type.Object(
+    { success: Type.Literal(true), order: PlaceOrderResponse },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      success: Type.Literal(false),
+      error: CheckoutGenericErrorCode,
+      promoError: Type.Optional(Type.String({ minLength: 1, maxLength: 500 })),
+      promoErrorCode: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      success: Type.Literal(false),
+      error: Type.Literal('RESERVATION_EXPIRED'),
+      reservationExpiresAt: Type.String(),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      success: Type.Literal(false),
+      error: Type.Literal('INSUFFICIENT_STOCK'),
+      productIds: Type.Array(PositiveIntegerString, { minItems: 1 }),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      success: Type.Literal(false),
+      error: Type.Literal('DELIVERY_SLOT_UNAVAILABLE'),
+      earliestDate: DeliveryDate,
+    },
+    { additionalProperties: false },
+  ),
+  PendingApprovalResult,
+  Type.Object(
+    { success: Type.Literal(false), error: Type.Literal('APPROVAL_REJECTED') },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { success: Type.Literal(false), error: Type.Literal('APPROVAL_EXPIRED') },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { success: Type.Literal(false), error: Type.Literal('APPROVAL_TOTAL_DRIFT') },
+    { additionalProperties: false },
+  ),
+]);
+export type CheckoutResult = Static<typeof CheckoutResult>;

@@ -4,9 +4,24 @@ export const AUDIT_ACTIONS = [
   'auth.user_signed_up',
   'auth.session_created',
   'auth.session_destroyed',
+  'auth.session_revoked',
+  'auth.preferences_updated',
+  'auth.data_exported',
+  'auth.account_deleted',
   'auth.password_changed',
   'auth.password_reset_requested',
   'auth.password_reset_completed',
+  'company.created',
+  'company.member_invited',
+  'company.invite_revoked',
+  'company.member_joined',
+  'company.member_revoked',
+  'company.member_role_changed',
+  'company.threshold_changed',
+  'approval.requested',
+  'approval.approved',
+  'approval.rejected',
+  'approval.expired',
   'cart.created',
   'cart.product_added',
   'cart.product_quantity_changed',
@@ -41,7 +56,17 @@ export const AUDIT_ACTIONS = [
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export type AuditEntityType =
-  'user' | 'cart' | 'payment' | 'order' | 'shipment' | 'review' | 'return';
+  | 'user'
+  | 'cart'
+  | 'payment'
+  | 'order'
+  | 'shipment'
+  | 'review'
+  | 'return'
+  | 'company'
+  | 'membership'
+  | 'invite'
+  | 'approval';
 export type AuditActor =
   | { type: 'anonymous'; userId: null }
   | { type: 'user'; userId: number }
@@ -58,6 +83,7 @@ export const PRE_GATEWAY_FAILURE_CODES = [
   'CART_EMPTY',
   'PROMO_INVALID',
   'CARD_INVALID',
+  'PENDING_APPROVAL',
   'CHECKOUT_FAILED',
 ] as const;
 
@@ -73,10 +99,52 @@ type UserEventAction = Exclude<
   | `shipment.${string}`
   | `review.${string}`
   | `return.${string}`
+  | `company.${string}`
+  | `approval.${string}`
 >;
 
 export type AuditEventInput =
   | (WithContext & { action: 'auth.user_signed_up'; userId: number })
+  | (WithContext & { action: 'company.created'; companyId: number })
+  | (WithContext & {
+      action: 'company.member_invited';
+      companyId: number;
+      inviteId: number;
+      role: 'buyer' | 'approver';
+    })
+  | (WithContext & { action: 'company.invite_revoked'; companyId: number; inviteId: number })
+  | (WithContext & { action: 'company.member_joined'; companyId: number; membershipId: number })
+  | (WithContext & {
+      action: 'company.member_revoked';
+      companyId: number;
+      membershipId: number;
+      revokedUserId: number;
+    })
+  | (WithContext & {
+      action: 'company.member_role_changed';
+      companyId: number;
+      membershipId: number;
+      oldRole: 'buyer' | 'approver';
+      newRole: 'buyer' | 'approver';
+    })
+  | (WithContext & {
+      action: 'company.threshold_changed';
+      companyId: number;
+      oldThresholdCents: number | null;
+      newThresholdCents: number | null;
+    })
+  | (WithContext & {
+      action: 'approval.requested';
+      approvalId: number;
+      companyId: number;
+      requestedByUserId: number;
+      quoteTotalCents: number;
+    })
+  | (WithContext & {
+      action: 'approval.approved' | 'approval.rejected' | 'approval.expired';
+      approvalId: number;
+      companyId: number;
+    })
   | (WithContext & { action: 'auth.session_created'; userId: number; source: 'signup' | 'login' })
   | (WithContext & {
       action: Exclude<UserEventAction, 'auth.user_signed_up' | 'auth.session_created'>;
@@ -300,6 +368,43 @@ function returnEntity(input: Record<string, unknown>): { entityType: 'return'; e
   };
 }
 
+function companyEntity(input: Record<string, unknown>): {
+  entityType: 'company';
+  entityId: string;
+} {
+  return {
+    entityType: 'company',
+    entityId: String(requirePositiveSafeInteger(input.companyId, 'companyId')),
+  };
+}
+
+function membershipEntity(input: Record<string, unknown>): {
+  entityType: 'membership';
+  entityId: string;
+} {
+  return {
+    entityType: 'membership',
+    entityId: String(requirePositiveSafeInteger(input.membershipId, 'membershipId')),
+  };
+}
+
+function inviteEntity(input: Record<string, unknown>): { entityType: 'invite'; entityId: string } {
+  return {
+    entityType: 'invite',
+    entityId: String(requirePositiveSafeInteger(input.inviteId, 'inviteId')),
+  };
+}
+
+function approvalEntity(input: Record<string, unknown>): {
+  entityType: 'approval';
+  entityId: string;
+} {
+  return {
+    entityType: 'approval',
+    entityId: String(requirePositiveSafeInteger(input.approvalId, 'approvalId')),
+  };
+}
+
 function requireReviewRating(value: unknown): number {
   const rating = requirePositiveSafeInteger(value, 'rating');
   if (rating > 5) throw new AuditEventValidationError('rating must be an integer between 1 and 5');
@@ -316,8 +421,73 @@ export function buildAuditEvent(input: AuditEventInput): BuiltAuditEvent {
   let metadata: Record<string, string | number>;
 
   switch (input.action) {
+    case 'company.created':
+      entity = companyEntity(input);
+      metadata = {};
+      break;
+    case 'company.member_invited':
+      entity = inviteEntity(input);
+      metadata = {
+        companyId: requirePositiveSafeInteger(input.companyId, 'companyId'),
+        role: requireBoundedString(input.role, 'role', 16),
+      };
+      break;
+    case 'company.invite_revoked':
+      entity = inviteEntity(input);
+      metadata = { companyId: requirePositiveSafeInteger(input.companyId, 'companyId') };
+      break;
+    case 'company.member_joined':
+      entity = membershipEntity(input);
+      metadata = { companyId: requirePositiveSafeInteger(input.companyId, 'companyId') };
+      break;
+    case 'company.member_revoked':
+      entity = membershipEntity(input);
+      metadata = {
+        companyId: requirePositiveSafeInteger(input.companyId, 'companyId'),
+        revokedUserId: requirePositiveSafeInteger(input.revokedUserId, 'revokedUserId'),
+      };
+      break;
+    case 'company.member_role_changed':
+      entity = membershipEntity(input);
+      metadata = {
+        companyId: requirePositiveSafeInteger(input.companyId, 'companyId'),
+        oldRole: requireBoundedString(input.oldRole, 'oldRole', 16),
+        newRole: requireBoundedString(input.newRole, 'newRole', 16),
+      };
+      break;
+    case 'company.threshold_changed':
+      entity = companyEntity(input);
+      metadata = {
+        oldThresholdCents:
+          input.oldThresholdCents === null
+            ? 'null'
+            : requireNonNegativeSafeInteger(input.oldThresholdCents, 'oldThresholdCents'),
+        newThresholdCents:
+          input.newThresholdCents === null
+            ? 'null'
+            : requireNonNegativeSafeInteger(input.newThresholdCents, 'newThresholdCents'),
+      };
+      break;
+    case 'approval.requested':
+      entity = approvalEntity(input);
+      metadata = {
+        companyId: requirePositiveSafeInteger(input.companyId, 'companyId'),
+        requestedByUserId: requirePositiveSafeInteger(input.requestedByUserId, 'requestedByUserId'),
+        quoteTotalCents: requireNonNegativeSafeInteger(input.quoteTotalCents, 'quoteTotalCents'),
+      };
+      break;
+    case 'approval.approved':
+    case 'approval.rejected':
+    case 'approval.expired':
+      entity = approvalEntity(input);
+      metadata = { companyId: requirePositiveSafeInteger(input.companyId, 'companyId') };
+      break;
     case 'auth.user_signed_up':
     case 'auth.session_destroyed':
+    case 'auth.session_revoked':
+    case 'auth.preferences_updated':
+    case 'auth.data_exported':
+    case 'auth.account_deleted':
     case 'auth.password_changed':
     case 'auth.password_reset_requested':
     case 'auth.password_reset_completed':

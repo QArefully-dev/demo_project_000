@@ -96,6 +96,20 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
             .code(409)
             .send({ error: 'DELIVERY_SLOT_UNAVAILABLE', earliestDate: result.earliestDate });
           return;
+        case 'PENDING_APPROVAL':
+          {
+            const response = {
+              error: 'PENDING_APPROVAL' as const,
+              approvalRequestId: result.approvalRequestId,
+            };
+            reply.code(409).send(response);
+          }
+          return;
+        case 'APPROVAL_REJECTED':
+        case 'APPROVAL_EXPIRED':
+        case 'APPROVAL_TOTAL_DRIFT':
+          reply.code(409).send({ error: result.error });
+          return;
         case 'DECLINED':
           sendPaymentError(reply, 'Payment failed', 'CARD_DECLINED');
           return;

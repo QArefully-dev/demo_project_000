@@ -453,7 +453,7 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   );
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM users').get() as { count: number }).count,
-    3,
+    6,
   );
   db.prepare("UPDATE users SET display_name = 'Local' WHERE email = 'alice@example.com'").run();
   db.prepare(

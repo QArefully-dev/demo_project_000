@@ -104,6 +104,8 @@ export interface OrderRepository extends OrderAccessRepository {
     page: number,
     pageSize: number,
   ): { items: OrderSummary[]; total: number };
+  /** Full, deterministic export view. Unlike paginated account history, this avoids one query per order. */
+  listExportOwned(userId: number): Order[];
   getOrderState(
     orderId: number,
   ): { id: number; status: OrderStatus; version: number; cancelledAt: string | null } | undefined;
@@ -316,6 +318,41 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
          WHERE line.order_id = ? ORDER BY line.id ASC`,
       )
       .all(orderId) as ProductLineRow[];
+  const loadExportOwned = (userId: number): Order[] => {
+    const rows = db
+      .prepare(
+        `SELECT id, promo_code_applied, promo_category_scope, subtotal_cents, discount_base_cents,
+                discount_cents, total_cents, created_at, lifecycle_status, version, cancelled_at,
+                user_id, delivery_mode, delivery_charge_cents, delivery_weight_grams,
+                delivery_site_id, delivery_address_json, billing_entity_json, delivery_slot_date,
+                delivery_slot_window, purchase_order_reference
+         FROM orders WHERE user_id = ? ORDER BY id ASC`,
+      )
+      .all(userId) as OrderRow[];
+    if (rows.length === 0) return [];
+    const lineRows = db
+      .prepare(
+        `SELECT line.id, line.product_id, line.product_name, line.product_price_cents,
+                line.quantity, line.line_total_cents, line.discountable_total_cents,
+                line.blending_fee_cents, line.custom_blend_json, line.variant_id, line.sku,
+                line.variant_label, line.weight_grams, line.consumption_classification,
+                line.delivery_class, allocation.allocated_quantity, allocation.backordered_quantity,
+                allocation.cancelled_quantity, line.order_id
+         FROM order_line_items line
+         JOIN orders owned_order ON owned_order.id = line.order_id
+         LEFT JOIN order_inventory_allocations allocation ON allocation.order_line_item_id = line.id
+         WHERE owned_order.user_id = ?
+         ORDER BY line.order_id ASC, line.id ASC`,
+      )
+      .all(userId) as Array<ProductLineRow & { order_id: number }>;
+    const linesByOrder = new Map<number, ProductLineRow[]>();
+    for (const line of lineRows) {
+      const lines = linesByOrder.get(line.order_id) ?? [];
+      lines.push(line);
+      linesByOrder.set(line.order_id, lines);
+    }
+    return rows.map((row) => mapOrder(row, linesByOrder.get(row.id) ?? []));
+  };
   const loadShipments = (orderId: number): ShipmentRow[] =>
     db
       .prepare(
@@ -484,6 +521,7 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
         total: count.count,
       };
     },
+    listExportOwned: loadExportOwned,
     getOrderState(orderId) {
       const row = loadOrder(orderId);
       return (

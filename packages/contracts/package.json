@@ -85,6 +85,18 @@
     "./delivery": {
       "types": "./dist/delivery.d.ts",
       "import": "./dist/delivery.js"
+    },
+    "./account-depth": {
+      "types": "./dist/accountDepth.d.ts",
+      "import": "./dist/accountDepth.js"
+    },
+    "./company-accounts": {
+      "types": "./dist/companyAccounts.d.ts",
+      "import": "./dist/companyAccounts.js"
+    },
+    "./order-approvals": {
+      "types": "./dist/orderApprovals.d.ts",
+      "import": "./dist/orderApprovals.js"
     }
   },
   "dependencies": {
