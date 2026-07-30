@@ -96,7 +96,10 @@ export function authPlugin(sessions: SessionService) {
     app.decorateRequest('authenticatedUser', null);
     app.decorateRequest('sessionToken', null);
     app.addHook('preHandler', (request, _reply, next) => {
-      request.authenticatedUser = getAuthenticatedUser(sessions, request);
+      const user = getAuthenticatedUser(sessions, request);
+      request.authenticatedUser = user;
+      const token = request.cookies?.sid;
+      if (user && token) sessions.updateLastSeen(token);
       next();
     });
     done();

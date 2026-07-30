@@ -23,6 +23,8 @@ import { removePowderizerMigration } from './021_remove_powderizer.js';
 import { customBlendsMigration } from './022_custom_blends.js';
 import { tradeDeliveryAndCheckoutDepthMigration } from './023_trade_delivery_and_checkout_depth.js';
 import { pricingPromotionsMigration } from './024_pricing_promotions.js';
+import { accountSelfServiceMigration } from './025_account_self_service.js';
+import { companyAccountsApprovalsMigration } from './026_company_accounts_approvals.js';
 
 export const migrations: readonly Migration[] = [
   initialMigration,
@@ -49,4 +51,6 @@ export const migrations: readonly Migration[] = [
   customBlendsMigration,
   tradeDeliveryAndCheckoutDepthMigration,
   pricingPromotionsMigration,
+  accountSelfServiceMigration,
+  companyAccountsApprovalsMigration,
 ];

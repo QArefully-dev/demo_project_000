@@ -41,6 +41,10 @@ export function resetDatabase(db: Database.Database): void {
       DELETE FROM cart_reservations;
       DELETE FROM promo_reservations;
       DELETE FROM payments;
+      DELETE FROM order_approvals;
+      DELETE FROM company_invites;
+      DELETE FROM company_memberships;
+      DELETE FROM company_accounts;
       DELETE FROM promo_redemptions;
       DELETE FROM review_reports;
       DELETE FROM review_helpful_votes;
@@ -49,6 +53,8 @@ export function resetDatabase(db: Database.Database): void {
       DELETE FROM favourites;
       DELETE FROM password_reset_tokens;
       DELETE FROM sessions;
+      DELETE FROM user_preferences;
+      DELETE FROM account_deletion_events;
       DELETE FROM dev_mailbox;
       DELETE FROM order_access_grants;
       DELETE FROM order_lifecycle_events;

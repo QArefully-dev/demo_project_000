@@ -58,7 +58,11 @@ export type CheckoutBilling = {
 export type CheckoutConflict =
   | { code: 'RESERVATION_EXPIRED'; reservationExpiresAt: string }
   | { code: 'INSUFFICIENT_STOCK'; productIds: string[] }
-  | { code: 'DELIVERY_SLOT_UNAVAILABLE'; earliestDate: string };
+  | { code: 'DELIVERY_SLOT_UNAVAILABLE'; earliestDate: string }
+  | { code: 'PENDING_APPROVAL'; approvalRequestId: string }
+  | { code: 'APPROVAL_REJECTED' }
+  | { code: 'APPROVAL_EXPIRED' }
+  | { code: 'APPROVAL_TOTAL_DRIFT' };
 
 export type CheckoutState = {
   contact: Record<ContactField, string>;

@@ -58,6 +58,11 @@ function storedPassword(user: UserCredentials): string {
   return user.passwordSalt ? `${user.passwordSalt}.${user.passwordHash}` : user.passwordHash;
 }
 
+/** Account deletion clears both credential fields; never let a tolerant password adapter revive it. */
+function hasLiveCredentials(user: UserCredentials): boolean {
+  return user.passwordHash !== '' || user.passwordSalt !== '';
+}
+
 function isUniqueEmailError(error: unknown): boolean {
   return (
     error instanceof Error &&
@@ -123,7 +128,12 @@ export function createAuthService(dependencies: {
     },
     async login({ email: providedEmail, password }) {
       const user = dependencies.users.findCredentialsByEmail(normalizeEmail(providedEmail));
-      if (!user || !(await passwords.verify(password, storedPassword(user)))) return { ok: false };
+      if (
+        !user ||
+        !hasLiveCredentials(user) ||
+        !(await passwords.verify(password, storedPassword(user)))
+      )
+        return { ok: false };
       return { ok: true, userId: user.id, user: toPublicUser(user) };
     },
     async changePassword({
@@ -141,7 +151,11 @@ export function createAuthService(dependencies: {
       }
       if (!isValidPassword(newPassword)) return 'WEAK_PASSWORD';
       const user = dependencies.users.findCredentialsById(userId);
-      if (!user || !(await passwords.verify(currentPassword, storedPassword(user))))
+      if (
+        !user ||
+        !hasLiveCredentials(user) ||
+        !(await passwords.verify(currentPassword, storedPassword(user)))
+      )
         return 'INVALID_CURRENT';
       if (currentPassword === newPassword) return 'SAME_PASSWORD';
       const passwordHash = await passwords.hash(newPassword);

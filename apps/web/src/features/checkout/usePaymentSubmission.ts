@@ -29,6 +29,12 @@ function checkoutConflict(error: unknown): CheckoutConflict | null {
   if (response.error === 'DELIVERY_SLOT_UNAVAILABLE' && typeof response.earliestDate === 'string') {
     return { code: 'DELIVERY_SLOT_UNAVAILABLE', earliestDate: response.earliestDate };
   }
+  if (response.error === 'PENDING_APPROVAL' && typeof response.approvalRequestId === 'string') {
+    return { code: 'PENDING_APPROVAL', approvalRequestId: response.approvalRequestId };
+  }
+  if (response.error === 'APPROVAL_REJECTED') return { code: 'APPROVAL_REJECTED' };
+  if (response.error === 'APPROVAL_EXPIRED') return { code: 'APPROVAL_EXPIRED' };
+  if (response.error === 'APPROVAL_TOTAL_DRIFT') return { code: 'APPROVAL_TOTAL_DRIFT' };
   return null;
 }
 
@@ -89,7 +95,16 @@ export function usePaymentSubmission({
     } catch (error) {
       const conflict = checkoutConflict(error);
       if (conflict) {
-        dispatch({ type: 'conflict', conflict, idempotencyKey: createIdempotencyKey() });
+        // Only a pending or rejected request can be retried against the original approval record.
+        // Expired and drifted approvals must create a new request with a new payload fingerprint.
+        dispatch({
+          type: 'conflict',
+          conflict,
+          idempotencyKey:
+            conflict.code === 'PENDING_APPROVAL' || conflict.code === 'APPROVAL_REJECTED'
+              ? state.idempotencyKey
+              : createIdempotencyKey(),
+        });
         return;
       }
       dispatch({

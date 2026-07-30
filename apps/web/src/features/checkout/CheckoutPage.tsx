@@ -117,6 +117,45 @@ export function CheckoutPage() {
           </Button>
         </div>
       )}
+      {flow.conflict?.code === 'PENDING_APPROVAL' && (
+        <div
+          role="status"
+          className="mb-6 space-y-3 rounded-lg border border-border bg-muted/60 p-4 text-sm"
+        >
+          <p>Your order is awaiting approval from your company approvers.</p>
+          <p className="text-muted-foreground">
+            Your cart has not changed. Once approved, submit this order again.
+          </p>
+          <Button nativeButton={false} size="sm" render={<Link to="/account/approvals" />}>
+            View approval requests
+          </Button>
+        </div>
+      )}
+      {flow.conflict?.code === 'APPROVAL_REJECTED' && (
+        <p
+          role="alert"
+          className="mb-6 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
+        >
+          This order request was rejected by an approver. Your cart has not changed.
+        </p>
+      )}
+      {flow.conflict?.code === 'APPROVAL_EXPIRED' && (
+        <p
+          role="alert"
+          className="mb-6 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
+        >
+          This approval has expired. Submit the order again to request a new approval.
+        </p>
+      )}
+      {flow.conflict?.code === 'APPROVAL_TOTAL_DRIFT' && (
+        <p
+          role="alert"
+          className="mb-6 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
+        >
+          The order total has changed since approval. Submit again to request approval for the
+          current total.
+        </p>
+      )}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardContent className="pt-6">

@@ -7,7 +7,11 @@ import { ErrorMessage } from '@/components/ErrorMessage';
 import { ApiError } from '@/api/client';
 import { Heart, LogOut, Package } from 'lucide-react';
 import { BillingEntitiesSection } from './BillingEntitiesSection';
+import { DataExportSection } from './DataExportSection';
+import { DeleteAccountSection } from './DeleteAccountSection';
 import { DeliverySitesSection } from './DeliverySitesSection';
+import { PreferencesSection } from './PreferencesSection';
+import { SessionsSection } from './SessionsSection';
 import { useTradeProfile } from './useTradeProfile';
 
 /**
@@ -141,6 +145,10 @@ export function AccountPage() {
         <>
           <DeliverySitesSection profile={tradeProfile} />
           <BillingEntitiesSection profile={tradeProfile} />
+          <SessionsSection />
+          <PreferencesSection />
+          <DataExportSection />
+          <DeleteAccountSection />
         </>
       )}
 

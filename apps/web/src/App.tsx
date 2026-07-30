@@ -25,6 +25,9 @@ import { OrderHistoryPage } from './features/orders/OrderHistoryPage';
 import { OrderDetailPage } from './features/orders/OrderDetailPage';
 import { AdminRoute } from './components/AdminRoute';
 import { AdminReviewModerationPage } from './features/admin/reviews';
+import { CompanyPage } from './features/company/CompanyPage';
+import { AcceptInvitePage } from './features/company/AcceptInvitePage';
+import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 
 export default function App() {
   return (
@@ -48,6 +51,30 @@ export default function App() {
           element={
             <ProtectedRoute>
               <AccountPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/account/company"
+          element={
+            <ProtectedRoute>
+              <CompanyPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/account/approvals"
+          element={
+            <ProtectedRoute>
+              <ApprovalsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/invites/accept"
+          element={
+            <ProtectedRoute>
+              <AcceptInvitePage />
             </ProtectedRoute>
           }
         />
