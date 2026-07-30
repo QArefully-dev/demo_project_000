@@ -11,6 +11,36 @@ const USERS = [
   { id: 3, email: 'admin@example.com', display_name: 'Admin', role: 'admin' },
 ] as const;
 
+const ADMIN_SUSPENDED_USER = {
+  id: 4,
+  email: 'suspended@example.com',
+  display_name: 'Suspended Demo',
+  role: 'customer',
+  suspended_at: '2026-07-28T12:00:00.000Z',
+  suspension_reason: 'Seeded administration fixture',
+} as const;
+
+const ADMIN_DEACTIVATED_PROMO = {
+  code: 'ADMINOFF',
+  discount_percent: 10,
+  min_item_count: 0,
+  active: 0,
+  kind: 'percent',
+  amount_cents: null,
+  min_subtotal_cents: null,
+  start_at: null,
+  end_at: null,
+  max_redemptions: null,
+  redemption_count: 0,
+  per_user_limit: null,
+} as const;
+
+const ADMIN_FEATURE_FLAG = {
+  key: 'admin.example_flag',
+  description: 'Seeded local administration fixture.',
+  enabled: 0,
+} as const;
+
 const PROMOS = [
   {
     code: 'SAVE10',
@@ -378,7 +408,8 @@ export function seedDatabase(db: Database.Database): void {
         (product_id, sku, label, weight_grams, price_cents, compare_at_price_cents, clearance_price_cents, clearance_starts_at, clearance_ends_at, stock_count, backorderable, backorder_lead_days, delivery_class, active, sort_order, moq_sacks, created_at, updated_at)
       VALUES
         (@product_id, @sku, @label, @weight_grams, @price_cents, @compare_at_price_cents, @clearance_price_cents, @clearance_starts_at, @clearance_ends_at, @stock_count, @backorderable, @backorder_lead_days, @delivery_class, @active, @sort_order, @moq_sacks, @created_at, @updated_at)
-      ON CONFLICT(product_id, sort_order) DO UPDATE SET
+      ON CONFLICT(sku) DO UPDATE SET
+        product_id = excluded.product_id,
         sku = excluded.sku,
         label = excluded.label,
         weight_grams = excluded.weight_grams,
@@ -392,6 +423,7 @@ export function seedDatabase(db: Database.Database): void {
         backorder_lead_days = excluded.backorder_lead_days,
         delivery_class = excluded.delivery_class,
         active = excluded.active,
+        sort_order = excluded.sort_order,
         moq_sacks = excluded.moq_sacks,
         updated_at = excluded.updated_at
     `);
@@ -587,6 +619,26 @@ export function seedDatabase(db: Database.Database): void {
     `);
     for (const promo of SCOPED_PROMOS) insertScopedPromo.run(promo);
 
+    const upsertAdminPromo = db.prepare(`
+      INSERT INTO promo_codes
+        (code, discount_percent, min_item_count, active, kind, amount_cents, min_subtotal_cents, start_at, end_at, max_redemptions, redemption_count, per_user_limit)
+      VALUES
+        (@code, @discount_percent, @min_item_count, @active, @kind, @amount_cents, @min_subtotal_cents, @start_at, @end_at, @max_redemptions, @redemption_count, @per_user_limit)
+      ON CONFLICT(code) DO UPDATE SET
+        discount_percent = excluded.discount_percent,
+        min_item_count = excluded.min_item_count,
+        active = excluded.active,
+        kind = excluded.kind,
+        amount_cents = excluded.amount_cents,
+        min_subtotal_cents = excluded.min_subtotal_cents,
+        start_at = excluded.start_at,
+        end_at = excluded.end_at,
+        max_redemptions = excluded.max_redemptions,
+        redemption_count = excluded.redemption_count,
+        per_user_limit = excluded.per_user_limit
+    `);
+    upsertAdminPromo.run(ADMIN_DEACTIVATED_PROMO);
+
     const insertUser = db.prepare(`
       INSERT OR IGNORE INTO users (id, email, display_name, password_hash, password_salt, role)
       VALUES (@id, @email, @display_name, @password_hash, @password_salt, @role)
@@ -594,6 +646,38 @@ export function seedDatabase(db: Database.Database): void {
     for (const user of USERS) {
       insertUser.run({ ...user, password_hash: seededPassword(user.email), password_salt: '' });
     }
+
+    const upsertSuspendedUser = db.prepare(`
+      INSERT INTO users
+        (email, display_name, password_hash, password_salt, role, suspended_at, suspension_reason, suspended_by_user_id)
+      VALUES
+        (@email, @display_name, @password_hash, @password_salt, @role, @suspended_at, @suspension_reason, @suspended_by_user_id)
+      ON CONFLICT(email) DO UPDATE SET
+        display_name = excluded.display_name,
+        password_hash = excluded.password_hash,
+        password_salt = excluded.password_salt,
+        role = excluded.role,
+        suspended_at = excluded.suspended_at,
+        suspension_reason = excluded.suspension_reason,
+        suspended_by_user_id = excluded.suspended_by_user_id
+    `);
+    upsertSuspendedUser.run({
+      ...ADMIN_SUSPENDED_USER,
+      password_hash: seededPassword(ADMIN_SUSPENDED_USER.email),
+      password_salt: '',
+      suspended_by_user_id: null,
+    });
+
+    const upsertFeatureFlag = db.prepare(`
+      INSERT INTO feature_flags (key, description, enabled, updated_at, updated_by_user_id)
+      VALUES (@key, @description, @enabled, '2026-07-28T12:00:00.000Z', ?)
+      ON CONFLICT(key) DO UPDATE SET
+        description = excluded.description,
+        enabled = excluded.enabled,
+        updated_at = excluded.updated_at,
+        updated_by_user_id = excluded.updated_by_user_id
+    `);
+    upsertFeatureFlag.run(ADMIN_FEATURE_FLAG, null);
 
     // Trade-account records are insert-only on a fixed id, so a buyer who renames, retires, or
     // re-points the default of a seeded row keeps that change across later `npm run seed` calls.

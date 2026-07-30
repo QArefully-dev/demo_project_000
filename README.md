@@ -109,6 +109,10 @@ Most variants ship as standard parcel. Heavy variants or orders exceeding a comb
 
 Alice has 3 pre-seeded favourite products.
 
+### Local Administration
+
+Sign in with `admin@example.com` / `Password123!`, then open [/admin](http://127.0.0.1:5173/admin). The administration console is local-only demo tooling; it includes a seeded disabled promo, suspended user, clearance fixtures, and `admin.example_flag` feature flag.
+
 ### Trade Delivery Sites and Billing Entities
 
 Every seeded account signs in with a saved trade profile so checkout can be completed without typing an address. Manage these under **Account** (`/account`): add, edit, choose the default, or retire a record. Retiring keeps the record on any order that already used it.

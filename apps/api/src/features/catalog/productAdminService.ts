@@ -1,4 +1,9 @@
-import { MIXING_GROUPS, type ConsumptionClassification } from '@shop/catalog';
+import {
+  CATALOG_CATEGORIES,
+  MIXING_GROUPS,
+  type CatalogCategory,
+  type ConsumptionClassification,
+} from '@shop/catalog';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter, Clock } from '../audit/auditService.js';
@@ -23,7 +28,7 @@ export interface ProductAdminCreateInput {
   name: string;
   description: string;
   priceCents: number;
-  category: string;
+  category: CatalogCategory;
   stockCount: number;
   imageSetId?: string | null;
   slug: string;
@@ -37,7 +42,7 @@ export interface ProductAdminPatch {
   name?: string;
   description?: string;
   priceCents?: number;
-  category?: string;
+  category?: CatalogCategory;
   stockCount?: number;
   imageSetId?: string | null;
   slug?: string;
@@ -63,6 +68,7 @@ export interface ProductAdminServiceDependencies {
 }
 
 const mixingGroups = new Set<string>(MIXING_GROUPS);
+const catalogCategories = new Set<string>(CATALOG_CATEGORIES);
 
 function assertText(value: string): string {
   const normalized = value.trim();
@@ -73,6 +79,15 @@ function assertText(value: string): string {
 function assertInteger(value: number): number {
   if (!Number.isSafeInteger(value) || value < 0) throw new ProductAdminError('INVALID_INPUT');
   return value;
+}
+
+function assertCategory(value: string): CatalogCategory {
+  if (!catalogCategories.has(value)) throw new ProductAdminError('INVALID_INPUT');
+  return value as CatalogCategory;
+}
+
+function assertNullableInteger(value: number | null): number | null {
+  return value === null ? null : assertInteger(value);
 }
 
 function assertConsumptionClassification(value: string): ConsumptionClassification {
@@ -93,11 +108,11 @@ function toInsert(input: ProductAdminCreateInput, createdAt: string): ProductAdm
     name: assertText(input.name),
     description: assertText(input.description),
     price_cents: assertInteger(input.priceCents),
-    category: assertText(input.category),
+    category: assertCategory(assertText(input.category)),
     stock_count: assertInteger(input.stockCount),
     image_set_id: input.imageSetId ?? null,
     slug: assertText(input.slug),
-    compare_at_price_cents: input.compareAtPriceCents ?? null,
+    compare_at_price_cents: assertNullableInteger(input.compareAtPriceCents ?? null),
     consumption_classification: assertConsumptionClassification(input.consumptionClassification),
     mixing_group: assertMixingGroup(input.mixingGroup),
     details_json: input.detailsJson ?? null,
@@ -110,12 +125,12 @@ function toPatch(input: ProductAdminPatch): ProductAdminUpdate {
   if (input.name !== undefined) patch.name = assertText(input.name);
   if (input.description !== undefined) patch.description = assertText(input.description);
   if (input.priceCents !== undefined) patch.price_cents = assertInteger(input.priceCents);
-  if (input.category !== undefined) patch.category = assertText(input.category);
+  if (input.category !== undefined) patch.category = assertCategory(assertText(input.category));
   if (input.stockCount !== undefined) patch.stock_count = assertInteger(input.stockCount);
   if (input.imageSetId !== undefined) patch.image_set_id = input.imageSetId;
   if (input.slug !== undefined) patch.slug = assertText(input.slug);
   if (input.compareAtPriceCents !== undefined)
-    patch.compare_at_price_cents = input.compareAtPriceCents;
+    patch.compare_at_price_cents = assertNullableInteger(input.compareAtPriceCents);
   if (input.consumptionClassification !== undefined) {
     patch.consumption_classification = assertConsumptionClassification(
       input.consumptionClassification,

@@ -5,6 +5,11 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { buildApp } from '../../src/app.js';
 import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createUnitOfWork } from '../../src/db/unitOfWork.js';
+import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
+import { createAuditWriter } from '../../src/features/audit/auditService.js';
+import { createAdminRefundService } from '../../src/features/payments/adminRefundService.js';
+import { createRefundGateway } from '../../src/features/returns/refundGateway.js';
 
 function cookie(response: { headers: Record<string, string | string[] | undefined> }): string {
   const h = response.headers['set-cookie'];
@@ -180,6 +185,33 @@ void test('admin return routes enforce auth and process lifecycle', async (t) =>
 
   // ── Admin refund (may fail if no succeeded payment) ───────────
   {
+    const payment = db
+      .prepare(
+        "SELECT id, amount_cents FROM payments WHERE order_id = ? AND status = 'succeeded' ORDER BY id LIMIT 1",
+      )
+      .get(Number(setup.orderId)) as { id: number; amount_cents: number } | undefined;
+    assert.ok(payment, 'Return order should have a captured payment');
+    if (!payment) throw new Error('Expected captured payment');
+
+    const adminRefunds = createAdminRefundService({
+      db,
+      unitOfWork: createUnitOfWork(db),
+      audit: createAuditWriter({
+        repository: createAuditRepository(db),
+        clock: { now: () => new Date('2026-07-29T10:00:00.000Z') },
+      }),
+      clock: { now: () => new Date('2026-07-29T10:00:00.000Z') },
+      refundGateway: createRefundGateway(),
+    });
+    adminRefunds.refund({
+      paymentId: payment.id,
+      orderId: Number(setup.orderId),
+      amountCents: payment.amount_cents,
+      reason: 'Commercial goodwill',
+      idempotencyKey: 'admin-payment-cap-0001-0001-0001-00000000001',
+      context: { actor: { type: 'user', userId: 1 }, requestId: 'admin-payment-cap' },
+    });
+
     const r = await app.inject({
       method: 'POST',
       url: `/api/admin/returns/${returnId}/refund`,
@@ -189,8 +221,56 @@ void test('admin return routes enforce auth and process lifecycle', async (t) =>
         idempotencyKey: 'admin-refund-0001-0001-0001-00000000001',
       },
     });
-    // May succeed or fail depending on payment state
-    assert.ok(r.statusCode === 200 || r.statusCode === 409 || r.statusCode === 422);
+    assert.equal(r.statusCode, 422);
+    assert.equal(
+      (
+        db
+          .prepare('SELECT COUNT(*) AS count FROM refunds WHERE payment_id = ?')
+          .get(payment.id) as {
+          count: number;
+        }
+      ).count,
+      0,
+    );
+    assert.equal(
+      (
+        db
+          .prepare(
+            `SELECT
+               COALESCE((SELECT SUM(net_refund_cents) FROM refunds WHERE payment_id = ?), 0) +
+               COALESCE((SELECT SUM(amount_cents) FROM admin_refunds WHERE payment_id = ?), 0)
+               AS amount`,
+          )
+          .get(payment.id, payment.id) as { amount: number }
+      ).amount,
+      payment.amount_cents,
+    );
+    assert.equal(
+      (
+        db.prepare('SELECT status FROM return_requests WHERE id = ?').get(Number(returnId)) as {
+          status: string;
+        }
+      ).status,
+      'received',
+    );
+    assert.equal(
+      (
+        db
+          .prepare("SELECT COUNT(*) AS count FROM audit_events WHERE action = 'payment.refunded'")
+          .get() as { count: number }
+      ).count,
+      0,
+    );
+    assert.equal(
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM audit_events WHERE action = 'payment.admin_refunded'",
+          )
+          .get() as { count: number }
+      ).count,
+      1,
+    );
   }
 
   // ── Stale version rejected ────────────────────────────────────

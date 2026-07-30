@@ -243,6 +243,38 @@ void test('accepts shipment audit entity filters', () => {
   });
 });
 
+void test('accepts admin audit actions and entity type filters', () => {
+  const actions = [
+    'product.created',
+    'product.updated',
+    'product.retired',
+    'variant.created',
+    'variant.updated',
+    'variant.retired',
+    'variant.clearance_set',
+    'variant.clearance_cleared',
+    'promo.created',
+    'promo.updated',
+    'promo.deactivated',
+    'user.role_changed',
+    'user.suspended',
+    'user.reactivated',
+    'user.display_name_updated',
+    'feature_flag.created',
+    'feature_flag.updated',
+    'feature_flag.deleted',
+    'payment.admin_refunded',
+  ];
+  const entityTypes = ['product', 'variant', 'promo', 'feature_flag'];
+
+  for (const action of actions) {
+    assert.equal(normalizeAuditEventQuery({ action }).action, action);
+  }
+  for (const entityType of entityTypes) {
+    assert.equal(normalizeAuditEventQuery({ entityType }).entityType, entityType);
+  }
+});
+
 void test('rejects malformed, inverted, and out-of-bounds audit query values', () => {
   for (const query of [
     { occurredFrom: '2026-02-30' },

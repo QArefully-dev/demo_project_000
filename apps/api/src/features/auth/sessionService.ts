@@ -14,7 +14,7 @@ export interface SessionAuditDetails {
 }
 
 export interface SessionService {
-  create(userId: number, audit?: SessionAuditDetails): { token: string; expiresAt: Date };
+  create(userId: number, audit?: SessionAuditDetails): { token: string; expiresAt: Date } | null;
   destroy(token: string, context?: AuditContext): boolean;
   getUser(token: string): SessionUser | null;
   invalidateAllForUser(userId: number): void;
@@ -42,9 +42,14 @@ export function createSessionService(dependencies: {
       }
       const token = tokenSource();
       const expiresAt = new Date(dependencies.clock.now().getTime() + SESSION_DURATION_MS);
+      let created = false;
       const create = () => {
-        dependencies.sessions.create({ token, userId, expiresAt: expiresAt.toISOString() });
-        if (audit)
+        created = dependencies.sessions.create({
+          token,
+          userId,
+          expiresAt: expiresAt.toISOString(),
+        });
+        if (created && audit)
           dependencies.audit!.append({
             action: 'auth.session_created',
             userId,
@@ -54,7 +59,7 @@ export function createSessionService(dependencies: {
       };
       if (audit) runAudited(create);
       else create();
-      return { token, expiresAt };
+      return created ? { token, expiresAt } : null;
     },
     destroy(token, context) {
       let destroyed = false;

@@ -61,10 +61,14 @@ export default function authRoutes(app: FastifyInstance, { services }: AppContex
         return;
       }
 
-      createSession(services.sessions, reply, result.userId, {
+      const session = createSession(services.sessions, reply, result.userId, {
         context: userAuditContext(result.userId, request.id),
         source: 'signup',
       });
+      if (!session) {
+        sendUnauthorized(reply, 'Invalid email or password');
+        return;
+      }
       reply.code(201).send(result.user);
     },
   );
@@ -92,10 +96,14 @@ export default function authRoutes(app: FastifyInstance, { services }: AppContex
         return;
       }
 
-      createSession(services.sessions, reply, result.userId, {
+      const session = createSession(services.sessions, reply, result.userId, {
         context: userAuditContext(result.userId, request.id),
         source: 'login',
       });
+      if (!session) {
+        sendUnauthorized(reply, 'Invalid email or password');
+        return;
+      }
       reply.code(200).send(result.user);
     },
   );

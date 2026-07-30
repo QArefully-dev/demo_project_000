@@ -1,0 +1,186 @@
+import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
+import {
+  AdminPromo,
+  AdminPromoCodeParam,
+  AdminPromoListQuery,
+  AdminPromoListResponse,
+  CreateAdminPromoBody,
+  DeactivateAdminPromoBody,
+  UpdateAdminPromoBody,
+  type AdminPromo as AdminPromoResponse,
+} from '@shop/contracts/admin-promos';
+import type { AdminCatalogCategory } from '@shop/contracts/admin-products';
+import { ErrorResponse } from '@shop/contracts/common';
+import type { FastifyInstance } from 'fastify';
+import type { SessionService } from '../features/auth/sessionService.js';
+import {
+  PromoAdminServiceError,
+  type PromoAdminService,
+} from '../features/promos/promoAdminService.js';
+import type { PromoRecord } from '../features/promos/promoRepository.js';
+import { requireAdmin } from '../plugins/auth.js';
+import { sendBadRequest, sendConflict, sendNotFound } from '../utils/errors.js';
+export interface AdminPromosRouteServices {
+  sessions: SessionService;
+  promoAdmin: PromoAdminService;
+}
+const context = (userId: number, requestId: string) => ({
+  actor: { type: 'user' as const, userId },
+  requestId,
+});
+function sendError(reply: Parameters<typeof sendBadRequest>[0], e: PromoAdminServiceError) {
+  if (e.code === 'NOT_FOUND') return sendNotFound(reply, 'Promo code');
+  if (e.code === 'DUPLICATE' || e.code === 'ACTIVE_RESERVATIONS')
+    return sendConflict(reply, e.message);
+  sendBadRequest(reply, e.message);
+}
+function categoryScope(value: string | null): AdminCatalogCategory | null {
+  if (value === null) return null;
+  switch (value) {
+    case 'Sports Nutrition':
+    case 'Baking & Pantry':
+    case 'Drinks':
+    case 'Household & Cleaning':
+    case 'Garden & Outdoors':
+    case 'Trade & Creative Materials':
+      return value;
+    default:
+      throw new Error('Unexpected promo category');
+  }
+}
+const map = (promo: PromoRecord): AdminPromoResponse => ({
+  ...promo,
+  categoryScope: categoryScope(promo.categoryScope),
+});
+export default function adminPromosRoutes(
+  app: FastifyInstance,
+  { services }: { services: AdminPromosRouteServices },
+): void {
+  app.addHook('onRequest', requireAdmin(services.sessions));
+  const typed = app.withTypeProvider<TypeBoxTypeProvider>();
+  typed.get(
+    '/api/admin/promos',
+    {
+      preHandler: [requireAdmin(services.sessions)],
+      schema: {
+        querystring: AdminPromoListQuery,
+        response: {
+          200: AdminPromoListResponse,
+          400: ErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+        },
+      },
+    },
+    (r) => ({ items: services.promoAdmin.listAdmin(r.query).map(map) }),
+  );
+  typed.get(
+    '/api/admin/promos/:code',
+    {
+      preHandler: [requireAdmin(services.sessions)],
+      schema: {
+        params: AdminPromoCodeParam,
+        response: {
+          200: AdminPromo,
+          400: ErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+        },
+      },
+    },
+    (r, reply) => {
+      try {
+        return map(services.promoAdmin.get(r.params.code));
+      } catch (e) {
+        if (e instanceof PromoAdminServiceError) return sendError(reply, e);
+        throw e;
+      }
+    },
+  );
+  typed.post(
+    '/api/admin/promos',
+    {
+      preHandler: [requireAdmin(services.sessions)],
+      schema: {
+        body: CreateAdminPromoBody,
+        response: {
+          201: AdminPromo,
+          400: ErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          409: ErrorResponse,
+        },
+      },
+    },
+    (r, reply) => {
+      try {
+        reply.code(201);
+        return map(services.promoAdmin.create(r.body, context(r.authenticatedUser!.id, r.id)));
+      } catch (e) {
+        if (e instanceof PromoAdminServiceError) return sendError(reply, e);
+        throw e;
+      }
+    },
+  );
+  typed.put(
+    '/api/admin/promos/:code',
+    {
+      preHandler: [requireAdmin(services.sessions)],
+      schema: {
+        params: AdminPromoCodeParam,
+        body: UpdateAdminPromoBody,
+        response: {
+          200: AdminPromo,
+          400: ErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
+      },
+    },
+    (r, reply) => {
+      try {
+        return map(
+          services.promoAdmin.update(r.params.code, r.body, context(r.authenticatedUser!.id, r.id)),
+        );
+      } catch (e) {
+        if (e instanceof PromoAdminServiceError) return sendError(reply, e);
+        throw e;
+      }
+    },
+  );
+  typed.post(
+    '/api/admin/promos/:code/deactivate',
+    {
+      preHandler: [requireAdmin(services.sessions)],
+      schema: {
+        params: AdminPromoCodeParam,
+        body: DeactivateAdminPromoBody,
+        response: {
+          200: AdminPromo,
+          400: ErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
+      },
+    },
+    (r, reply) => {
+      try {
+        return map(
+          services.promoAdmin.deactivate(
+            r.params.code,
+            context(r.authenticatedUser!.id, r.id),
+            r.body,
+          ),
+        );
+      } catch (e) {
+        if (e instanceof PromoAdminServiceError) return sendError(reply, e);
+        throw e;
+      }
+    },
+  );
+}

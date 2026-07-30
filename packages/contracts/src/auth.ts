@@ -8,6 +8,18 @@ export const PublicUser = Type.Object({
   role: Type.Union([Type.Literal('customer'), Type.Literal('admin')]),
 });
 export type PublicUser = Static<typeof PublicUser>;
+
+/** Admin-only account state. Public customer auth never exposes suspension facts. */
+export const AdminUserView = Type.Object(
+  {
+    ...PublicUser.properties,
+    suspendedAt: Type.Union([Type.String({ minLength: 24, maxLength: 24 }), Type.Null()]),
+    suspensionReason: Type.Union([Type.String({ minLength: 1, maxLength: 500 }), Type.Null()]),
+    suspendedByUserId: Type.Union([Type.String({ pattern: '^[1-9][0-9]*$' }), Type.Null()]),
+  },
+  { additionalProperties: false },
+);
+export type AdminUserView = Static<typeof AdminUserView>;
 export const CurrentUserResponse = Type.Union([PublicUser, Type.Null()]);
 export type CurrentUserResponse = Static<typeof CurrentUserResponse>;
 

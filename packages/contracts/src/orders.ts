@@ -282,3 +282,18 @@ export const ShipmentIdParam = Type.Object(
   { additionalProperties: false },
 );
 export type ShipmentIdParam = Static<typeof ShipmentIdParam>;
+
+/** Cross-buyer administrator list filters. Customer order endpoints remain owner-scoped. */
+export const AdminOrderListQuery = Type.Object(
+  {
+    status: Type.Optional(OrderStatus),
+    userEmail: Type.Optional(Type.String({ minLength: 3, maxLength: 254 })),
+    promoCode: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
+    occurredFrom: Type.Optional(UtcIsoInstant),
+    occurredTo: Type.Optional(UtcIsoInstant),
+    page: Type.Optional(Type.Integer({ minimum: 1, maximum: 10_000 })),
+    pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  },
+  { additionalProperties: false },
+);
+export type AdminOrderListQuery = Static<typeof AdminOrderListQuery>;

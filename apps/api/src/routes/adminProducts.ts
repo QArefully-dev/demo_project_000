@@ -1,0 +1,220 @@
+import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
+import {
+  AdminProduct,
+  AdminProductIdParam,
+  AdminProductListQuery,
+  AdminProductListResponse,
+  CreateAdminProductBody,
+  UpdateAdminProductBody,
+  type AdminCatalogCategory,
+  type AdminMixingGroup,
+  type AdminProduct as AdminProductResponse,
+} from '@shop/contracts/admin-products';
+import { ErrorResponse } from '@shop/contracts/common';
+import type { FastifyInstance } from 'fastify';
+import type { SessionService } from '../features/auth/sessionService.js';
+import {
+  ProductAdminError,
+  type ProductAdminService,
+} from '../features/catalog/productAdminService.js';
+import type { ProductRow } from '../features/catalog/productRepository.js';
+import { requireAdmin } from '../plugins/auth.js';
+import { sendBadRequest, sendConflict, sendNotFound } from '../utils/errors.js';
+
+export interface AdminProductsRouteServices {
+  sessions: SessionService;
+  productAdmin: ProductAdminService;
+}
+const context = (userId: number, requestId: string) => ({
+  actor: { type: 'user' as const, userId },
+  requestId,
+});
+function category(value: string): AdminCatalogCategory {
+  switch (value) {
+    case 'Sports Nutrition':
+    case 'Baking & Pantry':
+    case 'Drinks':
+    case 'Household & Cleaning':
+    case 'Garden & Outdoors':
+    case 'Trade & Creative Materials':
+      return value;
+    default:
+      throw new Error('Unexpected product category');
+  }
+}
+function consumptionClassification(
+  value: string,
+): AdminProductResponse['consumptionClassification'] {
+  switch (value) {
+    case 'food':
+    case 'non-food':
+    case 'caution':
+      return value;
+    default:
+      throw new Error('Unexpected consumption classification');
+  }
+}
+function mixingGroup(value: string | null): AdminMixingGroup | null {
+  if (value === null) return null;
+  switch (value) {
+    case 'food-grade':
+    case 'cleaning':
+    case 'garden-treatment':
+    case 'cementitious-materials':
+    case 'casting-materials':
+    case 'pigments':
+    case 'theatrical-effects':
+    case 'absorbents':
+      return value;
+    default:
+      throw new Error('Unexpected mixing group');
+  }
+}
+const map = (p: ProductRow): AdminProductResponse => ({
+  id: String(p.id),
+  name: p.name,
+  description: p.description,
+  priceCents: p.price_cents,
+  category: category(p.category),
+  stockCount: p.stock_count,
+  imageSetId: p.image_set_id,
+  slug: p.slug,
+  compareAtPriceCents: p.compare_at_price_cents,
+  salesCount: p.sales_count,
+  active: p.active === 1,
+  createdAt: p.created_at,
+  consumptionClassification: consumptionClassification(p.consumption_classification),
+  mixingGroup: mixingGroup(p.mixing_group),
+  detailsJson: p.details_json,
+  defaultVariantId: p.default_variant_id === null ? null : String(p.default_variant_id),
+  blendSourceVariantId:
+    p.blend_source_variant_id === null ? null : String(p.blend_source_variant_id),
+});
+function sendError(reply: Parameters<typeof sendBadRequest>[0], error: ProductAdminError) {
+  if (error.code === 'PRODUCT_NOT_FOUND') return sendNotFound(reply, 'Product');
+  if (error.code === 'DUPLICATE_SLUG') return sendConflict(reply, error.message);
+  sendBadRequest(reply, error.message);
+}
+export default function adminProductsRoutes(
+  app: FastifyInstance,
+  { services }: { services: AdminProductsRouteServices },
+): void {
+  app.addHook('onRequest', requireAdmin(services.sessions));
+  const typed = app.withTypeProvider<TypeBoxTypeProvider>();
+  typed.get(
+    '/api/admin/products',
+    {
+      preHandler: [requireAdmin(services.sessions)],
+      schema: {
+        querystring: AdminProductListQuery,
+        response: {
+          200: AdminProductListResponse,
+          400: ErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+        },
+      },
+    },
+    (request) => ({ items: services.productAdmin.listAdmin(request.query).map(map) }),
+  );
+  typed.get(
+    '/api/admin/products/:productId',
+    {
+      preHandler: [requireAdmin(services.sessions)],
+      schema: {
+        params: AdminProductIdParam,
+        response: { 200: AdminProduct, 401: ErrorResponse, 403: ErrorResponse, 404: ErrorResponse },
+      },
+    },
+    (request, reply) => {
+      const product = services.productAdmin.getAdmin(Number(request.params.productId));
+      if (!product) return sendNotFound(reply, 'Product');
+      return map(product);
+    },
+  );
+  typed.post(
+    '/api/admin/products',
+    {
+      preHandler: [requireAdmin(services.sessions)],
+      schema: {
+        body: CreateAdminProductBody,
+        response: {
+          201: AdminProduct,
+          400: ErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          409: ErrorResponse,
+        },
+      },
+    },
+    (request, reply) => {
+      try {
+        reply.code(201);
+        return map(
+          services.productAdmin.create(
+            request.body,
+            context(request.authenticatedUser!.id, request.id),
+          ),
+        );
+      } catch (e) {
+        if (e instanceof ProductAdminError) return sendError(reply, e);
+        throw e;
+      }
+    },
+  );
+  typed.patch(
+    '/api/admin/products/:productId',
+    {
+      preHandler: [requireAdmin(services.sessions)],
+      schema: {
+        params: AdminProductIdParam,
+        body: UpdateAdminProductBody,
+        response: {
+          200: AdminProduct,
+          400: ErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+        },
+      },
+    },
+    (request, reply) => {
+      try {
+        return map(
+          services.productAdmin.update(
+            Number(request.params.productId),
+            request.body,
+            context(request.authenticatedUser!.id, request.id),
+          ),
+        );
+      } catch (e) {
+        if (e instanceof ProductAdminError) return sendError(reply, e);
+        throw e;
+      }
+    },
+  );
+  typed.delete(
+    '/api/admin/products/:productId',
+    {
+      preHandler: [requireAdmin(services.sessions)],
+      schema: {
+        params: AdminProductIdParam,
+        response: { 200: AdminProduct, 401: ErrorResponse, 403: ErrorResponse, 404: ErrorResponse },
+      },
+    },
+    (request, reply) => {
+      try {
+        return map(
+          services.productAdmin.retire(
+            Number(request.params.productId),
+            context(request.authenticatedUser!.id, request.id),
+          ),
+        );
+      } catch (e) {
+        if (e instanceof ProductAdminError) return sendError(reply, e);
+        throw e;
+      }
+    },
+  );
+}

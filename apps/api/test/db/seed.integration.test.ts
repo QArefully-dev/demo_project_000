@@ -453,7 +453,7 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   );
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM users').get() as { count: number }).count,
-    3,
+    4,
   );
   db.prepare("UPDATE users SET display_name = 'Local' WHERE email = 'alice@example.com'").run();
   db.prepare(
@@ -913,6 +913,81 @@ void test('seed is idempotent for canonical catalog and variants', (t) => {
   assert.deepEqual(secondVariants, firstVariants);
   assert.equal(secondTags.count, firstTags.count);
   assert.equal(secondSpecs.count, firstSpecs.count);
+});
+
+void test('seed preserves a local signup that occupies the suspended fixture ID', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-seed-suspended-user-id-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  // This represents a retained database from before the suspended fixture was introduced.
+  // The three existing normal fixtures occupy IDs 1-3, so a local signup receives ID 4.
+  for (const [id, email, displayName, role] of [
+    [1, 'alice@example.com', 'Alice', 'customer'],
+    [2, 'bob@example.com', 'Bob', 'customer'],
+    [3, 'admin@example.com', 'Admin', 'admin'],
+  ]) {
+    db.prepare(
+      `INSERT INTO users (id, email, display_name, password_hash, password_salt, role)
+       VALUES (?, ?, ?, 'hash', '', ?)`,
+    ).run(id, email, displayName, role);
+  }
+  db.prepare(
+    `INSERT INTO users (email, display_name, password_hash, password_salt, role)
+     VALUES ('local-signup@example.test', 'Local signup', 'hash', '', 'customer')`,
+  ).run();
+
+  seedDatabase(db);
+
+  assert.deepEqual(
+    db.prepare("SELECT id, email FROM users WHERE email = 'local-signup@example.test'").get(),
+    { id: 4, email: 'local-signup@example.test' },
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        "SELECT email, suspended_at, suspension_reason FROM users WHERE email = 'suspended@example.com'",
+      )
+      .get(),
+    {
+      email: 'suspended@example.com',
+      suspended_at: '2026-07-28T12:00:00.000Z',
+      suspension_reason: 'Seeded administration fixture',
+    },
+  );
+});
+
+void test('seed restores a retired canonical variant by SKU', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-seed-retired-variant-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+  const product = CATALOG_PRODUCTS.find((candidate) => candidate.variants.length > 0)!;
+  const variant = product.variants[0];
+  db.prepare('UPDATE product_variants SET active = 0, sort_order = 0 WHERE sku = ?').run(
+    variant.sku,
+  );
+
+  seedDatabase(db);
+
+  assert.deepEqual(
+    db
+      .prepare('SELECT product_id, sku, active, sort_order FROM product_variants WHERE sku = ?')
+      .get(variant.sku),
+    {
+      product_id: product.id,
+      sku: variant.sku,
+      active: variant.active ? 1 : 0,
+      sort_order: variant.sortOrder,
+    },
+  );
 });
 
 void test('repeat seed keeps canonical defaults product-owned and preserves noncanonical products', (t) => {

@@ -85,6 +85,13 @@ import {
 import customBlendRoutes from './routes/customBlends.js';
 import tradeAccountRoutes from './routes/tradeAccount.js';
 import deliverySlotRoutes from './routes/deliverySlots.js';
+import adminProductsRoutes from './routes/adminProducts.js';
+import adminVariantsRoutes from './routes/adminVariants.js';
+import adminPromosRoutes from './routes/adminPromos.js';
+import adminUsersRoutes from './routes/adminUsers.js';
+import adminOrdersListRoutes from './routes/adminOrdersList.js';
+import adminRefundsRoutes from './routes/adminRefunds.js';
+import adminFeatureFlagsRoutes from './routes/adminFeatureFlags.js';
 import { createDeliverySiteRepository } from './features/tradeAccount/deliverySiteRepository.js';
 import {
   createDeliverySiteService,
@@ -99,6 +106,38 @@ import {
   createDeliverySlotService,
   type DeliverySlotService,
 } from './features/delivery/deliverySlotService.js';
+import {
+  createProductAdminService,
+  type ProductAdminService,
+} from './features/catalog/productAdminService.js';
+import { createProductAdminRepository } from './features/catalog/productAdminRepository.js';
+import {
+  createVariantAdminService,
+  type VariantAdminService,
+} from './features/catalog/variantAdminService.js';
+import { createVariantAdminRepository } from './features/catalog/variantAdminRepository.js';
+import {
+  createPromoAdminService,
+  type PromoAdminService,
+} from './features/promos/promoAdminService.js';
+import { createPromoAdminRepository } from './features/promos/promoAdminRepository.js';
+import { createUserAdminService, type UserAdminService } from './features/auth/userAdminService.js';
+import { createUserAdminRepository } from './features/auth/userAdminRepository.js';
+import {
+  createOrderAdminService,
+  type OrderAdminService,
+} from './features/orders/orderAdminService.js';
+import { createOrderAdminRepository } from './features/orders/orderAdminRepository.js';
+import {
+  createAdminRefundService,
+  type AdminRefundService,
+} from './features/payments/adminRefundService.js';
+import {
+  createFeatureFlagService,
+  type FeatureFlagService,
+} from './features/featureFlags/featureFlagService.js';
+import { createFeatureFlagRepository } from './features/featureFlags/featureFlagRepository.js';
+import { createFeatureFlagResolver } from './features/featureFlags/featureFlagResolver.js';
 
 /**
  * The buyer's saved trade records, grouped because they are always wired, injected, and consumed
@@ -138,6 +177,13 @@ export interface AppServices {
   customBlends: CustomBlendService;
   tradeAccount: TradeAccountServices;
   deliverySlots: DeliverySlotService;
+  productAdmin: ProductAdminService;
+  variantAdmin: VariantAdminService;
+  promoAdmin: PromoAdminService;
+  userAdmin: UserAdminService;
+  orderAdmin: OrderAdminService;
+  adminRefunds: AdminRefundService;
+  featureFlags: FeatureFlagService;
   clock: Clock;
 }
 
@@ -150,6 +196,8 @@ function createAppServices(dependencies: AppDependencies): AppServices {
   const promos = createPromoRepository(dependencies.db);
   const orders = createOrderRepository(dependencies.db);
   const products = createProductRepository(dependencies.db);
+  const sessions = createSessionRepository(dependencies.db);
+  const featureFlagRepository = createFeatureFlagRepository(dependencies.db);
   const unitOfWork = createUnitOfWork(dependencies.db);
   const inventory = createInventoryService({
     repository: createInventoryRepository(dependencies.db),
@@ -182,7 +230,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       audit,
     }),
     sessions: createSessionService({
-      sessions: createSessionRepository(dependencies.db),
+      sessions,
       clock,
       unitOfWork,
       audit,
@@ -255,6 +303,47 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     customBlends: createCustomBlendService(createCustomBlendRepository(dependencies.db)),
     tradeAccount,
     deliverySlots,
+    productAdmin: createProductAdminService({
+      repository: createProductAdminRepository(dependencies.db),
+      unitOfWork,
+      audit,
+      clock,
+    }),
+    variantAdmin: createVariantAdminService({
+      repository: createVariantAdminRepository(dependencies.db),
+      unitOfWork,
+      audit,
+      clock,
+    }),
+    promoAdmin: createPromoAdminService({
+      repository: createPromoAdminRepository(dependencies.db),
+      unitOfWork,
+      audit,
+    }),
+    userAdmin: createUserAdminService({
+      repository: createUserAdminRepository(dependencies.db),
+      sessions,
+      unitOfWork,
+      audit,
+      clock,
+    }),
+    orderAdmin: createOrderAdminService({
+      repository: createOrderAdminRepository(dependencies.db),
+      orderRepository: orders,
+    }),
+    adminRefunds: createAdminRefundService({
+      db: dependencies.db,
+      unitOfWork,
+      audit,
+      clock,
+      refundGateway: createRefundGateway(),
+    }),
+    featureFlags: createFeatureFlagService({
+      repository: featureFlagRepository,
+      resolver: createFeatureFlagResolver(featureFlagRepository),
+      unitOfWork,
+      audit,
+    }),
     clock,
     audit: createAuditReadService(auditRepository),
   };
@@ -298,6 +387,13 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(ordersRoutes, context);
   await app.register(adminOrdersRoutes, context);
   await app.register(adminInventoryRoutes, context);
+  await app.register(adminProductsRoutes, context);
+  await app.register(adminVariantsRoutes, context);
+  await app.register(adminPromosRoutes, context);
+  await app.register(adminUsersRoutes, context);
+  await app.register(adminOrdersListRoutes, context);
+  await app.register(adminRefundsRoutes, context);
+  await app.register(adminFeatureFlagsRoutes, context);
   await app.register(authRoutes, context);
   await app.register(favouritesRoutes, context);
   await app.register(paymentRoutes, context);

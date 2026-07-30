@@ -24,9 +24,10 @@ interface SessionRow {
 }
 
 export interface SessionRepository {
-  create(session: SessionRecord): void;
+  create(session: SessionRecord): boolean;
   findUser(token: string): (SessionRecord & { user: SessionUser }) | null;
   delete(token: string): boolean;
+  deleteByUserId(userId: number): number;
   deleteForUser(userId: number): number;
   deleteOtherForUser(userId: number, token: string): number;
 }
@@ -34,17 +35,23 @@ export interface SessionRepository {
 export function createSessionRepository(db: Database.Database): SessionRepository {
   return {
     create({ token, userId, expiresAt }) {
-      db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)').run(
-        token,
-        userId,
-        expiresAt,
+      return (
+        db
+          .prepare(
+            `INSERT INTO sessions (token, user_id, expires_at)
+             SELECT ?, ?, ? WHERE EXISTS (
+               SELECT 1 FROM users WHERE id = ? AND suspended_at IS NULL
+             )`,
+          )
+          .run(token, userId, expiresAt, userId).changes === 1
       );
     },
     findUser(token) {
       const row = db
         .prepare(
           `SELECT s.token, s.user_id, s.expires_at, u.email, u.display_name, u.role
-           FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.token = ?`,
+           FROM sessions s JOIN users u ON s.user_id = u.id
+           WHERE s.token = ? AND u.suspended_at IS NULL`,
         )
         .get(token) as SessionRow | undefined;
       if (!row || !row.email || !row.display_name || !row.role) return null;
@@ -57,6 +64,9 @@ export function createSessionRepository(db: Database.Database): SessionRepositor
     },
     delete(token) {
       return db.prepare('DELETE FROM sessions WHERE token = ?').run(token).changes === 1;
+    },
+    deleteByUserId(userId) {
+      return db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId).changes;
     },
     deleteForUser(userId) {
       return db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId).changes;

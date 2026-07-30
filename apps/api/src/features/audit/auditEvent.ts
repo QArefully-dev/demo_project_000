@@ -37,11 +37,40 @@ export const AUDIT_ACTIONS = [
   'return.rejected',
   'return.received',
   'payment.refunded',
+  'product.created',
+  'product.updated',
+  'product.retired',
+  'variant.created',
+  'variant.updated',
+  'variant.retired',
+  'variant.clearance_set',
+  'variant.clearance_cleared',
+  'promo.created',
+  'promo.updated',
+  'promo.deactivated',
+  'user.role_changed',
+  'user.suspended',
+  'user.reactivated',
+  'user.display_name_updated',
+  'feature_flag.created',
+  'feature_flag.updated',
+  'feature_flag.deleted',
+  'payment.admin_refunded',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export type AuditEntityType =
-  'user' | 'cart' | 'payment' | 'order' | 'shipment' | 'review' | 'return';
+  | 'user'
+  | 'cart'
+  | 'payment'
+  | 'order'
+  | 'shipment'
+  | 'review'
+  | 'return'
+  | 'product'
+  | 'variant'
+  | 'promo'
+  | 'feature_flag';
 export type AuditActor =
   | { type: 'anonymous'; userId: null }
   | { type: 'user'; userId: number }
@@ -161,6 +190,33 @@ export type AuditEventInput =
   | (WithContext & {
       action: 'payment.refunded';
       returnId: number;
+      orderId: number;
+      amountCents: number;
+    })
+  | (WithContext & {
+      action: 'product.created' | 'product.updated' | 'product.retired';
+      productId: number;
+    })
+  | (WithContext & {
+      action:
+        | 'variant.created'
+        | 'variant.updated'
+        | 'variant.retired'
+        | 'variant.clearance_set'
+        | 'variant.clearance_cleared';
+      variantId: number;
+    })
+  | (WithContext & {
+      action: 'promo.created' | 'promo.updated' | 'promo.deactivated';
+      promoCode: string;
+    })
+  | (WithContext & {
+      action: 'feature_flag.created' | 'feature_flag.updated' | 'feature_flag.deleted';
+      featureFlagKey: string;
+    })
+  | (WithContext & {
+      action: 'payment.admin_refunded';
+      paymentId: number;
       orderId: number;
       amountCents: number;
     });
@@ -300,6 +356,43 @@ function returnEntity(input: Record<string, unknown>): { entityType: 'return'; e
   };
 }
 
+function productEntity(input: Record<string, unknown>): {
+  entityType: 'product';
+  entityId: string;
+} {
+  return {
+    entityType: 'product',
+    entityId: String(requirePositiveSafeInteger(input.productId, 'productId')),
+  };
+}
+
+function variantEntity(input: Record<string, unknown>): {
+  entityType: 'variant';
+  entityId: string;
+} {
+  return {
+    entityType: 'variant',
+    entityId: String(requirePositiveSafeInteger(input.variantId, 'variantId')),
+  };
+}
+
+function promoEntity(input: Record<string, unknown>): { entityType: 'promo'; entityId: string } {
+  return {
+    entityType: 'promo',
+    entityId: requireBoundedString(input.promoCode, 'promoCode', MAX_ENTITY_ID_LENGTH),
+  };
+}
+
+function featureFlagEntity(input: Record<string, unknown>): {
+  entityType: 'feature_flag';
+  entityId: string;
+} {
+  return {
+    entityType: 'feature_flag',
+    entityId: requireBoundedString(input.featureFlagKey, 'featureFlagKey', MAX_ENTITY_ID_LENGTH),
+  };
+}
+
 function requireReviewRating(value: unknown): number {
   const rating = requirePositiveSafeInteger(value, 'rating');
   if (rating > 5) throw new AuditEventValidationError('rating must be an integer between 1 and 5');
@@ -321,6 +414,10 @@ export function buildAuditEvent(input: AuditEventInput): BuiltAuditEvent {
     case 'auth.password_changed':
     case 'auth.password_reset_requested':
     case 'auth.password_reset_completed':
+    case 'user.role_changed':
+    case 'user.suspended':
+    case 'user.reactivated':
+    case 'user.display_name_updated':
       entity = userEntity(input);
       metadata = {};
       break;
@@ -454,6 +551,39 @@ export function buildAuditEvent(input: AuditEventInput): BuiltAuditEvent {
       break;
     case 'payment.refunded':
       entity = returnEntity(input);
+      metadata = {
+        orderId: requirePositiveSafeInteger(input.orderId, 'orderId'),
+        amountCents: requireNonNegativeSafeInteger(input.amountCents, 'amountCents'),
+      };
+      break;
+    case 'product.created':
+    case 'product.updated':
+    case 'product.retired':
+      entity = productEntity(input);
+      metadata = {};
+      break;
+    case 'variant.created':
+    case 'variant.updated':
+    case 'variant.retired':
+    case 'variant.clearance_set':
+    case 'variant.clearance_cleared':
+      entity = variantEntity(input);
+      metadata = {};
+      break;
+    case 'promo.created':
+    case 'promo.updated':
+    case 'promo.deactivated':
+      entity = promoEntity(input);
+      metadata = {};
+      break;
+    case 'feature_flag.created':
+    case 'feature_flag.updated':
+    case 'feature_flag.deleted':
+      entity = featureFlagEntity(input);
+      metadata = {};
+      break;
+    case 'payment.admin_refunded':
+      entity = paymentEntity(input);
       metadata = {
         orderId: requirePositiveSafeInteger(input.orderId, 'orderId'),
         amountCents: requireNonNegativeSafeInteger(input.amountCents, 'amountCents'),

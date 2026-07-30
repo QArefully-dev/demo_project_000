@@ -12,6 +12,7 @@ import {
   createProductAdminService,
   ProductAdminError,
   type ProductAdminCreateInput,
+  type ProductAdminPatch,
 } from './productAdminService.js';
 
 const NOW = '2026-07-29T09:00:00.000Z';
@@ -100,6 +101,36 @@ void test('product admin service persists admin commands with one audit event ea
       () => service.create(body({ slug: 'invalid-mixing-group', mixingGroup: 'unknown' }), context),
       ProductAdminError,
     );
+  });
+
+  await t.test('category and compare-at price are validated on create and update', () => {
+    assert.throws(
+      () =>
+        service.create(
+          { ...body(), category: 'Unknown category' } as unknown as ProductAdminCreateInput,
+          context,
+        ),
+      { name: 'ProductAdminError', code: 'INVALID_INPUT' },
+    );
+    assert.throws(() => service.create(body({ compareAtPriceCents: -1 }), context), {
+      name: 'ProductAdminError',
+      code: 'INVALID_INPUT',
+    });
+
+    const product = service.create(body({ slug: 'validated-limestone' }), context);
+    assert.throws(
+      () =>
+        service.update(
+          product.id,
+          { category: 'Unknown category' } as unknown as ProductAdminPatch,
+          context,
+        ),
+      { name: 'ProductAdminError', code: 'INVALID_INPUT' },
+    );
+    assert.throws(() => service.update(product.id, { compareAtPriceCents: Number.NaN }, context), {
+      name: 'ProductAdminError',
+      code: 'INVALID_INPUT',
+    });
   });
 
   await t.test('retiring an ordered product is non-destructive and retains order history', () => {

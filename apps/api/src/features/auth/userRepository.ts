@@ -11,6 +11,7 @@ export interface UserRecord {
 export interface UserCredentials extends UserRecord {
   passwordHash: string;
   passwordSalt: string;
+  suspendedAt: string | null;
 }
 
 interface UserRow {
@@ -20,6 +21,7 @@ interface UserRow {
   role: PublicUser['role'];
   password_hash?: string;
   password_salt?: string;
+  suspended_at?: string | null;
 }
 
 export interface UserRepository {
@@ -55,7 +57,7 @@ export function createUserRepository(db: Database.Database): UserRepository {
     findCredentialsByEmail(email) {
       const row = db
         .prepare(
-          `SELECT id, email, display_name, role, password_hash, password_salt
+          `SELECT id, email, display_name, role, password_hash, password_salt, suspended_at
            FROM users WHERE email = ?`,
         )
         .get(email) as UserRow | undefined;
@@ -64,13 +66,14 @@ export function createUserRepository(db: Database.Database): UserRepository {
             ...toUser(row),
             passwordHash: row.password_hash ?? '',
             passwordSalt: row.password_salt ?? '',
+            suspendedAt: row.suspended_at ?? null,
           }
         : null;
     },
     findCredentialsById(userId) {
       const row = db
         .prepare(
-          `SELECT id, email, display_name, role, password_hash, password_salt
+          `SELECT id, email, display_name, role, password_hash, password_salt, suspended_at
            FROM users WHERE id = ?`,
         )
         .get(userId) as UserRow | undefined;
@@ -79,6 +82,7 @@ export function createUserRepository(db: Database.Database): UserRepository {
             ...toUser(row),
             passwordHash: row.password_hash ?? '',
             passwordSalt: row.password_salt ?? '',
+            suspendedAt: row.suspended_at ?? null,
           }
         : null;
     },

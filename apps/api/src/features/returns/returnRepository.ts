@@ -160,6 +160,9 @@ export interface ReturnRepository {
       }
     | undefined;
 
+  /** All prior refund amounts against one captured payment, across both refund workflows. */
+  getPaymentRefundedCents(paymentId: number): number;
+
   /** Cumulative prior refund quantity and cents per return item line for a given order. */
   getPriorRefundedTotals(orderId: number): Array<{
     return_request_item_id: number;
@@ -572,6 +575,18 @@ export function createReturnRepository(db: Database.Database): ReturnRepository 
         )
         .get(orderId) as { id: number; amount_cents: number } | undefined;
       return row ? { id: row.id, amountCents: row.amount_cents } : undefined;
+    },
+
+    getPaymentRefundedCents(paymentId) {
+      const row = db
+        .prepare(
+          `SELECT
+             COALESCE((SELECT SUM(net_refund_cents) FROM refunds WHERE payment_id = ?), 0) +
+             COALESCE((SELECT SUM(amount_cents) FROM admin_refunds WHERE payment_id = ?), 0)
+             AS amount`,
+        )
+        .get(paymentId, paymentId) as { amount: number };
+      return row.amount;
     },
 
     getPriorRefundedTotals(orderId) {
