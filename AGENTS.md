@@ -130,6 +130,7 @@ Keep `--configLoader runner` on Vite/Vitest commands. Root scripts already suppl
 - Prettier formats code and config only; Markdown (`*.md`) stays excluded through `.prettierignore`.
 - Keep Vite/Vitest `--configLoader runner`; bundled config loader traverses sandbox-blocked Windows ancestors.
 - Tests: pure rule -> unit; repository/transaction -> SQLite integration; route/schema/auth -> Fastify `app.inject()`.
+- API suites register by path glob, not by hand-listed file: `apps/api/src/**/*.test.ts` -> unit; `apps/api/test/**/*.integration.test.ts` -> integration. New file off-convention never runs. Keep globs quoted in scripts (cross-shell).
 - Seeded integration DBs contain global demo orders, payments, lifecycle events, stable users. Scope counts/lists to test-owned identifiers: unique email, request ID, idempotency key. Never assume empty commerce tables or fixed starting IDs.
 - Deliberately corrupted persistence fixture -> restore valid snapshot before replay/other read path unless corrupt-state rejection is test target.
 - Destructive refactor -> characterization test first. Async UI -> stale-response, cancellation, error, retry coverage where relevant.
