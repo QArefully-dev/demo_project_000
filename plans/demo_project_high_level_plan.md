@@ -1,6 +1,6 @@
 # Demo Project High-Level Plan
 
-Status: current product direction. Last refresh 2026-07-30 @ `6d7b07e` (branch `expansion_002`).
+Status: current product direction. Last refresh 2026-08-01 @ `4fa6d64` (branch `expansion_002`).
 
 ## Direction Change
 
@@ -10,7 +10,7 @@ Reason: original consumer-shop idea works but B2B bulk trade is more grounded in
 
 Pivot is additive, not rewrite. Reuse catalog/pricing/inventory/checkout/orders foundations. Reframe UI + rules toward trade buyer; retain production boundaries.
 
-Phase status: rebrand pass COMPLETE. Three passes landed and merged -> B2B rebrand, gap closure, catalog colour schemes and pigments. Expansion items landed since the pivot: Custom Blend (16), Checkout depth (4), Pricing and promotions (5), Account depth (7), Secondary admin (9). Current phase: expansion per `Future Expansion Order` below.
+Phase status: rebrand pass COMPLETE. Three passes landed and merged -> B2B rebrand, gap closure, catalog colour schemes and pigments. Expansion items landed since the pivot: Custom Blend (16), Checkout depth (4), Pricing and promotions (5), Account depth (7), Secondary admin (9), Buy Again / reorder (12). Current phase: expansion per `Future Expansion Order` below.
 
 ## Purpose
 
@@ -86,8 +86,8 @@ Avoid visible platform complexity:
 - implemented integrity: ordered migrations through `028` (`sort_order < 1` variants retired in `020`; obsolete Custom Small Order schema physically removed in `021`; custom blend tables plus cart/order line rebuild in `022`; trade delivery sites, billing entities, and order delivery/billing detail in `023`; clearance, scoped promo, and order discount-base columns in `024`; session metadata, preferences, deletion events in `025`; company accounts, memberships, invites, order approvals in `026`; user suspension, feature flags, immutable `admin_refunds` in `027`; retired variants share `sort_order 0` while live positions stay unique per product in `028`), append-only audit ledger, sanitized admin audit reads
 - seed: 100 deterministic products across 6 categories (Sports Nutrition 20, Baking & Pantry 20, Drinks 15, Household & Cleaning 15, Garden & Outdoors 15, Trade & Creative Materials 15), each carrying a nullable `mixingGroup` from a fixed set of eight (`food-grade`, `cleaning`, `garden-treatment`, `cementitious-materials`, `casting-materials`, `pigments`, `theatrical-effects`, `absorbents`) validated in `packages/catalog`, plus users, promotions including `GARDEN10` and `CLEANFIVE`, active/expired/future clearance fixtures, favourites, catalog metadata, curated bundles, inventory/backorder scenarios, company-account fixtures with an approval threshold, one disabled `admin.example_flag`, and six demo order scenarios including `alice-reorder-mix`, the buy-again fixture that reorders into a mixed added/skipped result
 - tests: focused unit, contract, route, SQLite integration, React integration, and accessibility coverage; broad E2E coverage reserved for course
-- completed plan records are no longer retained. `plans/old/` was deleted at commit `8285c62`, and `plans/account_depth_coding_plan.md` plus `plans/secondary_admin_coding_plan.md` at commit `186039d`; `plans/` now holds this file plus the in-flight coding plan only. Do not cite a `plans/old/` path as a source - implementation truth is the code, the migrations, and git history
-- history pointers for completed items, in place of the deleted plan documents: catalog expansion, inventory, returns and refunds, order history and lifecycle, review depth, materials-exchange gap closure, bag colour schemes and pigments, and Custom Small Order retirement predate migration `022`; Custom Blend (16), Checkout depth (4), and Pricing and promotions (5) landed with migrations `022`-`024` in commits `f63e9bf` / `b1957ba` / `b537512`; Account depth (7) and Secondary admin (9) landed with migrations `025`-`028` in commits `3c0d6d7` / `d922c4e`
+- completed plan records are no longer retained. `plans/old/` was deleted at commit `8285c62`, and `plans/account_depth_coding_plan.md` plus `plans/secondary_admin_coding_plan.md` at commit `186039d`, and `plans/buy_again_reorder_coding_plan.md` once 12 landed; `plans/` holds this file plus any in-flight coding plan only. Do not cite a `plans/old/` path as a source - implementation truth is the code, the migrations, and git history
+- history pointers for completed items, in place of the deleted plan documents: catalog expansion, inventory, returns and refunds, order history and lifecycle, review depth, materials-exchange gap closure, bag colour schemes and pigments, and Custom Small Order retirement predate migration `022`; Custom Blend (16), Checkout depth (4), and Pricing and promotions (5) landed with migrations `022`-`024` in commits `f63e9bf` / `b1957ba` / `b537512`; Account depth (7) and Secondary admin (9) landed with migrations `025`-`028` in commits `3c0d6d7` / `d922c4e`; Buy Again / reorder (12) landed with no migration in commit `12838a9`, merged `4fa6d64`
 
 ## Hard Constraints
 
@@ -193,6 +193,7 @@ Precursor B2B rebrand pass: COMPLETE. Brand/copy, sack/pallet unit model, `£/to
     - migration `021` physically removes obsolete schema. Earlier migrations remain immutable history; local SQLite is disposable
     - frees one nav slot for 16; retained `.custom-blend-nav-link` CSS is reserved for its greenfield UI
 12. Buy Again / reorder: completed
+    - landed 2026-08-01 (`12838a9`), merged `4fa6d64`
     - landed as `POST /api/orders/:orderId/reorder` (`requireCustomer` plus order ownership) -> `CartService.addMany` -> one outcome per source order line. `Buy again` control sits on order history rows and order detail (`apps/web/src/features/reorder/`)
     - no new domain concept and no new persistence: schema unchanged, **no migration; head stays `028`**
     - partial success is the normal result and is reported per line. Skip reasons as built: `VARIANT_RETIRED`, `VARIANT_UNRESOLVED`, `INSUFFICIENT_STOCK`, `BELOW_MOQ`, `INVALID_QUANTITY`, `BLEND_UNAVAILABLE` (`apps/api/src/features/cart/cartBulkAddRules.ts` owns the fixed precedence; `features/reorder/reorderRules.ts` owns the two pre-cart reasons)
@@ -341,7 +342,7 @@ Keep suite focused, stable, fast, and obvious. Test only critical happy paths, i
 
 Target: 150k+ meaningful authored LOC. Report production and test LOC separately.
 
-Measured 2026-07-30 @ `6d7b07e` (tracked `apps/**` + `packages/**`, `*.ts|*.tsx|*.css|*.sql`, excluding `node_modules`, `dist`, `coverage`): production ~58.8k across 427 files; test ~39.7k across 184 files; total ~98.4k. Roughly 66% of target -> expansion items 8, 10, and 12-15 carry remaining growth.
+Measured 2026-08-01 @ `4fa6d64` (tracked `apps/**` + `packages/**`, `*.ts|*.tsx|*.css|*.sql`, excluding `node_modules`, `dist`, `coverage`): production ~60.3k across 438 files; test ~42.2k across 193 files; total ~102.4k. Roughly 68% of target -> expansion items 8, 10, and 13-15 carry remaining growth.
 
 Suggested allocation:
 
