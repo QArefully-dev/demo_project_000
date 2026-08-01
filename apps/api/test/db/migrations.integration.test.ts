@@ -48,6 +48,7 @@ const expectedVersions = [
   '026',
   '027',
   '028',
+  '029',
 ];
 
 /** Every migration up to but excluding `021`, i.e. the schema powderizer still existed in. */
@@ -1970,7 +1971,6 @@ void test('v21 migration removes powderizer persistence and rebuilds the tables 
   for (const [table, expected] of [
     ['reviews', 1],
     ['review_rating_aggregates', 1],
-    ['favourites', 1],
     ['product_tags', 1],
     ['product_specifications', 1],
   ] as const) {
@@ -1984,6 +1984,10 @@ void test('v21 migration removes powderizer persistence and rebuilds the tables 
       `${table} rows for product 901 must survive the products rebuild`,
     );
   }
+  assert.deepEqual(
+    db.prepare('SELECT COUNT(*) AS count FROM saved_list_items WHERE variant_id = 901').get(),
+    { count: 1 },
+  );
   assert.deepEqual(
     db
       .prepare('SELECT product_id, published_count, rating_sum FROM review_rating_aggregates')

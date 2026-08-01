@@ -4,11 +4,10 @@ import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter, Clock } from '../audit/auditService.js';
 import type { SessionService } from '../auth/sessionService.js';
 import type { SessionUser } from '../auth/sessionRepository.js';
-import type { FavouritesRepository } from '../favourites/favouritesRepository.js';
 import type { MailboxRepository } from '../mailbox/mailboxRepository.js';
 import type { OrderRepository } from '../orders/orderRepository.js';
 import type { PreferencesService } from '../preferences/preferencesService.js';
-import { toProductContract } from '../../mappers/product.js';
+import type { SavedListService } from '../savedLists/savedListService.js';
 import {
   toBillingEntity,
   type BillingEntityRepository,
@@ -35,7 +34,7 @@ export interface DataExportServiceDependencies {
   clock: Clock;
   sessions: SessionService;
   orders: Pick<OrderRepository, 'listExportOwned'>;
-  favourites: FavouritesRepository;
+  savedLists: Pick<SavedListService, 'list' | 'get'>;
   deliverySites: DeliverySiteRepository;
   billingEntities: BillingEntityRepository;
   preferences: PreferencesService;
@@ -53,7 +52,7 @@ export function createDataExportService({
   clock,
   sessions,
   orders,
-  favourites,
+  savedLists,
   deliverySites,
   billingEntities,
   preferences,
@@ -81,7 +80,10 @@ export function createDataExportService({
           deliverySites: deliverySites.listActive(user.id).map(toDeliverySite),
           billingEntities: billingEntities.listActive(user.id).map(toBillingEntity),
           orders: ownedOrders,
-          favourites: favourites.list(user.id).map(toProductContract),
+          savedLists: savedLists.list(user.id).flatMap((list) => {
+            const detail = savedLists.get(user.id, Number(list.listId));
+            return detail.ok ? [detail.value] : [];
+          }),
           customBlends,
           sessions: sessions.listForUser(user.id, currentSessionToken),
           preferences: preferences.get(user.id),

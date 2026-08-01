@@ -73,6 +73,13 @@ export const AUDIT_ACTIONS = [
   'feature_flag.updated',
   'feature_flag.deleted',
   'payment.admin_refunded',
+  'saved_list.created',
+  'saved_list.renamed',
+  'saved_list.deleted',
+  'saved_list.item_added',
+  'saved_list.item_updated',
+  'saved_list.item_removed',
+  'cart.saved_list_added',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
@@ -91,7 +98,8 @@ export type AuditEntityType =
   | 'product'
   | 'variant'
   | 'promo'
-  | 'feature_flag';
+  | 'feature_flag'
+  | 'saved_list';
 export type AuditActor =
   | { type: 'anonymous'; userId: null }
   | { type: 'user'; userId: number }
@@ -126,6 +134,7 @@ type UserEventAction = Exclude<
   | `return.${string}`
   | `company.${string}`
   | `approval.${string}`
+  | `saved_list.${string}`
 >;
 
 export type AuditEventInput =
@@ -201,6 +210,14 @@ export type AuditEventInput =
       action: 'cart.quick_order_added';
       cartId: string;
       lineCount: number;
+      addedLineCount: number;
+      skippedLineCount: number;
+    })
+  | (WithContext & {
+      action: 'cart.saved_list_added';
+      cartId: string;
+      savedListId: number;
+      itemCount: number;
       addedLineCount: number;
       skippedLineCount: number;
     })
@@ -292,6 +309,25 @@ export type AuditEventInput =
       action: 'feature_flag.created' | 'feature_flag.updated' | 'feature_flag.deleted';
       featureFlagKey: string;
     })
+  | (WithContext & {
+      action: 'saved_list.created' | 'saved_list.renamed';
+      savedListId: number;
+      name: string;
+    })
+  | (WithContext & { action: 'saved_list.deleted'; savedListId: number })
+  | (WithContext & {
+      action: 'saved_list.item_added';
+      savedListId: number;
+      variantId: number;
+      quantity: number;
+    })
+  | (WithContext & {
+      action: 'saved_list.item_updated';
+      savedListId: number;
+      itemId: number;
+      quantity: number;
+    })
+  | (WithContext & { action: 'saved_list.item_removed'; savedListId: number; itemId: number })
   | (WithContext & {
       action: 'payment.admin_refunded';
       paymentId: number;
@@ -508,6 +544,16 @@ function featureFlagEntity(input: Record<string, unknown>): {
   };
 }
 
+function savedListEntity(input: Record<string, unknown>): {
+  entityType: 'saved_list';
+  entityId: string;
+} {
+  return {
+    entityType: 'saved_list',
+    entityId: String(requirePositiveSafeInteger(input.savedListId, 'savedListId')),
+  };
+}
+
 function requireReviewRating(value: unknown): number {
   const rating = requirePositiveSafeInteger(value, 'rating');
   if (rating > 5) throw new AuditEventValidationError('rating must be an integer between 1 and 5');
@@ -649,6 +695,15 @@ export function buildAuditEvent(input: AuditEventInput): BuiltAuditEvent {
         skippedLineCount: requireNonNegativeSafeInteger(input.skippedLineCount, 'skippedLineCount'),
       };
       break;
+    case 'cart.saved_list_added':
+      entity = cartEntity(input);
+      metadata = {
+        savedListId: requirePositiveSafeInteger(input.savedListId, 'savedListId'),
+        itemCount: requireNonNegativeSafeInteger(input.itemCount, 'itemCount'),
+        addedLineCount: requireNonNegativeSafeInteger(input.addedLineCount, 'addedLineCount'),
+        skippedLineCount: requireNonNegativeSafeInteger(input.skippedLineCount, 'skippedLineCount'),
+      };
+      break;
     case 'payment.pre_gateway_failed':
       entity = paymentEntity(input);
       if (!preGatewayFailureCodeSet.has(input.errorCode)) {
@@ -777,6 +832,41 @@ export function buildAuditEvent(input: AuditEventInput): BuiltAuditEvent {
     case 'feature_flag.deleted':
       entity = featureFlagEntity(input);
       metadata = {};
+      break;
+    case 'saved_list.created':
+    case 'saved_list.renamed':
+      entity = savedListEntity(input);
+      metadata = {
+        savedListId: requirePositiveSafeInteger(input.savedListId, 'savedListId'),
+        name: requireBoundedString(input.name, 'name', 80),
+      };
+      break;
+    case 'saved_list.deleted':
+      entity = savedListEntity(input);
+      metadata = { savedListId: requirePositiveSafeInteger(input.savedListId, 'savedListId') };
+      break;
+    case 'saved_list.item_added':
+      entity = savedListEntity(input);
+      metadata = {
+        savedListId: requirePositiveSafeInteger(input.savedListId, 'savedListId'),
+        variantId: requirePositiveSafeInteger(input.variantId, 'variantId'),
+        quantity: requirePositiveSafeInteger(input.quantity, 'quantity'),
+      };
+      break;
+    case 'saved_list.item_updated':
+      entity = savedListEntity(input);
+      metadata = {
+        savedListId: requirePositiveSafeInteger(input.savedListId, 'savedListId'),
+        itemId: requirePositiveSafeInteger(input.itemId, 'itemId'),
+        quantity: requirePositiveSafeInteger(input.quantity, 'quantity'),
+      };
+      break;
+    case 'saved_list.item_removed':
+      entity = savedListEntity(input);
+      metadata = {
+        savedListId: requirePositiveSafeInteger(input.savedListId, 'savedListId'),
+        itemId: requirePositiveSafeInteger(input.itemId, 'itemId'),
+      };
       break;
     case 'payment.admin_refunded':
       entity = paymentEntity(input);

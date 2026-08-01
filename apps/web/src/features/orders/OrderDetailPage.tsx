@@ -10,6 +10,7 @@ import { OrderDetailView } from './OrderDetailView';
 import { ReturnPanel } from '@/features/returns/ReturnPanel';
 import { BuyAgainButton, useBuyAgain } from '@/features/reorder/BuyAgainButton';
 import { ReorderOutcomeList } from '@/features/reorder/ReorderOutcomeList';
+import { SaveOrderAsListButton } from '@/features/savedLists/SaveOrderAsListButton';
 
 export function OrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
@@ -162,6 +163,7 @@ export function OrderDetailPage() {
         />
         <ReorderOutcomeList orderId={order.id} state={buyAgainState} />
       </section>
+      <SaveOrderAsListButton orderId={order.id} />
       <ReturnErrorBoundary>{orderId && <ReturnPanel orderId={orderId} />}</ReturnErrorBoundary>
       {confirming && (
         <div

@@ -8,11 +8,9 @@ import { ProductCard } from './ProductCard';
 import { ComparisonSelectionProvider } from '@/features/comparison/ComparisonSelectionContext';
 import { CompareProductButton } from '@/features/comparison/CompareProductButton';
 
-vi.mock('@/components/WishlistButton', () => ({
-  WishlistButton: ({ productId }: { productId: string }) => (
-    <button type="button" aria-label={`Add ${productId} to wishlist`}>
-      Wishlist
-    </button>
+vi.mock('@/components/SaveToListButton', () => ({
+  SaveToListButton: ({ variantId }: { variantId?: number }) => (
+    <button type="button" aria-label={`Save variant ${variantId ?? 'none'} to list`} />
   ),
 }));
 
@@ -157,7 +155,7 @@ describe('ProductCard', () => {
     expect(screen.queryByText('Clearance')).not.toBeInTheDocument();
   });
 
-  it('links image and title to the product while leaving wishlist and cart actions separate', () => {
+  it('links image and title to the product while leaving saved-list and cart actions separate', () => {
     renderCard();
 
     expect(screen.getByRole('link', { name: 'Powdered Water bag' })).toHaveAttribute(
@@ -168,9 +166,7 @@ describe('ProductCard', () => {
       'href',
       '/products/powdered-water-1',
     );
-    expect(
-      screen.getByRole('button', { name: 'Add powdered-water-1 to wishlist' }).closest('a'),
-    ).toBeNull();
+    expect(screen.getByRole('button', { name: 'Save variant 1 to list' }).closest('a')).toBeNull();
     expect(screen.getByRole('button', { name: 'Add to order' }).closest('a')).toBeNull();
   });
 

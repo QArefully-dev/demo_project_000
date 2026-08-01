@@ -20,10 +20,10 @@ export const accountItem: NavItem = {
   enabled: false,
 };
 
-export const wishlistItem: NavItem = {
-  key: 'wishlist',
-  label: 'Wishlist',
-  icon: 'Heart',
+export const savedListsItem: NavItem = {
+  key: 'savedLists',
+  label: 'Saved Lists',
+  icon: 'List',
   enabled: true,
 };
 
@@ -49,7 +49,7 @@ export const customBlendItem: NavItem = {
 export const navItems: Record<string, NavItem> = {
   search: searchItem,
   account: accountItem,
-  wishlist: wishlistItem,
+  savedLists: savedListsItem,
   bundles: bundlesItem,
   customBlend: customBlendItem,
 };

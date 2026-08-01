@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Navigate, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { HomePage } from './features/home/HomePage';
@@ -12,7 +12,6 @@ import { SignupPage } from './features/auth/SignupPage';
 import { ForgotPasswordPage } from './features/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from './features/auth/ResetPasswordPage';
 import { AccountPage } from './features/account/AccountPage';
-import { WishlistPage } from './features/wishlist/WishlistPage';
 import { MailboxPage } from './features/mailbox/MailboxPage';
 import { NotFoundPage } from './features/notFound/NotFoundPage';
 import { BagDesignsPage } from './features/designs/BagDesignsPage';
@@ -37,6 +36,8 @@ import { AdminUsersPage } from './features/admin/users';
 import { AdminOrdersPage } from './features/admin/orders';
 import { AdminFeatureFlagsPage } from './features/admin/featureFlags';
 import { QuickOrderPage } from './features/quickOrder/QuickOrderPage';
+import { SavedListsPage } from './features/savedLists/SavedListsPage';
+import { SavedListDetailPage } from './features/savedLists/SavedListDetailPage';
 
 export default function App() {
   return (
@@ -92,7 +93,23 @@ export default function App() {
           path="/wishlist"
           element={
             <ProtectedRoute>
-              <WishlistPage />
+              <Navigate to="/lists" replace />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/lists"
+          element={
+            <ProtectedRoute>
+              <SavedListsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/lists/:listId"
+          element={
+            <ProtectedRoute>
+              <SavedListDetailPage />
             </ProtectedRoute>
           }
         />

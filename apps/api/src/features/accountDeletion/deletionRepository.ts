@@ -96,7 +96,11 @@ export function createAccountDeletionRepository(db: Database.Database): AccountD
            )`,
       ).run(userId);
       db.prepare('DELETE FROM user_preferences WHERE user_id = ?').run(userId);
-      db.prepare('DELETE FROM favourites WHERE user_id = ?').run(userId);
+      db.prepare(
+        `DELETE FROM saved_list_items
+         WHERE saved_list_id IN (SELECT id FROM saved_lists WHERE user_id = ?)`,
+      ).run(userId);
+      db.prepare('DELETE FROM saved_lists WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM password_reset_tokens WHERE user_id = ?').run(userId);
       db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
     },

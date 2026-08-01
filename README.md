@@ -73,7 +73,7 @@ Each checkout request includes an idempotency key. Retrying the same key with th
 - **Payment** with simulated gateway (test cards below), order confirmation, and email receipt
 - **Order history and lifecycle** with simulated shipments, tracking timelines, and eligible-order cancellation
 - **User accounts**: sign up, log in, log out, forgot/reset password via dev mailbox
-- **Favourites / wishlist** with heart toggle and wishlist page
+- **Saved lists** with a default Favourites list, named buyer lists, and whole-list cart adds
 - **Account page** with password change
 - **Dev mailbox** for inspecting system emails and reset-password links
 
@@ -119,7 +119,7 @@ Most variants ship as standard parcel. Heavy variants or orders exceeding a comb
 | bob@example.com     | Password123!  | customer |
 | admin@example.com   | Password123!  | admin    |
 
-Alice has 3 pre-seeded favourite products.
+Alice has a pre-seeded default Favourites list with 3 products. Her `Monthly restock` list demonstrates all four whole-list add outcomes after `npm run reset`: an ordinary added line, a quantity raised to the 4-sack MOQ, a retired variant skipped, and an insufficient-stock variant skipped.
 
 ### Local Administration
 

@@ -9,7 +9,7 @@ import type Database from 'better-sqlite3';
  *
  * Reset order: inventory movements -> receipts -> inventory allocations -> reservations ->
  *   checkout reservations -> payments -> promo redemptions -> review reports -> helpful votes ->
- *   reviews -> rating aggregates -> favourites -> reset tokens -> sessions -> mailbox ->
+ *   reviews -> rating aggregates -> saved-list items -> saved lists -> reset tokens -> sessions -> mailbox ->
  *   order access grants -> lifecycle events ->
  *   shipment allocations -> shipments -> order line items ->
  *   orders -> cart line items -> carts -> promo codes -> bundle components ->
@@ -50,7 +50,8 @@ export function resetDatabase(db: Database.Database): void {
       DELETE FROM review_helpful_votes;
       DELETE FROM reviews;
       DELETE FROM review_rating_aggregates;
-      DELETE FROM favourites;
+      DELETE FROM saved_list_items;
+      DELETE FROM saved_lists;
       DELETE FROM password_reset_tokens;
       DELETE FROM sessions;
       DELETE FROM user_preferences;

@@ -31,8 +31,8 @@ vi.mock('@/api/promo', () => ({ validatePromo: vi.fn() }));
 vi.mock('@/hooks/AuthContext', () => ({ useAuth: vi.fn() }));
 vi.mock('@/api/deliverySlots', () => ({ getDeliverySlotOptions: vi.fn() }));
 vi.mock('@/api/payments', () => ({ pay: vi.fn() }));
-vi.mock('@/components/WishlistButton', () => ({
-  WishlistButton: () => <button type="button">Wishlist</button>,
+vi.mock('@/components/SaveToListButton', () => ({
+  SaveToListButton: () => <button type="button">Save to list</button>,
 }));
 
 const cartContext = {
@@ -52,6 +52,7 @@ const cartContext = {
   updateQuantity: vi.fn(),
   removeItem: vi.fn(),
   reorder: vi.fn(),
+  addSavedListToCart: vi.fn(),
   refreshCart: vi.fn(),
   retryCart: vi.fn(),
   clearCart: vi.fn(),

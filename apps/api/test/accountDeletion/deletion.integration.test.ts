@@ -89,9 +89,6 @@ void test('account deletion redacts live account data while preserving commerce 
   const { app, db, sessions, auth, passwordReset, audit } = await createFixture(t);
   const userId = await insertUser(db, 'delete-me@example.test', 'Delete Me');
   const foreignUserId = await insertUser(db, 'foreign-cart@example.test', 'Foreign Cart');
-  const productId = Number(
-    (db.prepare('SELECT id FROM products ORDER BY id LIMIT 1').get() as { id: number }).id,
-  );
   const variantId = Number(
     (db.prepare('SELECT id FROM product_variants ORDER BY id LIMIT 1').get() as { id: number }).id,
   );
@@ -136,7 +133,18 @@ void test('account deletion redacts live account data while preserving commerce 
     `INSERT INTO user_preferences (user_id, order_updates_email, marketing_email, approval_request_email, updated_at)
      VALUES (?, 0, 1, 0, ?)`,
   ).run(userId, now);
-  db.prepare('INSERT INTO favourites (user_id, product_id) VALUES (?, ?)').run(userId, productId);
+  const savedListId = Number(
+    db
+      .prepare(
+        `INSERT INTO saved_lists (user_id, name, is_default, created_at, updated_at)
+         VALUES (?, 'Deletion list', 0, ?, ?)`,
+      )
+      .run(userId, now, now).lastInsertRowid,
+  );
+  db.prepare(
+    `INSERT INTO saved_list_items (saved_list_id, variant_id, quantity, created_at, updated_at)
+     VALUES (?, ?, 1, ?, ?)`,
+  ).run(savedListId, variantId, now, now);
   createDeliverySiteRepository(db).insert({
     user_id: userId,
     label: 'Deletion Yard',
@@ -317,9 +325,21 @@ void test('account deletion redacts live account data while preserving commerce 
   );
   assert.equal(
     (
-      db.prepare('SELECT COUNT(*) AS total FROM favourites WHERE user_id = ?').get(userId) as {
+      db.prepare('SELECT COUNT(*) AS total FROM saved_lists WHERE user_id = ?').get(userId) as {
         total: number;
       }
+    ).total,
+    0,
+  );
+  assert.equal(
+    (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS total FROM saved_list_items item
+           JOIN saved_lists list ON list.id = item.saved_list_id
+           WHERE list.user_id = ?`,
+        )
+        .get(userId) as { total: number }
     ).total,
     0,
   );

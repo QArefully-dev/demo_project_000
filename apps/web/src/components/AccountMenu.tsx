@@ -53,6 +53,7 @@ export function AccountMenu() {
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => navigate('/account')}>My Account</DropdownMenuItem>
         <DropdownMenuItem onClick={() => navigate('/orders')}>My Orders</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => navigate('/lists')}>My Lists</DropdownMenuItem>
         {user.role === 'admin' && (
           <>
             <DropdownMenuSeparator />

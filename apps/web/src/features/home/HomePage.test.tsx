@@ -19,8 +19,8 @@ vi.mock('@/hooks/CartContext', () => ({
   }),
 }));
 
-vi.mock('@/components/WishlistButton', () => ({
-  WishlistButton: () => <button type="button" aria-label="Add to wishlist" />,
+vi.mock('@/components/SaveToListButton', () => ({
+  SaveToListButton: () => <button type="button" aria-label="Save to default list" />,
 }));
 
 function product(id: string): Product {

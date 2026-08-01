@@ -8,8 +8,8 @@ import { SimilarProductsSection } from './SimilarProductsSection';
 const productsApi = vi.hoisted(() => ({ getSimilarProducts: vi.fn() }));
 
 vi.mock('@/api/products', () => productsApi);
-vi.mock('@/components/WishlistButton', () => ({
-  WishlistButton: () => <button type="button">Wishlist</button>,
+vi.mock('@/components/SaveToListButton', () => ({
+  SaveToListButton: () => <button type="button">Save to list</button>,
 }));
 
 const product = (id: string, overrides: Partial<Product> = {}): Product => ({

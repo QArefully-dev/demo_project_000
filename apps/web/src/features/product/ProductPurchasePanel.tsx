@@ -4,7 +4,7 @@ import { SACK_WEIGHT_GRAMS } from '@shop/contracts/pricing';
 import { Check, Package, Scale, AlertTriangle, Truck } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { WishlistButton } from '@/components/WishlistButton';
+import { AddToListMenu } from '@/features/savedLists/AddToListMenu';
 import { CompareProductButton } from '@/features/comparison/CompareProductButton';
 import { formatMoney } from '@/lib/formatMoney';
 
@@ -468,9 +468,10 @@ export function ProductPurchasePanel({
                     ? 'Unavailable'
                     : 'Add to order'}
         </Button>
-        <div className="rounded-lg border bg-background" title="Add to wishlist">
-          <WishlistButton productId={product.id} product={product} />
-        </div>
+        <AddToListMenu
+          variantId={selectedVariantId}
+          quantity={hasValidQuantity ? parsedQuantity : 1}
+        />
       </div>
       <div className="mt-3">
         <CompareProductButton productId={product.id} productName={product.name} />

@@ -183,6 +183,7 @@ const cartContext: ReturnType<typeof useCart> = {
   updateQuantity: vi.fn().mockResolvedValue(true),
   removeItem: vi.fn().mockResolvedValue(true),
   reorder: vi.fn().mockResolvedValue(false),
+  addSavedListToCart: vi.fn().mockResolvedValue(false),
   refreshCart: vi.fn().mockResolvedValue(true),
   retryCart: vi.fn().mockResolvedValue(true),
   clearCart,

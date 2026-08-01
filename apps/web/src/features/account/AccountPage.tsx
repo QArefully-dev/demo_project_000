@@ -5,7 +5,7 @@ import { changePassword as changePasswordApi } from '@/api/auth';
 import { Button } from '@/components/ui/button';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { ApiError } from '@/api/client';
-import { Heart, LogOut, Package } from 'lucide-react';
+import { List, LogOut, Package } from 'lucide-react';
 import { BillingEntitiesSection } from './BillingEntitiesSection';
 import { DataExportSection } from './DataExportSection';
 import { DeleteAccountSection } from './DeleteAccountSection';
@@ -162,11 +162,11 @@ export function AccountPage() {
           View Orders
         </Link>
         <Link
-          to="/wishlist"
+          to="/lists"
           className="flex w-full items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent"
         >
-          <Heart className="h-4 w-4" />
-          View Wishlist
+          <List className="h-4 w-4" />
+          View Saved Lists
         </Link>
 
         <Button variant="outline" className="w-full" onClick={() => void handleLogout()}>
