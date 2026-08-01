@@ -179,6 +179,7 @@ const cartContext: ReturnType<typeof useCart> = {
   addBundle: vi.fn().mockResolvedValue(true),
   addCustomBlend: vi.fn().mockResolvedValue(true),
   replaceCustomBlend: vi.fn().mockResolvedValue(true),
+  quickOrder: vi.fn().mockResolvedValue(false),
   updateQuantity: vi.fn().mockResolvedValue(true),
   removeItem: vi.fn().mockResolvedValue(true),
   reorder: vi.fn().mockResolvedValue(false),

@@ -48,6 +48,7 @@ const cartContext = {
   addBundle: vi.fn(),
   addCustomBlend: vi.fn(),
   replaceCustomBlend: vi.fn(),
+  quickOrder: vi.fn(),
   updateQuantity: vi.fn(),
   removeItem: vi.fn(),
   reorder: vi.fn(),

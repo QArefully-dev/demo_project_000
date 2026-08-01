@@ -36,6 +36,7 @@ import { AdminPromosPage } from './features/admin/promos/AdminPromosPage';
 import { AdminUsersPage } from './features/admin/users';
 import { AdminOrdersPage } from './features/admin/orders';
 import { AdminFeatureFlagsPage } from './features/admin/featureFlags';
+import { QuickOrderPage } from './features/quickOrder/QuickOrderPage';
 
 export default function App() {
   return (
@@ -48,6 +49,7 @@ export default function App() {
         <Route path="/custom-blend" element={<CustomBlendPage />} />
         <Route path="/products/:id" element={<ProductPage />} />
         <Route path="/cart" element={<CartPage />} />
+        <Route path="/quick-order" element={<QuickOrderPage />} />
         <Route path="/checkout" element={<CheckoutPage />} />
         <Route path="/order-confirmation/:orderId" element={<OrderConfirmationPage />} />
         <Route path="/login" element={<LoginPage />} />

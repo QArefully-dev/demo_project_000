@@ -7,7 +7,9 @@ import { ApiError } from '@/api/client';
 import * as cartApi from '@/api/cart';
 import * as bundlesApi from '@/api/bundles';
 import * as customBlendsApi from '@/api/customBlends';
+import * as quickOrderApi from '@/api/quickOrder';
 import * as reorderApi from '@/api/reorder';
+import type { QuickOrderResponse } from '@shop/contracts/quick-order';
 import { clearCartId, getCartId, setCartId } from '@/lib/cartStorage';
 import { CartProvider, useCartContext } from './CartContext';
 
@@ -24,6 +26,9 @@ vi.mock('@/api/bundles', () => ({
 vi.mock('@/api/customBlends', () => ({
   createCustomBlend: vi.fn(),
   replaceCustomBlend: vi.fn(),
+}));
+vi.mock('@/api/quickOrder', () => ({
+  submitQuickOrder: vi.fn(),
 }));
 vi.mock('@/api/reorder', () => ({
   reorderFromOrder: vi.fn(),
@@ -136,6 +141,15 @@ function reorderResponse(reorderedCart: Cart): ReorderResponse {
         priceChanged: false,
       },
     ],
+  };
+}
+
+function quickOrderResponse(quickOrderedCart: Cart): QuickOrderResponse {
+  return {
+    cart: quickOrderedCart,
+    addedLineCount: quickOrderedCart.items.length,
+    skippedLineCount: 0,
+    outcomes: [],
   };
 }
 
@@ -397,6 +411,93 @@ describe('useCart', () => {
     expect(result.current.error).toBe(
       'Your previous cart was no longer available. A new cart is ready.',
     );
+  });
+
+  it('tracks a quick order while pending and replaces the cart from its authoritative response', async () => {
+    setCartId('cart');
+    const response = deferred<QuickOrderResponse>();
+    vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart', ['existing']));
+    vi.mocked(quickOrderApi.submitQuickOrder).mockReturnValueOnce(response.promise);
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    let action!: Promise<QuickOrderResponse | false>;
+    act(() => {
+      action = result.current.quickOrder('CEM-0001-001, 4');
+    });
+
+    expect(result.current.isActionPending('quick-order', 'quick-order')).toBe(true);
+    expect(quickOrderApi.submitQuickOrder).toHaveBeenCalledWith('cart', 'CEM-0001-001, 4');
+    expect(cartApi.getCart).toHaveBeenCalledTimes(1);
+
+    const expected = quickOrderResponse(cart('cart', ['existing', 'cement']));
+    await act(async () => {
+      response.resolve(expected);
+      await response.promise;
+    });
+
+    expect(await action).toEqual(expected);
+    expect(result.current.cart?.items.map((item) => item.productId)).toEqual([
+      'existing',
+      'cement',
+    ]);
+    expect(result.current.isActionPending('quick-order')).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(cartApi.getCart).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['NO_INPUT_LINES', 'Enter at least one line before submitting your quick order.'],
+    [
+      'TOO_MANY_LINES',
+      'Your quick order has too many lines. Split it into smaller submissions and try again.',
+    ],
+  ])('maps the quick-order %s rejection to buyer-facing copy', async (code, message) => {
+    setCartId('cart');
+    vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart', ['existing']));
+    vi.mocked(quickOrderApi.submitQuickOrder).mockRejectedValueOnce(
+      new ApiError(message, 400, { error: message, code } as never),
+    );
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    await act(async () => expect(await result.current.quickOrder('CEM-0001-001, 4')).toBe(false));
+
+    expect(result.current.error).toBe(message);
+    expect(result.current.cart?.items.map((item) => item.productId)).toEqual(['existing']);
+    expect(result.current.isActionPending('quick-order')).toBe(false);
+  });
+
+  it('recovers a missing cart and replays a quick order exactly once', async () => {
+    setCartId('old-cart');
+    vi.mocked(cartApi.getCart)
+      .mockResolvedValueOnce(cart('old-cart'))
+      .mockResolvedValueOnce(cart('new-cart'));
+    vi.mocked(cartApi.createCart).mockResolvedValueOnce({ cartId: 'new-cart' });
+    const replayed = quickOrderResponse(cart('new-cart', ['cement']));
+    vi.mocked(quickOrderApi.submitQuickOrder)
+      .mockRejectedValueOnce(new ApiError('Cart not found', 404))
+      .mockResolvedValueOnce(replayed);
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    await act(async () =>
+      expect(await result.current.quickOrder('CEM-0001-001, 4')).toEqual(replayed),
+    );
+
+    expect(quickOrderApi.submitQuickOrder).toHaveBeenCalledTimes(2);
+    expect(quickOrderApi.submitQuickOrder).toHaveBeenNthCalledWith(
+      1,
+      'old-cart',
+      'CEM-0001-001, 4',
+    );
+    expect(quickOrderApi.submitQuickOrder).toHaveBeenNthCalledWith(
+      2,
+      'new-cart',
+      'CEM-0001-001, 4',
+    );
+    expect(result.current.cartId).toBe('new-cart');
+    expect(result.current.error).toBeNull();
   });
 
   it('separates a configured line from its plain counterpart by config key', async () => {

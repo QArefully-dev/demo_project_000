@@ -147,6 +147,10 @@ describe('CartPage', () => {
       screen.getByText(/Pallet freight scheduled after order confirmation/),
     ).toBeInTheDocument();
     expect(screen.getByText(/Total order weight: 100,000g/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Quick order by item code' })).toHaveAttribute(
+      'href',
+      '/quick-order',
+    );
   });
 
   it('keeps two blends over one base variant as independent lines keyed by config key', async () => {

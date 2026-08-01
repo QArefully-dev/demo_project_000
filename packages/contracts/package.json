@@ -129,6 +129,10 @@
     "./reorder": {
       "types": "./dist/reorder.d.ts",
       "import": "./dist/reorder.js"
+    },
+    "./quick-order": {
+      "types": "./dist/quickOrder.d.ts",
+      "import": "./dist/quickOrder.js"
     }
   },
   "dependencies": {
