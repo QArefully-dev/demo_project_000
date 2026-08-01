@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { ProductWithVariants, CatalogVariant, CategoryFacts } from '@shop/contracts/products';
 import type { PublicUser } from '@shop/contracts/auth';
 import type { ComponentProps } from 'react';
@@ -12,10 +12,6 @@ import {
 } from '@/features/comparison/ComparisonSelectionContext';
 
 const authState = vi.hoisted(() => ({ user: null as PublicUser | null }));
-const favouriteState = vi.hoisted(() => ({
-  favouriteIds: new Set<string>(),
-  toggleFavourite: vi.fn(),
-}));
 const comparisonStorage = {
   getItem: () => null,
   setItem: () => undefined,
@@ -26,13 +22,15 @@ vi.mock('@/hooks/AuthContext', () => ({
   useAuth: () => ({ user: authState.user }),
 }));
 
-vi.mock('@/hooks/useFavourites', () => ({
-  useFavourites: () => ({
-    ...favouriteState,
-    favourites: [],
-    loading: false,
-    removeProduct: vi.fn(),
-  }),
+vi.mock('@/features/savedLists/AddToListMenu', () => ({
+  AddToListMenu: ({ variantId, quantity }: { variantId?: number; quantity?: number }) => (
+    <button
+      type="button"
+      aria-label="Save to list"
+      data-variant-id={variantId}
+      data-quantity={quantity}
+    />
+  ),
 }));
 
 const defaultVariant: CatalogVariant = {
@@ -129,11 +127,6 @@ function renderPanel(overrides: Partial<ComponentProps<typeof ProductPurchasePan
     </MemoryRouter>,
   );
   return { ...result, onAddToCart, onRetryCart };
-}
-
-function Location() {
-  const location = useLocation();
-  return <output>{location.pathname}</output>;
 }
 
 function ComparisonPath() {
@@ -344,57 +337,20 @@ describe('ProductPurchasePanel', () => {
     expect(screen.getByRole('button', { name: 'Add to order' })).toBeEnabled();
   });
 
-  it('sends anonymous wishlist actions to sign-in and toggles authenticated favourites', async () => {
+  it('passes the selected variant and entered quantity to the list action', async () => {
     const user = userEvent.setup();
-    authState.user = null;
-    favouriteState.favouriteIds = new Set();
-    favouriteState.toggleFavourite.mockReset();
-    render(
-      <MemoryRouter initialEntries={['/products/powdered-water']}>
-        <ComparisonSelectionProvider storage={comparisonStorage}>
-          <Routes>
-            <Route
-              path="*"
-              element={
-                <>
-                  <ProductPurchasePanel
-                    product={product()}
-                    isCartAvailable
-                    isAdding={false}
-                    actionError={null}
-                    cartError={null}
-                    onAddToCart={async () => {}}
-                    onRetryCart={() => {}}
-                  />
-                  <Location />
-                </>
-              }
-            />
-            <Route path="/login" element={<Location />} />
-          </Routes>
-        </ComparisonSelectionProvider>
-      </MemoryRouter>,
+    renderPanel();
+    await user.click(screen.getByRole('radio'));
+    await user.clear(screen.getByLabelText(/order quantity/i));
+    await user.type(screen.getByLabelText(/order quantity/i), '7');
+    expect(screen.getByRole('button', { name: 'Save to list' })).toHaveAttribute(
+      'data-variant-id',
+      '1',
     );
-
-    await user.click(screen.getByRole('button', { name: 'Add to wishlist' }));
-    expect(screen.getByText('/login')).toBeInTheDocument();
-    expect(favouriteState.toggleFavourite).not.toHaveBeenCalled();
-
-    authState.user = {
-      id: 'user-1',
-      email: 'shopper@example.test',
-      displayName: 'Shopper',
-      role: 'customer',
-    };
-    favouriteState.favouriteIds = new Set();
-    favouriteState.toggleFavourite.mockReset();
-    const authenticated = renderPanel();
-    await user.click(screen.getByRole('button', { name: 'Add to wishlist' }));
-    expect(favouriteState.toggleFavourite).toHaveBeenCalledWith(
-      'powdered-water',
-      expect.objectContaining({ id: 'powdered-water' }),
+    expect(screen.getByRole('button', { name: 'Save to list' })).toHaveAttribute(
+      'data-quantity',
+      '7',
     );
-    authenticated.unmount();
   });
 
   it('adds a secondary comparison action without changing cart availability', async () => {

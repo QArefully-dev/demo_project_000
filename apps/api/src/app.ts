@@ -9,7 +9,6 @@ import cartRoutes from './routes/cart.js';
 import promoRoutes from './routes/promo.js';
 import ordersRoutes from './routes/orders.js';
 import authRoutes from './routes/auth.js';
-import favouritesRoutes from './routes/favourites.js';
 import paymentRoutes from './routes/payments.js';
 import mailboxRoutes from './routes/mailbox.js';
 import bundleRoutes from './routes/bundles.js';
@@ -33,11 +32,6 @@ import {
   createCheckoutService,
   type CheckoutService,
 } from './features/checkout/checkoutService.js';
-import { createFavouritesRepository } from './features/favourites/favouritesRepository.js';
-import {
-  createFavouritesService,
-  type FavouritesService,
-} from './features/favourites/favouritesService.js';
 import {
   createMailboxRepository,
   type MailboxRepository,
@@ -177,6 +171,12 @@ import {
   type QuickOrderService,
 } from './features/quickOrder/quickOrderService.js';
 import quickOrderRoutes from './routes/quickOrder.js';
+import savedListRoutes from './routes/savedLists.js';
+import {
+  createSavedListService,
+  type SavedListService,
+} from './features/savedLists/savedListService.js';
+import { createSavedListRepository } from './features/savedLists/savedListRepository.js';
 
 /**
  * The buyer's saved trade records, grouped because they are always wired, injected, and consumed
@@ -207,10 +207,10 @@ export interface AppServices {
   orderAccess: OrderAccessService;
   checkout: CheckoutService;
   audit: AuditReadService;
-  favourites: FavouritesService;
   bundles: BundleService;
   reorder: ReorderService;
   quickOrder: QuickOrderService;
+  savedLists: SavedListService;
   reviews: ReviewService;
   inventory: InventoryService;
   inventoryUnitOfWork: UnitOfWork;
@@ -308,13 +308,23 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     audit,
     clock,
   });
+  const savedLists = createSavedListService({
+    repository: createSavedListRepository(dependencies.db),
+    variants: products,
+    inventory,
+    carts: cartService,
+    orders: orderService,
+    unitOfWork,
+    audit,
+    clock,
+  });
   const dataExport = createDataExportService({
     unitOfWork,
     audit,
     clock,
     sessions,
     orders,
-    favourites: createFavouritesRepository(dependencies.db),
+    savedLists,
     deliverySites: createDeliverySiteRepository(dependencies.db),
     billingEntities: createBillingEntityRepository(dependencies.db),
     preferences,
@@ -371,7 +381,6 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       tradeAccount,
       deliverySlots,
     }),
-    favourites: createFavouritesService(createFavouritesRepository(dependencies.db)),
     bundles: createBundleService({
       bundles: createBundleRepository(dependencies.db),
       carts,
@@ -395,6 +404,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       unitOfWork,
       audit,
     }),
+    savedLists,
     reviews: createReviewService({
       repository: createReviewRepository(dependencies.db),
       unitOfWork,
@@ -518,12 +528,12 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(adminRefundsRoutes, context);
   await app.register(adminFeatureFlagsRoutes, context);
   await app.register(authRoutes, context);
-  await app.register(favouritesRoutes, context);
   await app.register(paymentRoutes, context);
   await app.register(mailboxRoutes, context);
   await app.register(bundleRoutes, context);
   await app.register(reorderRoutes, context);
   await app.register(quickOrderRoutes, context);
+  await app.register(savedListRoutes, context);
   await app.register(auditRoutes, context);
   await app.register(reviewsRoutes, context);
   await app.register(returnsRoutes, context);

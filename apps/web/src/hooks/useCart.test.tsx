@@ -9,7 +9,9 @@ import * as bundlesApi from '@/api/bundles';
 import * as customBlendsApi from '@/api/customBlends';
 import * as quickOrderApi from '@/api/quickOrder';
 import * as reorderApi from '@/api/reorder';
+import * as savedListsApi from '@/api/savedLists';
 import type { QuickOrderResponse } from '@shop/contracts/quick-order';
+import type { SavedListAddToCartResponse } from '@shop/contracts/saved-lists';
 import { clearCartId, getCartId, setCartId } from '@/lib/cartStorage';
 import { CartProvider, useCartContext } from './CartContext';
 
@@ -32,6 +34,9 @@ vi.mock('@/api/quickOrder', () => ({
 }));
 vi.mock('@/api/reorder', () => ({
   reorderFromOrder: vi.fn(),
+}));
+vi.mock('@/api/savedLists', () => ({
+  addSavedListToCart: vi.fn(),
 }));
 
 function deferred<T>() {
@@ -80,6 +85,29 @@ function cart(id: string, productIds: string[] = []): Cart {
     subtotalCents: productIds.length * 100,
     discountableSubtotalCents: productIds.length * 100,
     blendingFeeTotalCents: 0,
+  };
+}
+
+function savedListResponse(nextCart: Cart): SavedListAddToCartResponse {
+  return {
+    cart: nextCart,
+    addedLineCount: 1,
+    skippedLineCount: 0,
+    outcomes: [
+      {
+        itemId: '1',
+        variantId: 101,
+        sku: 'MAT-101',
+        productId: 'cement',
+        productName: 'Cement',
+        savedQuantity: 1,
+        submittedQuantity: 1,
+        moqAdjusted: false,
+        resolvedUnitPriceCents: 100,
+        status: 'added',
+        reason: null,
+      },
+    ],
   };
 }
 
@@ -831,6 +859,53 @@ describe('useCart', () => {
     expect(cartApi.createCart).toHaveBeenCalledOnce();
     expect(cartApi.addToCart).toHaveBeenNthCalledWith(3, 'new-cart', 'one', undefined);
     expect(cartApi.addToCart).toHaveBeenNthCalledWith(4, 'new-cart', 'two', undefined);
+    expect(result.current.cartId).toBe('new-cart');
+  });
+
+  it('adds a saved list, returns its report, and tracks its pending action', async () => {
+    setCartId('cart');
+    const response = deferred<SavedListAddToCartResponse>();
+    vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
+    vi.mocked(savedListsApi.addSavedListToCart).mockReturnValueOnce(response.promise);
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+    let action!: Promise<SavedListAddToCartResponse | false>;
+    act(() => {
+      action = result.current.addSavedListToCart('12');
+    });
+    expect(result.current.isActionPending('saved-list:12', 'saved-list-add')).toBe(true);
+    expect(savedListsApi.addSavedListToCart).toHaveBeenCalledWith('12', { cartId: 'cart' });
+    const expected = savedListResponse(cart('cart', ['cement']));
+    await act(async () => {
+      response.resolve(expected);
+      await response.promise;
+    });
+    await expect(action).resolves.toEqual(expected);
+    expect(result.current.cart?.items.map((item) => item.productId)).toEqual(['cement']);
+    expect(result.current.isActionPending('saved-list:12')).toBe(false);
+  });
+
+  it('replays a saved-list add once after missing-cart recovery', async () => {
+    setCartId('old-cart');
+    vi.mocked(cartApi.getCart)
+      .mockResolvedValueOnce(cart('old-cart'))
+      .mockResolvedValueOnce(cart('new-cart'));
+    vi.mocked(cartApi.createCart).mockResolvedValueOnce({ cartId: 'new-cart' });
+    const expected = savedListResponse(cart('new-cart', ['cement']));
+    vi.mocked(savedListsApi.addSavedListToCart)
+      .mockRejectedValueOnce(new ApiError('Cart not found', 404))
+      .mockResolvedValueOnce(expected);
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+    await act(async () => {
+      await expect(result.current.addSavedListToCart('12')).resolves.toEqual(expected);
+    });
+    expect(savedListsApi.addSavedListToCart).toHaveBeenNthCalledWith(1, '12', {
+      cartId: 'old-cart',
+    });
+    expect(savedListsApi.addSavedListToCart).toHaveBeenNthCalledWith(2, '12', {
+      cartId: 'new-cart',
+    });
     expect(result.current.cartId).toBe('new-cart');
   });
 });

@@ -7,12 +7,288 @@ import { CATALOG_PRODUCTS, CURATED_BUNDLES } from '@shop/catalog';
 import { catalogProductSpecifications } from '../../src/features/catalog/catalogSpecifications.js';
 import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
 import { DEMO_ORDER_SCENARIO_KEYS } from '../../src/db/orderSeedScenarios.js';
+import { createUnitOfWork } from '../../src/db/unitOfWork.js';
+import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
+import { createAuditWriter } from '../../src/features/audit/auditService.js';
+import { createCartRepository } from '../../src/features/cart/cartRepository.js';
+import { createCartService } from '../../src/features/cart/cartService.js';
+import { createProductRepository } from '../../src/features/catalog/productRepository.js';
+import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
+import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
+import { createSavedListRepository } from '../../src/features/savedLists/savedListRepository.js';
+import { createSavedListService } from '../../src/features/savedLists/savedListService.js';
 
 const CANONICAL_IDS = new Set(
   Array.from({ length: 50 }, (_, i) => i + 1).concat(
     Array.from({ length: 50 }, (_, i) => 1001 + i),
   ),
 );
+
+void test('seed installs Alice saved-list fixtures idempotently', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-saved-list-seed-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const aliceLists = () =>
+    db
+      .prepare(
+        `SELECT lists.name, lists.is_default, items.quantity, variants.sku,
+                variants.active, variants.stock_count
+         FROM saved_lists AS lists
+         JOIN users ON users.id = lists.user_id
+         LEFT JOIN saved_list_items AS items ON items.saved_list_id = lists.id
+         LEFT JOIN product_variants AS variants ON variants.id = items.variant_id
+         WHERE users.email = 'alice@example.com'
+         ORDER BY lists.is_default DESC, lists.name COLLATE NOCASE, variants.sku`,
+      )
+      .all();
+
+  seedDatabase(db);
+  const first = aliceLists();
+  assert.deepEqual(first, [
+    {
+      name: 'Favourites',
+      is_default: 1,
+      quantity: 4,
+      sku: 'BKP-0001-001',
+      active: 1,
+      stock_count: 85,
+    },
+    {
+      name: 'Favourites',
+      is_default: 1,
+      quantity: 4,
+      sku: 'DRK-0014-001',
+      active: 1,
+      stock_count: 28,
+    },
+    {
+      name: 'Favourites',
+      is_default: 1,
+      quantity: 4,
+      sku: 'SPN-0008-001',
+      active: 1,
+      stock_count: 42,
+    },
+    {
+      name: 'Monthly restock',
+      is_default: 0,
+      quantity: 4,
+      sku: 'GDN-1043-001',
+      active: 1,
+      stock_count: 35,
+    },
+    {
+      name: 'Monthly restock',
+      is_default: 0,
+      quantity: 1,
+      sku: 'SPN-0008-001',
+      active: 1,
+      stock_count: 42,
+    },
+    {
+      name: 'Monthly restock',
+      is_default: 0,
+      quantity: 4,
+      sku: 'SPN-0009-002',
+      active: 0,
+      stock_count: 40,
+    },
+    {
+      name: 'Monthly restock',
+      is_default: 0,
+      quantity: 20,
+      sku: 'SPN-1007-001',
+      active: 1,
+      stock_count: 15,
+    },
+  ]);
+  assert.equal(
+    (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM saved_lists
+         JOIN users ON users.id = saved_lists.user_id
+         WHERE users.email = 'alice@example.com'`,
+        )
+        .get() as { count: number }
+    ).count,
+    2,
+  );
+
+  seedDatabase(db);
+  assert.deepEqual(aliceLists(), first);
+});
+
+void test('saved-list seed preserves Alice default rename and buyer replacement of the monthly fixture', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-saved-list-seed-ownership-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+  const aliceId = Number(
+    db.prepare("SELECT id FROM users WHERE email = 'alice@example.com'").pluck().get(),
+  );
+  const defaultId = Number(
+    db
+      .prepare('SELECT id FROM saved_lists WHERE user_id = ? AND is_default = 1')
+      .pluck()
+      .get(aliceId),
+  );
+  db.prepare("UPDATE saved_lists SET name = 'My renamed favourites' WHERE id = ?").run(defaultId);
+  seedDatabase(db);
+  assert.deepEqual(
+    db.prepare('SELECT id, name, is_default FROM saved_lists WHERE id = ?').get(defaultId),
+    { id: defaultId, name: 'My renamed favourites', is_default: 1 },
+  );
+  assert.equal(
+    db
+      .prepare('SELECT COUNT(*) FROM saved_lists WHERE user_id = ? AND is_default = 1')
+      .pluck()
+      .get(aliceId),
+    1,
+  );
+
+  const monthlyFixtureId = Number(
+    db
+      .prepare("SELECT id FROM saved_lists WHERE user_id = ? AND name = 'Monthly restock'")
+      .pluck()
+      .get(aliceId),
+  );
+  db.prepare('DELETE FROM saved_lists WHERE id = ?').run(monthlyFixtureId);
+  const buyerReplacement = db
+    .prepare(
+      `INSERT INTO saved_lists (user_id, name, is_default, created_at, updated_at)
+       VALUES (?, 'Monthly restock', 0, '2026-08-01T10:00:00.000Z', '2026-08-01T10:00:00.000Z')`,
+    )
+    .run(aliceId);
+  const buyerListId = Number(buyerReplacement.lastInsertRowid);
+  const buyerVariantId = Number(
+    db.prepare("SELECT id FROM product_variants WHERE sku = 'BKP-0001-001'").pluck().get(),
+  );
+  db.prepare(
+    `INSERT INTO saved_list_items (saved_list_id, variant_id, quantity, created_at, updated_at)
+     VALUES (?, ?, 9, '2026-08-01T10:00:00.000Z', '2026-08-01T10:00:00.000Z')`,
+  ).run(buyerListId, buyerVariantId);
+
+  seedDatabase(db);
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT lists.id, lists.created_at, items.quantity, variants.sku
+         FROM saved_lists AS lists
+         JOIN saved_list_items AS items ON items.saved_list_id = lists.id
+         JOIN product_variants AS variants ON variants.id = items.variant_id
+         WHERE lists.id = ?`,
+      )
+      .all(buyerListId),
+    [
+      {
+        id: buyerListId,
+        created_at: '2026-08-01T10:00:00.000Z',
+        quantity: 9,
+        sku: 'BKP-0001-001',
+      },
+    ],
+  );
+});
+
+void test('Alice monthly restock fixture reports its four cart outcomes', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-saved-list-seed-cart-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+  seedDatabase(db);
+
+  const clock = { now: () => new Date('2026-08-01T12:00:00.000Z') };
+  const unitOfWork = createUnitOfWork(db);
+  const audit = createAuditWriter({ repository: createAuditRepository(db), clock });
+  const carts = createCartService(
+    createCartRepository(db),
+    { unitOfWork, audit },
+    { inventory: createInventoryService({ repository: createInventoryRepository(db) }), clock },
+  );
+  const savedLists = createSavedListService({
+    repository: createSavedListRepository(db),
+    variants: createProductRepository(db),
+    carts,
+    orders: { getOwned: () => undefined },
+    unitOfWork,
+    audit,
+    clock,
+  });
+  const aliceId = Number(
+    db.prepare("SELECT id FROM users WHERE email = 'alice@example.com'").pluck().get(),
+  );
+  const monthlyListId = Number(
+    db
+      .prepare("SELECT id FROM saved_lists WHERE user_id = ? AND name = 'Monthly restock'")
+      .pluck()
+      .get(aliceId),
+  );
+  const { cartId } = carts.create({
+    actor: { type: 'user', userId: aliceId },
+    requestId: 'seed-monthly-cart',
+  });
+  const result = savedLists.addToCart(aliceId, monthlyListId, cartId, {
+    actor: { type: 'user', userId: aliceId },
+    requestId: 'seed-monthly-cart',
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(
+    result.value.outcomes.map((outcome) => ({
+      sku: outcome.sku,
+      status: outcome.status,
+      reason: outcome.reason,
+      savedQuantity: outcome.savedQuantity,
+      submittedQuantity: outcome.submittedQuantity,
+      moqAdjusted: outcome.moqAdjusted,
+    })),
+    [
+      {
+        sku: 'SPN-1007-001',
+        status: 'skipped',
+        reason: 'INSUFFICIENT_STOCK',
+        savedQuantity: 20,
+        submittedQuantity: 20,
+        moqAdjusted: false,
+      },
+      {
+        sku: 'SPN-0009-002',
+        status: 'skipped',
+        reason: 'VARIANT_RETIRED',
+        savedQuantity: 4,
+        submittedQuantity: null,
+        moqAdjusted: false,
+      },
+      {
+        sku: 'SPN-0008-001',
+        status: 'added',
+        reason: null,
+        savedQuantity: 1,
+        submittedQuantity: 4,
+        moqAdjusted: true,
+      },
+      {
+        sku: 'GDN-1043-001',
+        status: 'added',
+        reason: null,
+        savedQuantity: 4,
+        submittedQuantity: 4,
+        moqAdjusted: false,
+      },
+    ],
+  );
+});
 
 void test('seed installs deterministic lifecycle scenarios once and reset restores them', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-order-seed-'));

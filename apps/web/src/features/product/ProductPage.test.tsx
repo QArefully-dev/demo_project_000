@@ -28,8 +28,8 @@ const secondaryState = vi.hoisted(() => ({
 
 vi.mock('@/api/products', () => productApi);
 vi.mock('@/hooks/CartContext', () => ({ useCartContext: () => cart }));
-vi.mock('@/components/WishlistButton', () => ({
-  WishlistButton: () => <button type="button">Wishlist</button>,
+vi.mock('@/components/SaveToListButton', () => ({
+  SaveToListButton: () => <button type="button">Save to list</button>,
 }));
 vi.mock('./ProductBundlesSection', () => ({
   ProductBundlesSection: ({ productId }: { productId: string }) => (

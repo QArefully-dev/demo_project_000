@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { formatMoney } from '@/lib/formatMoney';
 import { BuyAgainButton, useBuyAgain } from '@/features/reorder/BuyAgainButton';
 import { ReorderOutcomeList } from '@/features/reorder/ReorderOutcomeList';
+import { SaveOrderAsListButton } from '@/features/savedLists/SaveOrderAsListButton';
 import type { OrderListResponse } from '@shop/contracts/orders';
 import {
   formatOrderDate,
@@ -128,6 +129,7 @@ export function OrderHistoryPage() {
                     </div>
                   </div>
                   <ReorderOutcomeList orderId={order.id} state={buyAgainState} />
+                  <SaveOrderAsListButton orderId={order.id} />
                 </CardContent>
               </Card>
             );

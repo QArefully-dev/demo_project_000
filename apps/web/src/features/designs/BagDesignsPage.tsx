@@ -1,4 +1,3 @@
-import { Heart } from 'lucide-react';
 import { BagArtwork } from '@/components/BagArtwork';
 import { ProductGrid } from '@/components/ProductGrid';
 import { Badge } from '@/components/ui/badge';
@@ -65,13 +64,6 @@ export function BagDesignsPage() {
                     Bestseller
                   </Badge>
                 </div>
-                <button
-                  type="button"
-                  aria-label="Add Protein Powder to wishlist"
-                  className="absolute top-2 right-2 flex size-9 items-center justify-center rounded-full bg-background/90 shadow-sm"
-                >
-                  <Heart className="size-4" aria-hidden="true" />
-                </button>
               </div>
               <CardContent className="flex flex-1 flex-col gap-2 p-4 pt-4 sm:p-5 sm:pt-4">
                 <p className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">

@@ -5,6 +5,7 @@ import { catalogProductSpecifications } from '../features/catalog/catalogSpecifi
 import { seedOrderScenarios } from './orderSeedScenarios.js';
 import { seedReviewScenarios } from './reviewSeedScenarios.js';
 import { seedCompanyAccounts } from './companyAccountsSeed.js';
+import { seedSavedLists } from './savedListSeed.js';
 
 const USERS = [
   { id: 1, email: 'alice@example.com', display_name: 'Alice', role: 'customer' },
@@ -355,12 +356,6 @@ const SEED_BILLING_ENTITIES = [
 /** Fixed creation instant for every seeded trade-account row. */
 const TRADE_ACCOUNT_SEED_INSTANT = '2026-07-01T09:00:00.000Z';
 
-const ALICE_FAVOURITE_SLUGS = [
-  'all-purpose-flour',
-  'whey-protein-isolate',
-  'matcha-green-tea-powder',
-] as const;
-
 function seededPassword(email: string): string {
   const salt = createHash('sha256').update(`seed-salt-${email}`).digest('hex').slice(0, 64);
   return `${salt}.${scryptSync('Password123!', salt, 64).toString('hex')}`;
@@ -377,7 +372,7 @@ const CANONICAL_PRODUCT_IDS = new Set(
  *
  * Product IDs 1-50 and 1001-1050 are reserved canonical rows and are updated in place.
  * This preserves foreign-key references while leaving rows outside that range and
- * all user-created data untouched. Seed users, promos, and favourites are
+ * all user-created data untouched. Seed users and promos are
  * insert-only; resetDatabase is the explicit destructive clean-slate path.
  */
 export function seedDatabase(db: Database.Database): void {
@@ -751,19 +746,6 @@ export function seedDatabase(db: Database.Database): void {
       });
     }
 
-    const alice = db.prepare('SELECT id FROM users WHERE email = ?').get('alice@example.com') as
-      { id: number } | undefined;
-    if (alice) {
-      const addFavourite = db.prepare(
-        'INSERT OR IGNORE INTO favourites (user_id, product_id) VALUES (?, ?)',
-      );
-      const productIdForSlug = db.prepare('SELECT id FROM products WHERE slug = ?');
-      for (const slug of ALICE_FAVOURITE_SLUGS) {
-        const product = productIdForSlug.get(slug) as { id: number } | undefined;
-        if (product) addFavourite.run(alice.id, product.id);
-      }
-    }
-
     const canonicalCount = (
       db
         .prepare(
@@ -792,6 +774,7 @@ export function seedDatabase(db: Database.Database): void {
     }
 
     seedOrderScenarios(db);
+    seedSavedLists(db);
     seedReviewScenarios(db);
   });
 

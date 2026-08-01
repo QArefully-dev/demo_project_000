@@ -3,9 +3,9 @@ import { Password, PositiveIntegerString } from './common.js';
 import { PublicUser } from './auth.js';
 import { DeliverySite, BillingEntity } from './tradeAccount.js';
 import { Order } from './orders.js';
-import { Product } from './products.js';
 import { CustomBlendSnapshot } from './customBlends.js';
 import { CompanyMembership } from './companyAccounts.js';
+import { SavedListDetail } from './savedLists.js';
 
 const UtcIsoInstant = Type.String({
   minLength: 24,
@@ -71,7 +71,7 @@ export const DataExportResponse = Type.Object(
     deliverySites: Type.Array(DeliverySite),
     billingEntities: Type.Array(BillingEntity),
     orders: Type.Array(Order),
-    favourites: Type.Array(Product),
+    savedLists: Type.Array(SavedListDetail),
     customBlends: Type.Array(CustomBlendSnapshot),
     sessions: Type.Array(SessionSummary),
     preferences: UserPreferences,

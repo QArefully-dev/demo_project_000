@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { WishlistButton } from '@/components/WishlistButton';
+import { SaveToListButton } from '@/components/SaveToListButton';
 import { formatMoney } from '@/lib/formatMoney';
 import type { Product, ProductWithVariants } from '@shop/contracts/products';
 import { ProductMedia } from '@/components/ProductMedia';
@@ -124,7 +124,7 @@ export function ProductCard({
           {isCaution && <Badge className="bg-amber-500 px-2.5 text-white">Caution</Badge>}
         </div>
         <div className="absolute top-2 right-2 rounded-full bg-background/90 shadow-sm backdrop-blur-sm">
-          <WishlistButton productId={product.id} product={product} />
+          <SaveToListButton variantId={defaultVariantId} />
         </div>
       </div>
       <CardContent className="flex flex-1 flex-col gap-2 p-4 pt-4 sm:p-5 sm:pt-4">

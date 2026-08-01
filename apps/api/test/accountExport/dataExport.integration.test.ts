@@ -5,20 +5,27 @@ import { join } from 'node:path';
 import test from 'node:test';
 import fastifyCookie from '@fastify/cookie';
 import Fastify from 'fastify';
-import { closeDatabase, openDatabase } from '../../src/db/index.js';
+import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createDataExportService } from '../../src/features/accountExport/dataExportService.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
 import { createSessionRepository } from '../../src/features/auth/sessionRepository.js';
 import { createSessionService } from '../../src/features/auth/sessionService.js';
-import { createFavouritesRepository } from '../../src/features/favourites/favouritesRepository.js';
+import { createCartRepository } from '../../src/features/cart/cartRepository.js';
+import { createCartService } from '../../src/features/cart/cartService.js';
+import { createProductRepository } from '../../src/features/catalog/productRepository.js';
+import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
+import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
 import { createMailboxRepository } from '../../src/features/mailbox/mailboxRepository.js';
 import { createOrderRepository } from '../../src/features/orders/orderRepository.js';
+import { createOrderService } from '../../src/features/orders/orderService.js';
 import { createPreferencesRepository } from '../../src/features/preferences/preferencesRepository.js';
 import { createPreferencesService } from '../../src/features/preferences/preferencesService.js';
 import { createBillingEntityRepository } from '../../src/features/tradeAccount/billingEntityRepository.js';
 import { createDeliverySiteRepository } from '../../src/features/tradeAccount/deliverySiteRepository.js';
+import { createSavedListRepository } from '../../src/features/savedLists/savedListRepository.js';
+import { createSavedListService } from '../../src/features/savedLists/savedListService.js';
 import { authPlugin } from '../../src/plugins/auth.js';
 import accountExportRoutes from '../../src/routes/accountExport.js';
 
@@ -37,6 +44,7 @@ function assertNoSecrets(value: unknown): void {
 void test('data export is caller-scoped, allowlisted, mailed, and audited', async (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-data-export-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
   const clock = { now: () => new Date('2026-07-29T12:00:00.000Z') };
   const unitOfWork = createUnitOfWork(db);
   const audit = createAuditWriter({ repository: createAuditRepository(db), clock });
@@ -53,6 +61,22 @@ void test('data export is caller-scoped, allowlisted, mailed, and audited', asyn
     clock,
   });
   const orders = createOrderRepository(db);
+  const inventory = createInventoryService({ repository: createInventoryRepository(db) });
+  const carts = createCartService(
+    createCartRepository(db),
+    { unitOfWork, audit },
+    { inventory, clock },
+  );
+  const savedLists = createSavedListService({
+    repository: createSavedListRepository(db),
+    variants: createProductRepository(db),
+    inventory,
+    carts,
+    orders: createOrderService({ repository: orders, unitOfWork, clock, audit, inventory }),
+    unitOfWork,
+    audit,
+    clock,
+  });
   const mailbox = createMailboxRepository(db);
   const dataExport = createDataExportService({
     unitOfWork,
@@ -60,7 +84,7 @@ void test('data export is caller-scoped, allowlisted, mailed, and audited', asyn
     clock,
     sessions,
     orders,
-    favourites: createFavouritesRepository(db),
+    savedLists,
     deliverySites: createDeliverySiteRepository(db),
     billingEntities: createBillingEntityRepository(db),
     preferences,
@@ -220,6 +244,21 @@ void test('data export is caller-scoped, allowlisted, mailed, and audited', asyn
       requestId: 'preferences-before-export',
     },
   );
+  const savedListContext = {
+    actor: { type: 'user' as const, userId: callerId },
+    requestId: 'export-list',
+  };
+  const createdList = savedLists.create(callerId, 'Export materials', savedListContext);
+  assert.equal(createdList.ok, true);
+  if (!createdList.ok) assert.fail('Expected export saved list to be created');
+  const addedItem = savedLists.addItem(
+    callerId,
+    Number(createdList.value.listId),
+    1,
+    2,
+    savedListContext,
+  );
+  assert.equal(addedItem.ok, true);
   const callerSession = sessions.create(callerId);
   sessions.create(foreignId);
 
@@ -231,7 +270,7 @@ void test('data export is caller-scoped, allowlisted, mailed, and audited', asyn
     url: '/api/account/export',
     headers: { cookie: `sid=${callerSession.token}` },
   });
-  assert.equal(response.statusCode, 200);
+  assert.equal(response.statusCode, 200, response.body);
   const snapshot = JSON.parse(response.body) as Record<string, unknown>;
   assertNoSecrets(snapshot);
   assert.deepEqual(snapshot.profile, {
@@ -244,6 +283,21 @@ void test('data export is caller-scoped, allowlisted, mailed, and audited', asyn
   assert.equal((snapshot.deliverySites as Array<{ label: string }>)[0]!.label, 'Main Yard');
   assert.equal((snapshot.orders as Array<{ id: string }>).length, 1);
   assert.equal((snapshot.customBlends as unknown[]).length, 1);
+  assert.deepEqual(
+    (
+      snapshot.savedLists as Array<{
+        listId: string;
+        name: string;
+        items: Array<{ quantity: number }>;
+      }>
+    ).map((list) => ({
+      listId: list.listId,
+      name: list.name,
+      itemCount: list.items.length,
+      quantity: list.items[0]?.quantity,
+    })),
+    [{ listId: createdList.value.listId, name: 'Export materials', itemCount: 1, quantity: 2 }],
+  );
   assert.equal((snapshot.preferences as { marketingEmail: boolean }).marketingEmail, true);
   assert.equal((snapshot.sessions as Array<{ sessionId: string }>).length, 1);
   assert.deepEqual(snapshot.companyMemberships, []);

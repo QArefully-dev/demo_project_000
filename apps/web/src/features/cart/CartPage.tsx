@@ -7,6 +7,7 @@ import { CartLineItem } from '@/components/CartLineItem';
 import { formatMoney } from '@/lib/formatMoney';
 import { useCartContext } from '@/hooks/CartContext';
 import { cartItemKey, pendingConfigKey } from '@/lib/cartLineIdentity';
+import { SaveCartAsListButton } from '@/features/savedLists/SaveCartAsListButton';
 
 function deliveryLabel(mode: string): string {
   return mode === 'freight' ? 'Freight' : 'Parcel';
@@ -15,6 +16,7 @@ function deliveryLabel(mode: string): string {
 export function CartPage() {
   const {
     cart,
+    cartId,
     isLoading,
     isInitializing,
     error,
@@ -159,6 +161,12 @@ export function CartPage() {
               Continue to checkout
             </Button>
           </div>
+          {cartId && (
+            <SaveCartAsListButton
+              cartId={cartId}
+              excludesBlends={cart.items.some((item) => item.customBlend !== undefined)}
+            />
+          )}
         </div>
       )}
     </div>

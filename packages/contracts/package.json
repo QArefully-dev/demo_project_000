@@ -42,10 +42,6 @@
       "types": "./dist/auth.d.ts",
       "import": "./dist/auth.js"
     },
-    "./favourites": {
-      "types": "./dist/favourites.d.ts",
-      "import": "./dist/favourites.js"
-    },
     "./promos": {
       "types": "./dist/promos.d.ts",
       "import": "./dist/promos.js"
@@ -133,6 +129,10 @@
     "./quick-order": {
       "types": "./dist/quickOrder.d.ts",
       "import": "./dist/quickOrder.js"
+    },
+    "./saved-lists": {
+      "types": "./dist/savedLists.d.ts",
+      "import": "./dist/savedLists.js"
     }
   },
   "dependencies": {

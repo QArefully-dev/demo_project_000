@@ -5,12 +5,14 @@ import * as bundlesApi from '../api/bundles';
 import * as customBlendsApi from '../api/customBlends';
 import * as quickOrderApi from '../api/quickOrder';
 import * as reorderApi from '../api/reorder';
+import * as savedListsApi from '../api/savedLists';
 import { ApiError, isMissingCartError } from '../api/client';
 import { clearCartId, getCartId } from '../lib/cartStorage';
 import { createCartClient } from './cartClient';
 import type { CreateCustomBlendBody, ReplaceCustomBlendBody } from '@shop/contracts/custom-blends';
 import type { ReorderResponse } from '@shop/contracts/reorder';
 import type { QuickOrderResponse } from '@shop/contracts/quick-order';
+import type { SavedListAddToCartResponse } from '@shop/contracts/saved-lists';
 
 export type CartAction =
   | 'add'
@@ -20,7 +22,8 @@ export type CartAction =
   | 'blend-add'
   | 'blend-replace'
   | 'quick-order'
-  | 'reorder';
+  | 'reorder'
+  | 'saved-list-add';
 
 const QUICK_ORDER_PENDING_KEY = 'quick-order';
 
@@ -106,6 +109,10 @@ function cartLinePendingKey(productId: string, variantId?: number, configKey?: s
 /** Reorder is scoped to a source order, not to a cart line, so it keys on the order. */
 function reorderPendingKey(orderId: string): string {
   return `reorder:${orderId}`;
+}
+
+function savedListPendingKey(listId: string): string {
+  return `saved-list:${listId}`;
 }
 
 function customBlendPendingKey(baseVariantId: number, configKey?: string): string {
@@ -380,6 +387,18 @@ export function useCart() {
     [runCartMutation],
   );
 
+  const addSavedListToCart = useCallback(
+    (listId: string): Promise<SavedListAddToCartResponse | false> =>
+      runCartMutation(
+        'saved-list-add',
+        savedListPendingKey(listId),
+        (cartId) => savedListsApi.addSavedListToCart(listId, { cartId }),
+        (response) => response.cart,
+        true,
+      ),
+    [runCartMutation],
+  );
+
   const clearCart = useCallback(() => {
     clearCartId();
     cartIdRef.current = null;
@@ -415,6 +434,7 @@ export function useCart() {
     updateQuantity,
     removeItem,
     reorder,
+    addSavedListToCart,
     refreshCart,
     retryCart,
     clearCart,

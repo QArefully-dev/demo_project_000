@@ -38,7 +38,7 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
 - Default: modular monolith. Split service only for named distributed-behavior demo.
 - Flow: frontend -> API contracts -> domain -> persistence.
 - Backend owns money, inventory, orders, payments, permissions, delivery classification/charge. Money uses integer minor units.
-- Purchasable identity is variant/SKU-scoped: base product owns merchandising/reviews/favourites/comparison; variant owns SKU, pack, price, stock, weight, MOQ, tier ladder, delivery class. Cart/inventory/order lines key on variant; contracts retain productId for navigation.
+- Purchasable identity is variant/SKU-scoped: base product owns merchandising/reviews/comparison; saved-list items and variants own saved quantities, SKU, pack, price, stock, weight, MOQ, tier ladder, and delivery class. Cart/inventory/order lines key on variant; contracts retain productId for navigation.
 - Unit model: purchase unit = 25 kg sack; 40 sacks = 1 t pallet. `packages/contracts/src/pricing.ts` owns `SACK_WEIGHT_GRAMS`, `PALLET_WEIGHT_GRAMS`, `SACKS_PER_PALLET`, `MOQ_DEFAULT_SACKS`, `TIER_LADDER`. Backend derives `perTonneCents` + tier discount from line weight; tiers never compound; MOQ enforced as line-weight floor.
 - Variant `sortOrder` contract-floor is 1; rows below it are retired (`active = 0`), never deleted (migration `020`). Seeded lots are all `deliveryClass 'freight'`; enum retains `parcel`.
 - Packaging artwork is web-side only: resolver keys on category + facts. Contract `ProductPackaging` stays optional and unpopulated by API.
@@ -58,13 +58,13 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
   - `src/features/`: page and workflow ownership by domain
   - `src/components/`: shared UI and shell; `src/components/ui/` contains framework primitives
   - `src/components/packaging/`: vessel artwork (kraft sack, woven sack, HDPE keg), spec resolver, per-category colour/pigment palettes; food bag stays in `src/components/BagArtwork.tsx`
-  - `src/hooks/`: cross-feature auth, cart, catalog, favourites state
+- `src/hooks/`: cross-feature auth, cart, catalog, and saved-list state; legacy favourites state is retired
   - `src/features/designs/`: `/bag-designs` internal artwork fixture page; outside customer journey
   - tests: colocated `*.test.ts(x)`; browser journeys use `*.integration.test.tsx`
 - `apps/api/`: Fastify API and SQLite runtime
   - `src/app.ts`: composition root; services, plugins, routes
-  - `src/routes/`: HTTP schemas, auth gates, transport mapping; `tradeAccount.ts` = saved delivery sites + billing entities, `deliverySlots.ts` = offered delivery slots
-  - `src/features/`: domain services, repositories, workflow rules; `tradeAccount/` = delivery site + billing entity rules, shared address normalisation
+- `src/routes/`: HTTP schemas, auth gates, transport mapping; `tradeAccount.ts` = saved delivery sites + billing entities, `deliverySlots.ts` = offered delivery slots, `savedLists.ts` = named buyer lists and cart/order saves
+- `src/features/`: domain services, repositories, workflow rules; `tradeAccount/` = delivery site + billing entity rules, shared address normalisation; `savedLists/` = variant-scoped lists that replaced the retired favourites domain
   - `src/db/`: database lifecycle, unit of work, migrations, seed/reset
   - `test/`: SQLite and `app.inject()` integration tests grouped by domain
 - `packages/contracts/`: TypeBox transport schemas/types and public subpath exports

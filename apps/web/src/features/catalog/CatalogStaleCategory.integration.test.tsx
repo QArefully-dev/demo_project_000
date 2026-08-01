@@ -22,8 +22,8 @@ vi.mock('@/hooks/CartContext', () => ({
     isActionPending: () => false,
   }),
 }));
-vi.mock('@/components/WishlistButton', () => ({
-  WishlistButton: () => <button type="button">Wishlist</button>,
+vi.mock('@/components/SaveToListButton', () => ({
+  SaveToListButton: () => <button type="button">Save to list</button>,
 }));
 
 function deferred<T>() {

@@ -56,7 +56,7 @@ function exportData(): DataExportResponse {
     deliverySites: [],
     billingEntities: [],
     orders: [],
-    favourites: [],
+    savedLists: [],
     customBlends: [],
     sessions: [],
     preferences: PREFERENCES,

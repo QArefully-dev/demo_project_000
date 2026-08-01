@@ -80,7 +80,7 @@ void test('app factory injects isolated databases without starting a server', as
   assert.equal(added.statusCode, 200);
   const addedBody: { totalItems: number } = added.json();
   assert.ok(addedBody.totalItems >= 1);
-  assert.equal((await app.inject({ method: 'GET', url: '/api/favourites' })).statusCode, 401);
+  assert.equal((await app.inject({ method: 'GET', url: '/api/saved-lists' })).statusCode, 401);
 
   const signup = await app.inject({
     method: 'POST',
@@ -93,16 +93,8 @@ void test('app factory injects isolated databases without starting a server', as
   assert.equal(authenticated.statusCode, 200);
   const authenticatedBody: { email: string } = authenticated.json();
   assert.equal(authenticatedBody.email, 'http@example.test');
-  const favourite = await app.inject({
-    method: 'POST',
-    url: '/api/favourites',
-    headers: { cookie },
-    payload: { productId: '1' },
-  });
-  assert.equal(favourite.statusCode, 200);
-  assert.deepEqual(favourite.json(), { success: true });
   assert.equal(
-    (await app.inject({ method: 'GET', url: '/api/favourites', headers: { cookie } })).statusCode,
+    (await app.inject({ method: 'GET', url: '/api/saved-lists', headers: { cookie } })).statusCode,
     200,
   );
 

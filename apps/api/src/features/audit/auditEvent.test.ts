@@ -126,6 +126,124 @@ void test('rejects a quick-order-added audit event with unusable counts', () => 
   }
 });
 
+void test('builds saved-list audit events with allowlisted scalar metadata', () => {
+  const cases: Array<{
+    input: AuditEventInput;
+    entityType: 'saved_list' | 'cart';
+    entityId: string;
+    metadata: Record<string, string | number>;
+  }> = [
+    {
+      input: {
+        action: 'saved_list.created',
+        context: userContext,
+        savedListId: 9,
+        name: 'Monthly restock',
+      },
+      entityType: 'saved_list',
+      entityId: '9',
+      metadata: { savedListId: 9, name: 'Monthly restock' },
+    },
+    {
+      input: {
+        action: 'saved_list.renamed',
+        context: userContext,
+        savedListId: 9,
+        name: 'Quarterly restock',
+      },
+      entityType: 'saved_list',
+      entityId: '9',
+      metadata: { savedListId: 9, name: 'Quarterly restock' },
+    },
+    {
+      input: { action: 'saved_list.deleted', context: userContext, savedListId: 9 },
+      entityType: 'saved_list',
+      entityId: '9',
+      metadata: { savedListId: 9 },
+    },
+    {
+      input: {
+        action: 'saved_list.item_added',
+        context: userContext,
+        savedListId: 9,
+        variantId: 12,
+        quantity: 4,
+      },
+      entityType: 'saved_list',
+      entityId: '9',
+      metadata: { savedListId: 9, variantId: 12, quantity: 4 },
+    },
+    {
+      input: {
+        action: 'saved_list.item_updated',
+        context: userContext,
+        savedListId: 9,
+        itemId: 4,
+        quantity: 6,
+      },
+      entityType: 'saved_list',
+      entityId: '9',
+      metadata: { savedListId: 9, itemId: 4, quantity: 6 },
+    },
+    {
+      input: { action: 'saved_list.item_removed', context: userContext, savedListId: 9, itemId: 4 },
+      entityType: 'saved_list',
+      entityId: '9',
+      metadata: { savedListId: 9, itemId: 4 },
+    },
+    {
+      input: {
+        action: 'cart.saved_list_added',
+        context: userContext,
+        cartId: 'cart-1',
+        savedListId: 9,
+        itemCount: 4,
+        addedLineCount: 3,
+        skippedLineCount: 1,
+      },
+      entityType: 'cart',
+      entityId: 'cart-1',
+      metadata: { savedListId: 9, itemCount: 4, addedLineCount: 3, skippedLineCount: 1 },
+    },
+  ];
+
+  for (const { input, entityType, entityId, metadata } of cases) {
+    const event = buildAuditEvent(input);
+    assert.equal(event.entityType, entityType);
+    assert.equal(event.entityId, entityId);
+    assert.deepEqual(event.metadata, metadata);
+  }
+});
+
+void test('rejects unusable saved-list audit scalars', () => {
+  for (const input of [
+    { action: 'saved_list.created', savedListId: 0, name: 'Restock' },
+    { action: 'saved_list.renamed', savedListId: 9, name: '' },
+    { action: 'saved_list.item_added', savedListId: 9, variantId: 0, quantity: 1 },
+    { action: 'saved_list.item_updated', savedListId: 9, itemId: 4, quantity: 0 },
+    { action: 'saved_list.item_removed', savedListId: 9, itemId: 0 },
+    {
+      action: 'cart.saved_list_added',
+      cartId: 'cart-1',
+      savedListId: 9,
+      itemCount: -1,
+      addedLineCount: 0,
+      skippedLineCount: 0,
+    },
+  ]) {
+    expectEventError(() =>
+      buildAuditEvent({ context: userContext, ...input } as unknown as AuditEventInput),
+    );
+  }
+});
+
+function acceptAuditEventInput(_input: AuditEventInput): void {
+  void _input;
+}
+
+// @ts-expect-error Saved-list actions require their discriminated fields.
+acceptAuditEventInput({ action: 'saved_list.deleted', context: userContext });
+
 void test('enforces actor shape and request context rules', () => {
   expectEventError(() =>
     buildAuditEvent({
@@ -321,7 +439,7 @@ void test('accepts shipment audit entity filters', () => {
   });
 });
 
-void test('accepts admin audit actions and entity type filters', () => {
+void test('accepts admin and saved-list audit actions and entity type filters', () => {
   const actions = [
     'product.created',
     'product.updated',
@@ -342,8 +460,15 @@ void test('accepts admin audit actions and entity type filters', () => {
     'feature_flag.updated',
     'feature_flag.deleted',
     'payment.admin_refunded',
+    'saved_list.created',
+    'saved_list.renamed',
+    'saved_list.deleted',
+    'saved_list.item_added',
+    'saved_list.item_updated',
+    'saved_list.item_removed',
+    'cart.saved_list_added',
   ];
-  const entityTypes = ['product', 'variant', 'promo', 'feature_flag'];
+  const entityTypes = ['product', 'variant', 'promo', 'feature_flag', 'saved_list'];
 
   for (const action of actions) {
     assert.equal(normalizeAuditEventQuery({ action }).action, action);
