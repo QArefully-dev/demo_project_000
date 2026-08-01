@@ -48,6 +48,48 @@ void test('builds a sanitized bundle-added audit event', () => {
   assert.equal(event.metadataJson.includes('9999'), false);
 });
 
+void test('builds a sanitized reorder-added audit event', () => {
+  const event = buildAuditEvent({
+    action: 'cart.reorder_added',
+    context: userContext,
+    cartId: 'cart-1',
+    orderId: 12,
+    addedLineCount: 2,
+    skippedLineCount: 0,
+    productNames: ['Powdered Tuesday'],
+    totalCents: 9_999,
+  } as AuditEventInput);
+
+  assert.equal(event.entityType, 'cart');
+  assert.equal(event.entityId, 'cart-1');
+  assert.deepEqual(event.metadata, { orderId: 12, addedLineCount: 2, skippedLineCount: 0 });
+  assert.equal(event.metadataJson.includes('Powdered Tuesday'), false);
+  assert.equal(event.metadataJson.includes('9999'), false);
+});
+
+void test('rejects a reorder-added audit event with unusable counts', () => {
+  expectEventError(() =>
+    buildAuditEvent({
+      action: 'cart.reorder_added',
+      context: userContext,
+      cartId: 'cart-1',
+      orderId: 0,
+      addedLineCount: 1,
+      skippedLineCount: 0,
+    } as unknown as AuditEventInput),
+  );
+  expectEventError(() =>
+    buildAuditEvent({
+      action: 'cart.reorder_added',
+      context: userContext,
+      cartId: 'cart-1',
+      orderId: 12,
+      addedLineCount: -1,
+      skippedLineCount: 0,
+    } as unknown as AuditEventInput),
+  );
+});
+
 void test('enforces actor shape and request context rules', () => {
   expectEventError(() =>
     buildAuditEvent({

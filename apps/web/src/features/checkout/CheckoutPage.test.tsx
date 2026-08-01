@@ -181,6 +181,7 @@ const cartContext: ReturnType<typeof useCart> = {
   replaceCustomBlend: vi.fn().mockResolvedValue(true),
   updateQuantity: vi.fn().mockResolvedValue(true),
   removeItem: vi.fn().mockResolvedValue(true),
+  reorder: vi.fn().mockResolvedValue(false),
   refreshCart: vi.fn().mockResolvedValue(true),
   retryCart: vi.fn().mockResolvedValue(true),
   clearCart,

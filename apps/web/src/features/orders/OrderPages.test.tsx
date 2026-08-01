@@ -6,6 +6,7 @@ import type { OrderDetailResponse, OrderListResponse } from '@shop/contracts/ord
 import { ApiError } from '@/api/client';
 import { cancelOrder, getOrder, getOrders } from '@/api/orders';
 import { fetchReturnOverview } from '@/api/returns';
+import { useCartContext } from '@/hooks/CartContext';
 import { OrderDetailPage } from './OrderDetailPage';
 import { OrderHistoryPage } from './OrderHistoryPage';
 import { OrderConfirmationPage } from '@/features/checkout/OrderConfirmationPage';
@@ -20,6 +21,17 @@ import {
 
 vi.mock('@/api/orders', () => ({ getOrders: vi.fn(), getOrder: vi.fn(), cancelOrder: vi.fn() }));
 vi.mock('@/api/returns', () => ({ fetchReturnOverview: vi.fn(), createReturnRequest: vi.fn() }));
+vi.mock('@/hooks/CartContext', () => ({ useCartContext: vi.fn() }));
+
+/** Minimal cart surface consumed by Buy Again; only the members the reorder UI reads. */
+function cartStub(overrides: Record<string, unknown> = {}) {
+  return {
+    reorder: vi.fn().mockResolvedValue(false),
+    isActionPending: vi.fn().mockReturnValue(false),
+    error: null,
+    ...overrides,
+  } as never;
+}
 
 const detail: OrderDetailResponse = {
   id: '12',
@@ -154,6 +166,8 @@ describe('customer order UI', () => {
     vi.mocked(getOrder).mockReset();
     vi.mocked(cancelOrder).mockReset();
     vi.mocked(fetchReturnOverview).mockReset();
+    vi.mocked(useCartContext).mockReset();
+    vi.mocked(useCartContext).mockReturnValue(cartStub());
     vi.mocked(fetchReturnOverview).mockResolvedValue({
       windowDays: 30,
       eligibleLines: [],
@@ -411,7 +425,11 @@ describe('customer order UI', () => {
     await screen.findByRole('button', { name: 'Cancel order' });
     await user.click(screen.getByRole('button', { name: 'Cancel order' }));
     await user.click(screen.getByRole('button', { name: 'Confirm cancellation' }));
-    expect(await screen.findByRole('status')).toHaveTextContent('latest status has been refreshed');
+    // Name filter disambiguates from the Buy Again region, which is also role=status but is
+    // aria-labelled; the cancel-conflict paragraph has no accessible name.
+    expect(await screen.findByRole('status', { name: '' })).toHaveTextContent(
+      /This order changed before cancellation/,
+    );
     expect(screen.getByLabelText('Order status: Shipped')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancel order' })).not.toBeInTheDocument();
   });
@@ -581,6 +599,77 @@ describe('customer order UI', () => {
     expect(screen.getByText('PO-77')).toBeInTheDocument();
     expect(screen.queryByText('Delivery address')).not.toBeInTheDocument();
     expect(screen.queryByText('Billing details')).not.toBeInTheDocument();
+  });
+});
+
+describe('Buy Again placement on the order surfaces', () => {
+  beforeEach(() => {
+    vi.mocked(getOrders).mockReset();
+    vi.mocked(getOrder).mockReset();
+    vi.mocked(useCartContext).mockReset();
+    vi.mocked(useCartContext).mockReturnValue(cartStub());
+    vi.mocked(fetchReturnOverview).mockReset();
+    vi.mocked(fetchReturnOverview).mockResolvedValue({
+      windowDays: 30,
+      eligibleLines: [],
+      requests: [],
+    });
+  });
+
+  it('offers Buy again on every order-history row', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      ...list,
+      items: [list.items[0]!, { ...list.items[0]!, id: '13' }],
+    });
+    render(
+      <MemoryRouter>
+        <OrderHistoryPage />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Buy again from order #12' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Buy again from order #13' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('status', { name: 'Buy again result for order #12' }),
+    ).toBeEmptyDOMElement();
+  });
+
+  it('runs the reorder for the row that was activated', async () => {
+    const reorder = vi.fn().mockResolvedValue(false);
+    vi.mocked(useCartContext).mockReturnValue(cartStub({ reorder }));
+    vi.mocked(getOrders).mockResolvedValue({
+      ...list,
+      items: [list.items[0]!, { ...list.items[0]!, id: '13' }],
+    });
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <OrderHistoryPage />
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Buy again from order #13' }));
+    await waitFor(() => expect(reorder).toHaveBeenCalledWith('13'));
+    expect(reorder).toHaveBeenCalledOnce();
+  });
+
+  it('offers Buy again on order detail alongside the existing cancel surface', async () => {
+    vi.mocked(getOrder).mockResolvedValue(detail);
+    render(
+      <MemoryRouter initialEntries={['/orders/12']}>
+        <Routes>
+          <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Buy again from order #12' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Buy again' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel order' })).toBeInTheDocument();
   });
 });
 

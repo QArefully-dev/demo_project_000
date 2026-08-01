@@ -7,6 +7,7 @@ export const DEMO_ORDER_SCENARIO_KEYS = [
   'alice-split-shipped',
   'alice-delivery-failed',
   'bob-delivered',
+  'alice-reorder-mix',
 ] as const;
 
 type ScenarioKey = (typeof DEMO_ORDER_SCENARIO_KEYS)[number];
@@ -247,6 +248,33 @@ const SCENARIOS: readonly Scenario[] = [
         shipmentNumber: 1,
         occurredAt: '2026-07-13T16:00:00.000Z',
       },
+    ],
+  },
+  {
+    // Buy-again fixture: one past order that deliberately reorders into a mixed result.
+    //
+    // The order is placed on 2026-07-16, five days before the seeded clearance window on
+    // `GDN-1043-001` opens (`seed.ts` anchors that window to `PRICING_PROMOTIONS_SEED_CLOCK`
+    // = 2026-07-28, running from -7 to +7 days, i.e. 2026-07-21 to 2026-08-04). Reordering it
+    // inside that window therefore discloses genuine downward price drift on line 0, while
+    // line 1 is short of stock and line 2 re-adds cleanly:
+    //   0. Lawn Feed        GDN-1043-001  stock 35, clearance active -> added, price drifted
+    //   1. HMB Material     SPN-1007-001  stock 15, ordered 20       -> INSUFFICIENT_STOCK
+    //   2. All-Purpose Flour BKP-0001-001 stock 85, ordered 4        -> added, price steady
+    // Quantities clear the 4-sack MOQ floor and stay under the 1 t quantity-break tier, so the
+    // resolved unit price is exactly the list or clearance price with no tier discount applied.
+    key: 'alice-reorder-mix',
+    userEmail: 'alice@example.com',
+    createdAt: '2026-07-16T09:00:00.000Z',
+    status: 'processing',
+    version: 0,
+    productLines: [
+      { productId: 1043, quantity: 4 },
+      { productId: 1007, quantity: 20 },
+      { productId: 1, quantity: 4 },
+    ],
+    events: [
+      { type: 'order_created', title: 'Order created', occurredAt: '2026-07-16T09:00:00.000Z' },
     ],
   },
 ];

@@ -13,6 +13,7 @@ import favouritesRoutes from './routes/favourites.js';
 import paymentRoutes from './routes/payments.js';
 import mailboxRoutes from './routes/mailbox.js';
 import bundleRoutes from './routes/bundles.js';
+import reorderRoutes from './routes/reorder.js';
 import { createAuthService, type AuthService, type Clock } from './features/auth/authService.js';
 import { createSessionRepository } from './features/auth/sessionRepository.js';
 import { createSessionService, type SessionService } from './features/auth/sessionService.js';
@@ -170,6 +171,7 @@ import {
 } from './features/featureFlags/featureFlagService.js';
 import { createFeatureFlagRepository } from './features/featureFlags/featureFlagRepository.js';
 import { createFeatureFlagResolver } from './features/featureFlags/featureFlagResolver.js';
+import { createReorderService, type ReorderService } from './features/reorder/reorderService.js';
 
 /**
  * The buyer's saved trade records, grouped because they are always wired, injected, and consumed
@@ -202,6 +204,7 @@ export interface AppServices {
   audit: AuditReadService;
   favourites: FavouritesService;
   bundles: BundleService;
+  reorder: ReorderService;
   reviews: ReviewService;
   inventory: InventoryService;
   inventoryUnitOfWork: UnitOfWork;
@@ -272,6 +275,15 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     }),
   };
   const deliverySlots = createDeliverySlotService({ cart: cartService, clock });
+  // Hoisted: reorder reads owned orders through the very same order service the order endpoints
+  // answer from, so ownership can never be decided against a second view of an order.
+  const orderService = createOrderService({
+    repository: orders,
+    unitOfWork,
+    clock,
+    audit,
+    inventory,
+  });
   const companyAccounts = createCompanyService({
     companies: createCompanyRepository(dependencies.db),
     memberships: createCompanyMembershipRepository(dependencies.db),
@@ -330,7 +342,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     products: createProductService(products, { clock }),
     carts: cartService,
     promos: createPromoService({ promos, carts, clock }),
-    orders: createOrderService({ repository: orders, unitOfWork, clock, audit, inventory }),
+    orders: orderService,
     orderAccess: createOrderAccessService({
       repository: orders,
       clock,
@@ -360,6 +372,16 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       unitOfWork,
       audit,
       availability: { inventory, clock },
+    }),
+    // Shares the cart service's own `unitOfWork`, so the reorder transaction nests over the bulk
+    // add's transaction as a savepoint instead of opening a second, competing one.
+    reorder: createReorderService({
+      orders: orderService,
+      carts: cartService,
+      variants: products,
+      unitOfWork,
+      audit,
+      clock,
     }),
     reviews: createReviewService({
       repository: createReviewRepository(dependencies.db),
@@ -488,6 +510,7 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(paymentRoutes, context);
   await app.register(mailboxRoutes, context);
   await app.register(bundleRoutes, context);
+  await app.register(reorderRoutes, context);
   await app.register(auditRoutes, context);
   await app.register(reviewsRoutes, context);
   await app.register(returnsRoutes, context);

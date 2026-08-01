@@ -1,11 +1,13 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { StrictMode, type ReactNode } from 'react';
 import type { Cart } from '@shop/contracts/cart';
+import type { ReorderResponse } from '@shop/contracts/reorder';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
 import * as cartApi from '@/api/cart';
 import * as bundlesApi from '@/api/bundles';
 import * as customBlendsApi from '@/api/customBlends';
+import * as reorderApi from '@/api/reorder';
 import { clearCartId, getCartId, setCartId } from '@/lib/cartStorage';
 import { CartProvider, useCartContext } from './CartContext';
 
@@ -22,6 +24,9 @@ vi.mock('@/api/bundles', () => ({
 vi.mock('@/api/customBlends', () => ({
   createCustomBlend: vi.fn(),
   replaceCustomBlend: vi.fn(),
+}));
+vi.mock('@/api/reorder', () => ({
+  reorderFromOrder: vi.fn(),
 }));
 
 function deferred<T>() {
@@ -107,6 +112,30 @@ function cartWithProductVariants(id: string): Cart {
     discountableSubtotalCents: 1400,
     blendingFeeTotalCents: 0,
     totalItems: 5,
+  };
+}
+
+function reorderResponse(reorderedCart: Cart): ReorderResponse {
+  return {
+    cart: reorderedCart,
+    addedLineCount: reorderedCart.items.length,
+    skippedLineCount: 1,
+    outcomes: [
+      {
+        orderLineItemId: '11',
+        productId: 'lime',
+        productName: 'Hydrated lime',
+        variantId: null,
+        sku: null,
+        configKey: '',
+        quantity: 2,
+        status: 'skipped',
+        reason: 'VARIANT_RETIRED',
+        orderedUnitPriceCents: 900,
+        currentUnitPriceCents: null,
+        priceChanged: false,
+      },
+    ],
   };
 }
 
@@ -484,6 +513,122 @@ describe('useCart', () => {
     expect(await olderAction).toBe(true);
     expect(await newerAction).toBe(true);
     expect(result.current.cart?.items.map((item) => item.productId)).toEqual(['one', 'two']);
+  });
+
+  it('applies the reordered cart and returns the outcome report to the caller', async () => {
+    setCartId('cart');
+    const response = deferred<ReorderResponse>();
+    vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
+    vi.mocked(reorderApi.reorderFromOrder).mockReturnValueOnce(response.promise);
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    let action!: Promise<ReorderResponse | false>;
+    act(() => {
+      action = result.current.reorder('42');
+    });
+    expect(result.current.isActionPending('reorder:42', 'reorder')).toBe(true);
+    expect(reorderApi.reorderFromOrder).toHaveBeenCalledWith('cart', '42');
+
+    const expected = reorderResponse(cart('cart', ['cement']));
+    await act(async () => {
+      response.resolve(expected);
+      await response.promise;
+    });
+
+    expect(await action).toEqual(expected);
+    expect(result.current.cart?.items.map((item) => item.productId)).toEqual(['cement']);
+    expect(result.current.isActionPending('reorder:42')).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('does not let an older reorder response overwrite a newer cart response', async () => {
+    setCartId('cart');
+    const olderResponse = deferred<ReorderResponse>();
+    const newerResponse = deferred<ReorderResponse>();
+    vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
+    vi.mocked(reorderApi.reorderFromOrder)
+      .mockReturnValueOnce(olderResponse.promise)
+      .mockReturnValueOnce(newerResponse.promise);
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    act(() => {
+      void result.current.reorder('41');
+      void result.current.reorder('42');
+    });
+
+    await act(async () => {
+      newerResponse.resolve(reorderResponse(cart('cart', ['one', 'two'])));
+      await newerResponse.promise;
+    });
+    await act(async () => {
+      olderResponse.resolve(reorderResponse(cart('cart', ['one'])));
+      await olderResponse.promise;
+    });
+
+    expect(result.current.cart?.items.map((item) => item.productId)).toEqual(['one', 'two']);
+  });
+
+  it('surfaces a reserved cart as a checkout-scoped reorder error', async () => {
+    setCartId('cart');
+    vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart', ['existing']));
+    vi.mocked(reorderApi.reorderFromOrder).mockRejectedValueOnce(
+      new ApiError('Cart is reserved for checkout.', 409, {
+        error: 'Cart is reserved for checkout.',
+        code: 'CART_RESERVED',
+      } as never),
+    );
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    await act(async () => expect(await result.current.reorder('42')).toBe(false));
+
+    expect(result.current.error).toBe(
+      'Your cart is reserved for checkout and cannot be changed. Finish or cancel that checkout, then try again.',
+    );
+    expect(result.current.cart?.items.map((item) => item.productId)).toEqual(['existing']);
+  });
+
+  it('reports a missing source order distinctly from a reserved cart', async () => {
+    setCartId('cart');
+    vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
+    vi.mocked(reorderApi.reorderFromOrder).mockRejectedValueOnce(
+      new ApiError('Order not found', 404, {
+        error: 'Order not found',
+        code: 'ORDER_NOT_FOUND',
+      } as never),
+    );
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    await act(async () => expect(await result.current.reorder('42')).toBe(false));
+
+    expect(result.current.error).toBe(
+      'That order is no longer available. Refresh your order history and try again.',
+    );
+  });
+
+  it('replays a reorder exactly once against a recovered replacement cart', async () => {
+    setCartId('old-cart');
+    vi.mocked(cartApi.getCart)
+      .mockResolvedValueOnce(cart('old-cart'))
+      .mockResolvedValueOnce(cart('new-cart'));
+    vi.mocked(cartApi.createCart).mockResolvedValueOnce({ cartId: 'new-cart' });
+    const replayed = reorderResponse(cart('new-cart', ['cement']));
+    vi.mocked(reorderApi.reorderFromOrder)
+      .mockRejectedValueOnce(new ApiError('Cart not found', 404))
+      .mockResolvedValueOnce(replayed);
+    const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
+    await waitFor(() => expect(result.current.isCartAvailable).toBe(true));
+
+    await act(async () => expect(await result.current.reorder('42')).toEqual(replayed));
+
+    expect(reorderApi.reorderFromOrder).toHaveBeenCalledTimes(2);
+    expect(reorderApi.reorderFromOrder).toHaveBeenNthCalledWith(1, 'old-cart', '42');
+    expect(reorderApi.reorderFromOrder).toHaveBeenNthCalledWith(2, 'new-cart', '42');
+    expect(result.current.cartId).toBe('new-cart');
+    expect(result.current.error).toBeNull();
   });
 
   it('tracks concurrent actions by product', async () => {

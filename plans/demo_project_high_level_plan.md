@@ -82,12 +82,12 @@ Avoid visible platform complexity:
 - implemented account depth: session list with device/last-seen metadata and selective revocation, notification preferences, JSON data export, account deletion with tombstoned identity and order retention (`features/preferences/`, `features/accountExport/`, `features/accountDeletion/`)
 - implemented company accounts: company record -> membership roles (`owner`, `buyer`, `approver`, one active membership per user) -> tokenised email invites, plus a per-company `approvalThresholdCents` gate that defers checkout into an approval request; approver inbox and buyer request list at `/approvals` (`features/companyAccounts/`, `features/orderApprovals/`)
 - implemented secondary admin: `/admin` shell over product and lot/variant management, promotion and clearance-window administration, user suspension and role changes, paginated/filtered order list plus detail, standalone idempotent refunds on an immutable ledger, and feature-flag toggles; every mutation writes the audit ledger (`routes/admin*.ts`, `apps/web/src/features/admin/`)
+- implemented buy again / reorder: `POST /api/orders/:orderId/reorder` re-adds every resolvable line of an owned past order through the reusable multi-line `CartService.addMany` path, returning one outcome per source line with its skip reason and server-resolved price drift; `Buy again` sits on order history and order detail (`apps/api/src/features/reorder/`, `apps/api/src/features/cart/cartBulkAddRules.ts`, `apps/web/src/features/reorder/`). No schema change; migration head stays `028`
 - implemented integrity: ordered migrations through `028` (`sort_order < 1` variants retired in `020`; obsolete Custom Small Order schema physically removed in `021`; custom blend tables plus cart/order line rebuild in `022`; trade delivery sites, billing entities, and order delivery/billing detail in `023`; clearance, scoped promo, and order discount-base columns in `024`; session metadata, preferences, deletion events in `025`; company accounts, memberships, invites, order approvals in `026`; user suspension, feature flags, immutable `admin_refunds` in `027`; retired variants share `sort_order 0` while live positions stay unique per product in `028`), append-only audit ledger, sanitized admin audit reads
-- seed: 100 deterministic products across 6 categories (Sports Nutrition 20, Baking & Pantry 20, Drinks 15, Household & Cleaning 15, Garden & Outdoors 15, Trade & Creative Materials 15), each carrying a nullable `mixingGroup` from a fixed set of eight (`food-grade`, `cleaning`, `garden-treatment`, `cementitious-materials`, `casting-materials`, `pigments`, `theatrical-effects`, `absorbents`) validated in `packages/catalog`, plus users, promotions including `GARDEN10` and `CLEANFIVE`, active/expired/future clearance fixtures, favourites, catalog metadata, curated bundles, inventory/backorder scenarios, company-account fixtures with an approval threshold, and one disabled `admin.example_flag`
+- seed: 100 deterministic products across 6 categories (Sports Nutrition 20, Baking & Pantry 20, Drinks 15, Household & Cleaning 15, Garden & Outdoors 15, Trade & Creative Materials 15), each carrying a nullable `mixingGroup` from a fixed set of eight (`food-grade`, `cleaning`, `garden-treatment`, `cementitious-materials`, `casting-materials`, `pigments`, `theatrical-effects`, `absorbents`) validated in `packages/catalog`, plus users, promotions including `GARDEN10` and `CLEANFIVE`, active/expired/future clearance fixtures, favourites, catalog metadata, curated bundles, inventory/backorder scenarios, company-account fixtures with an approval threshold, one disabled `admin.example_flag`, and six demo order scenarios including `alice-reorder-mix`, the buy-again fixture that reorders into a mixed added/skipped result
 - tests: focused unit, contract, route, SQLite integration, React integration, and accessibility coverage; broad E2E coverage reserved for course
-- completed expansion records under `plans/old/`: `powder_shop_catalog_expansion_plan.md`, `inventory_coding_plan.md`, `returns_and_refunds_coding_plan.md`, `order_history_and_lifecycle_coding_plan.md`, `review_depth_coding_plan.md`, `materials_exchange_gap_closure_coding_plan.md`, `catalog_bag_colour_schemes_and_pigments_coding_plan.md`, `powderizer_removal_coding_plan.md`, `heavy_duty_sack_prototypes.html`
-- completed plan records for Custom Blend (16), Checkout depth (4), and Pricing and promotions (5) are not tracked; implementation truth is the code, migrations `022`-`024`, and commits `f63e9bf` / `b1957ba` / `b537512`
-- completed plan records under `plans/`: `account_depth_coding_plan.md` (7), `secondary_admin_coding_plan.md` (9); implementation truth is the code, migrations `025`-`028`, and commits `3c0d6d7` / `d922c4e`
+- completed plan records are no longer retained. `plans/old/` was deleted at commit `8285c62`, and `plans/account_depth_coding_plan.md` plus `plans/secondary_admin_coding_plan.md` at commit `186039d`; `plans/` now holds this file plus the in-flight coding plan only. Do not cite a `plans/old/` path as a source - implementation truth is the code, the migrations, and git history
+- history pointers for completed items, in place of the deleted plan documents: catalog expansion, inventory, returns and refunds, order history and lifecycle, review depth, materials-exchange gap closure, bag colour schemes and pigments, and Custom Small Order retirement predate migration `022`; Custom Blend (16), Checkout depth (4), and Pricing and promotions (5) landed with migrations `022`-`024` in commits `f63e9bf` / `b1957ba` / `b537512`; Account depth (7) and Secondary admin (9) landed with migrations `025`-`028` in commits `3c0d6d7` / `d922c4e`
 
 ## Hard Constraints
 
@@ -192,19 +192,31 @@ Precursor B2B rebrand pass: COMPLETE. Brand/copy, sack/pallet unit model, `£/to
     - removed end-to-end: UI, routes, API, contracts, tests, help content, and obsolete styling
     - migration `021` physically removes obsolete schema. Earlier migrations remain immutable history; local SQLite is disposable
     - frees one nav slot for 16; retained `.custom-blend-nav-link` CSS is reserved for its greenfield UI
-12. Buy Again / reorder: future
-    - one action on any past order -> re-add its lines to cart. Universally recognised, no new domain concept, no explanatory copy
-    - reuses orders + cart + inventory + pricing; adds no new mental model
-    - core rule: partial success is normal and must be explained per line -> price moved since order, stock short, variant retired (`active = 0` rows from migration `020`), quantity no longer valid under MOQ
-    - QA surface: partial add-to-cart reporting, price-drift disclosure, retired-variant substitution refusal, stock race between reorder and checkout
+12. Buy Again / reorder: completed
+    - landed as `POST /api/orders/:orderId/reorder` (`requireCustomer` plus order ownership) -> `CartService.addMany` -> one outcome per source order line. `Buy again` control sits on order history rows and order detail (`apps/web/src/features/reorder/`)
+    - no new domain concept and no new persistence: schema unchanged, **no migration; head stays `028`**
+    - partial success is the normal result and is reported per line. Skip reasons as built: `VARIANT_RETIRED`, `VARIANT_UNRESOLVED`, `INSUFFICIENT_STOCK`, `BELOW_MOQ`, `INVALID_QUANTITY`, `BLEND_UNAVAILABLE` (`apps/api/src/features/cart/cartBulkAddRules.ts` owns the fixed precedence; `features/reorder/reorderRules.ts` owns the two pre-cart reasons)
+    - price drift is disclosed, not acted on: every outcome carries `orderedUnitPriceCents`, a server-resolved `currentUnitPriceCents`, and `priceChanged`. Drift never blocks or rewrites a line, and the price is re-derived server-side through the same clearance -> tier composition the cart uses
+    - Custom Blend lines re-add under their original `configKey`; blend ingredients are re-validated, and an unavailable blend skips as `BLEND_UNAVAILABLE`
+    - not built: no substitution offer for a retired lot. A retired lot is skipped with `VARIANT_RETIRED` and the buyer chooses a replacement themselves. The earlier "substitution refusal" framing described a refusal to substitute, which is what shipped
+    - QA surface as built: partial add-to-cart reporting, price-drift disclosure, retired-lot refusal, MOQ floor, aggregation of duplicate lines sharing one `(variantId, configKey)` identity, and the reserved-cart (`CART_RESERVED`) conflict between reorder and an in-flight checkout
+    - demo fixture: seeded order `alice-reorder-mix` (`apps/api/src/db/orderSeedScenarios.ts`, owner `alice@example.com`) reorders into a deliberately mixed result - one line added with drifted price against the active clearance window on `GDN-1043-001`, one `INSUFFICIENT_STOCK` skip, one ordinary added line
 13. Saved Lists: future
     - named buyer lists (e.g. `Monthly restock`) -> add whole list to cart
     - extends existing `favourites` domain; absorbs Wishlist so nav item count stays flat
-    - shares the multi-line add-to-cart path with 12 -> build after 12 and reuse, do not fork a second implementation
+    - shares the multi-line add-to-cart path with 12 -> reuse `CartService.addMany`, do not fork a second implementation
 14. Quick Order: future
     - paste or type `SKU, qty` lines -> cart. Trade-counter staple; self-explanatory from the input alone
     - QA surface: unknown SKU, duplicate SKU, malformed quantity, MOQ rounding, mixed valid/invalid input in one submission
-    - shares the multi-line add-to-cart path with 12
+    - shares the multi-line add-to-cart path with 12 -> reuse `CartService.addMany`
+
+    Constraints 13 and 14 inherit from the landed `CartService.addMany` (`apps/api/src/features/cart/cartService.ts`, rules in `cartBulkAddRules.ts`):
+    - callers submit one request per desired line, each carrying an opaque caller-owned `key`; outcomes come back correlated by that key, so the caller owns its own line identity and the cart feature stays feature-agnostic
+    - requests sharing a `(variantId, configKey)` identity are aggregated into one demand and judged once, then the single verdict fans back out to every contributing key. A list or paste containing the same SKU twice is one cart line, judged at the combined quantity
+    - a group is added at its full requested quantity or not at all. Quantity is never clamped down to stock nor rounded up to the MOQ floor, so 14's "MOQ rounding" must be a client-side or feature-side decision made before submission, not something the cart will do
+    - skip-reason precedence is fixed and shared: `VARIANT_RETIRED` -> `BLEND_UNAVAILABLE` -> `INVALID_QUANTITY` -> `INSUFFICIENT_STOCK` -> `BELOW_MOQ`. A new feature needing a new reason extends this one enum rather than inventing a parallel vocabulary
+    - the whole batch runs inside one unit of work and requires an audit context; partial success is a domain outcome, never an error, and never rolls back the lines that did apply. A reserved cart rejects the entire batch with `CART_RESERVED`
+    - the cart resolves and returns the clearance-then-tier unit price at the post-add cumulative quantity, so consumers disclose server-resolved prices rather than re-deriving them
 15. Back-in-stock notification: future
     - `notify me when available` on out-of-stock lots
     - one-line concept, real async behavior -> first consumer of the local job queue in 8
@@ -241,16 +253,17 @@ Readiness favors `partial` items with self-contained remaining slices over green
 
 Recommended order:
 
-1. Reorder chain (12 -> 13 -> 14), unblocked with the money path settled. Build 12 first; 13 and 14 reuse its multi-line cart-add path.
+1. Reorder chain: 12 is landed and 13 -> 14 follow it. Both consume the multi-line cart-add path 12 established (`CartService.addMany`) under the constraints listed against 13 and 14; neither forks a second implementation.
 2. Then Async behavior (8), Country localisation (10). Back-in-stock (15) waits on 8.
 
-Custom Small Order retirement (11), Custom Blend (16), Checkout depth (4), Pricing and promotions (5), Account depth (7), and Secondary admin (9) are complete. 16 landed before 4, taking 11's freed nav slot and Custom Blend CSS; 4 then landed on the settled checkout path, 5 closed the money path, and 7 + 9 landed in parallel with the shared user/session lane owned by 7.
+Custom Small Order retirement (11), Custom Blend (16), Checkout depth (4), Pricing and promotions (5), Account depth (7), Secondary admin (9), and Buy Again / reorder (12) are complete. 16 landed before 4, taking 11's freed nav slot and Custom Blend CSS; 4 then landed on the settled checkout path, 5 closed the money path, and 7 + 9 landed in parallel with the shared user/session lane owned by 7.
 
 Parallelization rules:
 
 - Resolved: 7 + 9 ran concurrently as planned; the shared user/session lane stayed with 7 (deletion, revocation) while 9 took user role and suspension on top of it.
 - Resolved: 4 landed the delivery-site/address model itself rather than consuming it from 7.
 - Resolved: 4 and 5 were serialized on the server-side total path (freight charge, tier discounts, MOQ validation, blending-fee exclusion, rounding). Both are landed, so the money path is settled; later items consume server-resolved pricing rather than re-deriving it.
+- Resolved: 12 landed the shared multi-line cart-add path as a feature-agnostic cart capability rather than as reorder-private code, so 13 and 14 can run concurrently against it once each owns its own line-source parsing.
 - 10 is unblocked by the money path (4 and 5 landed) but still touches currency, availability, and policy across nearly everything -> keep it after the reorder chain.
 - 8 is the only remaining subsystem with a queued consumer already named (15, plus standing/repeat orders that must re-check the 7 approval threshold per run).
 
