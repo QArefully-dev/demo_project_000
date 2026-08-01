@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import Database from 'better-sqlite3';
-import { closeDatabase, migrateDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { closeDatabase, migrateDatabase, openDatabase } from '../../src/db/index.js';
 import { migrations } from '../../src/db/migrations/index.js';
 
 function indexNames(db: Database.Database, table: string): string[] {
@@ -63,45 +63,56 @@ void test('migration 029 converts live favourites, drops inactive and missing de
     db,
     migrations.filter((migration) => migration.version < '029'),
   );
-  seedDatabase(db);
-  const aliceId = db
-    .prepare("SELECT id FROM users WHERE email = 'alice@example.com'")
-    .pluck()
-    .get() as number;
-  const favourites = db
-    .prepare(
-      `SELECT products.id AS product_id, products.default_variant_id AS variant_id
-       FROM products JOIN product_variants ON product_variants.id = products.default_variant_id
-         AND product_variants.active = 1
-       ORDER BY products.id LIMIT 2`,
-    )
-    .all() as Array<{ product_id: number; variant_id: number }>;
-  assert.equal(favourites.length, 2);
-  const insertFavourite = db.prepare('INSERT INTO favourites (user_id, product_id) VALUES (?, ?)');
-  for (const favourite of favourites) insertFavourite.run(aliceId, favourite.product_id);
-  const [droppedFavourite] = favourites;
-  const [, nonDivisibleFavourite] = favourites;
-  db.prepare('UPDATE product_variants SET weight_grams = 30000, moq_sacks = 5 WHERE id = ?').run(
-    nonDivisibleFavourite.variant_id,
+  // The fixture is built directly rather than through seedDatabase: the seed targets the current
+  // schema and installs saved lists itself, so it cannot express a pre-029 favourites world.
+  const buyerId = Number(
+    db
+      .prepare(
+        `INSERT INTO users (email, display_name, password_hash, password_salt)
+         VALUES ('conversion@example.com', 'Conversion Buyer', 'hash', 'salt')`,
+      )
+      .run().lastInsertRowid,
   );
-  db.prepare('UPDATE product_variants SET active = 0 WHERE id = ?').run(
-    droppedFavourite.variant_id,
+  const insertProduct = db.prepare(
+    `INSERT INTO products (name, description, price_cents, category)
+     VALUES (?, 'conversion fixture', 1000, 'baking')`,
   );
-  const missingDefaultProductId = db
-    .prepare(
-      `SELECT id FROM products
-       WHERE id NOT IN (?, ?)
-       ORDER BY id LIMIT 1`,
-    )
-    .pluck()
-    .get(droppedFavourite.product_id, nonDivisibleFavourite.product_id) as number;
-  assert.ok(missingDefaultProductId);
-  db.prepare('UPDATE products SET default_variant_id = NULL WHERE id = ?').run(
-    missingDefaultProductId,
+  const insertVariant = db.prepare(
+    `INSERT INTO product_variants
+       (product_id, sku, label, weight_grams, price_cents, moq_sacks, active, created_at, updated_at)
+     VALUES (?, ?, '25 kg sack', ?, 1000, ?, ?, '2026-08-01T09:00:00.000Z', '2026-08-01T09:00:00.000Z')`,
   );
-  insertFavourite.run(aliceId, missingDefaultProductId);
+  const setDefaultVariant = db.prepare('UPDATE products SET default_variant_id = ? WHERE id = ?');
 
-  const expectedItems = [{ variant_id: nonDivisibleFavourite.variant_id, quantity: 5 }];
+  /** Creates a product whose default variant carries the given weight, MOQ, and active flag. */
+  function createLot(sku: string, weightGrams: number, moqSacks: number, active: number) {
+    const productId = Number(insertProduct.run(`Conversion ${sku}`).lastInsertRowid);
+    const variantId = Number(
+      insertVariant.run(productId, sku, weightGrams, moqSacks, active).lastInsertRowid,
+    );
+    setDefaultVariant.run(variantId, productId);
+    return { productId, variantId };
+  }
+
+  // 5 sacks of 25 kg over a 30 kg lot weight rounds up to 5 units, proving the conversion
+  // quantity is a ceiling rather than a truncating division.
+  const nonDivisibleFavourite = createLot('CNV-0001-001', 30000, 5, 1);
+  const droppedFavourite = createLot('CNV-0002-001', 25000, 1, 0);
+  const missingDefault = createLot('CNV-0003-001', 25000, 1, 1);
+  db.prepare('UPDATE products SET default_variant_id = NULL WHERE id = ?').run(
+    missingDefault.productId,
+  );
+
+  const insertFavourite = db.prepare('INSERT INTO favourites (user_id, product_id) VALUES (?, ?)');
+  for (const productId of [
+    nonDivisibleFavourite.productId,
+    droppedFavourite.productId,
+    missingDefault.productId,
+  ]) {
+    insertFavourite.run(buyerId, productId);
+  }
+
+  const expectedItems = [{ variant_id: nonDivisibleFavourite.variantId, quantity: 5 }];
 
   migrateDatabase(db);
   assert.equal(
@@ -121,7 +132,7 @@ void test('migration 029 converts live favourites, drops inactive and missing de
     db
       .prepare('SELECT COUNT(*) FROM saved_list_items WHERE variant_id = ?')
       .pluck()
-      .get(droppedFavourite.variant_id),
+      .get(droppedFavourite.variantId),
     0,
   );
   assert.equal((db.pragma('foreign_key_check') as unknown[]).length, 0);

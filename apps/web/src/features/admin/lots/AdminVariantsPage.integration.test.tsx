@@ -46,12 +46,18 @@ describe('AdminVariantsPage', () => {
     await user.click(await screen.findByRole('button', { name: /25kg sack/ }));
     await user.click(screen.getByLabelText('Enable clearance'));
     await user.click(screen.getByRole('button', { name: 'Save clearance' }));
-    await waitFor(() =>
-      expect(api.setAdminVariantClearance).toHaveBeenCalledWith(
-        '2',
-        expect.objectContaining({ clearance: {} }),
-      ),
-    );
+    await waitFor(() => expect(api.setAdminVariantClearance).toHaveBeenCalled());
+    // Enabling clearance seeds the window from the lot's own price and the next 24 hours; the
+    // contract rejects a partial clearance, so the page must submit all three fields as instants.
+    const [id, body] = api.setAdminVariantClearance.mock.calls[0] as [
+      string,
+      { clearance: { priceCents: number; startsAt: string; endsAt: string } },
+    ];
+    expect(id).toBe('2');
+    expect(body.clearance.priceCents).toBe(variant.priceCents);
+    expect(body.clearance.startsAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(body.clearance.endsAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(Date.parse(body.clearance.endsAt) - Date.parse(body.clearance.startsAt)).toBe(86400000);
   });
   it('shows retirement rejection', async () => {
     api.getAdminProductVariants.mockResolvedValue({ items: [variant] });

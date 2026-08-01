@@ -15,12 +15,12 @@ void test('SKU lookup returns product names, includes retired variants, and pres
     rmSync(directory, { recursive: true, force: true });
   });
   const repository = createProductRepository(db);
-  const seededRetiredCount = (
-    db.prepare('SELECT COUNT(*) AS count FROM product_variants WHERE active = 0').get() as {
-      count: number;
-    }
-  ).count;
-  assert.equal(seededRetiredCount, 0);
+  // The saved-list seed retires exactly one lot so its add-to-cart journey always shows a
+  // partial success; every other seeded variant stays live.
+  assert.deepEqual(
+    db.prepare('SELECT sku FROM product_variants WHERE active = 0 ORDER BY sku').pluck().all(),
+    ['SPN-0009-002'],
+  );
   const variants = db
     .prepare(
       `SELECT v.id, v.sku, v.active, p.name AS product_name

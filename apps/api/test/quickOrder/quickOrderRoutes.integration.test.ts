@@ -139,18 +139,14 @@ void test('quick order returns mixed per-line outcomes, aggregates duplicates, a
   assert.ok(garden.clearance_ends_at! > NOW.toISOString());
   assert.equal(sports.stock_count, 15);
   assert.equal(baking.stock_count, 85);
-  assert.equal(
-    (
-      db.prepare('SELECT COUNT(*) AS count FROM product_variants WHERE active = 0').get() as {
-        count: number;
-      }
-    ).count,
-    0,
-    'the reset seed has no retired variants',
+  assert.deepEqual(
+    db.prepare('SELECT sku FROM product_variants WHERE active = 0 ORDER BY sku').pluck().all(),
+    ['SPN-0009-002'],
+    'the saved-list seed retires exactly one lot, and none of the lots used below',
   );
 
-  // Local retirement is intentional: the seed has none, but route coverage must retain the
-  // persisted-retired outcome that a buyer can encounter after a catalog update.
+  // Local retirement is intentional: route coverage must retain the persisted-retired outcome
+  // that a buyer can encounter after a catalog update, independent of the seeded retired lot.
   const retired = db
     .prepare(
       `SELECT id, sku FROM product_variants
