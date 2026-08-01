@@ -33,6 +33,12 @@ void test('seed installs deterministic lifecycle scenarios once and reset restor
     .all();
   assert.deepEqual(scenarioRows, [
     {
+      demo_seed_key: 'alice-reorder-mix',
+      email: 'alice@example.com',
+      lifecycle_status: 'processing',
+      created_at: '2026-07-16T09:00:00.000Z',
+    },
+    {
       demo_seed_key: 'alice-processing',
       email: 'alice@example.com',
       lifecycle_status: 'processing',
@@ -226,7 +232,9 @@ void test('seed installs deterministic lifecycle scenarios once and reset restor
         )
         .get() as { count: number }
     ).count,
-    19,
+    // 19 lifecycle events across the five original scenarios, plus the single `order_created`
+    // event of the `alice-reorder-mix` buy-again fixture.
+    20,
   );
 
   resetDatabase(db);
@@ -631,7 +639,9 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   for (const [table, expectedCount] of [
     ['inventory_reservations', 0],
     ['order_access_grants', 0],
-    ['order_lifecycle_events', 19],
+    // 19 across the five original lifecycle scenarios, plus one `order_created` event for the
+    // `alice-reorder-mix` buy-again fixture.
+    ['order_lifecycle_events', 20],
     ['order_shipment_items', 6],
     ['order_shipments', 5],
   ] as const) {

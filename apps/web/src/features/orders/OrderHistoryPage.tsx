@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatMoney } from '@/lib/formatMoney';
+import { BuyAgainButton, useBuyAgain } from '@/features/reorder/BuyAgainButton';
+import { ReorderOutcomeList } from '@/features/reorder/ReorderOutcomeList';
 import type { OrderListResponse } from '@shop/contracts/orders';
 import {
   formatOrderDate,
@@ -24,6 +26,7 @@ export function OrderHistoryPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const requestId = useRef(0);
+  const { buyAgain, stateFor } = useBuyAgain();
 
   const load = useCallback(async () => {
     const currentRequest = ++requestId.current;
@@ -81,41 +84,50 @@ export function OrderHistoryPage() {
             const purchaseOrderReference = formatPurchaseOrderReference(
               order.purchaseOrderReference,
             );
+            const buyAgainState = stateFor(order.id);
             return (
               <Card key={order.id}>
-                <CardContent className="flex flex-wrap items-center justify-between gap-4 py-4">
-                  <div>
-                    <Link
-                      className="font-medium underline-offset-4 hover:underline"
-                      to={`/orders/${order.id}`}
-                    >
-                      Order #{order.id}
-                    </Link>
-                    <p className="text-sm text-muted-foreground">
-                      {formatOrderDate(order.createdAt)} · {order.totalItems}{' '}
-                      {order.totalItems === 1 ? 'item' : 'items'}
-                    </p>
-                    {purchaseOrderReference && (
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        PO reference{' '}
-                        <span className="font-medium text-foreground">
-                          {purchaseOrderReference}
-                        </span>
+                <CardContent className="space-y-3 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                      <Link
+                        className="font-medium underline-offset-4 hover:underline"
+                        to={`/orders/${order.id}`}
+                      >
+                        Order #{order.id}
+                      </Link>
+                      <p className="text-sm text-muted-foreground">
+                        {formatOrderDate(order.createdAt)} · {order.totalItems}{' '}
+                        {order.totalItems === 1 ? 'item' : 'items'}
                       </p>
-                    )}
+                      {purchaseOrderReference && (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          PO reference{' '}
+                          <span className="font-medium text-foreground">
+                            {purchaseOrderReference}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-medium">{formatMoney(order.totalCents)}</span>
+                      <Badge
+                        variant={
+                          order.status === 'cancelled' || order.status === 'delivery_failed'
+                            ? 'destructive'
+                            : 'secondary'
+                        }
+                      >
+                        {orderStatusLabel(order.status)}
+                      </Badge>
+                      <BuyAgainButton
+                        orderId={order.id}
+                        isPending={buyAgainState.kind === 'pending'}
+                        onActivate={() => void buyAgain(order.id)}
+                      />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-medium">{formatMoney(order.totalCents)}</span>
-                    <Badge
-                      variant={
-                        order.status === 'cancelled' || order.status === 'delivery_failed'
-                          ? 'destructive'
-                          : 'secondary'
-                      }
-                    >
-                      {orderStatusLabel(order.status)}
-                    </Badge>
-                  </div>
+                  <ReorderOutcomeList orderId={order.id} state={buyAgainState} />
                 </CardContent>
               </Card>
             );

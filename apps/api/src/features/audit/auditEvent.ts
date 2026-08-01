@@ -27,6 +27,7 @@ export const AUDIT_ACTIONS = [
   'cart.product_quantity_changed',
   'cart.product_removed',
   'cart.bundle_added',
+  'cart.reorder_added',
   'checkout.cart_consumed',
   'payment.pre_gateway_failed',
   'payment.declined',
@@ -187,6 +188,13 @@ export type AuditEventInput =
       bundleId: number;
       componentCount: number;
       quantity: number;
+    })
+  | (WithContext & {
+      action: 'cart.reorder_added';
+      cartId: string;
+      orderId: number;
+      addedLineCount: number;
+      skippedLineCount: number;
     })
   | (WithContext & { action: 'checkout.cart_consumed'; cartId: string })
   | (WithContext & {
@@ -615,6 +623,14 @@ export function buildAuditEvent(input: AuditEventInput): BuiltAuditEvent {
         bundleId: requirePositiveSafeInteger(input.bundleId, 'bundleId'),
         componentCount: requirePositiveSafeInteger(input.componentCount, 'componentCount'),
         quantity: requirePositiveSafeInteger(input.quantity, 'quantity'),
+      };
+      break;
+    case 'cart.reorder_added':
+      entity = cartEntity(input);
+      metadata = {
+        orderId: requirePositiveSafeInteger(input.orderId, 'orderId'),
+        addedLineCount: requireNonNegativeSafeInteger(input.addedLineCount, 'addedLineCount'),
+        skippedLineCount: requireNonNegativeSafeInteger(input.skippedLineCount, 'skippedLineCount'),
       };
       break;
     case 'payment.pre_gateway_failed':

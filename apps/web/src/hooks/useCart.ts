@@ -3,12 +3,15 @@ import type { Cart } from '@shop/contracts/cart';
 import * as api from '../api/cart';
 import * as bundlesApi from '../api/bundles';
 import * as customBlendsApi from '../api/customBlends';
+import * as reorderApi from '../api/reorder';
 import { ApiError, isMissingCartError } from '../api/client';
 import { clearCartId, getCartId } from '../lib/cartStorage';
 import { createCartClient } from './cartClient';
 import type { CreateCustomBlendBody, ReplaceCustomBlendBody } from '@shop/contracts/custom-blends';
+import type { ReorderResponse } from '@shop/contracts/reorder';
 
-export type CartAction = 'add' | 'bundle-add' | 'update' | 'remove' | 'blend-add' | 'blend-replace';
+export type CartAction =
+  'add' | 'bundle-add' | 'update' | 'remove' | 'blend-add' | 'blend-replace' | 'reorder';
 
 type CartStatus = 'initializing' | 'ready' | 'refreshing' | 'error';
 
@@ -52,15 +55,26 @@ function cartReducer(state: CartState, event: CartEvent): CartState {
   }
 }
 
+/**
+ * Buyer-readable text for domain error codes the API returns. Raw server wording stays the
+ * fallback; only codes a buyer can act on are translated here.
+ */
+const ERROR_MESSAGE_BY_CODE: Readonly<Record<string, string>> = {
+  BELOW_MOQ: 'Minimum order quantity not met. Adjust pallet quantity and try again.',
+  ORDER_NOT_FOUND: 'That order is no longer available. Refresh your order history and try again.',
+  CART_RESERVED:
+    'Your cart is reserved for checkout and cannot be changed. Finish or cancel that checkout, then try again.',
+};
+
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError && error.isNetworkError) {
     return 'Unable to reach the shop server. Check that it is running and try again.';
   }
-  if (
-    error instanceof ApiError &&
-    (error.response as { code?: unknown } | null)?.code === 'BELOW_MOQ'
-  ) {
-    return 'Minimum order quantity not met. Adjust pallet quantity and try again.';
+  if (error instanceof ApiError) {
+    const code = (error.response as { code?: unknown } | null)?.code;
+    if (typeof code === 'string' && code in ERROR_MESSAGE_BY_CODE) {
+      return ERROR_MESSAGE_BY_CODE[code]!;
+    }
   }
   return error instanceof Error ? error.message : fallback;
 }
@@ -73,6 +87,11 @@ function cartLinePendingKey(productId: string, variantId?: number, configKey?: s
   if (variantId === undefined) return productId;
   const lineKey = `line:${productId}:${variantId}`;
   return configKey ? `${lineKey}:${configKey}` : lineKey;
+}
+
+/** Reorder is scoped to a source order, not to a cart line, so it keys on the order. */
+function reorderPendingKey(orderId: string): string {
+  return `reorder:${orderId}`;
 }
 
 function customBlendPendingKey(baseVariantId: number, configKey?: string): string {
@@ -163,13 +182,19 @@ export function useCart() {
     [initializeCart],
   );
 
-  const runCartAction = useCallback(
-    async (
+  /**
+   * Runs one cart mutation with pending tracking, missing-cart recovery and the stale-response
+   * guard. The operation result is opaque: `selectCart` names the cart inside it, so an action
+   * such as reorder can carry a report back to its caller while the cart still lands in state.
+   */
+  const runCartMutation = useCallback(
+    async <TResult>(
       action: CartAction,
       pendingKey: string,
-      operation: (activeCartId: string) => Promise<Cart>,
+      operation: (activeCartId: string) => Promise<TResult>,
+      selectCart: (result: TResult) => Cart,
       retryAfterRecovery: boolean,
-    ): Promise<Cart | false> => {
+    ): Promise<TResult | false> => {
       const mutationSequence = ++mutationSequenceRef.current;
       if (mountedRef.current) dispatch({ type: 'action-started', pendingKey, action });
 
@@ -182,9 +207,10 @@ export function useCart() {
         }
 
         try {
-          const cart = await operation(activeCartId);
+          const result = await operation(activeCartId);
+          const cart = selectCart(result);
           if (getCartId() === cart.id) applyMutationCart(cart, mutationSequence);
-          return cart;
+          return result;
         } catch (error) {
           if (!isMissingCartError(error)) throw error;
 
@@ -194,9 +220,10 @@ export function useCart() {
             throw new Error('Your previous cart was no longer available. A new cart is ready.');
           }
 
-          const cart = await operation(replacementCart.id);
+          const result = await operation(replacementCart.id);
+          const cart = selectCart(result);
           if (getCartId() === cart.id) applyMutationCart(cart, mutationSequence);
-          return cart;
+          return result;
         }
       } catch (error) {
         if (mountedRef.current) {
@@ -211,6 +238,17 @@ export function useCart() {
       }
     },
     [applyCart, applyMutationCart, loadCart, recoverCart],
+  );
+
+  const runCartAction = useCallback(
+    (
+      action: CartAction,
+      pendingKey: string,
+      operation: (activeCartId: string) => Promise<Cart>,
+      retryAfterRecovery: boolean,
+    ): Promise<Cart | false> =>
+      runCartMutation(action, pendingKey, operation, (cart) => cart, retryAfterRecovery),
+    [runCartMutation],
   );
 
   // Most callers only need success/failure. Custom Blend also needs the server-returned line so
@@ -300,6 +338,22 @@ export function useCart() {
     [runCartAction],
   );
 
+  /**
+   * Re-adds a past order's lines to the active cart. The per-line outcome report is returned to the
+   * caller rather than stored: it describes one reorder attempt, not cart state.
+   */
+  const reorder = useCallback(
+    (orderId: string): Promise<ReorderResponse | false> =>
+      runCartMutation(
+        'reorder',
+        reorderPendingKey(orderId),
+        (cartId) => reorderApi.reorderFromOrder(cartId, orderId),
+        (response) => response.cart,
+        true,
+      ),
+    [runCartMutation],
+  );
+
   const clearCart = useCallback(() => {
     clearCartId();
     cartIdRef.current = null;
@@ -333,6 +387,7 @@ export function useCart() {
     replaceCustomBlend,
     updateQuantity,
     removeItem,
+    reorder,
     refreshCart,
     retryCart,
     clearCart,

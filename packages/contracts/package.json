@@ -125,6 +125,10 @@
     "./feature-flags": {
       "types": "./dist/featureFlags.d.ts",
       "import": "./dist/featureFlags.js"
+    },
+    "./reorder": {
+      "types": "./dist/reorder.d.ts",
+      "import": "./dist/reorder.js"
     }
   },
   "dependencies": {

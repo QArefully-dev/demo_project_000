@@ -24,6 +24,14 @@ import {
   calculateCustomBlendLinePricing,
   normalizeCustomBlendSpec,
 } from '../customBlend/customBlendRules.js';
+import {
+  aggregateBulkAddDemand,
+  classifyBulkAddGroup,
+  fanOutBulkAddOutcome,
+  type BulkAddGroup,
+  type BulkAddOutcome,
+  type BulkAddRequest,
+} from './cartBulkAddRules.js';
 
 export interface CartAuditDependencies {
   unitOfWork: UnitOfWork;
@@ -35,9 +43,27 @@ export interface CartAvailabilityDependencies {
   clock: { now(): Date };
 }
 
+/** Whole-request rejection codes for a bulk add; per-line problems are outcomes, not errors. */
+export type BulkAddRejection = 'CART_NOT_FOUND' | 'CART_RESERVED';
+
+export interface BulkAddResult {
+  cart: Cart;
+  /** One outcome per submitted request, in submission order. */
+  outcomes: BulkAddOutcome[];
+}
+
 export interface CartService {
   create(context?: AuditContext): { cartId: string };
   get(cartId: string): Cart | undefined;
+  /**
+   * Adds many lines in one transaction with per-line outcomes. Classified skips still commit the
+   * lines that succeeded; only an unexpected throw rolls the whole mutation back.
+   */
+  addMany(
+    cartId: string,
+    requests: readonly BulkAddRequest[],
+    context?: AuditContext,
+  ): BulkAddResult | BulkAddRejection;
   add(
     cartId: string,
     variantId: string,
@@ -111,6 +137,23 @@ export function createCartService(
         return result;
       }),
     get: (cartId) => getCart(repository, cartId, availabilityDependencies),
+    addMany: (cartId, requests, context) => {
+      if (!auditDependencies) throw new Error('Cart audit dependencies are required for bulk add');
+      if (!availabilityDependencies) {
+        throw new Error('Cart availability dependencies are required for bulk add');
+      }
+      return runCartMutation(auditDependencies, () => {
+        requireAuditContext(auditDependencies, context);
+        return addManyItems(
+          repository,
+          cartId,
+          requests,
+          availabilityDependencies,
+          auditDependencies,
+          context!,
+        );
+      });
+    },
     add: (cartId, variantId, quantityOrContext, context) =>
       runCartMutation(auditDependencies, () => {
         const quantity = typeof quantityOrContext === 'number' ? quantityOrContext : undefined;
@@ -510,6 +553,161 @@ export function addConfiguredItem(
   );
   repository.touch(cartId);
   return getCart(repository, cartId, availabilityDependencies) ?? 'CART_NOT_FOUND';
+}
+
+/**
+ * Re-derives a configured blend from live facts instead of trusting the caller snapshot: the spec
+ * is re-normalized, re-hashed, and matched against the supplied `configKey`, ingredient facts are
+ * re-read, and the blending fee is always the current constant. Returns `undefined` when the blend
+ * can no longer be sold, which the classifier reports as `BLEND_UNAVAILABLE`.
+ */
+function resolveBulkAddBlend(
+  repository: CartRepository,
+  variantId: number,
+  supplied: CustomBlendSnapshot,
+): CustomBlendSnapshot | undefined {
+  let normalized;
+  try {
+    normalized = normalizeCustomBlendSpec(variantId, supplied.ingredients);
+  } catch {
+    return undefined;
+  }
+  if (normalized.configKey !== supplied.configKey) return undefined;
+  const factIds = [variantId, ...normalized.ingredients.map((ingredient) => ingredient.variantId)];
+  const facts = repository.listEligibleCustomBlendFacts(factIds);
+  if (facts.length !== factIds.length) return undefined;
+  const byVariantId = new Map(facts.map((fact) => [fact.variant_id, fact]));
+  const base = byVariantId.get(variantId);
+  if (!base) return undefined;
+  const ingredients: CustomBlendSnapshot['ingredients'] = [];
+  for (const ingredient of normalized.ingredients) {
+    const fact = byVariantId.get(ingredient.variantId);
+    if (!fact || fact.variant_id === base.variant_id || fact.mixing_group !== base.mixing_group) {
+      return undefined;
+    }
+    ingredients.push({
+      variantId: fact.variant_id,
+      productId: String(fact.product_id),
+      productName: fact.product_name,
+      productDescription: fact.product_description,
+      mixingGroup: fact.mixing_group,
+      percentage: ingredient.percentage,
+    });
+  }
+  return {
+    configKey: normalized.configKey,
+    basePercentage: normalized.basePercentage,
+    mixingGroup: base.mixing_group,
+    ...(supplied.basePresentation ? { basePresentation: supplied.basePresentation } : {}),
+    ingredients,
+    blendingFeeCents: CUSTOM_BLEND_FEE_CENTS,
+    madeToOrder: true,
+    returnable: false,
+  };
+}
+
+/**
+ * Adds many lines at once. Ordinary and configured lines share one stock pre-flight, one cart
+ * touch, and one transaction; a line that fails classification is skipped without disturbing the
+ * rest. Each line is added at its full ordered quantity or not at all.
+ */
+export function addManyItems(
+  repository: CartRepository,
+  cartId: string,
+  requests: readonly BulkAddRequest[],
+  availabilityDependencies: CartAvailabilityDependencies,
+  auditDependencies: CartAuditDependencies,
+  context: AuditContext,
+): BulkAddResult | BulkAddRejection {
+  if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
+  if (!getCart(repository, cartId, availabilityDependencies)) return 'CART_NOT_FOUND';
+  const now = availabilityDependencies.clock.now();
+  if (repository.isReserved(cartId, now.toISOString())) return 'CART_RESERVED';
+
+  const groups = aggregateBulkAddDemand(requests);
+  const variantIds = [...new Set(groups.map((group) => group.variantId))];
+  const availability = new Map(
+    availabilityDependencies.inventory
+      .availableToSell(variantIds, now.toISOString())
+      .map((row) => [row.variantId, row]),
+  );
+
+  const outcomeByIdentity = new Map<string, BulkAddOutcome[]>();
+  const applied: Array<{
+    group: BulkAddGroup;
+    blend: CustomBlendSnapshot | undefined;
+    resultingQuantity: number;
+  }> = [];
+  for (const group of groups) {
+    const variant = repository.variantExists(String(group.variantId))
+      ? repository.getVariant(group.variantId)
+      : undefined;
+    const blend = group.customBlend
+      ? resolveBulkAddBlend(repository, group.variantId, group.customBlend)
+      : undefined;
+    const availabilityRow = availability.get(group.variantId);
+    const classification = classifyBulkAddGroup({
+      variantRow: variant,
+      existingQuantity: repository.lineQuantity(cartId, String(group.variantId), group.configKey),
+      requestedQuantity: group.requestedQuantity,
+      availability: availabilityRow
+        ? {
+            availableToSell: availabilityRow.availableToSell,
+            backorderable: availabilityRow.backorderable,
+          }
+        : undefined,
+      ...(group.customBlend ? { blendValid: blend !== undefined } : {}),
+      now,
+    });
+    outcomeByIdentity.set(
+      `${group.variantId} ${group.configKey}`,
+      fanOutBulkAddOutcome(group, classification),
+    );
+    if (classification.status === 'added') {
+      applied.push({ group, blend, resultingQuantity: classification.resultingQuantity });
+    }
+  }
+
+  for (const { group, blend } of applied) {
+    if (blend) {
+      repository.addConfiguredLineQuantity(
+        cartId,
+        String(group.variantId),
+        blend.configKey,
+        JSON.stringify(blend),
+        group.requestedQuantity,
+      );
+    } else {
+      repository.addLineQuantity(cartId, String(group.variantId), group.requestedQuantity);
+    }
+  }
+  if (applied.length > 0) {
+    repository.touch(cartId);
+    for (const { group, resultingQuantity } of applied) {
+      auditDependencies.audit.append({
+        action: 'cart.product_added',
+        cartId,
+        productId: group.variantId,
+        // `cart.product_added` metadata carries the post-add cumulative line quantity, matching
+        // the single-line `add`/`addConfigured` emitters — not the delta this request contributed.
+        quantity: resultingQuantity,
+        context,
+      });
+    }
+  }
+
+  const cart = getCart(repository, cartId, availabilityDependencies);
+  if (!cart) return 'CART_NOT_FOUND';
+  const cursorByIdentity = new Map<string, number>();
+  const outcomes = requests.map((request) => {
+    const identity = `${request.variantId} ${request.customBlend?.configKey ?? ''}`;
+    const cursor = cursorByIdentity.get(identity) ?? 0;
+    cursorByIdentity.set(identity, cursor + 1);
+    const outcome = outcomeByIdentity.get(identity)?.[cursor];
+    if (!outcome) throw new Error('Bulk add outcome is missing for a submitted request');
+    return outcome;
+  });
+  return { cart, outcomes };
 }
 
 function minimumMoqQuantity(weightGrams: number, moqSacks: number): number | undefined {

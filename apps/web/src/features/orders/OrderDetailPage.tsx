@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import type { OrderDetailResponse } from '@shop/contracts/orders';
 import { OrderDetailView } from './OrderDetailView';
 import { ReturnPanel } from '@/features/returns/ReturnPanel';
+import { BuyAgainButton, useBuyAgain } from '@/features/reorder/BuyAgainButton';
+import { ReorderOutcomeList } from '@/features/reorder/ReorderOutcomeList';
 
 export function OrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
@@ -23,6 +25,7 @@ export function OrderDetailPage() {
   const confirmButton = useRef<HTMLElement | null>(null);
   const dialog = useRef<HTMLDivElement | null>(null);
   const wasConfirming = useRef(false);
+  const { buyAgain, stateFor } = useBuyAgain();
 
   const load = useCallback(
     async (clearError = true) => {
@@ -121,6 +124,7 @@ export function OrderDetailPage() {
   if (loading && !order) return <LoadingSpinner />;
   if (error && !order) return <ErrorMessage message={error} onRetry={() => void load()} />;
   if (!order) return <ErrorMessage message="Order not found" />;
+  const buyAgainState = stateFor(order.id);
   return (
     <div className="mx-auto max-w-3xl space-y-5">
       <Button variant="link" nativeButton={false} render={<Link to="/orders" />}>
@@ -144,6 +148,20 @@ export function OrderDetailPage() {
         onRequestCancellation={() => setConfirming(true)}
         cancelTriggerRef={cancelTrigger}
       />
+      <section className="space-y-3 rounded-lg border p-4" aria-label="Buy again">
+        <div>
+          <h2 className="font-medium">Order these materials again</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Everything still available is added to your cart at today&apos;s prices.
+          </p>
+        </div>
+        <BuyAgainButton
+          orderId={order.id}
+          isPending={buyAgainState.kind === 'pending'}
+          onActivate={() => void buyAgain(order.id)}
+        />
+        <ReorderOutcomeList orderId={order.id} state={buyAgainState} />
+      </section>
       <ReturnErrorBoundary>{orderId && <ReturnPanel orderId={orderId} />}</ReturnErrorBoundary>
       {confirming && (
         <div

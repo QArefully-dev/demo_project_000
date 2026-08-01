@@ -50,6 +50,7 @@ const cartContext = {
   replaceCustomBlend: vi.fn(),
   updateQuantity: vi.fn(),
   removeItem: vi.fn(),
+  reorder: vi.fn(),
   refreshCart: vi.fn(),
   retryCart: vi.fn(),
   clearCart: vi.fn(),
