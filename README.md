@@ -66,6 +66,7 @@ Each checkout request includes an idempotency key. Retrying the same key with th
 ## Features
 
 - **Product catalog** with search, category filter, sale filter, and sort (newest, price, bestselling)
+- **Quick Order** at [`/quick-order`](http://127.0.0.1:5173/quick-order), also linked from the cart, for pasting `SKU, quantity` lines into the current cart
 - **Product detail** pages with related products, sale badges, and bestseller badges
 - **Shopping cart** with quantity controls, subtotal display, and 5-item minimum promo gate
 - **Checkout** with contact/shipping details and promo code entry
@@ -75,6 +76,17 @@ Each checkout request includes an idempotency key. Retrying the same key with th
 - **Favourites / wishlist** with heart toggle and wishlist page
 - **Account page** with password change
 - **Dev mailbox** for inspecting system emails and reset-password links
+
+### Quick Order sample
+
+After `npm run reset`, open [`/quick-order`](http://127.0.0.1:5173/quick-order) or select **Quick order by item code** from the cart, then paste:
+
+```text
+GDN-1043-001, 4
+BKP-0001-001, 4
+```
+
+These are current reset-catalog facts: `GDN-1043-001` has active clearance stock of 35 and `BKP-0001-001` has stock of 85, so this sample is within the verified local stock levels. Each submitted nonblank line receives an outcome; a mixed paste adds the eligible lines and explains the others without discarding the successful additions.
 
 ## Seeded Data
 

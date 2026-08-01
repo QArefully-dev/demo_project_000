@@ -33,6 +33,12 @@ export function CartPage() {
       <p className="mb-6 text-sm text-muted-foreground">
         Lines held in your order for this session. Adjust pallet quantities before checkout.
       </p>
+      <Link
+        to="/quick-order"
+        className="mb-6 inline-block text-sm font-medium underline underline-offset-4"
+      >
+        Quick order by item code
+      </Link>
       {error && cart && (
         <div
           role="alert"

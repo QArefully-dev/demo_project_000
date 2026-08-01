@@ -172,6 +172,11 @@ import {
 import { createFeatureFlagRepository } from './features/featureFlags/featureFlagRepository.js';
 import { createFeatureFlagResolver } from './features/featureFlags/featureFlagResolver.js';
 import { createReorderService, type ReorderService } from './features/reorder/reorderService.js';
+import {
+  createQuickOrderService,
+  type QuickOrderService,
+} from './features/quickOrder/quickOrderService.js';
+import quickOrderRoutes from './routes/quickOrder.js';
 
 /**
  * The buyer's saved trade records, grouped because they are always wired, injected, and consumed
@@ -205,6 +210,7 @@ export interface AppServices {
   favourites: FavouritesService;
   bundles: BundleService;
   reorder: ReorderService;
+  quickOrder: QuickOrderService;
   reviews: ReviewService;
   inventory: InventoryService;
   inventoryUnitOfWork: UnitOfWork;
@@ -383,6 +389,12 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       audit,
       clock,
     }),
+    quickOrder: createQuickOrderService({
+      carts: cartService,
+      variants: products,
+      unitOfWork,
+      audit,
+    }),
     reviews: createReviewService({
       repository: createReviewRepository(dependencies.db),
       unitOfWork,
@@ -511,6 +523,7 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(mailboxRoutes, context);
   await app.register(bundleRoutes, context);
   await app.register(reorderRoutes, context);
+  await app.register(quickOrderRoutes, context);
   await app.register(auditRoutes, context);
   await app.register(reviewsRoutes, context);
   await app.register(returnsRoutes, context);

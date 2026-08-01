@@ -90,6 +90,42 @@ void test('rejects a reorder-added audit event with unusable counts', () => {
   );
 });
 
+void test('builds a scalar-only quick-order-added audit event', () => {
+  const event = buildAuditEvent({
+    action: 'cart.quick_order_added',
+    context: userContext,
+    cartId: 'cart-1',
+    lineCount: 3,
+    addedLineCount: 2,
+    skippedLineCount: 1,
+    pastedText: 'CEM-0001-001, 4',
+    skus: ['CEM-0001-001'],
+  } as AuditEventInput);
+
+  assert.equal(event.entityType, 'cart');
+  assert.equal(event.entityId, 'cart-1');
+  assert.deepEqual(event.metadata, { lineCount: 3, addedLineCount: 2, skippedLineCount: 1 });
+  assert.equal(event.metadataJson.includes('CEM-0001-001'), false);
+});
+
+void test('rejects a quick-order-added audit event with unusable counts', () => {
+  for (const input of [
+    { lineCount: -1, addedLineCount: 0, skippedLineCount: 0 },
+    { lineCount: 1.5, addedLineCount: 0, skippedLineCount: 0 },
+    { lineCount: 1, addedLineCount: Number.MAX_SAFE_INTEGER + 1, skippedLineCount: 0 },
+    { lineCount: 1, addedLineCount: 0, skippedLineCount: -1 },
+  ]) {
+    expectEventError(() =>
+      buildAuditEvent({
+        action: 'cart.quick_order_added',
+        context: userContext,
+        cartId: 'cart-1',
+        ...input,
+      } as unknown as AuditEventInput),
+    );
+  }
+});
+
 void test('enforces actor shape and request context rules', () => {
   expectEventError(() =>
     buildAuditEvent({

@@ -64,6 +64,10 @@ export interface VariantRow {
   updated_at: string;
 }
 
+export interface VariantWithProductRow extends VariantRow {
+  product_name: string;
+}
+
 export interface ProductList {
   items: CustomerProductRow[];
   total: number;
@@ -83,6 +87,7 @@ export interface ProductRepository {
   findAllVariants(productId: number): VariantRow[];
   findVariantById(variantId: number): VariantRow | undefined;
   findVariantsByIds(variantIds: readonly number[]): VariantRow[];
+  findVariantsBySkus(skus: readonly string[]): VariantWithProductRow[];
   findDefaultVariant(productId: number): VariantRow | undefined;
 }
 
@@ -333,6 +338,19 @@ export function createProductRepository(db: Database.Database): ProductRepositor
           `SELECT * FROM product_variants WHERE id IN (${placeholders}) ORDER BY sort_order ASC`,
         )
         .all(...variantIds) as VariantRow[];
+    },
+    findVariantsBySkus(skus) {
+      if (skus.length === 0) return [];
+      const placeholders = skus.map(() => '?').join(', ');
+      return db
+        .prepare(
+          `SELECT v.*, p.name AS product_name
+           FROM product_variants v
+           INNER JOIN products p ON p.id = v.product_id
+           WHERE v.sku IN (${placeholders})
+           ORDER BY v.id ASC`,
+        )
+        .all(...skus) as VariantWithProductRow[];
     },
     findDefaultVariant(productId) {
       return db

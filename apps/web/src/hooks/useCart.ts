@@ -3,15 +3,26 @@ import type { Cart } from '@shop/contracts/cart';
 import * as api from '../api/cart';
 import * as bundlesApi from '../api/bundles';
 import * as customBlendsApi from '../api/customBlends';
+import * as quickOrderApi from '../api/quickOrder';
 import * as reorderApi from '../api/reorder';
 import { ApiError, isMissingCartError } from '../api/client';
 import { clearCartId, getCartId } from '../lib/cartStorage';
 import { createCartClient } from './cartClient';
 import type { CreateCustomBlendBody, ReplaceCustomBlendBody } from '@shop/contracts/custom-blends';
 import type { ReorderResponse } from '@shop/contracts/reorder';
+import type { QuickOrderResponse } from '@shop/contracts/quick-order';
 
 export type CartAction =
-  'add' | 'bundle-add' | 'update' | 'remove' | 'blend-add' | 'blend-replace' | 'reorder';
+  | 'add'
+  | 'bundle-add'
+  | 'update'
+  | 'remove'
+  | 'blend-add'
+  | 'blend-replace'
+  | 'quick-order'
+  | 'reorder';
+
+const QUICK_ORDER_PENDING_KEY = 'quick-order';
 
 type CartStatus = 'initializing' | 'ready' | 'refreshing' | 'error';
 
@@ -61,7 +72,10 @@ function cartReducer(state: CartState, event: CartEvent): CartState {
  */
 const ERROR_MESSAGE_BY_CODE: Readonly<Record<string, string>> = {
   BELOW_MOQ: 'Minimum order quantity not met. Adjust pallet quantity and try again.',
+  NO_INPUT_LINES: 'Enter at least one line before submitting your quick order.',
   ORDER_NOT_FOUND: 'That order is no longer available. Refresh your order history and try again.',
+  TOO_MANY_LINES:
+    'Your quick order has too many lines. Split it into smaller submissions and try again.',
   CART_RESERVED:
     'Your cart is reserved for checkout and cannot be changed. Finish or cancel that checkout, then try again.',
 };
@@ -338,6 +352,18 @@ export function useCart() {
     [runCartAction],
   );
 
+  const quickOrder = useCallback(
+    (text: string): Promise<QuickOrderResponse | false> =>
+      runCartMutation(
+        'quick-order',
+        QUICK_ORDER_PENDING_KEY,
+        (cartId) => quickOrderApi.submitQuickOrder(cartId, text),
+        (response) => response.cart,
+        true,
+      ),
+    [runCartMutation],
+  );
+
   /**
    * Re-adds a past order's lines to the active cart. The per-line outcome report is returned to the
    * caller rather than stored: it describes one reorder attempt, not cart state.
@@ -385,6 +411,7 @@ export function useCart() {
     addBundle,
     addCustomBlend,
     replaceCustomBlend,
+    quickOrder,
     updateQuantity,
     removeItem,
     reorder,

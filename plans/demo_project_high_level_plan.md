@@ -206,10 +206,13 @@ Precursor B2B rebrand pass: COMPLETE. Brand/copy, sack/pallet unit model, `£/to
     - named buyer lists (e.g. `Monthly restock`) -> add whole list to cart
     - extends existing `favourites` domain; absorbs Wishlist so nav item count stays flat
     - shares the multi-line add-to-cart path with 12 -> reuse `CartService.addMany`, do not fork a second implementation
-14. Quick Order: future
-    - paste or type `SKU, qty` lines -> cart. Trade-counter staple; self-explanatory from the input alone
-    - QA surface: unknown SKU, duplicate SKU, malformed quantity, MOQ rounding, mixed valid/invalid input in one submission
-    - shares the multi-line add-to-cart path with 12 -> reuse `CartService.addMany`
+14. Quick Order: completed
+    - delivered at `/quick-order`, with a cart entry link: paste or type `SKU, qty` lines -> cart. The route reports every nonblank physical input line and offers the cart link only when at least one line was added.
+    - migration-free: no persistence or seed-data change; schema head remains `028`.
+    - the parser accepts comma, semicolon, tab, or whitespace separators, normalises SKU case, preserves physical line numbers, and bounds input to 200 nonblank lines of 200 characters each.
+    - each valid SKU is aggregated before submission. MOQ round-up is therefore decided from the aggregate: one 25 kg-sack request rounds to its 4-sack MOQ, while duplicate `2 + 2` requests submit as 4 with no adjustment. The cart receives one `CartService.addMany` request per SKU group and an outcome fans back to each original line.
+    - reachable per-line reasons are `MALFORMED_LINE`, `SKU_NOT_FOUND`, `INVALID_QUANTITY`, `VARIANT_RETIRED`, and `INSUFFICIENT_STOCK`. `BELOW_MOQ` cannot occur because Quick Order resolves the group MOQ before calling the cart; `BLEND_UNAVAILABLE` remains in the shared transport vocabulary but is not reachable because this feature submits only plain SKU lines.
+    - QA surface: unknown SKU, duplicate aggregation, malformed/invalid quantity, aggregate MOQ rounding, mixed valid/invalid input, reserved-cart rejection, and one missing-cart recovery replay. The retired-lot case uses test-local state only; reset seed intentionally has no retired variant fixture.
 
     Constraints 13 and 14 inherit from the landed `CartService.addMany` (`apps/api/src/features/cart/cartService.ts`, rules in `cartBulkAddRules.ts`):
     - callers submit one request per desired line, each carrying an opaque caller-owned `key`; outcomes come back correlated by that key, so the caller owns its own line identity and the cart feature stays feature-agnostic
