@@ -5,9 +5,12 @@ import { SearchBar } from './SearchBar';
 import { AccountMenu } from './AccountMenu';
 import { useSavedLists } from '@/hooks/useSavedLists';
 import { CartSheet } from './CartSheet';
+import { NotificationBell } from '@/features/notifications/NotificationBell';
+import { useAuth } from '@/hooks/AuthContext';
 
 /** Composes the sticky storefront navigation and customer controls. */
 export function Header() {
+  const { user } = useAuth();
   const { defaultList } = useSavedLists();
   const defaultItemCount = defaultList?.items.length ?? 0;
 
@@ -28,6 +31,7 @@ export function Header() {
             className="flex items-center justify-end gap-0.5 whitespace-nowrap sm:gap-1 lg:order-2 [&_a:focus-visible]:outline-none [&_a:focus-visible]:ring-2 [&_a:focus-visible]:ring-ring [&_a:focus-visible]:ring-offset-2 [&_button:focus-visible]:ring-ring [&_button:focus-visible]:ring-offset-2"
           >
             <AccountMenu />
+            {user && <NotificationBell />}
             <Link
               to="/lists"
               aria-label={`Saved lists${defaultItemCount > 0 ? ` (${defaultItemCount})` : ''}`}

@@ -133,6 +133,22 @@
     "./saved-lists": {
       "types": "./dist/savedLists.d.ts",
       "import": "./dist/savedLists.js"
+    },
+    "./jobs": {
+      "types": "./dist/jobs.d.ts",
+      "import": "./dist/jobs.js"
+    },
+    "./notifications": {
+      "types": "./dist/notifications.d.ts",
+      "import": "./dist/notifications.js"
+    },
+    "./webhooks": {
+      "types": "./dist/webhooks.d.ts",
+      "import": "./dist/webhooks.js"
+    },
+    "./standing-orders": {
+      "types": "./dist/standingOrders.d.ts",
+      "import": "./dist/standingOrders.js"
     }
   },
   "dependencies": {

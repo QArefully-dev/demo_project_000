@@ -7,6 +7,8 @@ const sections = [
   ['Promotions', '/admin/promos'],
   ['Users', '/admin/users'],
   ['Orders', '/admin/orders'],
+  ['Jobs', '/admin/jobs'],
+  ['Webhooks', '/admin/webhooks'],
   ['Feature flags', '/admin/feature-flags'],
   ['Review moderation', '/admin/reviews'],
 ] as const;

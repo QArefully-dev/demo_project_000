@@ -8,8 +8,13 @@ export async function startServer(): Promise<void> {
   const db = openDatabase({ path: config.databasePath });
   if (config.seed) seedDatabase(db);
 
-  const app = await buildApp({ db, resetBaseUrl: config.resetBaseUrl });
+  const app = await buildApp({
+    db,
+    resetBaseUrl: config.resetBaseUrl,
+    webhookSecret: config.webhookSecret,
+  });
   const close = async () => {
+    app.context.services.jobRunner.stop();
     await app.close();
     closeDatabase(db);
   };
@@ -18,6 +23,7 @@ export async function startServer(): Promise<void> {
   process.once('SIGTERM', () => void close());
 
   try {
+    app.context.services.jobRunner.start();
     await app.listen({ port: config.port, host: config.host });
     app.log.info(`API server listening on http://${config.host}:${config.port}`);
   } catch (error) {

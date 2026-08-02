@@ -84,7 +84,8 @@ Avoid visible platform complexity:
 - implemented secondary admin: `/admin` shell over product and lot/variant management, promotion and clearance-window administration, user suspension and role changes, paginated/filtered order list plus detail, standalone idempotent refunds on an immutable ledger, and feature-flag toggles; every mutation writes the audit ledger (`routes/admin*.ts`, `apps/web/src/features/admin/`)
 - implemented buy again / reorder: `POST /api/orders/:orderId/reorder` re-adds every resolvable line of an owned past order through the reusable multi-line `CartService.addMany` path, returning one outcome per source line with its skip reason and server-resolved price drift; `Buy again` sits on order history and order detail (`apps/api/src/features/reorder/`, `apps/api/src/features/cart/cartBulkAddRules.ts`, `apps/web/src/features/reorder/`). No schema change; migration head stays `028`
 - implemented saved lists: variant-scoped named lists, default `Favourites` list, list/cart/order save actions, and whole-list add through `CartService.addMany` (`apps/api/src/features/savedLists/`, `apps/api/src/routes/savedLists.ts`, `apps/web/src/features/savedLists/`, `apps/web/src/hooks/SavedListsContext.tsx`); `/lists` is protected and legacy `/wishlist` redirects there
-- implemented integrity: ordered migrations through `029` (`sort_order < 1` variants retired in `020`; obsolete Custom Small Order schema physically removed in `021`; custom blend tables plus cart/order line rebuild in `022`; trade delivery sites, billing entities, and order delivery/billing detail in `023`; clearance, scoped promo, and order discount-base columns in `024`; session metadata, preferences, deletion events in `025`; company accounts, memberships, invites, order approvals in `026`; user suspension, feature flags, immutable `admin_refunds` in `027`; retired variants share `sort_order 0` while live positions stay unique per product in `028`; `029` replaces product favourites with saved-list tables and migrates active default variants at the MOQ floor), append-only audit ledger, sanitized admin audit reads
+- implemented async behavior: migration `030` local queue/retries, notification inbox and preference-gated delivery, captured payment webhooks, deterministic fault flags, admin diagnostics, and standing-order schedules that create carts only (`apps/api/src/features/{jobs,notifications,webhooks,standingOrders}/`, `apps/web/src/features/{notifications,standingOrders,admin/jobs,admin/webhooks}/`)
+- implemented integrity: ordered migrations through `030` (`sort_order < 1` variants retired in `020`; obsolete Custom Small Order schema physically removed in `021`; custom blend tables plus cart/order line rebuild in `022`; trade delivery sites, billing entities, and order delivery/billing detail in `023`; clearance, scoped promo, and order discount-base columns in `024`; session metadata, preferences, deletion events in `025`; company accounts, memberships, invites, order approvals in `026`; user suspension, feature flags, immutable `admin_refunds` in `027`; retired variants share `sort_order 0` while live positions stay unique per product in `028`; `029` replaces product favourites with saved-list tables and migrates active default variants at the MOQ floor; `030` adds jobs, attempts, notifications, captured webhooks, standing-order schedules/runs, FK-safe lifecycle constraints, and queue indexes), append-only audit ledger, sanitized admin audit reads
 - seed: 100 deterministic products across 6 categories (Sports Nutrition 20, Baking & Pantry 20, Drinks 15, Household & Cleaning 15, Garden & Outdoors 15, Trade & Creative Materials 15), each carrying a nullable `mixingGroup` from a fixed set of eight (`food-grade`, `cleaning`, `garden-treatment`, `cementitious-materials`, `casting-materials`, `pigments`, `theatrical-effects`, `absorbents`) validated in `packages/catalog`, plus users, promotions including `GARDEN10` and `CLEANFIVE`, active/expired/future clearance fixtures, Alice's default Favourites plus mixed-outcome Monthly restock list, catalog metadata, curated bundles, inventory/backorder scenarios, company-account fixtures with an approval threshold, one disabled `admin.example_flag`, and six demo order scenarios including `alice-reorder-mix`, the buy-again fixture that reorders into a mixed added/skipped result
 - tests: focused unit, contract, route, SQLite integration, React integration, and accessibility coverage; broad E2E coverage reserved for course
 - completed plan records are no longer retained. `plans/old/` was deleted at commit `8285c62`, and `plans/account_depth_coding_plan.md` plus `plans/secondary_admin_coding_plan.md` at commit `186039d`, and `plans/buy_again_reorder_coding_plan.md` once 12 landed; `plans/` holds this file plus any in-flight coding plan only. Do not cite a `plans/old/` path as a source - implementation truth is the code, the migrations, and git history
@@ -109,7 +110,7 @@ Avoid visible platform complexity:
 
 Grow through depth behind familiar store actions. Prefer modular monolith until distributed behavior serves named demo.
 
-Domain shape, as built: domains are directories under `apps/api/src/features/` (`catalog`, `pricing`, `promos`, `inventory`, `checkout`, `orders`, `payments`, `delivery`, `returns`, `reviews`, `auth`, `audit`, `cart`, `bundles`, `savedLists`, `mailbox`, `passwordReset`, `customBlend`, `tradeAccount`, `preferences`, `accountExport`, `accountDeletion`, `companyAccounts`, `orderApprovals`, `featureFlags`). Workspace packages stay limited to `contracts` (transport) and `catalog` (canonical static content). Promote a domain to its own workspace package only when a second consumer needs it; do not pre-split.
+Domain shape, as built: domains are directories under `apps/api/src/features/` (`catalog`, `pricing`, `promos`, `inventory`, `checkout`, `orders`, `payments`, `delivery`, `returns`, `reviews`, `auth`, `audit`, `cart`, `bundles`, `savedLists`, `mailbox`, `passwordReset`, `customBlend`, `tradeAccount`, `preferences`, `accountExport`, `accountDeletion`, `companyAccounts`, `orderApprovals`, `featureFlags`, `jobs`, `notifications`, `webhooks`, `standingOrders`). Workspace packages stay limited to `contracts` (transport) and `catalog` (canonical static content). Promote a domain to its own workspace package only when a second consumer needs it; do not pre-split.
 
 Each domain may contain:
 
@@ -167,9 +168,11 @@ Precursor B2B rebrand pass: COMPLETE. Brand/copy, sack/pallet unit model, `£/to
    - completed (B2B): company accounts with `owner`/`buyer`/`approver` roles, tokenised email invites with pending/accepted/revoked/expired states, one active membership per user, and a per-company `approvalThresholdCents`
    - completed: checkout defers over-threshold carts into an approval request instead of paying; approver decision unlocks a retry keyed to the same requester, and quote drift, rejection, or lease expiry (`APPROVAL_LEASE_MS`, 24 h) forces re-quote
    - QA surface, live: revoking the current session vs. another device, deletion with live orders and approvals outstanding, export completeness after deletion of related rows, threshold at exactly the quote total, approval granted then cart edited -> total drift, approved request replayed by a different buyer, invite accepted after expiry or by a user already in another company
-8. Async behavior: future
-   - remaining: local job queue, notifications, retry policy, captured webhooks, failure injection
-   - added consumers (B2B): standing/repeat order scheduling
+8. Async behavior: completed
+   - landed 2026-08-02: migration `030_async_behavior.ts` adds FK-clean local jobs, attempts, notifications, captured webhooks, standing orders, and runs.
+   - delivered: deterministic local queue and retries; buyer inbox plus preference-gated mailbox delivery; captured simulated payment webhooks; four local fault flags; admin queue drain and webhook inspection.
+   - standing orders: schedules create a new cart from an owned saved list or past order and report outcomes. They never autonomously place an order, payment, or approval; buyer checkout re-evaluates current rules.
+   - preserved decision: existing checkout and approval mailbox calls remain unchanged.
 9. Secondary admin: completed
    - landed 2026-07-30 (`d922c4e`), merged `6d7b07e`
    - schema: migration `027` adds user suspension columns, `feature_flags`, and an immutable `admin_refunds` ledger with update/delete triggers; `028` frees `sort_order` for retired variants
@@ -225,10 +228,10 @@ Precursor B2B rebrand pass: COMPLETE. Brand/copy, sack/pallet unit model, `£/to
     - skip-reason precedence is fixed and shared: `VARIANT_RETIRED` -> `BLEND_UNAVAILABLE` -> `INVALID_QUANTITY` -> `INSUFFICIENT_STOCK` -> `BELOW_MOQ`. A new feature needing a new reason extends this one enum rather than inventing a parallel vocabulary
     - the whole batch runs inside one unit of work and requires an audit context; partial success is a domain outcome, never an error, and never rolls back the lines that did apply. A reserved cart rejects the entire batch with `CART_RESERVED`
     - the cart resolves and returns the clearance-then-tier unit price at the post-add cumulative quantity, so consumers disclose server-resolved prices rather than re-deriving them
-15. Back-in-stock notification: future
+15. Back-in-stock notification: unblocked
     - `notify me when available` on out-of-stock lots
     - one-line concept, real async behavior -> first consumer of the local job queue in 8
-    - depends on 8; do not build standalone polling
+    - async foundation landed; do not build standalone polling
 16. Custom Blend: completed
     - decision 2026-07-25 APPROVED, landed 2026-07-26. Buyer picks base lot -> adds ingredients at ratios -> one configured cart line. Value proposition = "spec the material", not "order small"
     - distinct from retired 11: anchored to an existing base lot, sold in the 25 kg sack / `£/tonne` unit model. Item 11 rejection reasons (redundant vs MOQ 4 sacks; consumer bag scale) do not transfer
@@ -243,7 +246,7 @@ Precursor B2B rebrand pass: COMPLETE. Brand/copy, sack/pallet unit model, `£/to
     - QA surface, live: ratio cap and floor boundaries, mixing-group incompatibility, ingredient lot sold out yet specifiable, MOQ floor on a blend line, tier boundary with non-compounding fee, blend excluded from returns while stock lines stay eligible, base lot retired while blend held in cart
     - records: `plans/custom_blend_coding_plan.md` (implementation), `plans/custom_additives_handoff.md` (product input)
 
-Items 12-15 replace the retired 11. They compose as one line of work -> order -> save as list -> reorder -> notify. All funnel through the same multi-line cart-add path; 12-14 are landed and 15 remains queued behind 8. Together they set up standing/repeat orders under 8 without committing to it now. 16 sat outside that chain and has consumed the nav slot; 12-15 remain reachable from order history, account, and catalog surfaces without new nav entries.
+Items 12-15 replace the retired 11. They compose as one line of work -> order -> save as list -> reorder -> notify. All funnel through the same multi-line cart-add path; 12-14 are landed and 15 is unblocked by 8. Standing orders stop at a cart and leave checkout to the buyer. 16 sat outside that chain and has consumed the nav slot; 12-15 remain reachable from order history, account, and catalog surfaces without new nav entries.
 
 Landed 16 constrains later work: cart and order lines now key on variant plus `configKey`, and line totals separate a discountable material subtotal from a non-discountable blending fee. Items 12-14 must respect both -> multi-line cart-add paths carry blend identity. 4 and 5 already respect both.
 
@@ -262,7 +265,7 @@ Readiness favors `partial` items with self-contained remaining slices over green
 Recommended order:
 
 1. Reorder chain: 12, 13, and 14 are landed. Saved Lists and Quick Order consume the multi-line cart-add path 12 established (`CartService.addMany`) under the constraints listed against 13 and 14; neither forks a second implementation.
-2. Then Async behavior (8), Country localisation (10). Back-in-stock (15) waits on 8.
+2. Then Country localisation (10). Back-in-stock (15) can consume Async behavior (8).
 
 Custom Small Order retirement (11), Custom Blend (16), Checkout depth (4), Pricing and promotions (5), Account depth (7), Secondary admin (9), and Buy Again / reorder (12) are complete. 16 landed before 4, taking 11's freed nav slot and Custom Blend CSS; 4 then landed on the settled checkout path, 5 closed the money path, and 7 + 9 landed in parallel with the shared user/session lane owned by 7.
 
@@ -349,7 +352,7 @@ Keep suite focused, stable, fast, and obvious. Test only critical happy paths, i
 
 Target: 150k+ meaningful authored LOC. Report production and test LOC separately.
 
-Measured 2026-08-01 in the Saved Lists worktree (tracked plus untracked authored `apps/**` + `packages/**`, `*.ts|*.tsx|*.css|*.sql`, excluding `node_modules`, `dist`, `coverage`): production 60,184 across 459 files; test 42,922 across 217 files; total 103,106 across 676 files. Roughly 69% of target -> expansion items 8, 10, and 15 carry remaining growth.
+Measured 2026-08-02 in the Async Behavior worktree (tracked plus untracked authored `apps/**` + `packages/**`, `*.ts|*.tsx|*.css|*.sql`, excluding `node_modules`, `dist`, `coverage`): production 64,979 across 508 files; test 45,878 across 244 files; total 110,857 across 752 files. Roughly 74% of target -> expansion items 10 and 15 carry remaining growth.
 
 Suggested allocation:
 

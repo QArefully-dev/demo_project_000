@@ -165,6 +165,7 @@ import {
 } from './features/featureFlags/featureFlagService.js';
 import { createFeatureFlagRepository } from './features/featureFlags/featureFlagRepository.js';
 import { createFeatureFlagResolver } from './features/featureFlags/featureFlagResolver.js';
+import type { FeatureFlagResolver } from './features/featureFlags/featureFlagResolver.js';
 import { createReorderService, type ReorderService } from './features/reorder/reorderService.js';
 import {
   createQuickOrderService,
@@ -177,6 +178,29 @@ import {
   type SavedListService,
 } from './features/savedLists/savedListService.js';
 import { createSavedListRepository } from './features/savedLists/savedListRepository.js';
+import { DEFAULT_WEBHOOK_SECRET } from './config.js';
+import notificationRoutes from './routes/notifications.js';
+import standingOrderRoutes from './routes/standingOrders.js';
+import webhookRoutes from './routes/webhooks.js';
+import adminWebhooksRoutes from './routes/adminWebhooks.js';
+import adminJobsRoutes from './routes/adminJobs.js';
+import { JobHandlerRegistry } from './features/jobs/jobHandlerRegistry.js';
+import { createJobRepository } from './features/jobs/jobRepository.js';
+import { JobService } from './features/jobs/jobService.js';
+import { createNotificationRepository } from './features/notifications/notificationRepository.js';
+import {
+  createNotificationService,
+  type NotificationService,
+} from './features/notifications/notificationService.js';
+import { createNotificationDeliveryHandler } from './features/notifications/notificationDeliveryHandler.js';
+import { createWebhookRepository } from './features/webhooks/webhookRepository.js';
+import { createWebhookService } from './features/webhooks/webhookService.js';
+import { createWebhookProcessingHandler } from './features/webhooks/webhookProcessingHandler.js';
+import { createStandingOrderRepository } from './features/standingOrders/standingOrderRepository.js';
+import {
+  createStandingOrderService,
+  type StandingOrderService,
+} from './features/standingOrders/standingOrderService.js';
 
 /**
  * The buyer's saved trade records, grouped because they are always wired, injected, and consumed
@@ -193,6 +217,7 @@ export interface AppDependencies {
   clock?: Clock;
   resetTokenSource?: ResetTokenSource;
   orderAccessTokenSource?: OrderAccessTokenSource;
+  webhookSecret?: string;
 }
 
 export interface AppServices {
@@ -230,6 +255,12 @@ export interface AppServices {
   orderAdmin: OrderAdminService;
   adminRefunds: AdminRefundService;
   featureFlags: FeatureFlagService;
+  featureFlagResolver: FeatureFlagResolver;
+  jobs: JobService;
+  jobRunner: JobService;
+  notifications: NotificationService;
+  webhooks: ReturnType<typeof createWebhookService>;
+  standingOrders: StandingOrderService;
   clock: Clock;
 }
 
@@ -244,12 +275,22 @@ function createAppServices(dependencies: AppDependencies): AppServices {
   const products = createProductRepository(dependencies.db);
   const sessionRepository = createSessionRepository(dependencies.db);
   const featureFlagRepository = createFeatureFlagRepository(dependencies.db);
+  const featureFlagResolver = createFeatureFlagResolver(featureFlagRepository);
   const unitOfWork = createUnitOfWork(dependencies.db);
+  const auditRepository = createAuditRepository(dependencies.db);
+  const audit = createAuditWriter({ repository: auditRepository, clock });
+  const registry = new JobHandlerRegistry();
+  const jobs = new JobService({
+    repository: createJobRepository(dependencies.db),
+    registry,
+    unitOfWork,
+    clock,
+    audit,
+    faults: featureFlagResolver,
+  });
   const inventory = createInventoryService({
     repository: createInventoryRepository(dependencies.db),
   });
-  const auditRepository = createAuditRepository(dependencies.db);
-  const audit = createAuditWriter({ repository: auditRepository, clock });
   const users = createUserRepository(dependencies.db);
   const sessions = createSessionService({
     sessions: sessionRepository,
@@ -318,6 +359,70 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     audit,
     clock,
   });
+  const reorder = createReorderService({
+    orders: orderService,
+    carts: cartService,
+    variants: products,
+    unitOfWork,
+    audit,
+    clock,
+  });
+  const notificationRepository = createNotificationRepository(dependencies.db);
+  const notifications = createNotificationService({
+    repository: notificationRepository,
+    jobs,
+    unitOfWork,
+    audit,
+    clock,
+  });
+  const paymentRepository = createPaymentRepository(dependencies.db);
+  const webhookRepository = createWebhookRepository(dependencies.db);
+  const webhooks = createWebhookService({
+    repository: webhookRepository,
+    jobs,
+    unitOfWork,
+    audit,
+    clock,
+    secret: dependencies.webhookSecret ?? DEFAULT_WEBHOOK_SECRET,
+  });
+  const standingOrders = createStandingOrderService({
+    repository: createStandingOrderRepository(dependencies.db),
+    savedLists,
+    orders: orderService,
+    reorder,
+    carts: cartService,
+    jobs,
+    notifications,
+    audit,
+    unitOfWork,
+    clock,
+    faults: featureFlagResolver,
+  });
+  registry.register(
+    'notification.deliver',
+    createNotificationDeliveryHandler({
+      repository: notificationRepository,
+      preferences,
+      mailbox,
+      audit,
+      clock,
+      faults: featureFlagResolver,
+    }),
+  );
+  registry.register(
+    'webhook.process',
+    createWebhookProcessingHandler({
+      repository: webhookRepository,
+      payments: paymentRepository,
+      notifications,
+      audit,
+      clock,
+      faults: featureFlagResolver,
+    }),
+  );
+  registry.register('standing_order.run', ({ jobId, payload }) =>
+    standingOrders.runJob(jobId, payload),
+  );
   const dataExport = createDataExportService({
     unitOfWork,
     audit,
@@ -368,7 +473,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       unitOfWork,
       carts,
       promos,
-      payments: createPaymentRepository(dependencies.db),
+      payments: paymentRepository,
       orders,
       mailbox,
       gateway: simulatedPaymentGateway,
@@ -390,14 +495,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     }),
     // Shares the cart service's own `unitOfWork`, so the reorder transaction nests over the bulk
     // add's transaction as a savepoint instead of opening a second, competing one.
-    reorder: createReorderService({
-      orders: orderService,
-      carts: cartService,
-      variants: products,
-      unitOfWork,
-      audit,
-      clock,
-    }),
+    reorder,
     quickOrder: createQuickOrderService({
       carts: cartService,
       variants: products,
@@ -473,10 +571,16 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     }),
     featureFlags: createFeatureFlagService({
       repository: featureFlagRepository,
-      resolver: createFeatureFlagResolver(featureFlagRepository),
+      resolver: featureFlagResolver,
       unitOfWork,
       audit,
     }),
+    featureFlagResolver,
+    jobs,
+    jobRunner: jobs,
+    notifications,
+    webhooks,
+    standingOrders,
     clock,
     audit: createAuditReadService(auditRepository),
   };
@@ -527,6 +631,8 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(adminOrdersListRoutes, context);
   await app.register(adminRefundsRoutes, context);
   await app.register(adminFeatureFlagsRoutes, context);
+  await app.register(adminWebhooksRoutes, context);
+  await app.register(adminJobsRoutes, context);
   await app.register(authRoutes, context);
   await app.register(paymentRoutes, context);
   await app.register(mailboxRoutes, context);
@@ -534,6 +640,9 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(reorderRoutes, context);
   await app.register(quickOrderRoutes, context);
   await app.register(savedListRoutes, context);
+  await app.register(notificationRoutes, context);
+  await app.register(standingOrderRoutes, context);
+  await app.register(webhookRoutes, context);
   await app.register(auditRoutes, context);
   await app.register(reviewsRoutes, context);
   await app.register(returnsRoutes, context);
@@ -548,5 +657,5 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(companyAccountRoutes, context);
   await app.register(orderApprovalRoutes, context);
 
-  return app;
+  return Object.assign(app, { context });
 }

@@ -400,7 +400,7 @@ void test('payment route maps a stale Custom Blend line to a 409 conflict', asyn
       cardNumber: '4242 4242 4242 4242',
       cardExpiry: '12/99',
       cardCvc: '123',
-      idempotencyKey: '11111111-1111-4111-8111-111111111111',
+      idempotencyKey: '33333333-3333-4333-8333-333333333333',
     },
   });
   assert.equal(response.statusCode, 409);

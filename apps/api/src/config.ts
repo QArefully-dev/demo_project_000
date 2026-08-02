@@ -1,11 +1,15 @@
 import path from 'node:path';
 
+/** Deterministic local-only secret for the simulated payment webhook boundary. */
+export const DEFAULT_WEBHOOK_SECRET = 'local-development-webhook-secret';
+
 export interface ApiConfig {
   databasePath: string;
   host: string;
   port: number;
   seed: boolean;
   resetBaseUrl: string;
+  webhookSecret: string;
 }
 
 function parseResetBaseUrl(value: string): string {
@@ -28,6 +32,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     throw new Error('SHOP_API_PORT must be an integer between 1 and 65535');
   }
   const resetBaseUrl = parseResetBaseUrl(env.SHOP_RESET_BASE_URL ?? 'http://127.0.0.1:5173');
+  const webhookSecret = env.SHOP_WEBHOOK_SECRET ?? DEFAULT_WEBHOOK_SECRET;
+  if (webhookSecret.trim().length === 0) throw new Error('SHOP_WEBHOOK_SECRET must not be empty');
 
   return {
     databasePath: env.SHOP_DB_PATH ?? path.join(process.cwd(), 'data', 'shop.db'),
@@ -35,5 +41,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     port,
     seed: env.SHOP_SEED === 'true',
     resetBaseUrl,
+    webhookSecret,
   };
 }

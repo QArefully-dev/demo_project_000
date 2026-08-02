@@ -80,6 +80,26 @@ export const AUDIT_ACTIONS = [
   'saved_list.item_updated',
   'saved_list.item_removed',
   'cart.saved_list_added',
+  'job.enqueued',
+  'job.succeeded',
+  'job.retry_scheduled',
+  'job.dead_lettered',
+  'job.reclaimed',
+  'job.retried_by_admin',
+  'notification.created',
+  'notification.delivered',
+  'notification.delivery_skipped',
+  'notification.read',
+  'webhook.captured',
+  'webhook.processed',
+  'webhook.ignored_stale',
+  'webhook.rejected',
+  'standing_order.created',
+  'standing_order.updated',
+  'standing_order.deleted',
+  'standing_order.run_started',
+  'standing_order.run_completed',
+  'standing_order.run_failed',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
@@ -99,7 +119,11 @@ export type AuditEntityType =
   | 'variant'
   | 'promo'
   | 'feature_flag'
-  | 'saved_list';
+  | 'saved_list'
+  | 'job'
+  | 'notification'
+  | 'webhook'
+  | 'standing_order';
 export type AuditActor =
   | { type: 'anonymous'; userId: null }
   | { type: 'user'; userId: number }
@@ -135,6 +159,10 @@ type UserEventAction = Exclude<
   | `company.${string}`
   | `approval.${string}`
   | `saved_list.${string}`
+  | `job.${string}`
+  | `notification.${string}`
+  | `webhook.${string}`
+  | `standing_order.${string}`
 >;
 
 export type AuditEventInput =
@@ -333,6 +361,22 @@ export type AuditEventInput =
       paymentId: number;
       orderId: number;
       amountCents: number;
+    })
+  | (WithContext & {
+      action: `job.${'enqueued' | 'succeeded' | 'retry_scheduled' | 'dead_lettered' | 'reclaimed' | 'retried_by_admin'}`;
+      jobId: number;
+    })
+  | (WithContext & {
+      action: `notification.${'created' | 'delivered' | 'delivery_skipped' | 'read'}`;
+      notificationId: number;
+    })
+  | (WithContext & {
+      action: `webhook.${'captured' | 'processed' | 'ignored_stale' | 'rejected'}`;
+      webhookId: number;
+    })
+  | (WithContext & {
+      action: `standing_order.${'created' | 'updated' | 'deleted' | 'run_started' | 'run_completed' | 'run_failed'}`;
+      standingOrderId: number;
     });
 
 export interface BuiltAuditEvent {
@@ -554,6 +598,14 @@ function savedListEntity(input: Record<string, unknown>): {
   };
 }
 
+function asyncEntity(
+  input: Record<string, unknown>,
+  field: 'jobId' | 'notificationId' | 'webhookId' | 'standingOrderId',
+  entityType: 'job' | 'notification' | 'webhook' | 'standing_order',
+): { entityType: 'job' | 'notification' | 'webhook' | 'standing_order'; entityId: string } {
+  return { entityType, entityId: String(requirePositiveSafeInteger(input[field], field)) };
+}
+
 function requireReviewRating(value: unknown): number {
   const rating = requirePositiveSafeInteger(value, 'rating');
   if (rating > 5) throw new AuditEventValidationError('rating must be an integer between 1 and 5');
@@ -570,6 +622,38 @@ export function buildAuditEvent(input: AuditEventInput): BuiltAuditEvent {
   let metadata: Record<string, string | number>;
 
   switch (input.action) {
+    case 'job.enqueued':
+    case 'job.succeeded':
+    case 'job.retry_scheduled':
+    case 'job.dead_lettered':
+    case 'job.reclaimed':
+    case 'job.retried_by_admin':
+      entity = asyncEntity(input, 'jobId', 'job');
+      metadata = {};
+      break;
+    case 'notification.created':
+    case 'notification.delivered':
+    case 'notification.delivery_skipped':
+    case 'notification.read':
+      entity = asyncEntity(input, 'notificationId', 'notification');
+      metadata = {};
+      break;
+    case 'webhook.captured':
+    case 'webhook.processed':
+    case 'webhook.ignored_stale':
+    case 'webhook.rejected':
+      entity = asyncEntity(input, 'webhookId', 'webhook');
+      metadata = {};
+      break;
+    case 'standing_order.created':
+    case 'standing_order.updated':
+    case 'standing_order.deleted':
+    case 'standing_order.run_started':
+    case 'standing_order.run_completed':
+    case 'standing_order.run_failed':
+      entity = asyncEntity(input, 'standingOrderId', 'standing_order');
+      metadata = {};
+      break;
     case 'company.created':
       entity = companyEntity(input);
       metadata = {};

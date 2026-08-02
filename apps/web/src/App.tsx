@@ -38,6 +38,10 @@ import { AdminFeatureFlagsPage } from './features/admin/featureFlags';
 import { QuickOrderPage } from './features/quickOrder/QuickOrderPage';
 import { SavedListsPage } from './features/savedLists/SavedListsPage';
 import { SavedListDetailPage } from './features/savedLists/SavedListDetailPage';
+import { NotificationsPage } from './features/notifications/NotificationsPage';
+import { StandingOrdersPage } from './features/standingOrders/StandingOrdersPage';
+import { AdminJobsPage, AdminJobDetailPage } from './features/admin/jobs';
+import { AdminWebhooksPage, AdminWebhookDetailPage } from './features/admin/webhooks';
 
 export default function App() {
   return (
@@ -78,6 +82,22 @@ export default function App() {
           element={
             <ProtectedRoute>
               <ApprovalsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/account/standing-orders"
+          element={
+            <ProtectedRoute>
+              <StandingOrdersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/notifications"
+          element={
+            <ProtectedRoute>
+              <NotificationsPage />
             </ProtectedRoute>
           }
         />
@@ -143,6 +163,10 @@ export default function App() {
           <Route path="promos" element={<AdminPromosPage />} />
           <Route path="users" element={<AdminUsersPage />} />
           <Route path="orders" element={<AdminOrdersPage />} />
+          <Route path="jobs" element={<AdminJobsPage />} />
+          <Route path="jobs/:jobId" element={<AdminJobDetailPage />} />
+          <Route path="webhooks" element={<AdminWebhooksPage />} />
+          <Route path="webhooks/:webhookId" element={<AdminWebhookDetailPage />} />
           <Route path="feature-flags" element={<AdminFeatureFlagsPage />} />
           <Route path="reviews" element={<AdminReviewModerationPage />} />
         </Route>

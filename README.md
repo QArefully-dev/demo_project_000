@@ -76,6 +76,7 @@ Each checkout request includes an idempotency key. Retrying the same key with th
 - **Saved lists** with a default Favourites list, named buyer lists, and whole-list cart adds
 - **Account page** with password change
 - **Dev mailbox** for inspecting system emails and reset-password links
+- **Async operations** with buyer notifications, cart-only standing orders, captured simulated webhooks, and an admin job queue
 
 ### Quick Order sample
 
@@ -124,6 +125,19 @@ Alice has a pre-seeded default Favourites list with 3 products. Her `Monthly res
 ### Local Administration
 
 Sign in with `admin@example.com` / `Password123!`, then open [/admin](http://127.0.0.1:5173/admin). The administration console is local-only demo tooling; it includes a seeded disabled promo, suspended user, clearance fixtures, and `admin.example_flag` feature flag.
+
+### Local Async Operations
+
+The simulated payment webhook secret defaults to `local-development-webhook-secret`. Override it with `SHOP_WEBHOOK_SECRET` only when demonstrating another local value.
+
+No `curl` is needed: reset the database, sign in as the administrator, then select **Administration -> Job queue -> Drain due jobs**. Reset data includes notification-delivery, webhook, and standing-order fixtures. **Captured webhooks** displays processor results; buyers can open **Notifications** and manage schedules from **Account**. A standing-order run creates a cart only: checkout, payment, and any approval remain buyer-controlled.
+
+Enable one fault flag under **Administration -> Feature flags**, then drain due jobs to reproduce its deterministic failure:
+
+- `async.job_handler_failure`
+- `async.notification_delivery_failure`
+- `async.webhook_processing_failure`
+- `async.standing_order_run_failure`
 
 ### Trade Delivery Sites and Billing Entities
 

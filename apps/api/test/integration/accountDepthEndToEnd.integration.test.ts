@@ -157,7 +157,7 @@ void test('account depth composes self-service, company approval, and deletion r
   };
 
   const approvedCart = await createCheckoutCart();
-  const approvedPayload = paymentPayload(approvedCart, '11111111-1111-4111-8111-111111111111');
+  const approvedPayload = paymentPayload(approvedCart, '33333333-3333-4333-8333-333333333333');
   const pending = await app.inject({
     method: 'POST',
     url: '/api/payments/pay',
@@ -185,7 +185,7 @@ void test('account depth composes self-service, company approval, and deletion r
   assert.equal(approvedRetry.statusCode, 201);
 
   const rejectedCart = await createCheckoutCart();
-  const rejectedPayload = paymentPayload(rejectedCart, '22222222-2222-4222-8222-222222222222');
+  const rejectedPayload = paymentPayload(rejectedCart, '44444444-4444-4444-8444-444444444444');
   const rejectedPending = await app.inject({
     method: 'POST',
     url: '/api/payments/pay',

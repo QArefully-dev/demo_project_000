@@ -29,6 +29,8 @@ export function resetDatabase(db: Database.Database): void {
       DROP TRIGGER IF EXISTS return_events_no_delete;
       DROP TRIGGER IF EXISTS inventory_stock_movements_no_delete;
       DROP TRIGGER IF EXISTS inventory_stock_movements_no_update;
+      DROP TRIGGER IF EXISTS job_attempts_no_update;
+      DROP TRIGGER IF EXISTS job_attempts_no_delete;
       DELETE FROM refund_items;
       DELETE FROM refunds;
       DELETE FROM return_events;
@@ -50,6 +52,12 @@ export function resetDatabase(db: Database.Database): void {
       DELETE FROM review_helpful_votes;
       DELETE FROM reviews;
       DELETE FROM review_rating_aggregates;
+      DELETE FROM job_attempts;
+      DELETE FROM standing_order_runs;
+      DELETE FROM captured_webhooks;
+      DELETE FROM notifications;
+      DELETE FROM standing_orders;
+      DELETE FROM jobs;
       DELETE FROM saved_list_items;
       DELETE FROM saved_lists;
       DELETE FROM password_reset_tokens;
@@ -98,6 +106,13 @@ export function resetDatabase(db: Database.Database): void {
       CREATE TRIGGER refund_items_no_delete
       BEFORE DELETE ON refund_items
       BEGIN SELECT RAISE(ABORT, 'refund_items are immutable'); END;
+      CREATE TRIGGER job_attempts_no_update
+      BEFORE UPDATE ON job_attempts
+      BEGIN SELECT RAISE(ABORT, 'job_attempts are immutable'); END;
+      CREATE TRIGGER job_attempts_no_delete
+      BEFORE DELETE ON job_attempts
+      WHEN EXISTS (SELECT 1 FROM jobs WHERE id = OLD.job_id)
+      BEGIN SELECT RAISE(ABORT, 'job_attempts are immutable'); END;
     `);
   });
 

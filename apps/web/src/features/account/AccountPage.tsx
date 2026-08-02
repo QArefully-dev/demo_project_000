@@ -5,7 +5,7 @@ import { changePassword as changePasswordApi } from '@/api/auth';
 import { Button } from '@/components/ui/button';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { ApiError } from '@/api/client';
-import { List, LogOut, Package } from 'lucide-react';
+import { CalendarClock, List, LogOut, Package } from 'lucide-react';
 import { BillingEntitiesSection } from './BillingEntitiesSection';
 import { DataExportSection } from './DataExportSection';
 import { DeleteAccountSection } from './DeleteAccountSection';
@@ -167,6 +167,13 @@ export function AccountPage() {
         >
           <List className="h-4 w-4" />
           View Saved Lists
+        </Link>
+        <Link
+          to="/account/standing-orders"
+          className="flex w-full items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-medium hover:bg-accent"
+        >
+          <CalendarClock className="h-4 w-4" />
+          Manage Standing Orders
         </Link>
 
         <Button variant="outline" className="w-full" onClick={() => void handleLogout()}>

@@ -302,19 +302,20 @@ export function AdminVariantsPage() {
                       aria-label="Enable clearance"
                       type="checkbox"
                       checked={clearance.clearance !== null}
-                      onChange={(e) =>
-                        setClearance(
-                          e.target.checked
-                            ? {
-                                clearance: {
-                                  priceCents: selected.priceCents,
-                                  startsAt: new Date().toISOString(),
-                                  endsAt: new Date(Date.now() + 86400000).toISOString(),
-                                },
-                              }
-                            : { clearance: null },
-                        )
-                      }
+                      onChange={(e) => {
+                        if (!e.target.checked) {
+                          setClearance({ clearance: null });
+                          return;
+                        }
+                        const startsAt = new Date();
+                        setClearance({
+                          clearance: {
+                            priceCents: selected.priceCents,
+                            startsAt: startsAt.toISOString(),
+                            endsAt: new Date(startsAt.getTime() + 86400000).toISOString(),
+                          },
+                        });
+                      }}
                     />{' '}
                     Enable clearance
                   </label>

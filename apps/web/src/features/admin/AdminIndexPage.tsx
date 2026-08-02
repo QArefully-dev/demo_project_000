@@ -7,6 +7,8 @@ const sections = [
   ['Promotions', 'Create and maintain trade promotion codes.', '/admin/promos'],
   ['Users', 'Manage customer access, profile details, and roles.', '/admin/users'],
   ['Orders', 'Review orders and issue simulated refunds.', '/admin/orders'],
+  ['Jobs', 'Inspect and drain local asynchronous work.', '/admin/jobs'],
+  ['Webhooks', 'Inspect simulated payment processor deliveries.', '/admin/webhooks'],
   ['Feature flags', 'Control local rollout flags for the application.', '/admin/feature-flags'],
   ['Review moderation', 'Review reported and hidden customer reviews.', '/admin/reviews'],
 ] as const;
