@@ -50,6 +50,7 @@ const expectedVersions = [
   '028',
   '029',
   '030',
+  '031',
 ];
 
 /** Every migration up to but excluding `021`, i.e. the schema powderizer still existed in. */

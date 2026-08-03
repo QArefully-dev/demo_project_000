@@ -56,7 +56,7 @@ void test('async seed is stable, due, and leaves an admin-retryable dead job', (
   const first = scopedCounts();
   seedDatabase(db);
   assert.deepEqual(scopedCounts(), first);
-  assert.deepEqual(first, { flags: 4, standingOrders: 1, notifications: 1, webhooks: 2, jobs: 4 });
+  assert.deepEqual(first, { flags: 5, standingOrders: 1, notifications: 1, webhooks: 2, jobs: 4 });
   assert.equal(
     (
       db

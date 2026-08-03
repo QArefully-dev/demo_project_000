@@ -19,13 +19,20 @@ function setup(t: test.TestContext) {
     rmSync(directory, { recursive: true, force: true });
   });
   const clock = { now: () => new Date('2030-01-01T00:00:00.000Z') };
+  const stockChanges: Array<{ variantId: number; occurredAt: string }> = [];
   return {
     db,
+    stockChanges,
     service: createVariantAdminService({
       repository: createVariantAdminRepository(db),
       unitOfWork: createUnitOfWork(db),
       audit: createAuditWriter({ repository: createAuditRepository(db), clock }),
       clock,
+      stockObserver: {
+        stockChanged(variantId, occurredAt) {
+          stockChanges.push({ variantId, occurredAt });
+        },
+      },
     }),
     context: { actor: { type: 'user' as const, userId: 3 }, requestId: 'variant-admin-test' },
   };
@@ -95,6 +102,41 @@ void test('variant admin creates, updates, retires, and emits one audit row per 
     ).count,
     3,
   );
+});
+
+void test('a stock write notifies the stock observer; a patch without stockCount does not', (t) => {
+  const { db, service, stockChanges, context } = setup(t);
+  const variant = createSoleVariantProduct(db, service, context).variant;
+  assert.deepEqual(stockChanges, [
+    { variantId: variant.id, occurredAt: '2030-01-01T00:00:00.000Z' },
+  ]);
+
+  service.update(variant.id, { stockCount: 0 }, context);
+  assert.deepEqual(stockChanges.slice(1), [
+    { variantId: variant.id, occurredAt: '2030-01-01T00:00:00.000Z' },
+  ]);
+
+  service.update(variant.id, { priceCents: 2_500, label: 'Renamed lot' }, context);
+  service.setClearance(
+    variant.id,
+    { priceCents: 1, startsAt: '2030-01-02T00:00:00.000Z', endsAt: '2030-01-03T00:00:00.000Z' },
+    context,
+  );
+  assert.equal(stockChanges.length, 2);
+});
+
+void test('an absent stock observer leaves variant admin commands working unchanged', (t) => {
+  const { db } = setup(t);
+  const clock = { now: () => new Date('2030-01-01T00:00:00.000Z') };
+  const service = createVariantAdminService({
+    repository: createVariantAdminRepository(db),
+    unitOfWork: createUnitOfWork(db),
+    audit: createAuditWriter({ repository: createAuditRepository(db), clock }),
+    clock,
+  });
+  const context = { actor: { type: 'user' as const, userId: 3 }, requestId: 'variant-admin-plain' };
+  const variant = createSoleVariantProduct(db, service, context).variant;
+  assert.equal(service.update(variant.id, { stockCount: 3 }, context).stock_count, 3);
 });
 
 void test('retiring default promotes lowest-sort active sibling and keeps it customer-usable', (t) => {

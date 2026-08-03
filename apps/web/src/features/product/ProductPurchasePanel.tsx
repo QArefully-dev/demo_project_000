@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { AddToListMenu } from '@/features/savedLists/AddToListMenu';
 import { CompareProductButton } from '@/features/comparison/CompareProductButton';
+import { NotifyWhenAvailableButton } from '@/components/NotifyWhenAvailableButton';
 import { formatMoney } from '@/lib/formatMoney';
 
 interface ProductPurchasePanelProps {
@@ -21,6 +22,11 @@ interface ProductPurchasePanelProps {
 
 function variantIsPurchasable(v: CatalogVariant): boolean {
   return v.active && (v.stockCount > 0 || v.backorderable);
+}
+
+/** Sold out with no backorder route — the only state a waiting list makes sense in. */
+function variantIsSoldOut(v: CatalogVariant): boolean {
+  return v.active && v.stockCount === 0 && !v.backorderable;
 }
 
 function formatWeightGrams(weightGrams: number): string {
@@ -59,8 +65,10 @@ function VariantSelector({
       <div className="mt-3 grid gap-3">
         {sorted.map((v) => {
           const isSelected = selectedVariantId === v.variantId;
-          const disabled = !variantIsPurchasable(v);
-          const isOutOfStock = v.active && v.stockCount === 0 && !v.backorderable;
+          const isOutOfStock = variantIsSoldOut(v);
+          // A sold-out option stays selectable so the buyer can join its waiting list; only a
+          // retired option is unselectable. Purchasability is still enforced on the add action.
+          const disabled = !variantIsPurchasable(v) && !isOutOfStock;
           const isBackorder = v.active && v.stockCount === 0 && v.backorderable;
           const isFreight = v.deliveryClass === 'freight';
           const hasSale = v.compareAtPriceCents != null && v.compareAtPriceCents > v.priceCents;
@@ -473,6 +481,9 @@ export function ProductPurchasePanel({
           quantity={hasValidQuantity ? parsedQuantity : 1}
         />
       </div>
+      {selectedVariant && variantIsSoldOut(selectedVariant) && (
+        <NotifyWhenAvailableButton variantId={selectedVariant.variantId} />
+      )}
       <div className="mt-3">
         <CompareProductButton productId={product.id} productName={product.name} />
       </div>

@@ -22,6 +22,19 @@ vi.mock('@/hooks/AuthContext', () => ({
   useAuth: () => ({ user: authState.user }),
 }));
 
+const backInStockState = vi.hoisted(() => ({ subscribe: vi.fn() }));
+vi.mock('@/hooks/useBackInStock', () => ({
+  useBackInStock: () => ({
+    subscriptions: [],
+    pendingVariantIds: new Set<number>(),
+    loading: false,
+    error: null,
+    refresh: vi.fn(),
+    subscribe: backInStockState.subscribe,
+    cancel: vi.fn(),
+  }),
+}));
+
 vi.mock('@/features/savedLists/AddToListMenu', () => ({
   AddToListMenu: ({ variantId, quantity }: { variantId?: number; quantity?: number }) => (
     <button
@@ -450,6 +463,41 @@ describe('ProductPurchasePanel', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Quantity does not meet this variant minimum order quantity.',
     );
+  });
+
+  it('offers the waiting list only for the selected sold-out, non-backorderable variant', async () => {
+    const user = userEvent.setup();
+    const notify = 'Notify me when this is back in stock';
+    renderPanel({
+      product: product({
+        stock: 0,
+        availability: 'out_of_stock',
+        baseAvailability: 'out_of_stock',
+        variants: [
+          { ...defaultVariant, variantId: 1, label: 'Sold out sack', stockCount: 0 },
+          {
+            ...defaultVariant,
+            variantId: 2,
+            label: 'Backorder pallet',
+            stockCount: 0,
+            backorderable: true,
+            backorderLeadDays: 14,
+          },
+          { ...defaultVariant, variantId: 3, label: 'Stocked sack', stockCount: 8 },
+        ],
+      }),
+    });
+
+    expect(screen.queryByRole('button', { name: notify })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: /Sold out sack/i }));
+    expect(screen.getByRole('button', { name: notify })).toBeEnabled();
+
+    await user.click(screen.getByRole('radio', { name: /Backorder pallet/i }));
+    expect(screen.queryByRole('button', { name: notify })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: /Stocked sack/i }));
+    expect(screen.queryByRole('button', { name: notify })).not.toBeInTheDocument();
   });
 
   it('derives MOQ units from the shared sack-weight floor for sacks and pallets', async () => {

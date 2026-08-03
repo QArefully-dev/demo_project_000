@@ -1,0 +1,110 @@
+import type { UnitOfWork } from '../../db/unitOfWork.js';
+import type { AuditWriter, Clock } from '../audit/auditService.js';
+import type { InventoryService } from '../inventory/inventoryService.js';
+import type { FaultSwitch } from '../jobs/faultSwitch.js';
+import type { JobHandler } from '../jobs/jobHandlerRegistry.js';
+import type { NotificationService } from '../notifications/notificationService.js';
+import { minimumOrderQuantity } from '../pricing/pricingRules.js';
+import type { BackInStockRepository } from './backInStockRepository.js';
+import { backInStockNotificationCopy, isNotifiable } from './backInStockRules.js';
+import type { BackInStockNotifyPayload } from './backInStockTrigger.js';
+
+export interface BackInStockNotifyHandlerDependencies {
+  repository: Pick<
+    BackInStockRepository,
+    'listPendingForVariant' | 'markNotified' | 'markCancelled' | 'variantFacts' | 'findOwned'
+  >;
+  notifications: Pick<NotificationService, 'notify'>;
+  inventory: Pick<InventoryService, 'availableToSell'>;
+  unitOfWork: UnitOfWork;
+  audit: AuditWriter;
+  clock: Clock;
+  faults: FaultSwitch;
+}
+
+/** Every fan-out row is written by the system, never by the buyer whose interest it settles. */
+const systemContext = { actor: { type: 'system' as const, userId: null }, requestId: null };
+
+function payloadVariantId(payload: unknown): number | null {
+  const candidate = (payload as Partial<BackInStockNotifyPayload> | null | undefined)?.variantId;
+  return Number.isSafeInteger(candidate) && (candidate as number) > 0
+    ? (candidate as number)
+    : null;
+}
+
+/**
+ * Settles pending back-in-stock interest for one variant.
+ *
+ * Each subscription is settled in its own transaction so a mid-fan-out failure resumes from the
+ * first still-pending row instead of restarting or double-notifying. Expected domain states
+ * (missing variant, retired lot, stock still below MOQ, nothing pending) are successes: the queue
+ * must not retry a job whose work is genuinely done.
+ */
+export function createBackInStockNotifyHandler(
+  d: BackInStockNotifyHandlerDependencies,
+): JobHandler {
+  return ({ payload }) => {
+    const variantId = payloadVariantId(payload);
+    if (variantId === null) return { ok: false, error: 'Invalid back-in-stock notify payload' };
+    if (d.faults.isEnabled('async.back_in_stock_failure'))
+      return { ok: false, error: 'Simulated back-in-stock notify failure' };
+
+    const facts = d.repository.variantFacts(variantId);
+    const pending = d.repository.listPendingForVariant(variantId);
+    if (pending.length === 0) return { ok: true };
+
+    // A retired or deleted lot can never come back, so the interest is closed rather than parked.
+    if (!facts || facts.active !== 1) {
+      for (const row of pending) {
+        d.unitOfWork.run(() => {
+          const current = d.repository.findOwned(row.id, row.user_id);
+          if (current?.status !== 'pending') return;
+          d.repository.markCancelled(row.id, d.clock.now().toISOString());
+          d.audit.append({
+            action: 'back_in_stock.cancelled',
+            subscriptionId: row.id,
+            context: systemContext,
+          });
+        });
+      }
+      return { ok: true };
+    }
+
+    const minimum = minimumOrderQuantity(facts.weight_grams, facts.moq_sacks);
+    // An unusable weight/MOQ basis leaves nothing a buyer could order; wait for a later movement.
+    if (minimum === undefined) return { ok: true };
+    const at = d.clock.now().toISOString();
+    const availableToSell =
+      d.inventory.availableToSell([variantId], at).find((e) => e.variantId === variantId)
+        ?.availableToSell ?? 0;
+    // Below the MOQ floor the lot is not orderable, so pending interest stays pending.
+    if (!isNotifiable(availableToSell, minimum)) return { ok: true };
+
+    const copy = backInStockNotificationCopy(facts.product_name, facts.label);
+    for (const row of pending) {
+      d.unitOfWork.run(() => {
+        // Re-read inside the transaction: a buyer may have cancelled since the list was taken.
+        const current = d.repository.findOwned(row.id, row.user_id);
+        if (current?.status !== 'pending') return;
+        const notified = d.notifications.notify({
+          userId: row.user_id,
+          kind: 'back_in_stock.available',
+          title: copy.title,
+          body: copy.body,
+          // Subscription-scoped identity keeps a later re-subscription independently notifiable.
+          entityType: 'back_in_stock_subscription',
+          entityId: String(row.id),
+          context: systemContext,
+        });
+        const now = d.clock.now().toISOString();
+        d.repository.markNotified(row.id, Number(notified.notification.id), now);
+        d.audit.append({
+          action: 'back_in_stock.notified',
+          subscriptionId: row.id,
+          context: systemContext,
+        });
+      });
+    }
+    return { ok: true };
+  };
+}

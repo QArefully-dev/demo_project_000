@@ -28,6 +28,7 @@ export const JobKind = Type.Union([
   Type.Literal('notification.deliver'),
   Type.Literal('webhook.process'),
   Type.Literal('standing_order.run'),
+  Type.Literal('back_in_stock.notify'),
 ]);
 export type JobKind = Static<typeof JobKind>;
 

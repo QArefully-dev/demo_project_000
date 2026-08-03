@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { ApiError } from '@/api/client';
 import { CalendarClock, List, LogOut, Package } from 'lucide-react';
+import { BackInStockSection } from '@/features/backInStock/BackInStockSection';
 import { BillingEntitiesSection } from './BillingEntitiesSection';
 import { DataExportSection } from './DataExportSection';
 import { DeleteAccountSection } from './DeleteAccountSection';
@@ -147,6 +148,7 @@ export function AccountPage() {
           <BillingEntitiesSection profile={tradeProfile} />
           <SessionsSection />
           <PreferencesSection />
+          <BackInStockSection />
           <DataExportSection />
           <DeleteAccountSection />
         </>

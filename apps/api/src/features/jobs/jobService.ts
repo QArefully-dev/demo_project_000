@@ -46,6 +46,7 @@ const jobKinds = new Set<JobKind>([
   'notification.deliver',
   'webhook.process',
   'standing_order.run',
+  'back_in_stock.notify',
 ]);
 
 function asAdminJob(record: JobRecord): AdminJob {

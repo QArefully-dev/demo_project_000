@@ -173,6 +173,14 @@ import {
 } from './features/quickOrder/quickOrderService.js';
 import quickOrderRoutes from './routes/quickOrder.js';
 import savedListRoutes from './routes/savedLists.js';
+import backInStockRoutes from './routes/backInStock.js';
+import {
+  createBackInStockService,
+  type BackInStockService,
+} from './features/backInStock/backInStockService.js';
+import { createBackInStockRepository } from './features/backInStock/backInStockRepository.js';
+import { createBackInStockTrigger } from './features/backInStock/backInStockTrigger.js';
+import { createBackInStockNotifyHandler } from './features/backInStock/backInStockNotifyHandler.js';
 import {
   createSavedListService,
   type SavedListService,
@@ -236,6 +244,7 @@ export interface AppServices {
   reorder: ReorderService;
   quickOrder: QuickOrderService;
   savedLists: SavedListService;
+  backInStock: BackInStockService;
   reviews: ReviewService;
   inventory: InventoryService;
   inventoryUnitOfWork: UnitOfWork;
@@ -288,8 +297,18 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     audit,
     faults: featureFlagResolver,
   });
+  const backInStockRepository = createBackInStockRepository(dependencies.db);
+  // Constructed before inventory so the observer can be handed to it. The trigger takes no
+  // inventory dependency, which is what keeps this ordering acyclic.
+  const backInStockTrigger = createBackInStockTrigger({
+    repository: backInStockRepository,
+    jobs,
+    unitOfWork,
+    clock,
+  });
   const inventory = createInventoryService({
     repository: createInventoryRepository(dependencies.db),
+    stockObserver: backInStockTrigger,
   });
   const users = createUserRepository(dependencies.db);
   const sessions = createSessionService({
@@ -359,6 +378,14 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     audit,
     clock,
   });
+  const backInStock = createBackInStockService({
+    repository: backInStockRepository,
+    inventory,
+    variants: products,
+    unitOfWork,
+    audit,
+    clock,
+  });
   const reorder = createReorderService({
     orders: orderService,
     carts: cartService,
@@ -415,6 +442,18 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       repository: webhookRepository,
       payments: paymentRepository,
       notifications,
+      audit,
+      clock,
+      faults: featureFlagResolver,
+    }),
+  );
+  registry.register(
+    'back_in_stock.notify',
+    createBackInStockNotifyHandler({
+      repository: backInStockRepository,
+      notifications,
+      inventory,
+      unitOfWork,
       audit,
       clock,
       faults: featureFlagResolver,
@@ -503,6 +542,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       audit,
     }),
     savedLists,
+    backInStock,
     reviews: createReviewService({
       repository: createReviewRepository(dependencies.db),
       unitOfWork,
@@ -545,6 +585,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       unitOfWork,
       audit,
       clock,
+      stockObserver: backInStockTrigger,
     }),
     promoAdmin: createPromoAdminService({
       repository: createPromoAdminRepository(dependencies.db),
@@ -640,6 +681,7 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(reorderRoutes, context);
   await app.register(quickOrderRoutes, context);
   await app.register(savedListRoutes, context);
+  await app.register(backInStockRoutes, context);
   await app.register(notificationRoutes, context);
   await app.register(standingOrderRoutes, context);
   await app.register(webhookRoutes, context);

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PALLET_WEIGHT_GRAMS, SACK_WEIGHT_GRAMS } from '@shop/contracts/pricing';
 import {
+  minimumOrderQuantity,
   moqShortfallSacks,
   nextTierProgress,
   perTonneCents,
@@ -99,6 +100,34 @@ void test('reports the exact number of same-weight sacks needed to reach MOQ', (
   assert.equal(moqShortfallSacks(5, SACK_WEIGHT_GRAMS, 4), 0);
   assert.equal(moqShortfallSacks(1, PALLET_WEIGHT_GRAMS, 4), 0);
   assert.equal(moqShortfallSacks(3, 20_000, 4), 2);
+});
+
+void test('derives the smallest whole-pack quantity that clears the MOQ floor', () => {
+  assert.equal(minimumOrderQuantity(SACK_WEIGHT_GRAMS, 1), 1);
+  assert.equal(minimumOrderQuantity(SACK_WEIGHT_GRAMS, 4), 4);
+  assert.equal(minimumOrderQuantity(PALLET_WEIGHT_GRAMS, 4), 1);
+  // Non-round pack weight must round up, never leave the line below the floor.
+  assert.equal(minimumOrderQuantity(30_000, 4), 4);
+  assert.equal(minimumOrderQuantity(20_000, 4), 5);
+  assert.equal(minimumOrderQuantity(7_000, 4), 15);
+  for (const [weightGrams, moqSacks] of [
+    [SACK_WEIGHT_GRAMS, 1],
+    [SACK_WEIGHT_GRAMS, 4],
+    [30_000, 4],
+    [7_000, 4],
+  ] as const) {
+    const quantity = minimumOrderQuantity(weightGrams, moqSacks)!;
+    assert.equal(validateMoq(quantity, weightGrams, moqSacks), true);
+    assert.equal(validateMoq(quantity - 1, weightGrams, moqSacks), false);
+  }
+});
+
+void test('reports an unusable MOQ basis as undefined instead of throwing', () => {
+  assert.equal(minimumOrderQuantity(0, 4), undefined);
+  assert.equal(minimumOrderQuantity(-1, 4), undefined);
+  assert.equal(minimumOrderQuantity(1.5, 4), undefined);
+  assert.equal(minimumOrderQuantity(SACK_WEIGHT_GRAMS, 0), undefined);
+  assert.equal(minimumOrderQuantity(SACK_WEIGHT_GRAMS, Number.MAX_SAFE_INTEGER), undefined);
 });
 
 void test('rejects invalid numeric inputs', () => {

@@ -69,6 +69,20 @@ vi.mock('@/hooks/AuthContext', () => ({
   }),
 }));
 
+// The account page now composes the back-in-stock section; its state comes from a provider that
+// these transport-level tests do not mount.
+vi.mock('@/hooks/useBackInStock', () => ({
+  useBackInStock: () => ({
+    subscriptions: [],
+    pendingVariantIds: new Set<number>(),
+    loading: false,
+    error: null,
+    refresh: vi.fn(),
+    subscribe: vi.fn(),
+    cancel: vi.fn(),
+  }),
+}));
+
 const ADDRESS: PostalAddress = {
   line1: '1 Mill Road',
   city: 'Leeds',

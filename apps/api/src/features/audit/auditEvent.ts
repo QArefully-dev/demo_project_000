@@ -100,6 +100,9 @@ export const AUDIT_ACTIONS = [
   'standing_order.run_started',
   'standing_order.run_completed',
   'standing_order.run_failed',
+  'back_in_stock.subscribed',
+  'back_in_stock.cancelled',
+  'back_in_stock.notified',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
@@ -123,7 +126,8 @@ export type AuditEntityType =
   | 'job'
   | 'notification'
   | 'webhook'
-  | 'standing_order';
+  | 'standing_order'
+  | 'back_in_stock_subscription';
 export type AuditActor =
   | { type: 'anonymous'; userId: null }
   | { type: 'user'; userId: number }
@@ -163,6 +167,7 @@ type UserEventAction = Exclude<
   | `notification.${string}`
   | `webhook.${string}`
   | `standing_order.${string}`
+  | `back_in_stock.${string}`
 >;
 
 export type AuditEventInput =
@@ -377,6 +382,10 @@ export type AuditEventInput =
   | (WithContext & {
       action: `standing_order.${'created' | 'updated' | 'deleted' | 'run_started' | 'run_completed' | 'run_failed'}`;
       standingOrderId: number;
+    })
+  | (WithContext & {
+      action: `back_in_stock.${'subscribed' | 'cancelled' | 'notified'}`;
+      subscriptionId: number;
     });
 
 export interface BuiltAuditEvent {
@@ -598,6 +607,16 @@ function savedListEntity(input: Record<string, unknown>): {
   };
 }
 
+function backInStockEntity(input: Record<string, unknown>): {
+  entityType: 'back_in_stock_subscription';
+  entityId: string;
+} {
+  return {
+    entityType: 'back_in_stock_subscription',
+    entityId: String(requirePositiveSafeInteger(input.subscriptionId, 'subscriptionId')),
+  };
+}
+
 function asyncEntity(
   input: Record<string, unknown>,
   field: 'jobId' | 'notificationId' | 'webhookId' | 'standingOrderId',
@@ -652,6 +671,12 @@ export function buildAuditEvent(input: AuditEventInput): BuiltAuditEvent {
     case 'standing_order.run_completed':
     case 'standing_order.run_failed':
       entity = asyncEntity(input, 'standingOrderId', 'standing_order');
+      metadata = {};
+      break;
+    case 'back_in_stock.subscribed':
+    case 'back_in_stock.cancelled':
+    case 'back_in_stock.notified':
+      entity = backInStockEntity(input);
       metadata = {};
       break;
     case 'company.created':
