@@ -34,3 +34,4 @@ export * from './jobs.js';
 export * from './notifications.js';
 export * from './webhooks.js';
 export * from './standingOrders.js';
+export * from './backInStock.js';

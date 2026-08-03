@@ -20,7 +20,7 @@ void test('async behavior migration creates durable, constrained schema idempote
 
   try {
     migrateDatabase(db);
-    assert.equal(migrations.at(-1)?.version, '030');
+    assert.equal(migrations.at(-1)?.version, '031');
     for (const table of [
       'jobs',
       'job_attempts',

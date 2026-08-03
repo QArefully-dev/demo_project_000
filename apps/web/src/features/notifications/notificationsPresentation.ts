@@ -7,6 +7,7 @@ const presentation: Record<NotificationKind, { label: string; icon: string }> = 
   'standing_order.run_completed': { label: 'Standing order completed', icon: 'CalendarCheck' },
   'standing_order.run_failed': { label: 'Standing order needs attention', icon: 'CalendarX' },
   'payment.webhook_settled': { label: 'Payment settled', icon: 'CreditCard' },
+  'back_in_stock.available': { label: 'Back in stock', icon: 'BellRing' },
 };
 
 export const notificationPresentation = (kind: NotificationKind) => presentation[kind];

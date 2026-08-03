@@ -55,7 +55,7 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
 
 - `apps/web/`: React/Vite customer app
   - `src/api/`: typed HTTP clients; validate successful responses against shared schemas
-  - `src/features/`: page and workflow ownership by domain
+  - `src/features/`: page and workflow ownership by domain; `backInStock/` = buyer's back-in-stock alert list on the account page
   - `src/components/`: shared UI and shell; `src/components/ui/` contains framework primitives
   - `src/components/packaging/`: vessel artwork (kraft sack, woven sack, HDPE keg), spec resolver, per-category colour/pigment palettes; food bag stays in `src/components/BagArtwork.tsx`
 - `src/hooks/`: cross-feature auth, cart, catalog, and saved-list state; legacy favourites state is retired
@@ -63,9 +63,9 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
   - tests: colocated `*.test.ts(x)`; browser journeys use `*.integration.test.tsx`
 - `apps/api/`: Fastify API and SQLite runtime
   - `src/app.ts`: composition root; services, plugins, routes
-- `src/routes/`: HTTP schemas, auth gates, transport mapping; `tradeAccount.ts` = saved delivery sites + billing entities, `deliverySlots.ts` = offered delivery slots, `savedLists.ts` = named buyer lists and cart/order saves
-- `src/features/`: domain services, repositories, workflow rules; `tradeAccount/` = delivery site + billing entity rules, shared address normalisation; `savedLists/` = variant-scoped lists that replaced the retired favourites domain; `jobs/`, `notifications/`, `webhooks/`, and `standingOrders/` = deterministic local async queue, buyer inbox delivery, webhook processing, and cart-only repeat schedules
-  - `src/db/`: database lifecycle, unit of work, migrations, seed/reset
+- `src/routes/`: HTTP schemas, auth gates, transport mapping; `tradeAccount.ts` = saved delivery sites + billing entities, `deliverySlots.ts` = offered delivery slots, `savedLists.ts` = named buyer lists and cart/order saves, `backInStock.ts` = buyer back-in-stock subscriptions
+- `src/features/`: domain services, repositories, workflow rules; `tradeAccount/` = delivery site + billing entity rules, shared address normalisation; `savedLists/` = variant-scoped lists that replaced the retired favourites domain; `jobs/`, `notifications/`, `webhooks/`, and `standingOrders/` = deterministic local async queue, buyer inbox delivery, webhook processing, and cart-only repeat schedules; `backInStock/` = sold-out subscription rules plus the stock-change trigger and notify job handler that consume the queue
+  - `src/db/`: database lifecycle, unit of work, migrations (head `031`), seed/reset
   - `test/`: SQLite and `app.inject()` integration tests grouped by domain
 - `packages/contracts/`: TypeBox transport schemas/types and public subpath exports
 - `packages/catalog/`: canonical product/category/packaging content plus validation

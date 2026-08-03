@@ -154,6 +154,29 @@ export function validateMoq(
   return totalWeightGrams >= minimumWeightGrams;
 }
 
+/**
+ * Smallest whole-pack quantity whose total weight clears the per-variant sack MOQ.
+ *
+ * Returns `undefined` rather than throwing because callers use it to default an omitted
+ * quantity: an unusable variant must degrade to a domain error, not a request-level crash.
+ */
+export function minimumOrderQuantity(weightGrams: number, moqSacks: number): number | undefined {
+  if (
+    !Number.isSafeInteger(weightGrams) ||
+    weightGrams < 1 ||
+    !Number.isSafeInteger(moqSacks) ||
+    moqSacks < 1 ||
+    moqSacks > Math.floor(Number.MAX_SAFE_INTEGER / SACK_WEIGHT_GRAMS)
+  ) {
+    return undefined;
+  }
+  const quantity = Math.ceil((moqSacks * SACK_WEIGHT_GRAMS) / weightGrams);
+  if (!Number.isSafeInteger(quantity) || quantity < 1) {
+    return undefined;
+  }
+  return quantity;
+}
+
 /** Returns the number of additional same-weight packs needed to satisfy the line MOQ. */
 export function moqShortfallSacks(quantity: number, weightGrams: number, moqSacks: number): number {
   requirePositiveSafeInteger(moqSacks, 'moqSacks');

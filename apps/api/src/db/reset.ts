@@ -9,7 +9,8 @@ import type Database from 'better-sqlite3';
  *
  * Reset order: inventory movements -> receipts -> inventory allocations -> reservations ->
  *   checkout reservations -> payments -> promo redemptions -> review reports -> helpful votes ->
- *   reviews -> rating aggregates -> saved-list items -> saved lists -> reset tokens -> sessions -> mailbox ->
+ *   reviews -> rating aggregates -> back-in-stock subscriptions ->
+ *   saved-list items -> saved lists -> reset tokens -> sessions -> mailbox ->
  *   order access grants -> lifecycle events ->
  *   shipment allocations -> shipments -> order line items ->
  *   orders -> cart line items -> carts -> promo codes -> bundle components ->
@@ -55,6 +56,7 @@ export function resetDatabase(db: Database.Database): void {
       DELETE FROM job_attempts;
       DELETE FROM standing_order_runs;
       DELETE FROM captured_webhooks;
+      DELETE FROM back_in_stock_subscriptions;
       DELETE FROM notifications;
       DELETE FROM standing_orders;
       DELETE FROM jobs;

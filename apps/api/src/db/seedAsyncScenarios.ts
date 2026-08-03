@@ -8,6 +8,7 @@ const FEATURE_FLAGS = [
   ['async.notification_delivery_failure', 'Force local notification delivery failure.'],
   ['async.webhook_processing_failure', 'Force local webhook processing failure.'],
   ['async.standing_order_run_failure', 'Force local standing-order run failure.'],
+  ['async.back_in_stock_failure', 'Force local back-in-stock notification failure.'],
 ] as const;
 
 function requiredId(

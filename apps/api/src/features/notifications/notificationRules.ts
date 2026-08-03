@@ -11,6 +11,7 @@ const NOTIFICATION_EMAIL_PREFERENCE: Record<
   'standing_order.run_completed': 'orderUpdatesEmail',
   'standing_order.run_failed': 'orderUpdatesEmail',
   'payment.webhook_settled': 'orderUpdatesEmail',
+  'back_in_stock.available': 'orderUpdatesEmail',
 };
 
 export function shouldEmailNotification(

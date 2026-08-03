@@ -149,6 +149,10 @@
     "./standing-orders": {
       "types": "./dist/standingOrders.d.ts",
       "import": "./dist/standingOrders.js"
+    },
+    "./back-in-stock": {
+      "types": "./dist/backInStock.d.ts",
+      "import": "./dist/backInStock.js"
     }
   },
   "dependencies": {

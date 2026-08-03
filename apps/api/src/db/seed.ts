@@ -7,6 +7,7 @@ import { seedReviewScenarios } from './reviewSeedScenarios.js';
 import { seedCompanyAccounts } from './companyAccountsSeed.js';
 import { seedSavedLists } from './savedListSeed.js';
 import { seedAsyncScenarios } from './seedAsyncScenarios.js';
+import { seedBackInStock } from './backInStockSeed.js';
 
 const USERS = [
   { id: 1, email: 'alice@example.com', display_name: 'Alice', role: 'customer' },
@@ -777,6 +778,7 @@ export function seedDatabase(db: Database.Database): void {
     seedOrderScenarios(db);
     seedSavedLists(db);
     seedAsyncScenarios(db);
+    seedBackInStock(db);
     seedReviewScenarios(db);
   });
 

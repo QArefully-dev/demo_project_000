@@ -29,6 +29,7 @@ import { adminSurfaceMigration } from './027_admin_surface.js';
 import { retiredVariantSortOrderMigration } from './028_retired_variant_sort_order.js';
 import { savedListsMigration } from './029_saved_lists.js';
 import { asyncBehaviorMigration } from './030_async_behavior.js';
+import { backInStockMigration } from './031_back_in_stock.js';
 
 export const migrations: readonly Migration[] = [
   initialMigration,
@@ -61,4 +62,5 @@ export const migrations: readonly Migration[] = [
   retiredVariantSortOrderMigration,
   savedListsMigration,
   asyncBehaviorMigration,
+  backInStockMigration,
 ];

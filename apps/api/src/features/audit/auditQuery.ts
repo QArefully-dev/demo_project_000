@@ -51,6 +51,7 @@ const entityTypeSet = new Set<AuditEntityType>([
   'notification',
   'webhook',
   'standing_order',
+  'back_in_stock_subscription',
 ]);
 
 function normalizeDate(value: string, field: 'occurredFrom' | 'occurredTo'): string {

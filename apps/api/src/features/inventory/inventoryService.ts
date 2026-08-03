@@ -4,6 +4,7 @@ import {
   splitInventoryReservation,
 } from './inventoryRules.js';
 import type { InventoryRepository } from './inventoryRepository.js';
+import { noStockObserver, type StockChangeObserver } from './stockObserver.js';
 import {
   InventoryError,
   type InventoryDemand,
@@ -77,11 +78,20 @@ function allocateFromRows(
   return result;
 }
 
-/** Domain coordinator. Does not create, commit, or roll back SQLite transactions. */
+/**
+ * Domain coordinator. Does not create, commit, or roll back SQLite transactions.
+ *
+ * `stockObserver` is optional so compositions that wire no reactive consumer keep their exact
+ * previous behaviour. Every notification is raised inside the caller transaction and only after
+ * backorder fulfilment has consumed what it is entitled to, so a restock is never announced for
+ * units an open backorder immediately takes back.
+ */
 export function createInventoryService(dependencies: {
   repository: InventoryRepository;
+  stockObserver?: StockChangeObserver;
 }): InventoryService {
   const { repository } = dependencies;
+  const stockObserver = dependencies.stockObserver ?? noStockObserver;
   const fulfillBackorders = (
     variantId: number,
     quantity: number,
@@ -303,6 +313,7 @@ export function createInventoryService(dependencies: {
         allocations,
       };
       repository.setReceiptResponse(receiptId, JSON.stringify(result));
+      stockObserver.stockChanged(variantId, occurredAt);
       return { ...result, replayed: false };
     },
     restoreReturnInventory({ returnRequestId, lines, occurredAt }) {
@@ -333,6 +344,7 @@ export function createInventoryService(dependencies: {
           undefined,
         );
         fulfilled.push(...backorderAllocations);
+        stockObserver.stockChanged(line.variantId, occurredAt);
       }
       return fulfilled;
     },
@@ -371,9 +383,11 @@ export function createInventoryService(dependencies: {
       }
       return [...restoredByVariant.entries()]
         .sort(([left], [right]) => left - right)
-        .flatMap(([variantId, quantity]) =>
-          fulfillBackorders(variantId, quantity, occurredAt, undefined, orderId),
-        );
+        .flatMap(([variantId, quantity]) => {
+          const reassigned = fulfillBackorders(variantId, quantity, occurredAt, undefined, orderId);
+          stockObserver.stockChanged(variantId, occurredAt);
+          return reassigned;
+        });
     },
   };
 }

@@ -1,6 +1,7 @@
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter, Clock } from '../audit/auditService.js';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
+import { noStockObserver, type StockChangeObserver } from '../inventory/stockObserver.js';
 import type { DeliveryClass } from '@shop/catalog';
 import { resolveClearance } from '../pricing/clearanceRules.js';
 import type { VariantRow } from './productRepository.js';
@@ -75,6 +76,11 @@ export interface VariantAdminServiceDependencies {
   unitOfWork: UnitOfWork;
   audit: AuditWriter;
   clock: Clock;
+  /**
+   * Optional so existing compositions keep their exact behaviour. Notified inside the same
+   * unit of work as the stock write, so a rollback discards the signal with the row.
+   */
+  stockObserver?: StockChangeObserver;
 }
 
 function validPositiveInteger(value: unknown): value is number {
@@ -179,6 +185,7 @@ function assertExistingClearanceRemainsValid(variant: VariantRow): void {
 export function createVariantAdminService(
   dependencies: VariantAdminServiceDependencies,
 ): VariantAdminService {
+  const stockObserver = dependencies.stockObserver ?? noStockObserver;
   return {
     listAdmin(productId) {
       if (!validPositiveInteger(productId)) {
@@ -197,6 +204,7 @@ export function createVariantAdminService(
           createdAt: now,
         });
         dependencies.audit.append({ action: 'variant.created', variantId: variant.id, context });
+        if (input.stockCount > 0) stockObserver.stockChanged(variant.id, now);
         return variant;
       });
     },
@@ -209,9 +217,10 @@ export function createVariantAdminService(
         if (!existing) throw new VariantAdminError('VARIANT_NOT_FOUND', 'variant not found');
         if (existing.active === 0)
           throw new VariantAdminError('VARIANT_RETIRED', 'retired variants cannot change');
+        const now = dependencies.clock.now().toISOString();
         const patch: UpdateVariantRecord = {
           ...input,
-          updatedAt: dependencies.clock.now().toISOString(),
+          updatedAt: now,
         };
         const next = {
           ...existing,
@@ -221,6 +230,7 @@ export function createVariantAdminService(
         assertExistingClearanceRemainsValid(next);
         const variant = dependencies.repository.update(id, patch)!;
         dependencies.audit.append({ action: 'variant.updated', variantId: variant.id, context });
+        if (input.stockCount !== undefined) stockObserver.stockChanged(variant.id, now);
         return variant;
       });
     },

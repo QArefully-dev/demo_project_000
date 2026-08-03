@@ -14,6 +14,7 @@ export const NotificationKind = Type.Union([
   Type.Literal('standing_order.run_completed'),
   Type.Literal('standing_order.run_failed'),
   Type.Literal('payment.webhook_settled'),
+  Type.Literal('back_in_stock.available'),
 ]);
 export type NotificationKind = Static<typeof NotificationKind>;
 

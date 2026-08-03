@@ -2,7 +2,6 @@ import type { Cart, CartLineVariantSnap } from '@shop/contracts/cart';
 import {
   CUSTOM_BLEND_FEE_CENTS,
   CustomBlendSnapshot as CustomBlendSnapshotSchema,
-  SACK_WEIGHT_GRAMS,
   type CustomBlendSnapshot,
 } from '@shop/contracts';
 import { Value } from '@sinclair/typebox/value';
@@ -13,6 +12,7 @@ import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
 import type { InventoryService } from '../inventory/inventoryService.js';
 import {
+  minimumOrderQuantity,
   nextTierProgress,
   perTonneCents,
   resolveUnitPriceCents,
@@ -711,20 +711,7 @@ export function addManyItems(
 }
 
 function minimumMoqQuantity(weightGrams: number, moqSacks: number): number | undefined {
-  if (
-    !Number.isSafeInteger(weightGrams) ||
-    weightGrams < 1 ||
-    !Number.isSafeInteger(moqSacks) ||
-    moqSacks < 1 ||
-    moqSacks > Math.floor(Number.MAX_SAFE_INTEGER / SACK_WEIGHT_GRAMS)
-  ) {
-    return undefined;
-  }
-  const quantity = Math.ceil((moqSacks * SACK_WEIGHT_GRAMS) / weightGrams);
-  if (!Number.isSafeInteger(quantity) || quantity < 1) {
-    return undefined;
-  }
-  return quantity;
+  return minimumOrderQuantity(weightGrams, moqSacks);
 }
 
 function supportsCartLineArithmetic(

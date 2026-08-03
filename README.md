@@ -77,6 +77,7 @@ Each checkout request includes an idempotency key. Retrying the same key with th
 - **Account page** with password change
 - **Dev mailbox** for inspecting system emails and reset-password links
 - **Async operations** with buyer notifications, cart-only standing orders, captured simulated webhooks, and an admin job queue
+- **Back-in-stock alerts** on sold-out lots, delivered through the job queue when stock returns
 
 ### Quick Order sample
 
@@ -138,6 +139,34 @@ Enable one fault flag under **Administration -> Feature flags**, then drain due 
 - `async.notification_delivery_failure`
 - `async.webhook_processing_failure`
 - `async.standing_order_run_failure`
+
+`async.back_in_stock_failure` is also available, but enable-then-drain reproduces nothing for it: reset data seeds no back-in-stock job, only a pending alert. See **Back-in-Stock Alerts** below for its ordering.
+
+### Back-in-Stock Alerts
+
+After `npm run reset`, SKU `TCM-0034-002` — the **1,000 kg Pallet** lot of **Plaster of Paris** — is active, not backorderable, and has zero stock. It is not the product default, so the `25 kg Sack` lot (`TCM-0034-001`) stays purchasable while the pallet lot reads as sold out. Alice (`alice@example.com`) already holds one `pending` alert against it.
+
+Buyer path: sign in, open the Plaster of Paris product page, select the **1,000 kg Pallet** lot, and choose **Notify me when available**. Alerts are listed and can be cancelled under **Account** (`/account`). The same thing is available over HTTP; every route requires a signed-in session:
+
+```http
+GET    /api/back-in-stock            # optional ?status=pending|notified|cancelled
+POST   /api/back-in-stock            # body: {"variantId": 123}
+DELETE /api/back-in-stock/:subscriptionId
+```
+
+Operator path — how to make an alert fire:
+
+1. Sign in as `admin@example.com` and record a stock receipt for the sold-out variant with the **Admin Inventory Receipt API** below (`POST /api/admin/inventory/receipts` with `variantId`, `quantity`, and a fresh UUID `idempotencyKey`). Send at least the variant's minimum order quantity.
+2. Select **Administration -> Job queue -> Drain due jobs**. This runs the notification job the restock queued: the buyer's **Notifications** inbox shows one `Back in stock` entry and the alert flips to `notified`. The delivery job it queues is dated at that moment, so the drain already in progress does not pick it up.
+3. Select **Drain due jobs** a second time. This runs the delivery job, and the [dev mailbox](http://127.0.0.1:5173/mailbox) then holds one `Back in stock: <product name>` email. `notified` is terminal — further drains add nothing.
+
+Notes on the trigger:
+
+- A receipt **below** the variant's minimum order quantity is a settled outcome, not a failure: the job runs successfully, nobody is notified, and the alert stays `pending`. This cannot be staged on `TCM-0034-002`: a 1,000 kg pallet clears the 4-sack floor on its own, so its minimum order quantity is 1 and no receipt quantity falls below it.
+- The mailbox row is gated on the buyer's `orderUpdatesEmail` preference (on by default). With it off, the in-app notification still appears but no email is written.
+- Admin variant stock writes (creating a lot with positive stock, or an update carrying `stockCount`), return receipts, and order cancellations all restock through the same path and notify the same way.
+- Known limitation: releasing a checkout reservation raises what is available to sell without writing stock, so it does **not** fire an alert. Availability restored purely by reservation release or expiry is not detected.
+- `async.back_in_stock_failure` needs its own ordering, because no back-in-stock job is seeded and none exists until a stock movement queues one. Enable the flag under **Administration -> Feature flags** _first_, then record the receipt in step 1, then drain: the notify job fails deterministically and retries. It also needs a still-`pending` alert, since the trigger only enqueues when one exists — run `npm run reset` beforehand, or use a different buyer or lot, because the alert left `notified` by the happy path above is terminal.
 
 ### Trade Delivery Sites and Billing Entities
 
