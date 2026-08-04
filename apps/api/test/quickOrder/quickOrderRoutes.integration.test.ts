@@ -73,7 +73,7 @@ async function login(app: App): Promise<string> {
   const response = await app.inject({
     method: 'POST',
     url: '/login',
-    payload: { email: ALICE, password: 'Password123!' },
+    payload: { email: ALICE, password: 'Password123!', country: 'UK' },
   });
   assert.equal(response.statusCode, 200);
   return cookieValue(response);

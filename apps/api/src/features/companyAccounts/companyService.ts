@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import type { PublicUser } from '@shop/contracts/auth';
 import type {
   Company,
   CompanyInvite,
@@ -48,13 +49,15 @@ function toMembership(row: CompanyMembershipRow, includeUser = false): CompanyMe
     includeUser &&
     row.email !== undefined &&
     row.display_name !== undefined &&
-    row.user_role !== undefined
+    row.user_role !== undefined &&
+    row.country !== undefined
   )
     membership.user = {
       id: String(row.user_id),
       email: row.email,
       displayName: row.display_name,
       role: row.user_role,
+      country: row.country as PublicUser['country'],
     };
   return membership;
 }

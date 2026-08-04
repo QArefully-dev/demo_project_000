@@ -43,12 +43,13 @@ export default function authRoutes(app: FastifyInstance, { services }: AppContex
       },
     },
     async (request, reply) => {
-      const { email, password, displayName } = request.body;
+      const { email, password, displayName, country } = request.body;
 
       const result = await services.auth.signup({
         email,
         password,
         displayName,
+        country,
         auditContext: anonymousAuditContext(request.id),
       });
 
@@ -87,9 +88,9 @@ export default function authRoutes(app: FastifyInstance, { services }: AppContex
       },
     },
     async (request, reply) => {
-      const { email, password } = request.body;
+      const { email, password, country } = request.body;
 
-      const result = await services.auth.login({ email, password });
+      const result = await services.auth.login({ email, password, country });
 
       if (!result.ok) {
         sendUnauthorized(reply, 'Invalid email or password');
@@ -143,8 +144,8 @@ export default function authRoutes(app: FastifyInstance, { services }: AppContex
       },
     },
     async (request, reply) => {
-      const { email } = request.body;
-      services.passwordReset.request(email, anonymousAuditContext(request.id));
+      const { email, country } = request.body;
+      services.passwordReset.request(email, country, anonymousAuditContext(request.id));
       // Always return success — no user enumeration.
       reply.code(200).send({ success: true as const });
     },

@@ -47,7 +47,7 @@ void test('password reset never restores tombstoned account credentials', async 
     baseUrl: 'https://web.example.test',
   });
 
-  resets.request('deleted-1@tombstone.local');
+  resets.request('deleted-1@tombstone.local', 'UK');
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS total FROM dev_mailbox').get() as { total: number }).total,
     0,

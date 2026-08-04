@@ -153,6 +153,10 @@
     "./back-in-stock": {
       "types": "./dist/backInStock.d.ts",
       "import": "./dist/backInStock.js"
+    },
+    "./country": {
+      "types": "./dist/country.d.ts",
+      "import": "./dist/country.js"
     }
   },
   "dependencies": {

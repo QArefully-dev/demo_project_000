@@ -1,6 +1,6 @@
 # Country Localisation Handoff (high-level plan item 10)
 
-Status: product decisions AGREED 2026-08-03. Not implemented. No coding plan written yet.
+Status: stage 1 landed 2026-08-03. Stages 2 and 3 not implemented. No coding plan written yet for remaining stages.
 Audience: agent writing the coding plan for item 10.
 Source: grilling session against `plans/demo_project_high_level_plan.md` item 10. Decisions are user's, recorded verbatim in intent.
 
@@ -44,6 +44,8 @@ Existing defect this must resolve (stage 3): money formatting is forked ~8 ways 
 - switching admin holds separate cart per country -> one admin can hold 7 independent carts. Cross-contamination is a bug.
 - company accounts are single-country. Invite to user in another country -> rejected with clear message.
 - knock-on: password reset, invites, sessions, account-deletion tombstones all inherit the new uniqueness rule.
+
+**Stage 1 deferral — admin picker unlock.** Stage 1 keeps `countryDisabled = user !== null` (`apps/web/src/components/Header.tsx:20`), so a signed-in admin gets the same disabled, account-bound picker as a customer. The `admin` role unlock described above is intentionally NOT implemented in stage 1 and no admin behaviour was changed. Stage 2 must decide how an admin's browsing country relates to their account country (and to the cart) before the unlock lands. Current stage-1 behaviour is pinned by `apps/web/src/components/Header.test.tsx` ("also disables the country picker for admins in stage 1"); that test must be updated when the unlock ships.
 
 ## Country Selection
 
@@ -97,7 +99,7 @@ Promotions stay in DATABASE. Existing `/admin` promo screens gain a country-targ
 ## Delivery Stages
 
 Three stages, each independently shippable and testable.
-1. country exists: login dropdown, top-bar picker, migration, everything -> `UK`, `US` default. No other visible behaviour change.
+1. country exists: login dropdown, top-bar picker, migration, everything -> `UK`, `US` default. No other visible behaviour change. **Stage 1: landed 2026-08-03.**
 2. behaviour: blocking (category + product), banners, country-targeted promos, cross-border delivery refusal, postcode rules, time-zone delivery cut-off. Security tests live here.
 3. sweep: translation lookup layer, formatting consolidation, money/date formatter defork.
 
@@ -124,4 +126,4 @@ DONE 2026-08-03. `plans/demo_project_high_level_plan.md` rewritten to match this
 - "Landed 8 and 15 constrain later work" -> corrected. One shared stock pool means country availability never writes stock and never raises a stock-change event, so item 10 does NOT call `StockChangeObserver`. Prior text assumed it might.
 - "Landed 9 constrains later work" -> corrected. Per-country profile is a checked-in file, not admin data; only promo country targeting and the country-scoped shell are administered.
 
-No open decisions remain. Next step is a coding plan for stage 1.
+No open decisions remain. Stage 1 is landed; next step is a coding plan for stage 2.

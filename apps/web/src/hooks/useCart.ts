@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
+import type { Country } from '@shop/contracts/country';
 import type { Cart } from '@shop/contracts/cart';
 import * as api from '../api/cart';
 import * as bundlesApi from '../api/bundles';
@@ -9,6 +10,7 @@ import * as savedListsApi from '../api/savedLists';
 import { ApiError, isMissingCartError } from '../api/client';
 import { clearCartId, getCartId } from '../lib/cartStorage';
 import { createCartClient } from './cartClient';
+import { useOptionalCountry } from './CountryContext';
 import type { CreateCustomBlendBody, ReplaceCustomBlendBody } from '@shop/contracts/custom-blends';
 import type { ReorderResponse } from '@shop/contracts/reorder';
 import type { QuickOrderResponse } from '@shop/contracts/quick-order';
@@ -43,6 +45,7 @@ type CartEvent =
   | { type: 'failed'; error: string }
   | { type: 'action-started'; pendingKey: string; action: CartAction }
   | { type: 'action-finished'; pendingKey: string }
+  | { type: 'country-changed'; cartId: string | null }
   | { type: 'cleared' };
 
 function cartReducer(state: CartState, event: CartEvent): CartState {
@@ -64,6 +67,16 @@ function cartReducer(state: CartState, event: CartEvent): CartState {
       delete pendingActions[event.pendingKey];
       return { ...state, pendingActions };
     }
+    case 'country-changed':
+      // The previous country's cart must never stay rendered or targeted; only its stored id
+      // for the new country survives, and it is re-validated by the initialization that follows.
+      return {
+        cart: null,
+        cartId: event.cartId,
+        error: null,
+        pendingActions: {},
+        status: 'initializing',
+      };
     case 'cleared':
       return { cart: null, cartId: null, error: null, pendingActions: {}, status: 'initializing' };
   }
@@ -115,51 +128,95 @@ function savedListPendingKey(listId: string): string {
   return `saved-list:${listId}`;
 }
 
+/**
+ * One in-flight cart request shared by every caller that would otherwise duplicate it. The
+ * owning country is part of the entry so a request started before a country switch is never
+ * reused after it, and the entry identity lets the settling request clear only its own slot.
+ */
+type SharedCartRequest = { country: Country; promise: Promise<Cart> };
+
 function customBlendPendingKey(baseVariantId: number, configKey?: string): string {
   const blendKey = `blend:${baseVariantId}`;
   return configKey ? `${blendKey}:${configKey}` : blendKey;
 }
 
 export function useCart() {
+  const { activeCountry } = useOptionalCountry();
+  const countryRef = useRef<Country>(activeCountry);
+  countryRef.current = activeCountry;
+
   const [state, dispatch] = useReducer(cartReducer, {
     cart: null,
-    cartId: getCartId(),
+    cartId: getCartId(activeCountry),
     error: null,
     pendingActions: {},
     status: 'initializing',
   });
-  const cartClientRef = useRef<ReturnType<typeof createCartClient>>();
-  const initializationRef = useRef<Promise<Cart> | null>(null);
-  const recoveryRef = useRef<Promise<Cart> | null>(null);
+
+  const cartClient = useMemo(() => createCartClient(activeCountry), [activeCountry]);
+  const cartClientRef = useRef(cartClient);
+  cartClientRef.current = cartClient;
+
+  const initializationRef = useRef<SharedCartRequest | null>(null);
+  const recoveryRef = useRef<SharedCartRequest | null>(null);
   const mutationSequenceRef = useRef(0);
   const committedMutationSequenceRef = useRef(0);
   const mountedRef = useRef(false);
-  const cartIdRef = useRef<string | null>(getCartId());
+  const cartIdRef = useRef<string | null>(getCartId(activeCountry));
+  const renderedCountryRef = useRef<Country>(activeCountry);
 
-  if (!cartClientRef.current) cartClientRef.current = createCartClient();
+  if (renderedCountryRef.current !== activeCountry) {
+    // Re-seed synchronously: a mutation dispatched between this render and the initialization
+    // effect must already target the new country's stored cart, never the previous one.
+    renderedCountryRef.current = activeCountry;
+    cartIdRef.current = getCartId(activeCountry);
+    // The previous country's shared in-flight requests are not cleared here: they own a
+    // `finally` that would then clear the new country's slot and defeat the dedupe. They carry
+    // their owning country instead, so `loadCart`/`recoverCart` below ignore them.
+    dispatch({ type: 'country-changed', cartId: cartIdRef.current });
+  }
 
   const applyCart = useCallback((cart: Cart) => {
     cartIdRef.current = cart.id;
     if (mountedRef.current) dispatch({ type: 'cart-loaded', cart });
   }, []);
 
-  const loadCart = useCallback((): Promise<Cart> => {
-    if (!initializationRef.current) {
-      initializationRef.current = cartClientRef.current!.loadOrCreate().finally(() => {
-        initializationRef.current = null;
-      });
-    }
-    return initializationRef.current;
-  }, []);
+  /**
+   * Shares one in-flight request per slot, scoped to the country that started it. A settling
+   * request clears the slot only while it still owns it, so a request belonging to the previous
+   * country can never evict the current country's in-flight one and let a duplicate be created.
+   */
+  const shareCartRequest = useCallback(
+    (slot: { current: SharedCartRequest | null }, start: () => Promise<Cart>): Promise<Cart> => {
+      const country = countryRef.current;
+      const shared = slot.current;
+      if (shared && shared.country === country) return shared.promise;
 
-  const recoverCart = useCallback((missingCartId: string): Promise<Cart> => {
-    if (!recoveryRef.current) {
-      recoveryRef.current = cartClientRef.current!.recoverMissingCart(missingCartId).finally(() => {
-        recoveryRef.current = null;
-      });
-    }
-    return recoveryRef.current;
-  }, []);
+      // `entry` is only read inside the callback, which cannot run before this binding is
+      // initialized, so the self-reference is safe.
+      const entry: SharedCartRequest = {
+        country,
+        promise: start().finally(() => {
+          if (slot.current === entry) slot.current = null;
+        }),
+      };
+      slot.current = entry;
+      return entry.promise;
+    },
+    [],
+  );
+
+  const loadCart = useCallback(
+    (): Promise<Cart> =>
+      shareCartRequest(initializationRef, () => cartClientRef.current.loadOrCreate()),
+    [shareCartRequest],
+  );
+
+  const recoverCart = useCallback(
+    (missingCartId: string): Promise<Cart> =>
+      shareCartRequest(recoveryRef, () => cartClientRef.current.recoverMissingCart(missingCartId)),
+    [shareCartRequest],
+  );
 
   const applyMutationCart = useCallback(
     (cart: Cart, mutationSequence: number) => {
@@ -172,11 +229,17 @@ export function useCart() {
 
   const initializeCart = useCallback(
     async (status: 'initializing' | 'refreshing', fallback: string): Promise<boolean> => {
+      const requestCountry = countryRef.current;
       if (mountedRef.current) dispatch({ type: 'start', status });
       try {
-        applyCart(await loadCart());
+        const cart = await loadCart();
+        // Stale completion: the buyer switched country while this load was in flight, so the
+        // resolved cart belongs to the previous country and must not land in state.
+        if (countryRef.current !== requestCountry) return false;
+        applyCart(cart);
         return true;
       } catch (error) {
+        if (countryRef.current !== requestCountry) return false;
         if (mountedRef.current)
           dispatch({ type: 'failed', error: getErrorMessage(error, fallback) });
         return false;
@@ -191,7 +254,9 @@ export function useCart() {
     return () => {
       mountedRef.current = false;
     };
-  }, [initializeCart]);
+    // activeCountry is a dependency, not an unused value: each country owns its own cart, so a
+    // switch must re-resolve the cart rather than keep the previous country's one.
+  }, [activeCountry, initializeCart]);
 
   const retryCart = useCallback(
     () => initializeCart(cartIdRef.current ? 'refreshing' : 'initializing', 'Failed to load cart'),
@@ -217,6 +282,7 @@ export function useCart() {
       retryAfterRecovery: boolean,
     ): Promise<TResult | false> => {
       const mutationSequence = ++mutationSequenceRef.current;
+      const mutationCountry = countryRef.current;
       if (mountedRef.current) dispatch({ type: 'action-started', pendingKey, action });
 
       try {
@@ -230,7 +296,9 @@ export function useCart() {
         try {
           const result = await operation(activeCartId);
           const cart = selectCart(result);
-          if (getCartId() === cart.id) applyMutationCart(cart, mutationSequence);
+          // Stale completion: the buyer switched country while this mutation was in flight, so
+          // the returned cart belongs to the previous country and must not become the target.
+          if (countryRef.current === mutationCountry) applyMutationCart(cart, mutationSequence);
           return result;
         } catch (error) {
           if (!isMissingCartError(error)) throw error;
@@ -243,7 +311,7 @@ export function useCart() {
 
           const result = await operation(replacementCart.id);
           const cart = selectCart(result);
-          if (getCartId() === cart.id) applyMutationCart(cart, mutationSequence);
+          if (countryRef.current === mutationCountry) applyMutationCart(cart, mutationSequence);
           return result;
         }
       } catch (error) {
@@ -400,7 +468,7 @@ export function useCart() {
   );
 
   const clearCart = useCallback(() => {
-    clearCartId();
+    clearCartId(countryRef.current);
     cartIdRef.current = null;
     if (!mountedRef.current) return;
     dispatch({ type: 'cleared' });

@@ -3,16 +3,21 @@ import { List } from 'lucide-react';
 import { CategoryNav } from './CategoryNav';
 import { SearchBar } from './SearchBar';
 import { AccountMenu } from './AccountMenu';
+import { CountryPicker } from './CountryPicker';
 import { useSavedLists } from '@/hooks/useSavedLists';
 import { CartSheet } from './CartSheet';
 import { NotificationBell } from '@/features/notifications/NotificationBell';
 import { useAuth } from '@/hooks/AuthContext';
+import { useCountry } from '@/hooks/CountryContext';
 
 /** Composes the sticky storefront navigation and customer controls. */
 export function Header() {
   const { user } = useAuth();
+  const { activeCountry, selectCountry } = useCountry();
   const { defaultList } = useSavedLists();
   const defaultItemCount = defaultList?.items.length ?? 0;
+
+  const countryDisabled = user !== null;
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background shadow-sm">
@@ -30,6 +35,11 @@ export function Header() {
             aria-label="Customer tools"
             className="flex items-center justify-end gap-0.5 whitespace-nowrap sm:gap-1 lg:order-2 [&_a:focus-visible]:outline-none [&_a:focus-visible]:ring-2 [&_a:focus-visible]:ring-ring [&_a:focus-visible]:ring-offset-2 [&_button:focus-visible]:ring-ring [&_button:focus-visible]:ring-offset-2"
           >
+            <CountryPicker
+              value={activeCountry}
+              onChange={selectCountry}
+              disabled={countryDisabled}
+            />
             <AccountMenu />
             {user && <NotificationBell />}
             <Link

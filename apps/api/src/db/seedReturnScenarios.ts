@@ -1,3 +1,4 @@
+import { LEGACY_DATA_COUNTRY } from '@shop/contracts';
 import type Database from 'better-sqlite3';
 
 export const DEMO_RETURN_SCENARIO_KEYS = ['bob-delivered-returned'] as const;
@@ -27,7 +28,7 @@ const SCENARIOS: readonly ReturnScenario[] = [
  * Must be called after seedOrderScenarios so the FK targets exist.
  */
 export function seedReturnScenarios(db: Database.Database): void {
-  const findUser = db.prepare('SELECT id FROM users WHERE email = ?');
+  const findUser = db.prepare('SELECT id FROM users WHERE email = ? AND country = ?');
   const findOrder = db.prepare(
     'SELECT id, subtotal_cents, discount_cents, total_cents FROM orders WHERE demo_seed_key = ?',
   );
@@ -78,7 +79,7 @@ export function seedReturnScenarios(db: Database.Database): void {
     VALUES (?, ?, ?, ?, ?, ?)
   `);
 
-  const bob = findUser.get('bob@example.com') as { id: number } | undefined;
+  const bob = findUser.get('bob@example.com', LEGACY_DATA_COUNTRY) as { id: number } | undefined;
   if (!bob) return;
 
   for (const scenario of SCENARIOS) {

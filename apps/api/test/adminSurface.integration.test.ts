@@ -22,7 +22,7 @@ async function login(
   const response = await app.inject({
     method: 'POST',
     url: '/login',
-    payload: { email, password: 'Password123!' },
+    payload: { email, password: 'Password123!', country: 'UK' },
   });
   return {
     statusCode: response.statusCode,
@@ -48,8 +48,12 @@ void test('admin suspension revokes sessions and blocks login until reactivation
   assert.ok(admin.cookie);
   assert.ok(alice.cookie);
 
+  // The seed holds a UK and a DE Alice on the same email, so the lookup must name the country the
+  // `login` helper authenticates with; an email-only lookup resolves to the DE row instead.
   const aliceId = (
-    db.prepare('SELECT id FROM users WHERE email = ?').get('alice@example.com') as { id: number }
+    db
+      .prepare('SELECT id FROM users WHERE email = ? AND country = ?')
+      .get('alice@example.com', 'UK') as { id: number }
   ).id;
   const suspended = await app.inject({
     method: 'POST',

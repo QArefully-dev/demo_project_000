@@ -5,6 +5,7 @@ import { Product } from './products.js';
 import { DeliveryClass, DeliverySummary } from './delivery.js';
 import { CartLineConfigKey, CustomBlendSnapshot } from './customBlends.js';
 import { ClearanceWindow, NextTierProgress } from './pricing.js';
+import { Country } from './country.js';
 
 const SafePositiveInteger = Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER });
 const SafeNonNegativeInteger = Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER });
@@ -113,6 +114,13 @@ export type RemoveFromCartBody = Static<typeof RemoveFromCartBody>;
 
 export const CreateCartResponse = Type.Object({ cartId: Uuid });
 export type CreateCartResponse = Static<typeof CreateCartResponse>;
+
+export const CreateCartBody = Type.Object(
+  { country: Type.Optional(Country) },
+  { additionalProperties: false },
+);
+export type CreateCartBody = Static<typeof CreateCartBody>;
+
 export const CartIdParam = Type.Object({ cartId: Uuid });
 export const CartIdAndProductIdParam = Type.Object({
   cartId: Uuid,

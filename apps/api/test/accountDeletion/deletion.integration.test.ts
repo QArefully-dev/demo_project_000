@@ -223,7 +223,8 @@ void test('account deletion redacts live account data while preserving commerce 
   ).run(companyId, userId, now);
   const current = sessions.create(userId);
   const other = sessions.create(userId);
-  passwordReset.request('delete-me@example.test');
+  // Identity is (email, country) since migration 032; `insertUser` takes the 'UK' column default.
+  passwordReset.request('delete-me@example.test', 'UK');
   assert.equal(
     (
       db
@@ -290,7 +291,7 @@ void test('account deletion redacts live account data while preserving commerce 
   const mailboxBefore = (
     db.prepare('SELECT COUNT(*) AS total FROM dev_mailbox').get() as { total: number }
   ).total;
-  passwordReset.request('delete-me@example.test');
+  passwordReset.request('delete-me@example.test', 'UK');
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS total FROM dev_mailbox').get() as { total: number }).total,
     mailboxBefore,

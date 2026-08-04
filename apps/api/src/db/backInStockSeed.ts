@@ -1,3 +1,4 @@
+import { LEGACY_DATA_COUNTRY } from '@shop/contracts';
 import type Database from 'better-sqlite3';
 
 /** Fixed instant for every back-in-stock seed row, so repeat seeds stay byte-identical. */
@@ -14,9 +15,10 @@ const SOLD_OUT_SKU = 'TCM-0034-002';
 /** The buyer holding the seeded pending subscription. */
 const SUBSCRIBER_EMAIL = 'alice@example.com';
 
-function findUserId(db: Database.Database, email: string): number | undefined {
-  const row = db.prepare('SELECT id FROM users WHERE email = ?').get(email) as
-    { id: number } | undefined;
+function findUserId(db: Database.Database, email: string, country: string): number | undefined {
+  const row = db
+    .prepare('SELECT id FROM users WHERE email = ? AND country = ?')
+    .get(email, country) as { id: number } | undefined;
   return row?.id;
 }
 
@@ -36,7 +38,7 @@ function findVariantId(db: Database.Database, sku: string): number | undefined {
  * never clobbered and a cancelled or notified row is never resurrected as pending.
  */
 export function seedBackInStock(db: Database.Database): void {
-  const subscriberId = findUserId(db, SUBSCRIBER_EMAIL);
+  const subscriberId = findUserId(db, SUBSCRIBER_EMAIL, LEGACY_DATA_COUNTRY);
   if (subscriberId === undefined) return;
   const variantId = findVariantId(db, SOLD_OUT_SKU);
   if (variantId === undefined) return;

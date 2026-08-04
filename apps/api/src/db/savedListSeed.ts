@@ -1,3 +1,4 @@
+import { LEGACY_DATA_COUNTRY } from '@shop/contracts';
 import type Database from 'better-sqlite3';
 
 const SEED_INSTANT = '2026-08-01T09:00:00.000Z';
@@ -17,15 +18,16 @@ const MONTHLY_RESTOCK_ITEMS = [
   { sku: 'SPN-1007-001', quantity: 20 }, // stock is 15
 ] as const;
 
-function findUserId(db: Database.Database, email: string): number | undefined {
-  const row = db.prepare('SELECT id FROM users WHERE email = ?').get(email) as
-    { id: number } | undefined;
+function findUserId(db: Database.Database, email: string, country: string): number | undefined {
+  const row = db
+    .prepare('SELECT id FROM users WHERE email = ? AND country = ?')
+    .get(email, country) as { id: number } | undefined;
   return row?.id;
 }
 
 /** Installs Alice's deterministic saved-list fixtures without touching buyer-created lists. */
 export function seedSavedLists(db: Database.Database): void {
-  const aliceId = findUserId(db, 'alice@example.com');
+  const aliceId = findUserId(db, 'alice@example.com', LEGACY_DATA_COUNTRY);
   if (aliceId === undefined) return;
 
   // A retired lot remains addressable for historical lists, but is unavailable to a fresh cart.

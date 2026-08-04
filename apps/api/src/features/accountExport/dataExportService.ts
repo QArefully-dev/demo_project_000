@@ -4,6 +4,7 @@ import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter, Clock } from '../audit/auditService.js';
 import type { SessionService } from '../auth/sessionService.js';
 import type { SessionUser } from '../auth/sessionRepository.js';
+import { toPublicUser } from '../auth/authService.js';
 import type { MailboxRepository } from '../mailbox/mailboxRepository.js';
 import type { OrderRepository } from '../orders/orderRepository.js';
 import type { PreferencesService } from '../preferences/preferencesService.js';
@@ -71,12 +72,7 @@ export function createDataExportService({
         );
         const snapshot: DataExportResponse = {
           exportedAt,
-          profile: {
-            id: String(user.id),
-            email: user.email,
-            displayName: user.displayName,
-            role: user.role,
-          },
+          profile: toPublicUser(user),
           deliverySites: deliverySites.listActive(user.id).map(toDeliverySite),
           billingEntities: billingEntities.listActive(user.id).map(toBillingEntity),
           orders: ownedOrders,

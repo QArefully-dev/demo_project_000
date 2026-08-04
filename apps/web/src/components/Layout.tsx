@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom';
 import { CartProvider } from '@/hooks/CartContext';
 import { SavedListsProvider } from '@/hooks/SavedListsContext';
 import { AuthProvider } from '@/hooks/AuthContext';
+import { CountryProvider } from '@/hooks/CountryContext';
 import { NotificationsProvider } from '@/hooks/NotificationsContext';
 import { BackInStockProvider } from '@/hooks/BackInStockContext';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -13,27 +14,29 @@ import { Header } from './Header';
 export function Layout() {
   return (
     <AuthProvider>
-      <NotificationsProvider>
-        <BackInStockProvider>
-          <CartProvider>
-            <SavedListsProvider>
-              <ComparisonSelectionProvider>
-                <TooltipProvider>
-                  <ToastProvider>
-                    <div className="flex min-h-screen flex-col bg-background">
-                      <Header />
-                      <main className="content-shell flex-1 py-6 sm:py-8">
-                        <Outlet />
-                      </main>
-                      <Footer />
-                    </div>
-                  </ToastProvider>
-                </TooltipProvider>
-              </ComparisonSelectionProvider>
-            </SavedListsProvider>
-          </CartProvider>
-        </BackInStockProvider>
-      </NotificationsProvider>
+      <CountryProvider>
+        <NotificationsProvider>
+          <BackInStockProvider>
+            <CartProvider>
+              <SavedListsProvider>
+                <ComparisonSelectionProvider>
+                  <TooltipProvider>
+                    <ToastProvider>
+                      <div className="flex min-h-screen flex-col bg-background">
+                        <Header />
+                        <main className="content-shell flex-1 py-6 sm:py-8">
+                          <Outlet />
+                        </main>
+                        <Footer />
+                      </div>
+                    </ToastProvider>
+                  </TooltipProvider>
+                </ComparisonSelectionProvider>
+              </SavedListsProvider>
+            </CartProvider>
+          </BackInStockProvider>
+        </NotificationsProvider>
+      </CountryProvider>
     </AuthProvider>
   );
 }

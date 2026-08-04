@@ -52,7 +52,13 @@ const PREFERENCES: UserPreferences = {
 function exportData(): DataExportResponse {
   return {
     exportedAt: NOW,
-    profile: { id: '1', email: 'buyer@example.test', displayName: 'Buyer', role: 'customer' },
+    profile: {
+      id: '1',
+      email: 'buyer@example.test',
+      displayName: 'Buyer',
+      role: 'customer',
+      country: 'UK',
+    },
     deliverySites: [],
     billingEntities: [],
     orders: [],

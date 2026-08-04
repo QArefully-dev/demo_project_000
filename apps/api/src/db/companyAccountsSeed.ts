@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { LEGACY_DATA_COUNTRY } from '@shop/contracts';
 import type Database from 'better-sqlite3';
 
 const SEED_INSTANT = '2026-07-29T09:00:00.000Z';
@@ -8,17 +9,18 @@ function inviteDigest(label: string): string {
   return createHash('sha256').update(`account-depth-seed:${label}`).digest('hex');
 }
 
-function findUserId(db: Database.Database, email: string): number | undefined {
-  const row = db.prepare('SELECT id FROM users WHERE email = ?').get(email) as
-    { id: number } | undefined;
+function findUserId(db: Database.Database, email: string, country: string): number | undefined {
+  const row = db
+    .prepare('SELECT id FROM users WHERE email = ? AND country = ?')
+    .get(email, country) as { id: number } | undefined;
   return row?.id;
 }
 
 /** Installs deterministic company fixtures without changing customer-created company records. */
 export function seedCompanyAccounts(db: Database.Database): void {
-  const ownerId = findUserId(db, 'acme@example.com');
-  const buyerId = findUserId(db, 'buyer@example.com');
-  const approverId = findUserId(db, 'approver@example.com');
+  const ownerId = findUserId(db, 'acme@example.com', LEGACY_DATA_COUNTRY);
+  const buyerId = findUserId(db, 'buyer@example.com', LEGACY_DATA_COUNTRY);
+  const approverId = findUserId(db, 'approver@example.com', LEGACY_DATA_COUNTRY);
   // Account deletion tombstones its fixture email. Seed must not recreate or partially restore it;
   // resetDatabase is the explicit path for recreating the complete company fixture.
   if (ownerId === undefined || buyerId === undefined || approverId === undefined) return;

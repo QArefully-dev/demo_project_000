@@ -6,6 +6,7 @@ export interface AdminUserRecord {
   email: string;
   displayName: string;
   role: PublicUser['role'];
+  country: string;
   suspendedAt: string | null;
   suspensionReason: string | null;
   suspendedByUserId: number | null;
@@ -16,6 +17,7 @@ interface AdminUserRow {
   email: string;
   display_name: string;
   role: PublicUser['role'];
+  country: string;
   suspended_at: string | null;
   suspension_reason: string | null;
   suspended_by_user_id: number | null;
@@ -42,6 +44,7 @@ function toRecord(row: AdminUserRow): AdminUserRecord {
     email: row.email,
     displayName: row.display_name,
     role: row.role,
+    country: row.country,
     suspendedAt: row.suspended_at,
     suspensionReason: row.suspension_reason,
     suspendedByUserId: row.suspended_by_user_id,
@@ -49,7 +52,7 @@ function toRecord(row: AdminUserRow): AdminUserRecord {
 }
 
 export function createUserAdminRepository(db: Database.Database): UserAdminRepository {
-  const select = `SELECT id, email, display_name, role, suspended_at, suspension_reason,
+  const select = `SELECT id, email, display_name, role, country, suspended_at, suspension_reason,
     suspended_by_user_id FROM users`;
   const get = (userId: number): AdminUserRecord | undefined => {
     const row = db.prepare(`${select} WHERE id = ?`).get(userId) as AdminUserRow | undefined;

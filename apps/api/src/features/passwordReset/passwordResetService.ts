@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import type { Country } from '@shop/contracts/country';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
@@ -14,7 +15,7 @@ export type PasswordResetResult =
 export type ResetTokenSource = () => string;
 
 export interface PasswordResetService {
-  request(email: string, context?: AuditContext): void;
+  request(email: string, country: Country, context?: AuditContext): void;
   reset(params: {
     token: string;
     newPassword: string;
@@ -47,12 +48,12 @@ export function createPasswordResetService(dependencies: {
   new URL(dependencies.baseUrl);
 
   return {
-    request(email, context) {
+    request(email, country, context) {
       if (context && context.actor.type !== 'anonymous') {
         throw new Error('Password reset request audit requires an anonymous actor');
       }
       const now = dependencies.clock.now();
-      const user = dependencies.repository.findUserByEmail(normalizeEmail(email));
+      const user = dependencies.repository.findUserByEmail(normalizeEmail(email), country);
       if (!user) return;
 
       const token = tokenSource();

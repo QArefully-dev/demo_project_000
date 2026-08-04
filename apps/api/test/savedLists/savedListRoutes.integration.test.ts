@@ -23,7 +23,7 @@ async function signup(app: Awaited<ReturnType<typeof buildApp>>, email: string):
   const response = await app.inject({
     method: 'POST',
     url: '/signup',
-    payload: { email, password: 'password-one', displayName: 'Buyer' },
+    payload: { email, password: 'password-one', displayName: 'Buyer', country: 'UK' },
   });
   assert.equal(response.statusCode, 201, response.body);
   return cookie(response);
@@ -33,7 +33,7 @@ async function login(app: Awaited<ReturnType<typeof buildApp>>, email: string): 
   const response = await app.inject({
     method: 'POST',
     url: '/login',
-    payload: { email, password: 'Password123!' },
+    payload: { email, password: 'Password123!', country: 'UK' },
   });
   assert.equal(response.statusCode, 200, response.body);
   return cookie(response);

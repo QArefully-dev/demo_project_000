@@ -43,6 +43,7 @@ void test('auth transport rejects unconstrained email and password values', () =
       email: 'shopper@example.test',
       password: 'password8',
       displayName: 'A',
+      country: 'UK',
     }),
     true,
   );
@@ -159,6 +160,7 @@ void test('current-user transport contract accepts public user or null', () => {
       email: 'shopper@example.test',
       displayName: 'Shopper',
       role: 'customer',
+      country: 'UK',
     }),
     true,
   );

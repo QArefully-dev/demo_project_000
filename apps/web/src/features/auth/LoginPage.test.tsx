@@ -17,6 +17,10 @@ vi.mock('@/hooks/AuthContext', () => ({
   useAuth: () => authState,
 }));
 
+vi.mock('@/hooks/CountryContext', () => ({
+  useCountry: () => ({ activeCountry: 'DE' as const }),
+}));
+
 function Location() {
   const location = useLocation();
   return <output>{`${location.pathname}${location.search}${location.hash}`}</output>;
@@ -58,6 +62,7 @@ describe('login return navigation', () => {
     expect(
       await screen.findByText('/products/powdered-water?sort=highest#reviews'),
     ).toBeInTheDocument();
+    expect(authState.login).toHaveBeenCalledWith('shopper@example.test', 'password', 'DE');
   });
 
   it('falls back to home for direct and hostile return values', async () => {

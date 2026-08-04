@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/AuthContext';
+import { useCountry } from '@/hooks/CountryContext';
+import { SUPPORTED_COUNTRIES, type Country } from '@shop/contracts/country';
 import { Button } from '@/components/ui/button';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { ApiError } from '@/api/client';
@@ -8,11 +10,13 @@ import { resolveLoginReturnPath } from './loginReturnPath';
 
 export function LoginPage() {
   const { login } = useAuth();
+  const { activeCountry } = useCountry();
   const location = useLocation();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [country, setCountry] = useState<Country>(activeCountry);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -24,10 +28,14 @@ export function LoginPage() {
       setError('Email and password are required');
       return;
     }
+    if (!SUPPORTED_COUNTRIES.includes(country)) {
+      setError('Invalid country selection');
+      return;
+    }
 
     setSubmitting(true);
     try {
-      await login(email, password);
+      await login(email, password, country);
       navigate(resolveLoginReturnPath(location.state), { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
@@ -75,6 +83,24 @@ export function LoginPage() {
             className="mt-1 block w-full rounded-md border px-3 py-2 text-sm"
             placeholder="Enter your password"
           />
+        </div>
+
+        <div>
+          <label htmlFor="login-country" className="block text-sm font-medium">
+            Country
+          </label>
+          <select
+            id="login-country"
+            value={country}
+            onChange={(e) => setCountry(e.target.value as Country)}
+            className="mt-1 block w-full rounded-md border px-3 py-2 text-sm"
+          >
+            {SUPPORTED_COUNTRIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
         </div>
 
         <Button type="submit" disabled={submitting} className="w-full">

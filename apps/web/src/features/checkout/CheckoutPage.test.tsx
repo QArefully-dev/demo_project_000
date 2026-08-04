@@ -88,6 +88,7 @@ const signedInUser = {
   email: 'buyer@example.test',
   displayName: 'Trade Buyer',
   role: 'customer' as const,
+  country: 'UK' as const,
 };
 
 function mockAnonymous() {

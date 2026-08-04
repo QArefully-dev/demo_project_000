@@ -39,7 +39,7 @@ export interface CartLineRow {
 }
 
 export interface CartRepository {
-  create(id: string): void;
+  create(id: string, country: string): void;
   exists(cartId: string): boolean;
   listLines(cartId: string): CartLineRow[];
   listEligibleCustomBlendFacts(variantIds: number[]): CustomBlendFactRow[];
@@ -79,8 +79,8 @@ export interface CartRepository {
 
 export function createCartRepository(db: Database.Database): CartRepository {
   return {
-    create(id) {
-      db.prepare('INSERT INTO carts (id) VALUES (?)').run(id);
+    create(id, country) {
+      db.prepare('INSERT INTO carts (id, country) VALUES (?, ?)').run(id, country);
     },
     exists(cartId) {
       return db.prepare('SELECT 1 FROM carts WHERE id = ?').get(cartId) !== undefined;

@@ -1,5 +1,6 @@
 import { createHash, scryptSync } from 'node:crypto';
 import { CATALOG_PRODUCTS, CURATED_BUNDLES, validateCatalog } from '@shop/catalog';
+import { LEGACY_DATA_COUNTRY } from '@shop/contracts';
 import type Database from 'better-sqlite3';
 import { catalogProductSpecifications } from '../features/catalog/catalogSpecifications.js';
 import { seedOrderScenarios } from './orderSeedScenarios.js';
@@ -10,12 +11,48 @@ import { seedAsyncScenarios } from './seedAsyncScenarios.js';
 import { seedBackInStock } from './backInStockSeed.js';
 
 const USERS = [
-  { id: 1, email: 'alice@example.com', display_name: 'Alice', role: 'customer' },
-  { id: 2, email: 'bob@example.com', display_name: 'Bob', role: 'customer' },
-  { id: 3, email: 'admin@example.com', display_name: 'Admin', role: 'admin' },
-  { id: 4, email: 'acme@example.com', display_name: 'Acme Owner', role: 'customer' },
-  { id: 5, email: 'buyer@example.com', display_name: 'Acme Buyer', role: 'customer' },
-  { id: 6, email: 'approver@example.com', display_name: 'Acme Approver', role: 'customer' },
+  {
+    id: 1,
+    email: 'alice@example.com',
+    display_name: 'Alice',
+    role: 'customer',
+    country: LEGACY_DATA_COUNTRY,
+  },
+  {
+    id: 2,
+    email: 'bob@example.com',
+    display_name: 'Bob',
+    role: 'customer',
+    country: LEGACY_DATA_COUNTRY,
+  },
+  {
+    id: 3,
+    email: 'admin@example.com',
+    display_name: 'Admin',
+    role: 'admin',
+    country: LEGACY_DATA_COUNTRY,
+  },
+  {
+    id: 4,
+    email: 'acme@example.com',
+    display_name: 'Acme Owner',
+    role: 'customer',
+    country: LEGACY_DATA_COUNTRY,
+  },
+  {
+    id: 5,
+    email: 'buyer@example.com',
+    display_name: 'Acme Buyer',
+    role: 'customer',
+    country: LEGACY_DATA_COUNTRY,
+  },
+  {
+    id: 6,
+    email: 'approver@example.com',
+    display_name: 'Acme Approver',
+    role: 'customer',
+    country: LEGACY_DATA_COUNTRY,
+  },
 ] as const;
 
 const ADMIN_SUSPENDED_USER = {
@@ -23,8 +60,16 @@ const ADMIN_SUSPENDED_USER = {
   email: 'suspended@example.com',
   display_name: 'Suspended Demo',
   role: 'customer',
+  country: LEGACY_DATA_COUNTRY,
   suspended_at: '2026-07-28T12:00:00.000Z',
   suspension_reason: 'Seeded administration fixture',
+} as const;
+
+const DE_ALICE = {
+  email: 'alice@example.com',
+  display_name: 'Alice',
+  role: 'customer',
+  country: 'DE',
 } as const;
 
 const ADMIN_DEACTIVATED_PROMO = {
@@ -358,8 +403,11 @@ const SEED_BILLING_ENTITIES = [
 /** Fixed creation instant for every seeded trade-account row. */
 const TRADE_ACCOUNT_SEED_INSTANT = '2026-07-01T09:00:00.000Z';
 
-function seededPassword(email: string): string {
-  const salt = createHash('sha256').update(`seed-salt-${email}`).digest('hex').slice(0, 64);
+function seededPassword(email: string, country: string): string {
+  const salt = createHash('sha256')
+    .update(`seed-salt-${email}-${country}`)
+    .digest('hex')
+    .slice(0, 64);
   return `${salt}.${scryptSync('Password123!', salt, 64).toString('hex')}`;
 }
 
@@ -641,20 +689,49 @@ export function seedDatabase(db: Database.Database): void {
     upsertAdminPromo.run(ADMIN_DEACTIVATED_PROMO);
 
     const insertUser = db.prepare(`
-      INSERT OR IGNORE INTO users (id, email, display_name, password_hash, password_salt, role)
-      VALUES (@id, @email, @display_name, @password_hash, @password_salt, @role)
+      INSERT OR IGNORE INTO users (id, email, display_name, password_hash, password_salt, role, country)
+      VALUES (@id, @email, @display_name, @password_hash, @password_salt, @role, @country)
     `);
     for (const user of USERS) {
-      insertUser.run({ ...user, password_hash: seededPassword(user.email), password_salt: '' });
+      insertUser.run({
+        ...user,
+        password_hash: seededPassword(user.email, user.country),
+        password_salt: '',
+      });
     }
+
+    // DE Alice fixture — separate country, distinct password, own cart.
+    // The primary key is left to AUTOINCREMENT: pinning it collided with whatever row already
+    // occupied that id on a database seeded before this branch, and `INSERT OR IGNORE` then
+    // silently dropped the fixture. Idempotency keys on the `UNIQUE (email, country)` constraint
+    // from migration 032 instead, which is the fixture's real identity. Nothing may assume a
+    // fixed id for this row — resolve it by (email, country).
+    db.prepare(
+      `
+      INSERT OR IGNORE INTO users (email, display_name, password_hash, password_salt, role, country)
+      VALUES (@email, @display_name, @password_hash, @password_salt, @role, @country)
+    `,
+    ).run({
+      ...DE_ALICE,
+      password_hash: seededPassword(DE_ALICE.email, DE_ALICE.country),
+      password_salt: '',
+    });
+    const deAliceCartId = '00000000-0000-4000-8000-de0000000001';
+    db.prepare(
+      `
+      INSERT OR IGNORE INTO carts (id, created_at, updated_at, country)
+      VALUES (?, '2026-07-01T09:00:00.000Z', '2026-07-01T09:00:00.000Z', 'DE')
+    `,
+    ).run(deAliceCartId);
+
     seedCompanyAccounts(db);
 
     const upsertSuspendedUser = db.prepare(`
       INSERT INTO users
-        (email, display_name, password_hash, password_salt, role, suspended_at, suspension_reason, suspended_by_user_id)
+        (email, country, display_name, password_hash, password_salt, role, suspended_at, suspension_reason, suspended_by_user_id)
       VALUES
-        (@email, @display_name, @password_hash, @password_salt, @role, @suspended_at, @suspension_reason, @suspended_by_user_id)
-      ON CONFLICT(email) DO UPDATE SET
+        (@email, @country, @display_name, @password_hash, @password_salt, @role, @suspended_at, @suspension_reason, @suspended_by_user_id)
+      ON CONFLICT(email, country) DO UPDATE SET
         display_name = excluded.display_name,
         password_hash = excluded.password_hash,
         password_salt = excluded.password_salt,
@@ -665,7 +742,7 @@ export function seedDatabase(db: Database.Database): void {
     `);
     upsertSuspendedUser.run({
       ...ADMIN_SUSPENDED_USER,
-      password_hash: seededPassword(ADMIN_SUSPENDED_USER.email),
+      password_hash: seededPassword(ADMIN_SUSPENDED_USER.email, ADMIN_SUSPENDED_USER.country),
       password_salt: '',
       suspended_by_user_id: null,
     });
@@ -684,7 +761,9 @@ export function seedDatabase(db: Database.Database): void {
     // Trade-account records are insert-only on a fixed id, so a buyer who renames, retires, or
     // re-points the default of a seeded row keeps that change across later `npm run seed` calls.
     // `resetDatabase` clears `users`, and both tables cascade from it, so reset restores these rows.
-    const userIdByEmail = db.prepare('SELECT id FROM users WHERE email = ?').pluck();
+    const userIdByEmail = db
+      .prepare('SELECT id FROM users WHERE email = ? AND country = ?')
+      .pluck();
 
     const insertDeliverySite = db.prepare(`
       INSERT OR IGNORE INTO delivery_sites
@@ -697,7 +776,7 @@ export function seedDatabase(db: Database.Database): void {
          @address_country_code, @is_default, 1, @created_at, @updated_at)
     `);
     for (const site of SEED_DELIVERY_SITES) {
-      const userId = userIdByEmail.get(site.user_email) as number | undefined;
+      const userId = userIdByEmail.get(site.user_email, LEGACY_DATA_COUNTRY) as number | undefined;
       if (userId === undefined) continue;
       insertDeliverySite.run({
         id: site.id,
@@ -728,7 +807,8 @@ export function seedDatabase(db: Database.Database): void {
          @address_country_code, @is_default, 1, @created_at, @updated_at)
     `);
     for (const entity of SEED_BILLING_ENTITIES) {
-      const userId = userIdByEmail.get(entity.user_email) as number | undefined;
+      const userId = userIdByEmail.get(entity.user_email, LEGACY_DATA_COUNTRY) as
+        number | undefined;
       if (userId === undefined) continue;
       insertBillingEntity.run({
         id: entity.id,

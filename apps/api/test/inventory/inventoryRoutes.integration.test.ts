@@ -18,7 +18,7 @@ async function login(app: Awaited<ReturnType<typeof buildApp>>, email: string): 
   const response = await app.inject({
     method: 'POST',
     url: '/login',
-    payload: { email, password: 'Password123!' },
+    payload: { email, password: 'Password123!', country: 'UK' },
   });
   assert.equal(response.statusCode, 200);
   return cookieValue(response);

@@ -1,3 +1,4 @@
+import { LEGACY_DATA_COUNTRY } from '@shop/contracts';
 import type Database from 'better-sqlite3';
 
 export const ASYNC_SEED_INSTANT = '2026-08-02T09:00:00.000Z';
@@ -26,9 +27,10 @@ function requiredId(
 export function seedAsyncScenarios(db: Database.Database): void {
   const aliceId = requiredId(
     db,
-    'SELECT id FROM users WHERE email = ?',
+    'SELECT id FROM users WHERE email = ? AND country = ?',
     'Alice user',
     'alice@example.com',
+    LEGACY_DATA_COUNTRY,
   );
   const upsertFlag = db.prepare(`
     INSERT INTO feature_flags (key, description, enabled, updated_at, updated_by_user_id)

@@ -1,11 +1,13 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { EmailAddress, Password, SuccessResponse } from './common.js';
+import { Country } from './country.js';
 
 export const PublicUser = Type.Object({
   id: Type.String({ minLength: 1 }),
   email: EmailAddress,
   displayName: Type.String({ minLength: 1, maxLength: 120 }),
   role: Type.Union([Type.Literal('customer'), Type.Literal('admin')]),
+  country: Country,
 });
 export type PublicUser = Static<typeof PublicUser>;
 
@@ -27,11 +29,12 @@ export const SignupBody = Type.Object({
   email: EmailAddress,
   password: Password,
   displayName: Type.String({ minLength: 1, maxLength: 120 }),
+  country: Country,
 });
 export type SignupBody = Static<typeof SignupBody>;
-export const LoginBody = Type.Object({ email: EmailAddress, password: Password });
+export const LoginBody = Type.Object({ email: EmailAddress, password: Password, country: Country });
 export type LoginBody = Static<typeof LoginBody>;
-export const ForgotPasswordBody = Type.Object({ email: EmailAddress });
+export const ForgotPasswordBody = Type.Object({ email: EmailAddress, country: Country });
 export type ForgotPasswordBody = Static<typeof ForgotPasswordBody>;
 export const ResetPasswordBody = Type.Object({
   token: Type.String({ minLength: 1, maxLength: 512 }),

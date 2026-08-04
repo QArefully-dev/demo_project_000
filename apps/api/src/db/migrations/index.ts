@@ -30,6 +30,7 @@ import { retiredVariantSortOrderMigration } from './028_retired_variant_sort_ord
 import { savedListsMigration } from './029_saved_lists.js';
 import { asyncBehaviorMigration } from './030_async_behavior.js';
 import { backInStockMigration } from './031_back_in_stock.js';
+import { countryLocalisationMigration } from './032_country_localisation.js';
 
 export const migrations: readonly Migration[] = [
   initialMigration,
@@ -63,4 +64,5 @@ export const migrations: readonly Migration[] = [
   savedListsMigration,
   asyncBehaviorMigration,
   backInStockMigration,
+  countryLocalisationMigration,
 ];

@@ -1,17 +1,21 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/AuthContext';
+import { useCountry } from '@/hooks/CountryContext';
+import { SUPPORTED_COUNTRIES, type Country } from '@shop/contracts/country';
 import { Button } from '@/components/ui/button';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { ApiError } from '@/api/client';
 
 export function SignupPage() {
   const { signup } = useAuth();
+  const { activeCountry } = useCountry();
   const navigate = useNavigate();
 
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [country, setCountry] = useState<Country>(activeCountry);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -31,10 +35,14 @@ export function SignupPage() {
       setError('Password must be at least 8 characters');
       return;
     }
+    if (!SUPPORTED_COUNTRIES.includes(country)) {
+      setError('Invalid country selection');
+      return;
+    }
 
     setSubmitting(true);
     try {
-      await signup(email, password, displayName);
+      await signup(email, password, displayName, country);
       navigate('/', { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
@@ -97,6 +105,24 @@ export function SignupPage() {
             className="mt-1 block w-full rounded-md border px-3 py-2 text-sm"
             placeholder="At least 8 characters"
           />
+        </div>
+
+        <div>
+          <label htmlFor="signup-country" className="block text-sm font-medium">
+            Country
+          </label>
+          <select
+            id="signup-country"
+            value={country}
+            onChange={(e) => setCountry(e.target.value as Country)}
+            className="mt-1 block w-full rounded-md border px-3 py-2 text-sm"
+          >
+            {SUPPORTED_COUNTRIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
         </div>
 
         <Button type="submit" disabled={submitting} className="w-full">
