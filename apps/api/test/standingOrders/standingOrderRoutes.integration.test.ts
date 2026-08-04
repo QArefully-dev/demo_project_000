@@ -24,7 +24,7 @@ async function signup(app: Awaited<ReturnType<typeof buildApp>>, email: string):
   const response = await app.inject({
     method: 'POST',
     url: '/signup',
-    payload: { email, password: 'password-one', displayName: 'Buyer' },
+    payload: { email, password: 'password-one', displayName: 'Buyer', country: 'UK' },
   });
   assert.equal(response.statusCode, 201, response.body);
   return cookie(response);

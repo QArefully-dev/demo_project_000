@@ -64,6 +64,7 @@ void test('auth services isolate sessions, reset tokens, and mailbox', async (t)
     email: 'alice@example.test',
     password: 'password-one',
     displayName: 'Alice',
+    country: 'UK',
   };
   await t.test('duplicate signup race maps one account to one clean conflict', async () => {
     const [first, second] = await Promise.all(
@@ -86,7 +87,7 @@ void test('auth services isolate sessions, reset tokens, and mailbox', async (t)
     const response = await app.inject({
       method: 'POST',
       url: '/forgot-password',
-      payload: { email: signupBody.email },
+      payload: { email: signupBody.email, country: 'UK' },
     });
     assert.equal(response.statusCode, 200);
     assert.deepEqual(
@@ -125,7 +126,7 @@ void test('auth services isolate sessions, reset tokens, and mailbox', async (t)
     await app.inject({
       method: 'POST',
       url: '/forgot-password',
-      payload: { email: signupBody.email },
+      payload: { email: signupBody.email, country: 'UK' },
     });
     const reset = await app.inject({
       method: 'POST',
@@ -156,7 +157,7 @@ void test('auth services isolate sessions, reset tokens, and mailbox', async (t)
         await app.inject({
           method: 'POST',
           url: '/login',
-          payload: { email: signupBody.email, password: 'password-one' },
+          payload: { email: signupBody.email, password: 'password-one', country: 'UK' },
         })
       ).statusCode,
       401,
@@ -166,7 +167,7 @@ void test('auth services isolate sessions, reset tokens, and mailbox', async (t)
         await app.inject({
           method: 'POST',
           url: '/login',
-          payload: { email: signupBody.email, password: 'password-two' },
+          payload: { email: signupBody.email, password: 'password-two', country: 'UK' },
         })
       ).statusCode,
       200,
@@ -177,14 +178,19 @@ void test('auth services isolate sessions, reset tokens, and mailbox', async (t)
     const signup = await app.inject({
       method: 'POST',
       url: '/signup',
-      payload: { email: 'bob@example.test', password: 'password-one', displayName: 'Bob' },
+      payload: {
+        email: 'bob@example.test',
+        password: 'password-one',
+        displayName: 'Bob',
+        country: 'UK',
+      },
     });
     assert.equal(signup.statusCode, 201);
     token = 'raw-reset-token-three';
     await app.inject({
       method: 'POST',
       url: '/forgot-password',
-      payload: { email: 'bob@example.test' },
+      payload: { email: 'bob@example.test', country: 'UK' },
     });
     db.exec(
       `CREATE TRIGGER abort_reset_session_delete BEFORE DELETE ON sessions BEGIN SELECT RAISE(ABORT, 'session delete failed'); END`,
@@ -258,7 +264,12 @@ void test('auth audit events are atomic, privacy-bounded, and mutation-only', as
   const signup = await app.inject({
     method: 'POST',
     url: '/signup',
-    payload: { email: 'audit@example.test', password: 'password-one', displayName: 'Audit User' },
+    payload: {
+      email: 'audit@example.test',
+      password: 'password-one',
+      displayName: 'Audit User',
+      country: 'UK',
+    },
   });
   assert.equal(signup.statusCode, 201);
   assert.deepEqual(auditActions(db), ['auth.user_signed_up', 'auth.session_created']);
@@ -273,7 +284,7 @@ void test('auth audit events are atomic, privacy-bounded, and mutation-only', as
       await app.inject({
         method: 'POST',
         url: '/signup',
-        payload: { email: 'invalid', password: 'short', displayName: '' },
+        payload: { email: 'invalid', password: 'short', displayName: '', country: 'UK' },
       })
     ).statusCode,
     400,
@@ -283,7 +294,7 @@ void test('auth audit events are atomic, privacy-bounded, and mutation-only', as
       await app.inject({
         method: 'POST',
         url: '/login',
-        payload: { email: 'audit@example.test', password: 'wrong-password' },
+        payload: { email: 'audit@example.test', password: 'wrong-password', country: 'UK' },
       })
     ).statusCode,
     401,
@@ -293,7 +304,7 @@ void test('auth audit events are atomic, privacy-bounded, and mutation-only', as
       await app.inject({
         method: 'POST',
         url: '/forgot-password',
-        payload: { email: 'unknown@example.test' },
+        payload: { email: 'unknown@example.test', country: 'UK' },
       })
     ).statusCode,
     200,
@@ -303,7 +314,7 @@ void test('auth audit events are atomic, privacy-bounded, and mutation-only', as
   await app.inject({
     method: 'POST',
     url: '/forgot-password',
-    payload: { email: 'audit@example.test' },
+    payload: { email: 'audit@example.test', country: 'UK' },
   });
   assert.equal(
     (
@@ -329,7 +340,7 @@ void test('auth audit events are atomic, privacy-bounded, and mutation-only', as
   const login = await app.inject({
     method: 'POST',
     url: '/login',
-    payload: { email: 'audit@example.test', password: 'password-two' },
+    payload: { email: 'audit@example.test', password: 'password-two', country: 'UK' },
   });
   assert.equal(login.statusCode, 200);
   const cookie = sessionCookie(login);
@@ -377,7 +388,12 @@ void test('auth audit events are atomic, privacy-bounded, and mutation-only', as
   const failedSignup = await app.inject({
     method: 'POST',
     url: '/signup',
-    payload: { email: 'rollback@example.test', password: 'password-one', displayName: 'Rollback' },
+    payload: {
+      email: 'rollback@example.test',
+      password: 'password-one',
+      displayName: 'Rollback',
+      country: 'UK',
+    },
   });
   assert.equal(failedSignup.statusCode, 500);
   assert.equal(
@@ -413,7 +429,7 @@ void test('auth audit events are atomic, privacy-bounded, and mutation-only', as
       await app.inject({
         method: 'POST',
         url: '/forgot-password',
-        payload: { email: 'audit@example.test' },
+        payload: { email: 'audit@example.test', country: 'UK' },
       })
     ).statusCode,
     500,
@@ -432,7 +448,7 @@ void test('auth audit events are atomic, privacy-bounded, and mutation-only', as
   const currentLogin = await app.inject({
     method: 'POST',
     url: '/login',
-    payload: { email: 'audit@example.test', password: 'password-three' },
+    payload: { email: 'audit@example.test', password: 'password-three', country: 'UK' },
   });
   assert.equal(currentLogin.statusCode, 200);
   db.exec(
@@ -453,7 +469,7 @@ void test('auth audit events are atomic, privacy-bounded, and mutation-only', as
       await app.inject({
         method: 'POST',
         url: '/login',
-        payload: { email: 'audit@example.test', password: 'password-three' },
+        payload: { email: 'audit@example.test', password: 'password-three', country: 'UK' },
       })
     ).statusCode,
     200,
@@ -465,7 +481,7 @@ void test('auth audit events are atomic, privacy-bounded, and mutation-only', as
       await app.inject({
         method: 'POST',
         url: '/forgot-password',
-        payload: { email: 'audit@example.test' },
+        payload: { email: 'audit@example.test', country: 'UK' },
       })
     ).statusCode,
     200,
@@ -499,7 +515,7 @@ void test('auth audit events are atomic, privacy-bounded, and mutation-only', as
       await app.inject({
         method: 'POST',
         url: '/login',
-        payload: { email: 'audit@example.test', password: 'password-three' },
+        payload: { email: 'audit@example.test', password: 'password-three', country: 'UK' },
       })
     ).statusCode,
     200,
@@ -517,6 +533,7 @@ void test('auth audit events are atomic, privacy-bounded, and mutation-only', as
       email: 'session-rollback@example.test',
       password: 'password-one',
       displayName: 'Session Rollback',
+      country: 'UK',
     },
   });
   assert.equal(signupWithSessionFailure.statusCode, 500);

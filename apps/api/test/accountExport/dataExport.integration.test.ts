@@ -273,11 +273,13 @@ void test('data export is caller-scoped, allowlisted, mailed, and audited', asyn
   assert.equal(response.statusCode, 200, response.body);
   const snapshot = JSON.parse(response.body) as Record<string, unknown>;
   assertNoSecrets(snapshot);
+  // `profile` is the shared PublicUser shape, which carries `country` since migration 032.
   assert.deepEqual(snapshot.profile, {
     id: String(callerId),
     email: 'buyer@example.test',
     displayName: 'Buyer Name',
     role: 'customer',
+    country: 'UK',
   });
   assert.equal((snapshot.deliverySites as Array<{ label: string }>).length, 1);
   assert.equal((snapshot.deliverySites as Array<{ label: string }>)[0]!.label, 'Main Yard');

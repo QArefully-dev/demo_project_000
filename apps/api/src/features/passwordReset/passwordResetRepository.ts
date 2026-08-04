@@ -15,7 +15,7 @@ interface PasswordResetTokenRow {
 }
 
 export interface PasswordResetRepository {
-  findUserByEmail(email: string): { id: number; email: string } | null;
+  findUserByEmail(email: string, country: string): { id: number; email: string } | null;
   create(input: {
     userId: number;
     tokenDigest: string;
@@ -37,14 +37,14 @@ function toToken(row: PasswordResetTokenRow): PasswordResetToken {
 
 export function createPasswordResetRepository(db: Database.Database): PasswordResetRepository {
   return {
-    findUserByEmail(email) {
+    findUserByEmail(email, country) {
       return (
         (db
           .prepare(
             `SELECT id, email FROM users
-             WHERE email = ? AND password_hash != ''`,
+             WHERE email = ? AND country = ? AND password_hash != ''`,
           )
-          .get(email) as { id: number; email: string } | undefined) ?? null
+          .get(email, country) as { id: number; email: string } | undefined) ?? null
       );
     },
     create({ userId, tokenDigest, expiresAt, createdAt }) {

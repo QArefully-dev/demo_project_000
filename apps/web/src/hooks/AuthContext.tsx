@@ -1,12 +1,18 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { PublicUser } from '@shop/contracts/auth';
+import type { Country } from '@shop/contracts/country';
 import { getMe, login as loginApi, signup as signupApi, logout as logoutApi } from '@/api/auth';
 
 interface AuthState {
   user: PublicUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<PublicUser>;
-  signup: (email: string, password: string, displayName: string) => Promise<PublicUser>;
+  login: (email: string, password: string, country: Country) => Promise<PublicUser>;
+  signup: (
+    email: string,
+    password: string,
+    displayName: string,
+    country: Country,
+  ) => Promise<PublicUser>;
   logout: () => Promise<void>;
 }
 
@@ -64,15 +70,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = useCallback(async (email: string, password: string): Promise<PublicUser> => {
-    const result = await loginApi({ email, password });
-    setUser(result);
-    return result;
-  }, []);
+  const login = useCallback(
+    async (email: string, password: string, country: Country): Promise<PublicUser> => {
+      const result = await loginApi({ email, password, country });
+      setUser(result);
+      return result;
+    },
+    [],
+  );
 
   const signup = useCallback(
-    async (email: string, password: string, displayName: string): Promise<PublicUser> => {
-      const result = await signupApi({ email, password, displayName });
+    async (
+      email: string,
+      password: string,
+      displayName: string,
+      country: Country,
+    ): Promise<PublicUser> => {
+      const result = await signupApi({ email, password, displayName, country });
       setUser(result);
       return result;
     },

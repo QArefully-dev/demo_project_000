@@ -1,4 +1,5 @@
 import { CATALOG_PRODUCTS } from '@shop/catalog';
+import { LEGACY_DATA_COUNTRY } from '@shop/contracts';
 import type Database from 'better-sqlite3';
 
 export const DEMO_ORDER_SCENARIO_KEYS = [
@@ -293,7 +294,9 @@ function product(productId: number) {
 
 /** Inserts immutable local-demo order fixtures once. Existing fixture state is never rewritten. */
 export function seedOrderScenarios(db: Database.Database): void {
-  const findUser = db.prepare('SELECT id, display_name, email FROM users WHERE email = ?');
+  const findUser = db.prepare(
+    'SELECT id, display_name, email FROM users WHERE email = ? AND country = ?',
+  );
   const insertOrder = db.prepare(`
     INSERT OR IGNORE INTO orders
       (customer_name, customer_email, shipping_address, subtotal_cents, discount_cents, total_cents, delivery_mode, delivery_charge_cents, delivery_weight_grams, created_at, user_id, lifecycle_status, version, demo_seed_key)
@@ -330,7 +333,7 @@ export function seedOrderScenarios(db: Database.Database): void {
   `);
 
   for (const scenario of SCENARIOS) {
-    const user = findUser.get(scenario.userEmail) as
+    const user = findUser.get(scenario.userEmail, LEGACY_DATA_COUNTRY) as
       { id: number; display_name: string; email: string } | undefined;
     if (!user) throw new Error(`Missing seeded user ${scenario.userEmail} for order scenario`);
     const productLines = scenario.productLines.map((line) => ({

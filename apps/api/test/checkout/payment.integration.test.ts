@@ -703,10 +703,8 @@ void test('atomic checkout orchestration', async (t) => {
     const params = payment(cartId, 'safe-data');
     await checkout(params, { db });
     const stored = db
-      .prepare(
-        'SELECT request_fingerprint, card_last4, card_brand FROM payments WHERE idempotency_key = ?',
-      )
-      .get(params.idempotencyKey) as {
+      .prepare('SELECT * FROM payments WHERE idempotency_key = ?')
+      .get(params.idempotencyKey) as Record<string, unknown> & {
       request_fingerprint: string;
       card_last4: string;
       card_brand: string;
@@ -742,7 +740,63 @@ void test('atomic checkout orchestration', async (t) => {
       { card_last4: stored.card_last4, card_brand: stored.card_brand },
       { card_last4: '4242', card_brand: 'Visa' },
     );
-    assert.equal(JSON.stringify(stored).includes(params.cardNumber.replaceAll(' ', '')), false);
-    assert.equal(JSON.stringify(stored).includes(params.cardCvc), false);
+    // The persisted row is inspected structurally rather than by substring-matching its JSON
+    // dump: `request_fingerprint` is a sha256 digest, and a hex digest can incidentally contain
+    // any short decimal run (the fixture CVC `123` among them), so a substring check against it
+    // is noise, not a signal. The digest gets a shape check; every other value is scanned.
+    assert.match(stored.request_fingerprint, /^[0-9a-f]{64}$/);
+
+    // Card-derived columns are limited to the display-safe pair. A newly persisted `card_cvc`
+    // (or any other `card_*` column) fails here whatever value it carries.
+    assert.deepEqual(
+      Object.keys(stored)
+        .filter((column) => column.startsWith('card_'))
+        .sort(),
+      ['card_brand', 'card_last4'],
+    );
+
+    // Collect every persisted leaf value and key name, descending into JSON-valued columns so a
+    // secret hidden inside `response_json`/`quote_json` is caught as well.
+    const persistedValues: string[] = [];
+    const persistedKeys: string[] = [];
+    const collect = (value: unknown): void => {
+      if (typeof value === 'string') {
+        persistedValues.push(value);
+        try {
+          const parsed: unknown = JSON.parse(value);
+          if (parsed !== null && typeof parsed === 'object') collect(parsed);
+        } catch {
+          // not a JSON-valued column; the raw string is already recorded
+        }
+        return;
+      }
+      if (Array.isArray(value)) {
+        for (const entry of value) collect(entry);
+        return;
+      }
+      if (value !== null && typeof value === 'object') {
+        for (const [key, entry] of Object.entries(value)) {
+          persistedKeys.push(key);
+          collect(entry);
+        }
+      }
+    };
+    for (const [column, value] of Object.entries(stored)) {
+      persistedKeys.push(column);
+      if (column === 'request_fingerprint') continue;
+      collect(value);
+    }
+
+    const secretKeyPattern = /cvc|cvv|securitycode|cardnumber|^pan$/i;
+    assert.deepEqual(
+      persistedKeys.filter((key) => secretKeyPattern.test(key.replaceAll('_', ''))),
+      [],
+      'payments row exposes a field named after card secret material',
+    );
+    const pan = params.cardNumber.replaceAll(' ', '');
+    for (const value of persistedValues) {
+      assert.equal(value.includes(pan), false, `raw card number persisted in: ${value}`);
+      assert.notEqual(value, params.cardCvc, 'raw card CVC persisted');
+    }
   });
 });

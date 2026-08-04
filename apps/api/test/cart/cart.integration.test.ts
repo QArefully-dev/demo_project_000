@@ -564,10 +564,13 @@ void test('cart audit failure rolls back mutation and cart touch transaction', (
   });
   const context = { actor: { type: 'anonymous' as const, userId: null }, requestId: 'cart-fail' };
 
+  // The canonical seed owns carts of its own, so the rollback is measured as a delta.
+  const cartsBefore = (db.prepare('SELECT COUNT(*) AS count FROM carts').get() as { count: number })
+    .count;
   assert.throws(() => service.create(context), /audit unavailable/);
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM carts').get() as { count: number }).count,
-    0,
+    cartsBefore,
   );
 
   const { cartId } = createCart(carts);

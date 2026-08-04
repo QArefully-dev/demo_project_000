@@ -6,6 +6,7 @@ export interface SessionUser {
   email: string;
   displayName: string;
   role: PublicUser['role'];
+  country: string;
 }
 
 export interface SessionRecord {
@@ -29,6 +30,7 @@ interface SessionRow {
   email?: string;
   display_name?: string;
   role?: PublicUser['role'];
+  country?: string;
 }
 
 export interface SessionRepository {
@@ -77,15 +79,21 @@ export function createSessionRepository(db: Database.Database): SessionRepositor
       const row = db
         .prepare(
           `SELECT s.token, s.user_id, s.created_at, s.expires_at, s.last_seen_at, s.user_agent,
-                  s.ip_address_hash, u.email, u.display_name, u.role
+                  s.ip_address_hash, u.email, u.display_name, u.role, u.country
            FROM sessions s JOIN users u ON s.user_id = u.id
            WHERE s.token = ? AND u.suspended_at IS NULL`,
         )
         .get(token) as SessionRow | undefined;
-      if (!row || !row.email || !row.display_name || !row.role) return null;
+      if (!row || !row.email || !row.display_name || !row.role || !row.country) return null;
       return {
         ...toRecord(row),
-        user: { id: row.user_id, email: row.email, displayName: row.display_name, role: row.role },
+        user: {
+          id: row.user_id,
+          email: row.email,
+          displayName: row.display_name,
+          role: row.role,
+          country: row.country,
+        },
       };
     },
     listByUser(userId) {

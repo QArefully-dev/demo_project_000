@@ -8,6 +8,7 @@ import {
   AddToCartBody,
   UpdateCartLineBody,
   CreateCartResponse,
+  CreateCartBody,
   CartIdParam,
   CartIdAndProductIdParam,
   BelowMoqError,
@@ -15,6 +16,7 @@ import {
 } from '@shop/contracts/cart';
 import { ErrorResponse } from '@shop/contracts/common';
 import { SACK_WEIGHT_GRAMS } from '@shop/contracts/pricing';
+import { LEGACY_DATA_COUNTRY } from '@shop/contracts/country';
 import type { AppContext } from '../app.js';
 import type { AuditContext } from '../features/audit/auditEvent.js';
 
@@ -39,13 +41,17 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
     '/api/cart',
     {
       schema: {
+        // Cart creation predates country selection: a bodyless POST stays valid and
+        // falls back to the legacy country.
+        body: Type.Union([CreateCartBody, Type.Null()]),
         response: {
           201: CreateCartResponse,
         },
       },
     },
     async (request, reply) => {
-      const { cartId } = carts.create(auditContext(request));
+      const country = request.body?.country ?? LEGACY_DATA_COUNTRY;
+      const { cartId } = carts.create(auditContext(request), country);
       reply.code(201);
       return { cartId };
     },

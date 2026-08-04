@@ -42,7 +42,7 @@ void test('account depth composes self-service, company approval, and deletion r
     const response = await app.inject({
       method: 'POST',
       url: '/login',
-      payload: { email, password: 'Password123!' },
+      payload: { email, password: 'Password123!', country: 'UK' },
     });
     assert.equal(response.statusCode, 200);
     return sessionCookie(response);

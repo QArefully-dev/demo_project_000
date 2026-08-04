@@ -59,6 +59,7 @@ describe('AdminRoute', () => {
       email: 'customer@example.test',
       displayName: 'Customer',
       role: 'customer',
+      country: 'UK',
     };
     authState.loading = false;
     renderRoute();
@@ -73,6 +74,7 @@ describe('AdminRoute', () => {
       email: 'admin@example.test',
       displayName: 'Admin',
       role: 'admin',
+      country: 'UK',
     };
     authState.loading = false;
     renderRoute();

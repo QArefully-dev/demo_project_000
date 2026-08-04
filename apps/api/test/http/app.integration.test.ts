@@ -85,7 +85,12 @@ void test('app factory injects isolated databases without starting a server', as
   const signup = await app.inject({
     method: 'POST',
     url: '/signup',
-    payload: { email: 'http@example.test', password: 'password-one', displayName: 'HTTP User' },
+    payload: {
+      email: 'http@example.test',
+      password: 'password-one',
+      displayName: 'HTTP User',
+      country: 'UK',
+    },
   });
   assert.equal(signup.statusCode, 201);
   const cookie = cookieHeader(signup);

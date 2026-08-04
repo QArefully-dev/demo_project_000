@@ -1,8 +1,8 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+﻿import { act, renderHook, waitFor } from '@testing-library/react';
 import { StrictMode, type ReactNode } from 'react';
 import type { Cart } from '@shop/contracts/cart';
 import type { ReorderResponse } from '@shop/contracts/reorder';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
 import * as cartApi from '@/api/cart';
 import * as bundlesApi from '@/api/bundles';
@@ -12,8 +12,12 @@ import * as reorderApi from '@/api/reorder';
 import * as savedListsApi from '@/api/savedLists';
 import type { QuickOrderResponse } from '@shop/contracts/quick-order';
 import type { SavedListAddToCartResponse } from '@shop/contracts/saved-lists';
-import { clearCartId, getCartId, setCartId } from '@/lib/cartStorage';
+import { DEFAULT_GUEST_COUNTRY } from '@shop/contracts/country';
+import { getCartId, setCartId, setCartStorage } from '@/lib/cartStorage';
 import { CartProvider, useCartContext } from './CartContext';
+
+/** No CountryProvider is mounted here, so the hook transacts as the guest default. */
+const GUEST_COUNTRY = DEFAULT_GUEST_COUNTRY;
 
 vi.mock('@/api/cart', () => ({
   addToCart: vi.fn(),
@@ -186,13 +190,26 @@ function providerWrapper({ children }: { children: ReactNode }) {
 }
 
 beforeEach(() => {
-  clearCartId();
+  const store = new Map<string, string>();
+  setCartStorage({
+    getItem: (key) => store.get(key) ?? null,
+    setItem: (key, value) => {
+      store.set(key, value);
+    },
+    removeItem: (key) => {
+      store.delete(key);
+    },
+  });
   vi.resetAllMocks();
+});
+
+afterEach(() => {
+  setCartStorage(undefined);
 });
 
 describe('useCart', () => {
   it('initializes a remounted provider independently of an in-flight prior provider', async () => {
-    setCartId('saved-cart');
+    setCartId('saved-cart', GUEST_COUNTRY);
     const first = deferred<Cart>();
     vi.mocked(cartApi.getCart)
       .mockReturnValueOnce(first.promise)
@@ -213,7 +230,7 @@ describe('useCart', () => {
   });
 
   it('deduplicates Strict Mode initialization within one provider instance', async () => {
-    setCartId('strict-cart');
+    setCartId('strict-cart', GUEST_COUNTRY);
     const response = deferred<Cart>();
     vi.mocked(cartApi.getCart).mockReturnValue(response.promise);
     const wrapper = ({ children }: { children: ReactNode }) => (
@@ -232,7 +249,7 @@ describe('useCart', () => {
   });
 
   it('replaces a missing stored cart during initialization', async () => {
-    setCartId('missing-cart');
+    setCartId('missing-cart', GUEST_COUNTRY);
     vi.mocked(cartApi.getCart)
       .mockRejectedValueOnce(new ApiError('Cart not found', 404))
       .mockResolvedValueOnce(cart('replacement-cart'));
@@ -240,12 +257,12 @@ describe('useCart', () => {
 
     const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
     await waitFor(() => expect(result.current.cartId).toBe('replacement-cart'));
-    expect(getCartId()).toBe('replacement-cart');
+    expect(getCartId(GUEST_COUNTRY)).toBe('replacement-cart');
     expect(result.current.error).toBeNull();
   });
 
   it('recovers a missing cart before retrying an add action', async () => {
-    setCartId('old-cart');
+    setCartId('old-cart', GUEST_COUNTRY);
     vi.mocked(cartApi.getCart)
       .mockResolvedValueOnce(cart('old-cart'))
       .mockResolvedValueOnce(cart('new-cart'));
@@ -265,7 +282,7 @@ describe('useCart', () => {
   });
 
   it('passes an explicit pallet quantity through the add action', async () => {
-    setCartId('cart');
+    setCartId('cart', GUEST_COUNTRY);
     vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
     vi.mocked(cartApi.addToCart).mockResolvedValueOnce(cart('cart', ['powder']));
 
@@ -278,7 +295,7 @@ describe('useCart', () => {
   });
 
   it('surfaces an MOQ response as a pallet-quantity error', async () => {
-    setCartId('cart');
+    setCartId('cart', GUEST_COUNTRY);
     vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart', ['powder']));
     vi.mocked(cartApi.updateCartItem).mockRejectedValueOnce(
       new ApiError('Quantity does not meet this variant minimum order quantity.', 400, {
@@ -298,7 +315,7 @@ describe('useCart', () => {
   });
 
   it('updates same-product sack and pallet lines by their variant identity', async () => {
-    setCartId('cart');
+    setCartId('cart', GUEST_COUNTRY);
     const first = deferred<Cart>();
     const second = deferred<Cart>();
     vi.mocked(cartApi.getCart).mockResolvedValueOnce(cartWithProductVariants('cart'));
@@ -330,7 +347,7 @@ describe('useCart', () => {
   });
 
   it('removes same-product sack and pallet lines by their variant identity', async () => {
-    setCartId('cart');
+    setCartId('cart', GUEST_COUNTRY);
     const first = deferred<Cart>();
     const second = deferred<Cart>();
     vi.mocked(cartApi.getCart).mockResolvedValueOnce(cartWithProductVariants('cart'));
@@ -362,7 +379,7 @@ describe('useCart', () => {
   });
 
   it('uses a blend-specific pending key when adding a custom blend', async () => {
-    setCartId('cart');
+    setCartId('cart', GUEST_COUNTRY);
     const response = deferred<Cart>();
     vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
     vi.mocked(customBlendsApi.createCustomBlend).mockReturnValueOnce(response.promise);
@@ -386,7 +403,7 @@ describe('useCart', () => {
   });
 
   it('replaces a configured line under a config-key-scoped pending key', async () => {
-    setCartId('cart');
+    setCartId('cart', GUEST_COUNTRY);
     const configKey = 'a'.repeat(64);
     const response = deferred<Cart>();
     vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
@@ -414,7 +431,7 @@ describe('useCart', () => {
   });
 
   it('does not retry a blend replace against a recovered replacement cart', async () => {
-    setCartId('old-cart');
+    setCartId('old-cart', GUEST_COUNTRY);
     vi.mocked(cartApi.getCart)
       .mockResolvedValueOnce(cart('old-cart'))
       .mockResolvedValueOnce(cart('new-cart'));
@@ -442,7 +459,7 @@ describe('useCart', () => {
   });
 
   it('tracks a quick order while pending and replaces the cart from its authoritative response', async () => {
-    setCartId('cart');
+    setCartId('cart', GUEST_COUNTRY);
     const response = deferred<QuickOrderResponse>();
     vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart', ['existing']));
     vi.mocked(quickOrderApi.submitQuickOrder).mockReturnValueOnce(response.promise);
@@ -481,7 +498,7 @@ describe('useCart', () => {
       'Your quick order has too many lines. Split it into smaller submissions and try again.',
     ],
   ])('maps the quick-order %s rejection to buyer-facing copy', async (code, message) => {
-    setCartId('cart');
+    setCartId('cart', GUEST_COUNTRY);
     vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart', ['existing']));
     vi.mocked(quickOrderApi.submitQuickOrder).mockRejectedValueOnce(
       new ApiError(message, 400, { error: message, code } as never),
@@ -497,7 +514,7 @@ describe('useCart', () => {
   });
 
   it('recovers a missing cart and replays a quick order exactly once', async () => {
-    setCartId('old-cart');
+    setCartId('old-cart', GUEST_COUNTRY);
     vi.mocked(cartApi.getCart)
       .mockResolvedValueOnce(cart('old-cart'))
       .mockResolvedValueOnce(cart('new-cart'));
@@ -529,7 +546,7 @@ describe('useCart', () => {
   });
 
   it('separates a configured line from its plain counterpart by config key', async () => {
-    setCartId('cart');
+    setCartId('cart', GUEST_COUNTRY);
     const configKey = 'b'.repeat(64);
     const plain = deferred<Cart>();
     const configured = deferred<Cart>();
@@ -559,7 +576,7 @@ describe('useCart', () => {
   });
 
   it('uses a bundle-specific pending key and adds the bundle to the active cart', async () => {
-    setCartId('cart');
+    setCartId('cart', GUEST_COUNTRY);
     const response = deferred<Cart>();
     vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
     vi.mocked(bundlesApi.addBundleToCart).mockReturnValueOnce(response.promise);
@@ -582,7 +599,7 @@ describe('useCart', () => {
   });
 
   it('recovers a missing cart before retrying a bundle add', async () => {
-    setCartId('old-cart');
+    setCartId('old-cart', GUEST_COUNTRY);
     vi.mocked(cartApi.getCart)
       .mockResolvedValueOnce(cart('old-cart'))
       .mockResolvedValueOnce(cart('new-cart'));
@@ -600,7 +617,7 @@ describe('useCart', () => {
   });
 
   it('keeps the prior cart and exposes an error when a bundle add fails', async () => {
-    setCartId('cart');
+    setCartId('cart', GUEST_COUNTRY);
     vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart', ['existing']));
     vi.mocked(bundlesApi.addBundleToCart).mockRejectedValueOnce(new Error('Bundle unavailable'));
     const { result } = renderHook(() => useCartContext(), { wrapper: providerWrapper });
@@ -613,7 +630,7 @@ describe('useCart', () => {
   });
 
   it('does not let an older bundle response overwrite a newer cart response', async () => {
-    setCartId('cart');
+    setCartId('cart', GUEST_COUNTRY);
     const olderResponse = deferred<Cart>();
     const newerResponse = deferred<Cart>();
     vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
@@ -645,7 +662,7 @@ describe('useCart', () => {
   });
 
   it('applies the reordered cart and returns the outcome report to the caller', async () => {
-    setCartId('cart');
+    setCartId('cart', GUEST_COUNTRY);
     const response = deferred<ReorderResponse>();
     vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
     vi.mocked(reorderApi.reorderFromOrder).mockReturnValueOnce(response.promise);
@@ -672,7 +689,7 @@ describe('useCart', () => {
   });
 
   it('does not let an older reorder response overwrite a newer cart response', async () => {
-    setCartId('cart');
+    setCartId('cart', GUEST_COUNTRY);
     const olderResponse = deferred<ReorderResponse>();
     const newerResponse = deferred<ReorderResponse>();
     vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
@@ -700,7 +717,7 @@ describe('useCart', () => {
   });
 
   it('surfaces a reserved cart as a checkout-scoped reorder error', async () => {
-    setCartId('cart');
+    setCartId('cart', GUEST_COUNTRY);
     vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart', ['existing']));
     vi.mocked(reorderApi.reorderFromOrder).mockRejectedValueOnce(
       new ApiError('Cart is reserved for checkout.', 409, {
@@ -720,7 +737,7 @@ describe('useCart', () => {
   });
 
   it('reports a missing source order distinctly from a reserved cart', async () => {
-    setCartId('cart');
+    setCartId('cart', GUEST_COUNTRY);
     vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
     vi.mocked(reorderApi.reorderFromOrder).mockRejectedValueOnce(
       new ApiError('Order not found', 404, {
@@ -739,7 +756,7 @@ describe('useCart', () => {
   });
 
   it('replays a reorder exactly once against a recovered replacement cart', async () => {
-    setCartId('old-cart');
+    setCartId('old-cart', GUEST_COUNTRY);
     vi.mocked(cartApi.getCart)
       .mockResolvedValueOnce(cart('old-cart'))
       .mockResolvedValueOnce(cart('new-cart'));
@@ -761,7 +778,7 @@ describe('useCart', () => {
   });
 
   it('tracks concurrent actions by product', async () => {
-    setCartId('cart');
+    setCartId('cart', GUEST_COUNTRY);
     const first = deferred<Cart>();
     const second = deferred<Cart>();
     vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
@@ -797,7 +814,7 @@ describe('useCart', () => {
   });
 
   it('does not let an older mutation response overwrite a newer cart response', async () => {
-    setCartId('cart');
+    setCartId('cart', GUEST_COUNTRY);
     const olderResponse = deferred<Cart>();
     const newerResponse = deferred<Cart>();
     vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
@@ -829,7 +846,7 @@ describe('useCart', () => {
   });
 
   it('shares missing-cart recovery across concurrent provider actions', async () => {
-    setCartId('old-cart');
+    setCartId('old-cart', GUEST_COUNTRY);
     const replacement = deferred<{ cartId: string }>();
     vi.mocked(cartApi.getCart)
       .mockResolvedValueOnce(cart('old-cart'))
@@ -863,7 +880,7 @@ describe('useCart', () => {
   });
 
   it('adds a saved list, returns its report, and tracks its pending action', async () => {
-    setCartId('cart');
+    setCartId('cart', GUEST_COUNTRY);
     const response = deferred<SavedListAddToCartResponse>();
     vi.mocked(cartApi.getCart).mockResolvedValueOnce(cart('cart'));
     vi.mocked(savedListsApi.addSavedListToCart).mockReturnValueOnce(response.promise);
@@ -886,7 +903,7 @@ describe('useCart', () => {
   });
 
   it('replays a saved-list add once after missing-cart recovery', async () => {
-    setCartId('old-cart');
+    setCartId('old-cart', GUEST_COUNTRY);
     vi.mocked(cartApi.getCart)
       .mockResolvedValueOnce(cart('old-cart'))
       .mockResolvedValueOnce(cart('new-cart'));

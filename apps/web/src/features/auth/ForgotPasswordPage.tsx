@@ -1,10 +1,14 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { useCountry } from '@/hooks/CountryContext';
+import { SUPPORTED_COUNTRIES, type Country } from '@shop/contracts/country';
 import { Button } from '@/components/ui/button';
 import { forgotPassword } from '@/api/auth';
 
 export function ForgotPasswordPage() {
+  const { activeCountry } = useCountry();
   const [email, setEmail] = useState('');
+  const [country, setCountry] = useState<Country>(activeCountry);
   const [sent, setSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -14,7 +18,7 @@ export function ForgotPasswordPage() {
 
     setSubmitting(true);
     try {
-      await forgotPassword({ email });
+      await forgotPassword({ email, country });
     } catch {
       // Always show success — no user enumeration.
     } finally {
@@ -68,6 +72,24 @@ export function ForgotPasswordPage() {
             className="mt-1 block w-full rounded-md border px-3 py-2 text-sm"
             placeholder="you@example.com"
           />
+        </div>
+
+        <div>
+          <label htmlFor="forgot-country" className="block text-sm font-medium">
+            Country
+          </label>
+          <select
+            id="forgot-country"
+            value={country}
+            onChange={(e) => setCountry(e.target.value as Country)}
+            className="mt-1 block w-full rounded-md border px-3 py-2 text-sm"
+          >
+            {SUPPORTED_COUNTRIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
         </div>
 
         <Button type="submit" disabled={submitting || !email.trim()} className="w-full">

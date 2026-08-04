@@ -5,6 +5,7 @@ import {
   type CustomBlendSnapshot,
 } from '@shop/contracts';
 import { Value } from '@sinclair/typebox/value';
+import { LEGACY_DATA_COUNTRY } from '@shop/contracts/country';
 import { toProductContract } from '../../mappers/product.js';
 import type { CartLineRow, CartRepository } from './cartRepository.js';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
@@ -53,7 +54,7 @@ export interface BulkAddResult {
 }
 
 export interface CartService {
-  create(context?: AuditContext): { cartId: string };
+  create(context?: AuditContext, country?: string): { cartId: string };
   get(cartId: string): Cart | undefined;
   /**
    * Adds many lines in one transaction with per-line outcomes. Classified skips still commit the
@@ -123,10 +124,10 @@ export function createCartService(
   availabilityDependencies?: CartAvailabilityDependencies,
 ): CartService {
   return {
-    create: (context) =>
+    create: (context, country) =>
       runCartMutation(auditDependencies, () => {
         requireAuditContext(auditDependencies, context);
-        const result = createCart(repository);
+        const result = createCart(repository, country);
         if (context && auditDependencies) {
           auditDependencies.audit.append({
             action: 'cart.created',
@@ -294,9 +295,9 @@ function requireAuditContext(
   if (dependencies && !context) throw new Error('Cart audit context is required');
 }
 
-export function createCart(repository: CartRepository): { cartId: string } {
+export function createCart(repository: CartRepository, country?: string): { cartId: string } {
   const cartId = crypto.randomUUID();
-  repository.create(cartId);
+  repository.create(cartId, country ?? LEGACY_DATA_COUNTRY);
   return { cartId };
 }
 

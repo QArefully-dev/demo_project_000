@@ -1,31 +1,29 @@
+import type { Country } from '@shop/contracts/country';
 import type { Cart } from '@shop/contracts/cart';
 import * as api from '../api/cart';
 import { isMissingCartError } from '../api/client';
 import { clearCartId, getCartId, setCartId } from '../lib/cartStorage';
 
-/**
- * Cart persistence boundary. Each CartProvider creates and owns one client.
- */
-export function createCartClient() {
+export function createCartClient(country: Country) {
   async function createAndLoad(): Promise<Cart> {
-    const { cartId } = await api.createCart();
-    setCartId(cartId);
+    const { cartId } = await api.createCart(country);
+    setCartId(cartId, country);
     try {
       return await api.getCart(cartId);
     } catch (error) {
-      if (getCartId() === cartId) clearCartId();
+      if (getCartId(country) === cartId) clearCartId(country);
       throw error;
     }
   }
 
   async function loadOrCreate(): Promise<Cart> {
-    const storedCartId = getCartId();
+    const storedCartId = getCartId(country);
     if (storedCartId) {
       try {
         return await api.getCart(storedCartId);
       } catch (error) {
         if (!isMissingCartError(error)) throw error;
-        if (getCartId() === storedCartId) clearCartId();
+        if (getCartId(country) === storedCartId) clearCartId(country);
       }
     }
 
@@ -33,7 +31,7 @@ export function createCartClient() {
   }
 
   async function recoverMissingCart(missingCartId: string): Promise<Cart> {
-    if (getCartId() === missingCartId) clearCartId();
+    if (getCartId(country) === missingCartId) clearCartId(country);
     return loadOrCreate();
   }
 

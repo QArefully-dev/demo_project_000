@@ -107,6 +107,7 @@ describe('useProductReviews', () => {
       email: 'customer@example.com',
       displayName: 'Customer',
       role: 'customer',
+      country: 'UK',
     };
     const listOne = deferred<ReviewListResponse>();
     const listTwo = deferred<ReviewListResponse>();
@@ -172,6 +173,7 @@ describe('useProductReviews', () => {
       email: 'customer@example.com',
       displayName: 'Customer',
       role: 'customer',
+      country: 'UK',
     };
     const listOne = deferred<ReviewListResponse>();
     const listTwo = deferred<ReviewListResponse>();
@@ -245,6 +247,7 @@ describe('useProductReviews', () => {
       email: 'customer@example.com',
       displayName: 'Customer',
       role: 'customer',
+      country: 'UK',
     };
     rerender();
 
@@ -257,6 +260,7 @@ describe('useProductReviews', () => {
       email: 'customer@example.com',
       displayName: 'Customer',
       role: 'customer',
+      country: 'UK',
     };
     reviewsApi.getProductReviews.mockResolvedValue({
       ...response('one'),
@@ -288,6 +292,7 @@ describe('useProductReviews', () => {
       email: 'one@example.com',
       displayName: 'One',
       role: 'customer',
+      country: 'UK',
     };
     const engagement = deferred<{
       reviewId: string;
@@ -314,6 +319,7 @@ describe('useProductReviews', () => {
       email: 'two@example.com',
       displayName: 'Two',
       role: 'customer',
+      country: 'UK',
     };
     act(() => rerender());
     await waitFor(() => expect(reviewsApi.getProductReviews).toHaveBeenCalledTimes(2));
@@ -338,6 +344,7 @@ describe('useProductReviews', () => {
       email: 'one@example.com',
       displayName: 'One',
       role: 'customer',
+      country: 'UK',
     };
     reviewsApi.getProductReviews.mockResolvedValue({
       ...response('one'),
@@ -363,6 +370,7 @@ describe('useProductReviews', () => {
       email: 'two@example.com',
       displayName: 'Two',
       role: 'customer',
+      country: 'UK',
     };
     act(() => rerender());
     await waitFor(() => expect(reviewsApi.getProductReviews).toHaveBeenCalledTimes(2));

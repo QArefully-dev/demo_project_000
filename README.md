@@ -115,13 +115,18 @@ Most variants ship as standard parcel. Heavy variants or orders exceeding a comb
 
 ### User Credentials
 
-| Email               | Password      | Role     |
-| ------------------- | ------------- | -------- |
-| alice@example.com   | Password123!  | customer |
-| bob@example.com     | Password123!  | customer |
-| admin@example.com   | Password123!  | admin    |
+All seeded accounts are `UK`. The default landing country for a logged-out visitor is `US`, so UK Alice fails to log in until the country dropdown is changed to `UK`.
 
-Alice has a pre-seeded default Favourites list with 3 products. Her `Monthly restock` list demonstrates all four whole-list add outcomes after `npm run reset`: an ordinary added line, a quantity raised to the 4-sack MOQ, a retired variant skipped, and an insufficient-stock variant skipped.
+| Email               | Password      | Country | Role     |
+| ------------------- | ------------- | ------- | -------- |
+| alice@example.com   | Password123!  | UK      | customer |
+| alice@example.com   | Password123!  | DE      | customer |
+| bob@example.com     | Password123!  | UK      | customer |
+| admin@example.com   | Password123!  | UK      | admin    |
+
+The same email exists once per country as separate accounts. Use the country dropdown on the login form to select which account to authenticate against. Both Alice accounts share `Password123!` as their plaintext password; the stored hashes differ because the salt includes the country.
+
+UK Alice has a pre-seeded default Favourites list with 3 products. Her `Monthly restock` list demonstrates all four whole-list add outcomes after `npm run reset`: an ordinary added line, a quantity raised to the 4-sack MOQ, a retired variant skipped, and an insufficient-stock variant skipped.
 
 ### Local Administration
 

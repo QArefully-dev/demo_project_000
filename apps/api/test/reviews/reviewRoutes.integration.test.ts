@@ -48,7 +48,7 @@ void test('review routes enforce public visibility, roles, ownership, moderation
       await app.inject({
         method: 'POST',
         url: '/login',
-        payload: { email, password: 'Password123!' },
+        payload: { email, password: 'Password123!', country: 'UK' },
       }),
     );
   const alice = await login('alice@example.com');
@@ -240,7 +240,7 @@ void test('engagement and moderation routes enforce roles and return current sta
       await app.inject({
         method: 'POST',
         url: '/login',
-        payload: { email, password: 'Password123!' },
+        payload: { email, password: 'Password123!', country: 'UK' },
       }),
     );
   const alice = await login('alice@example.com');

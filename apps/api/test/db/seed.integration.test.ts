@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash, scryptSync, timingSafeEqual } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -133,7 +134,10 @@ void test('saved-list seed preserves Alice default rename and buyer replacement 
 
   seedDatabase(db);
   const aliceId = Number(
-    db.prepare("SELECT id FROM users WHERE email = 'alice@example.com'").pluck().get(),
+    db
+      .prepare("SELECT id FROM users WHERE email = 'alice@example.com' AND country = 'UK'")
+      .pluck()
+      .get(),
   );
   const defaultId = Number(
     db
@@ -226,7 +230,10 @@ void test('Alice monthly restock fixture reports its four cart outcomes', (t) =>
     clock,
   });
   const aliceId = Number(
-    db.prepare("SELECT id FROM users WHERE email = 'alice@example.com'").pluck().get(),
+    db
+      .prepare("SELECT id FROM users WHERE email = 'alice@example.com' AND country = 'UK'")
+      .pluck()
+      .get(),
   );
   const monthlyListId = Number(
     db
@@ -737,9 +744,11 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   );
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM users').get() as { count: number }).count,
-    7,
+    8,
   );
-  db.prepare("UPDATE users SET display_name = 'Local' WHERE email = 'alice@example.com'").run();
+  db.prepare(
+    "UPDATE users SET display_name = 'Local' WHERE email = 'alice@example.com' AND country = 'UK'",
+  ).run();
   db.prepare(
     "INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id, slug, sales_count) VALUES (99, 'Local', 'Local row', 100, 'Local', 1, 'local', 'local', 0)",
   ).run();
@@ -761,7 +770,11 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   seedDatabase(db);
   assert.equal(
     (
-      db.prepare("SELECT display_name FROM users WHERE email = 'alice@example.com'").get() as {
+      db
+        .prepare(
+          "SELECT display_name FROM users WHERE email = 'alice@example.com' AND country = 'UK'",
+        )
+        .get() as {
         display_name: string;
       }
     ).display_name,
@@ -1418,5 +1431,189 @@ void test('seed installs deterministic clearance windows and category-scoped pro
       }
     ).category_scope,
     'Drinks',
+  );
+});
+
+void test('seed installs two Alice rows with distinct ids and distinct password hashes', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-de-alice-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+
+  const [ukAlice, deAlice] = db
+    .prepare(
+      "SELECT id, email, country, password_hash, password_salt FROM users WHERE email = 'alice@example.com' ORDER BY id",
+    )
+    .all() as Array<{
+    id: number;
+    email: string;
+    country: string;
+    password_hash: string;
+    password_salt: string;
+  }>;
+
+  assert.equal(ukAlice.email, 'alice@example.com');
+  assert.equal(ukAlice.country, 'UK');
+  assert.equal(deAlice.email, 'alice@example.com');
+  assert.equal(deAlice.country, 'DE');
+  assert.notEqual(ukAlice.id, deAlice.id);
+  assert.notEqual(ukAlice.password_hash, deAlice.password_hash);
+
+  const ukHash = ukAlice.password_hash.split('.')[1];
+  const deHash = deAlice.password_hash.split('.')[1];
+
+  {
+    const salt = createHash('sha256')
+      .update('seed-salt-alice@example.com-UK')
+      .digest('hex')
+      .slice(0, 64);
+    const expected = scryptSync('Password123!', salt, 64).toString('hex');
+    assert.equal(ukHash, expected);
+  }
+
+  {
+    const salt = createHash('sha256')
+      .update('seed-salt-alice@example.com-DE')
+      .digest('hex')
+      .slice(0, 64);
+    const expected = scryptSync('Password123!', salt, 64).toString('hex');
+    assert.equal(deHash, expected);
+  }
+});
+
+void test('DE Alice password verifies only against its own row', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-de-alice-verify-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+
+  const [ukRow, deRow] = db
+    .prepare(
+      "SELECT id, email, country, password_hash FROM users WHERE email = 'alice@example.com' ORDER BY id",
+    )
+    .all() as Array<{ id: number; email: string; country: string; password_hash: string }>;
+
+  const [ukSalt, ukHash] = ukRow.password_hash.split('.');
+  const [deSalt, deHash] = deRow.password_hash.split('.');
+
+  const ukScrypt = scryptSync('Password123!', ukSalt, 64);
+  const deScrypt = scryptSync('Password123!', deSalt, 64);
+
+  assert.ok(timingSafeEqual(ukScrypt, Buffer.from(ukHash, 'hex')));
+  assert.ok(timingSafeEqual(deScrypt, Buffer.from(deHash, 'hex')));
+  // Cross-check: DE hash does NOT match UK salt
+  const deAgainstUk = scryptSync('Password123!', ukSalt, 64);
+  assert.ok(!timingSafeEqual(deAgainstUk, Buffer.from(deHash, 'hex')));
+});
+
+void test('seed installs DE Alice cart', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-de-alice-cart-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+
+  const cart = db
+    .prepare("SELECT id, country FROM carts WHERE id = '00000000-0000-4000-8000-de0000000001'")
+    .get() as { id: string; country: string } | undefined;
+
+  assert.ok(cart);
+  assert.equal(cart.country, 'DE');
+});
+
+void test('DE Alice fixture is idempotent across re-seed', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-de-alice-idempotent-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+
+  const firstIds = db
+    .prepare(
+      "SELECT id, country, password_hash FROM users WHERE email = 'alice@example.com' ORDER BY id",
+    )
+    .all() as Array<{ id: number; country: string; password_hash: string }>;
+
+  seedDatabase(db);
+
+  const secondIds = db
+    .prepare(
+      "SELECT id, country, password_hash FROM users WHERE email = 'alice@example.com' ORDER BY id",
+    )
+    .all() as Array<{ id: number; country: string; password_hash: string }>;
+
+  assert.deepEqual(secondIds, firstIds);
+});
+
+/**
+ * Regression: every other seed test starts from an empty directory, so the canonical seed only ever
+ * ran against a `users` table whose ids it fully controlled. On a database seeded before this
+ * branch, ids 1-6 are the explicit fixtures and the suspended fixture took id 7 from AUTOINCREMENT;
+ * migration 032 preserves those ids. A DE Alice pinned to id 7 therefore collided on the primary
+ * key and was silently discarded by `INSERT OR IGNORE`, leaving the documented DE credentials
+ * unusable with no error. `npm run seed` must converge on an already-populated database.
+ */
+void test('seed creates DE Alice on a database whose id 7 is already taken', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-de-alice-existing-db-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  // Reproduce the user rows a pre-branch database carries into migration 032: the six explicit
+  // fixtures, plus the suspended fixture that AUTOINCREMENT placed at id 7.
+  const insertLegacyUser = db.prepare(
+    `INSERT INTO users (id, email, display_name, password_hash, password_salt, role, country)
+     VALUES (?, ?, ?, 'legacy-hash', '', 'customer', 'UK')`,
+  );
+  const legacyUsers: Array<[number, string, string]> = [
+    [1, 'alice@example.com', 'Alice'],
+    [2, 'bob@example.com', 'Bob'],
+    [3, 'admin@example.com', 'Admin'],
+    [4, 'acme@example.com', 'Acme Owner'],
+    [5, 'buyer@example.com', 'Acme Buyer'],
+    [6, 'approver@example.com', 'Acme Approver'],
+    [7, 'suspended@example.com', 'Suspended Demo'],
+  ];
+  for (const [id, email, displayName] of legacyUsers) insertLegacyUser.run(id, email, displayName);
+
+  assert.equal(
+    db.prepare('SELECT id FROM users WHERE id = 7').pluck().get(),
+    7,
+    'precondition: id 7 is occupied before seeding',
+  );
+
+  seedDatabase(db);
+
+  const deAlice = db
+    .prepare("SELECT id, country FROM users WHERE email = 'alice@example.com' AND country = 'DE'")
+    .get() as { id: number; country: string } | undefined;
+
+  assert.ok(deAlice, 'seeding an existing database must still create the DE Alice fixture');
+  assert.notEqual(deAlice.id, 7);
+
+  // Re-seeding the same database must not add a second DE Alice.
+  seedDatabase(db);
+  assert.equal(
+    db
+      .prepare("SELECT COUNT(*) FROM users WHERE email = 'alice@example.com' AND country = 'DE'")
+      .pluck()
+      .get(),
+    1,
   );
 });

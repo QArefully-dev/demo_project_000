@@ -11,6 +11,7 @@ export interface CompanyMembershipRow {
   email?: string;
   display_name?: string;
   user_role?: 'customer' | 'admin';
+  country?: string;
 }
 
 export interface CompanyMembershipRepository {
@@ -28,7 +29,7 @@ export interface CompanyMembershipRepository {
 }
 
 const select = `SELECT membership.id, membership.company_id, membership.user_id, membership.role,
-  membership.active, membership.created_at, user.email, user.display_name, user.role AS user_role
+  membership.active, membership.created_at, user.email, user.display_name, user.role AS user_role, user.country
   FROM company_memberships membership JOIN users user ON user.id = membership.user_id`;
 
 export function createCompanyMembershipRepository(

@@ -40,6 +40,7 @@ describe('AccountMenu', () => {
       email: 'customer@example.test',
       displayName: 'Customer',
       role: 'customer',
+      country: 'UK',
     };
     const user = userEvent.setup();
     renderMenu();
@@ -57,6 +58,7 @@ describe('AccountMenu', () => {
       email: 'admin@example.test',
       displayName: 'Admin',
       role: 'admin',
+      country: 'UK',
     };
     const user = userEvent.setup();
     renderMenu();

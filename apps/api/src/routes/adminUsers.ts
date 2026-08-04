@@ -22,10 +22,11 @@ const context = (userId: number, requestId: string) => ({
   actor: { type: 'user' as const, userId },
   requestId,
 });
-const map = (u: ReturnType<UserAdminService['get']>) => ({
+const map = (u: ReturnType<UserAdminService['get']>): AdminUserView => ({
   ...u,
   id: String(u.id),
   suspendedByUserId: u.suspendedByUserId === null ? null : String(u.suspendedByUserId),
+  country: u.country as AdminUserView['country'],
 });
 function sendError(reply: Parameters<typeof sendBadRequest>[0], e: UserAdminServiceError) {
   if (e.code === 'NOT_FOUND') return sendNotFound(reply, 'User');
