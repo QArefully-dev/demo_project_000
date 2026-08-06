@@ -1,7 +1,7 @@
 # Country Localisation Handoff (high-level plan item 10)
 
-Status: stage 1 landed 2026-08-03. Stages 2 and 3 not implemented. No coding plan written yet for remaining stages.
-Audience: agent writing the coding plan for item 10.
+Status: stages 1 and 2 landed (2026-08-03 and 2026-08-05). Stage 3 is not implemented; no coding plan has been written for it yet.
+Audience: agent writing the coding plan for item 10, stage 3.
 Source: grilling session against `plans/demo_project_high_level_plan.md` item 10. Decisions are user's, recorded verbatim in intent.
 
 ## Scope Shift vs Plan Text
