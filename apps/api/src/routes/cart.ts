@@ -93,12 +93,17 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
     },
     async (request, reply) => {
       const { productId, variantId, quantity } = request.body;
+      const cartCountry = carts.country(request.params.cartId);
+      if (!cartCountry) {
+        sendNotFound(reply, 'Cart');
+        return;
+      }
       let resolvedVariantId: string | null | undefined;
       if (variantId !== undefined) {
         resolvedVariantId = String(variantId);
       } else {
         const active = services.products
-          .listVariants(Number(productId))
+          .listVariants(Number(productId), cartCountry)
           .filter((v) => v.active === 1);
         if (active.length === 1) {
           resolvedVariantId = String(active[0]!.id);
@@ -121,7 +126,7 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
       }
 
       const selectedVariant = services.products
-        .listVariants(Number(productId))
+        .listVariants(Number(productId), cartCountry)
         .find((variant) => variant.id === Number(resolvedVariantId));
       const requestedQuantity =
         quantity ??
@@ -139,7 +144,7 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
         sendNotFound(reply, 'Cart');
         return;
       }
-      if (cart === 'VARIANT_NOT_FOUND') {
+      if (cart === 'VARIANT_NOT_FOUND' || cart === 'BLOCKED_IN_COUNTRY') {
         sendNotFound(reply, 'Variant');
         return;
       }

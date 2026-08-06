@@ -1,12 +1,20 @@
 import { type Static, type TSchema } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import type { ErrorResponse } from '@shop/contracts/common';
+import type { Country } from '@shop/contracts/country';
 
 /**
  * Core fetch wrapper for the Shop Qarefully API.
  * Includes credentials (cookies) on every request.
  * All feature modules should use this as their base.
  */
+
+let activeCountry: Country | null = null;
+
+/** Keeps the request country aligned with the mounted country provider. */
+export function setActiveApiCountry(country: Country | null): void {
+  activeCountry = country;
+}
 
 function isErrorResponse(value: unknown): value is ErrorResponse {
   return (
@@ -59,6 +67,9 @@ async function fetchWithResponseSchema<T extends TSchema>(
   options?: RequestInit,
 ): Promise<Static<T>> {
   const mergedHeaders = new Headers(options?.headers);
+  if (activeCountry !== null) {
+    mergedHeaders.set('x-shop-country', activeCountry);
+  }
   if (options?.body && typeof options.body === 'string') {
     mergedHeaders.set('Content-Type', 'application/json');
   }

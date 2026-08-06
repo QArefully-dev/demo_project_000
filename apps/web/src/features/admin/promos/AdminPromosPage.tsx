@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   AdminPromo,
   CreateAdminPromoBody,
   UpdateAdminPromoBody,
 } from '@shop/contracts/admin-promos';
+import { SUPPORTED_COUNTRIES, type Country } from '@shop/contracts/country';
 import {
   createAdminPromo,
   deactivateAdminPromo,
@@ -14,6 +15,7 @@ import { ErrorMessage } from '@/components/ErrorMessage';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { useCountry } from '@/hooks/CountryContext';
 const blank: CreateAdminPromoBody = {
   code: '',
   discountPercent: 0,
@@ -26,6 +28,7 @@ const blank: CreateAdminPromoBody = {
   endAt: null,
   maxRedemptions: null,
   perUserLimit: null,
+  countries: [],
 };
 function message(e: unknown) {
   return e instanceof Error ? e.message : 'Request failed.';
@@ -51,6 +54,7 @@ function editable(promo: AdminPromo): CreateAdminPromoBody {
     endAt: promo.endAt,
     maxRedemptions: promo.maxRedemptions,
     perUserLimit: promo.perUserLimit,
+    countries: promo.countries ?? [],
   };
 }
 function updateBody({ code, ...body }: CreateAdminPromoBody): UpdateAdminPromoBody {
@@ -67,6 +71,7 @@ function isoOrNull(value: string) {
 }
 /** Promotion administration; eligibility and redemption validation remain server-owned. */
 export function AdminPromosPage() {
+  const { activeCountry } = useCountry();
   const [items, setItems] = useState<AdminPromo[] | null>(null);
   const [selected, setSelected] = useState<AdminPromo | null>(null);
   const [form, setForm] = useState<CreateAdminPromoBody>(blank);
@@ -74,17 +79,20 @@ export function AdminPromosPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const loadVersion = useRef(0);
   const load = useCallback(async () => {
+    const version = ++loadVersion.current;
     setLoading(true);
     setError(null);
     try {
-      setItems((await getAdminPromos()).items);
+      const response = await getAdminPromos();
+      if (version === loadVersion.current) setItems(response.items);
     } catch (e) {
-      setError(message(e));
+      if (version === loadVersion.current) setError(message(e));
     } finally {
-      setLoading(false);
+      if (version === loadVersion.current) setLoading(false);
     }
-  }, []);
+  }, [activeCountry]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -264,6 +272,30 @@ export function AdminPromosPage() {
                     </option>
                   ))}
                 </select>
+              </label>
+              <label className="block text-sm">
+                Country targeting
+                <select
+                  aria-label="Country targeting"
+                  multiple
+                  value={form.countries ?? []}
+                  onChange={(e) =>
+                    set(
+                      'countries',
+                      Array.from(e.target.selectedOptions, (option) => option.value as Country),
+                    )
+                  }
+                  className="mt-1 min-h-28 w-full rounded border p-2"
+                >
+                  {SUPPORTED_COUNTRIES.map((country) => (
+                    <option key={country} value={country}>
+                      {country}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  Leave empty to apply to all countries.
+                </span>
               </label>
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-sm">

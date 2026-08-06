@@ -193,6 +193,16 @@ void test('an all-skipped reorder counts every line as skipped', () => {
   assert.equal(outcomes[1]!.quantity, 4);
 });
 
+void test('reorder preserves the cart country-blocking precedence verdict', () => {
+  const outcomes = assembleReorderOutcomes(
+    [orderLine({ lineId: '1' })],
+    [{ key: '1', status: 'skipped', reason: 'BLOCKED_IN_COUNTRY' }],
+    new Map([['1', null]]),
+  );
+
+  assert.equal(outcomes[0]?.reason, 'BLOCKED_IN_COUNTRY');
+});
+
 void test('a submitted line without a cart outcome is an invariant breach', () => {
   assert.throws(
     () => assembleReorderOutcomes([orderLine({ lineId: '1' })], [], new Map()),

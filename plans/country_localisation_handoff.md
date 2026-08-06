@@ -94,13 +94,13 @@ Promotions stay in DATABASE. Existing `/admin` promo screens gain a country-targ
   - one category blocked in one country (sports drinks precedent).
   - banner visible only in `ES`.
   - promo targeting some countries, not others.
-- README / demo credentials must state the country out loud: seeded accounts are `UK` while default landing country is `US`, so Alice fails to log in until dropdown is changed.
+- README / demo credentials must state the country out loud: seeded accounts are `UK` except the separate `DE` Alice fixture; default landing country is `US`, so Alice fails to log in until dropdown is changed.
 
 ## Delivery Stages
 
 Three stages, each independently shippable and testable.
 1. country exists: login dropdown, top-bar picker, migration, everything -> `UK`, `US` default. No other visible behaviour change. **Stage 1: landed 2026-08-03.**
-2. behaviour: blocking (category + product), banners, country-targeted promos, cross-border delivery refusal, postcode rules, time-zone delivery cut-off. Security tests live here.
+2. behaviour: blocking (category + product), banners, country-targeted promos, cross-border delivery refusal, postcode rules, time-zone delivery cut-off. Security tests live here. **Stage 2: landed 2026-08-05.**
 3. sweep: translation lookup layer, formatting consolidation, money/date formatter defork.
 
 Rejected: single big branch. Surface is too wide (login, every screen, catalog, cart, checkout, 9 admin sections, migration).
@@ -126,4 +126,4 @@ DONE 2026-08-03. `plans/demo_project_high_level_plan.md` rewritten to match this
 - "Landed 8 and 15 constrain later work" -> corrected. One shared stock pool means country availability never writes stock and never raises a stock-change event, so item 10 does NOT call `StockChangeObserver`. Prior text assumed it might.
 - "Landed 9 constrains later work" -> corrected. Per-country profile is a checked-in file, not admin data; only promo country targeting and the country-scoped shell are administered.
 
-No open decisions remain. Stage 1 is landed; next step is a coding plan for stage 2.
+No open decisions remain. Stage 2 is landed 2026-08-05; stage 3 remains (translation lookup and formatting/money defork).

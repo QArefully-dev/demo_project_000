@@ -3,9 +3,18 @@ import type {
   DeliverySite,
   UpdateDeliverySiteBody,
 } from '@shop/contracts/trade-account';
+import { countryProfile } from '@shop/contracts/country-profiles';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { Clock } from '../audit/auditService.js';
-import { normalizeOptionalText, normalizeText, toAddressColumns } from './addressRules.js';
+import {
+  isDeliverableCountryCode,
+  normalizeOptionalText,
+  normalizePostalAddress,
+  normalizeText,
+  toAddressColumns,
+  type AddressColumns,
+  validatePostcodeForCountry,
+} from './addressRules.js';
 import {
   toDeliverySite,
   type DeliverySiteRepository,
@@ -79,6 +88,26 @@ export function createDeliverySiteService({
   const reload = (userId: number, siteId: number): DeliverySiteRow =>
     repository.findById(userId, siteId) as DeliverySiteRow;
 
+  const validatedAddress = (userId: number, address: CreateDeliverySiteBody['address']) => {
+    const normalized = normalizePostalAddress(address);
+    const country = repository.accountCountry(userId);
+    if (!country) return tradeAccountError<AddressColumns>('SITE_NOT_FOUND');
+    const profile = countryProfile(country);
+    if (!validatePostcodeForCountry(profile, normalized.postcode)) {
+      return tradeAccountError<AddressColumns>(
+        'INVALID_POSTCODE',
+        `Enter a valid ${profile.postcode.label}, for example ${profile.postcode.example}.`,
+      );
+    }
+    if (!isDeliverableCountryCode(profile, normalized.countryCode)) {
+      return tradeAccountError<AddressColumns>(
+        'DELIVERY_COUNTRY_NOT_ALLOWED',
+        'This delivery country is not available for your account.',
+      );
+    }
+    return tradeAccountOk(toAddressColumns(normalized));
+  };
+
   return {
     list(userId) {
       return repository.listActive(userId).map(toDeliverySite);
@@ -97,6 +126,8 @@ export function createDeliverySiteService({
 
     create(userId, body) {
       const label = normalizeText(body.label);
+      const address = validatedAddress(userId, body.address);
+      if (!address.ok) return address;
       if (repository.countActive(userId) >= MAX_DELIVERY_SITES_PER_USER) {
         return tradeAccountError('SITE_LIMIT_REACHED');
       }
@@ -113,7 +144,7 @@ export function createDeliverySiteService({
           label,
           contact_name: normalizeText(body.contactName),
           contact_phone: normalizeOptionalText(body.contactPhone),
-          ...toAddressColumns(body.address),
+          ...address.value,
           is_default: false,
           now,
         });
@@ -137,7 +168,11 @@ export function createDeliverySiteService({
       if (body.contactPhone !== undefined) {
         patch.contact_phone = normalizeOptionalText(body.contactPhone);
       }
-      if (body.address !== undefined) Object.assign(patch, toAddressColumns(body.address));
+      if (body.address !== undefined) {
+        const address = validatedAddress(userId, body.address);
+        if (!address.ok) return address;
+        Object.assign(patch, address.value);
+      }
 
       const now = nowIso();
       const row = unitOfWork.run(() => {

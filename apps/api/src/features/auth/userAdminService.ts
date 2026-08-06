@@ -1,4 +1,5 @@
 import type { PublicUser } from '@shop/contracts/auth';
+import type { Country } from '@shop/contracts/country';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
@@ -17,12 +18,33 @@ export class UserAdminServiceError extends Error {
 }
 
 export interface UserAdminService {
-  list(query?: { search?: string }): AdminUserRecord[];
-  get(userId: number): AdminUserRecord;
-  updateDisplayName(userId: number, displayName: string, context: AuditContext): AdminUserRecord;
-  setRole(userId: number, role: PublicUser['role'], context: AuditContext): AdminUserRecord;
-  suspend(userId: number, reason: string, actorId: number, context: AuditContext): AdminUserRecord;
-  reactivate(userId: number, actorId: number, context: AuditContext): AdminUserRecord;
+  list(query?: { search?: string }, country?: Country): AdminUserRecord[];
+  get(userId: number, country?: Country): AdminUserRecord;
+  updateDisplayName(
+    userId: number,
+    displayName: string,
+    context: AuditContext,
+    country?: Country,
+  ): AdminUserRecord;
+  setRole(
+    userId: number,
+    role: PublicUser['role'],
+    context: AuditContext,
+    country?: Country,
+  ): AdminUserRecord;
+  suspend(
+    userId: number,
+    reason: string,
+    actorId: number,
+    context: AuditContext,
+    country?: Country,
+  ): AdminUserRecord;
+  reactivate(
+    userId: number,
+    actorId: number,
+    context: AuditContext,
+    country?: Country,
+  ): AdminUserRecord;
 }
 
 function requireUserId(value: unknown, name = 'userId'): number {
@@ -56,8 +78,12 @@ function requireReason(value: unknown): string {
   return reason;
 }
 
-function requireUser(repository: UserAdminRepository, userId: number): AdminUserRecord {
-  const user = repository.get(userId);
+function requireUser(
+  repository: UserAdminRepository,
+  userId: number,
+  country?: Country,
+): AdminUserRecord {
+  const user = repository.get(userId, country);
   if (!user) throw new UserAdminServiceError('NOT_FOUND', 'User not found');
   return user;
 }
@@ -71,13 +97,13 @@ export function createUserAdminService(dependencies: {
 }): UserAdminService {
   const { repository, sessions, unitOfWork, audit, clock } = dependencies;
   return {
-    list(query = {}) {
-      return repository.list(query);
+    list(query = {}, country) {
+      return repository.list(query, country);
     },
-    get(userId) {
-      return requireUser(repository, requireUserId(userId));
+    get(userId, country) {
+      return requireUser(repository, requireUserId(userId), country);
     },
-    updateDisplayName(userId, displayName, context) {
+    updateDisplayName(userId, displayName, context, country) {
       const id = requireUserId(userId);
       if (typeof displayName !== 'string') {
         throw new UserAdminServiceError(
@@ -93,17 +119,17 @@ export function createUserAdminService(dependencies: {
         );
       }
       return unitOfWork.run(() => {
-        requireUser(repository, id);
+        requireUser(repository, id, country);
         const user = repository.updateDisplayName(id, normalized)!;
         audit.append({ action: 'user.display_name_updated', userId: id, context });
         return user;
       });
     },
-    setRole(userId, role, context) {
+    setRole(userId, role, context, country) {
       const id = requireUserId(userId);
       const targetRole = requireRole(role);
       return unitOfWork.run(() => {
-        const existing = requireUser(repository, id);
+        const existing = requireUser(repository, id, country);
         if (
           existing.role === 'admin' &&
           targetRole === 'customer' &&
@@ -117,12 +143,12 @@ export function createUserAdminService(dependencies: {
         return user;
       });
     },
-    suspend(userId, reason, actorId, context) {
+    suspend(userId, reason, actorId, context, country) {
       const id = requireUserId(userId);
       const actor = requireUserId(actorId, 'actorId');
       const suspensionReason = requireReason(reason);
       return unitOfWork.run(() => {
-        const existing = requireUser(repository, id);
+        const existing = requireUser(repository, id, country);
         if (
           existing.role === 'admin' &&
           existing.suspendedAt === null &&
@@ -141,11 +167,11 @@ export function createUserAdminService(dependencies: {
         return user;
       });
     },
-    reactivate(userId, actorId, context) {
+    reactivate(userId, actorId, context, country) {
       const id = requireUserId(userId);
       requireUserId(actorId, 'actorId');
       return unitOfWork.run(() => {
-        requireUser(repository, id);
+        requireUser(repository, id, country);
         const user = repository.reactivate(id)!;
         audit.append({ action: 'user.reactivated', userId: id, context });
         return user;

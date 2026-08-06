@@ -177,3 +177,50 @@ void test('promo admin cannot reduce max redemptions below committed and held us
     0,
   );
 });
+
+void test('promo admin persists and replaces country targeting sets', (t) => {
+  const { db, service, context } = fixture(t);
+  const created = service.create({ ...createInput, countries: ['UK', 'US'] }, context);
+  assert.deepEqual(created.countries, ['UK', 'US']);
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT pcc.country
+         FROM promo_code_countries pcc
+         JOIN promo_codes pc ON pc.id = pcc.promo_code_id
+         WHERE pc.code = ? ORDER BY pcc.rowid`,
+      )
+      .all('GARDEN25'),
+    [{ country: 'UK' }, { country: 'US' }],
+  );
+
+  const updated = service.update('GARDEN25', { ...createInput, countries: ['DE'] }, context);
+  assert.deepEqual(updated.countries, ['DE']);
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT pcc.country
+         FROM promo_code_countries pcc
+         JOIN promo_codes pc ON pc.id = pcc.promo_code_id
+         WHERE pc.code = ? ORDER BY pcc.rowid`,
+      )
+      .all('GARDEN25'),
+    [{ country: 'DE' }],
+  );
+});
+
+void test('promo admin rejects duplicate and unknown country targeting values', (t) => {
+  const { db, service, context } = fixture(t);
+  assert.throws(
+    () => service.create({ ...createInput, countries: ['UK', 'UK'] }, context),
+    (error: unknown) => error instanceof PromoAdminServiceError && error.code === 'INVALID_INPUT',
+  );
+  assert.throws(
+    () => service.create({ ...createInput, countries: ['ZZ' as never] }, context),
+    (error: unknown) => error instanceof PromoAdminServiceError && error.code === 'INVALID_INPUT',
+  );
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM promo_codes').get() as { count: number }).count,
+    0,
+  );
+});

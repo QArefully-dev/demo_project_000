@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import type { Country } from '@shop/contracts/country';
 
 export interface PromoRecord {
   code: string;
@@ -14,9 +15,11 @@ export interface PromoRecord {
   maxRedemptions: number | null;
   redemptionCount: number;
   perUserLimit: number | null;
+  countries?: Country[];
 }
 
 interface PromoRow {
+  id: number;
   code: string;
   discount_percent: number;
   min_item_count: number;
@@ -34,6 +37,8 @@ interface PromoRow {
 
 export interface PromoRepository {
   findByCode(code: string): PromoRecord | undefined;
+  targetedCountries(code: string): Country[];
+  replaceTargetedCountries(code: string, countries: readonly Country[]): void;
   redemptionCountForUser(code: string, userId: number): number;
   activeReservationCount(code: string): number;
   activeReservationCountForUser(code: string, userId: number): number;
@@ -48,7 +53,7 @@ export interface PromoRepository {
   recordRedemption(input: { code: string; userId: number | null; orderId: number }): void;
 }
 
-function toRecord(row: PromoRow): PromoRecord {
+function toRecord(row: PromoRow, countries: Country[] = []): PromoRecord {
   return {
     code: row.code,
     discountPercent: row.discount_percent,
@@ -63,15 +68,39 @@ function toRecord(row: PromoRow): PromoRecord {
     maxRedemptions: row.max_redemptions,
     redemptionCount: row.redemption_count,
     perUserLimit: row.per_user_limit,
+    ...(countries.length > 0 ? { countries } : {}),
   };
 }
 
 export function createPromoRepository(db: Database.Database): PromoRepository {
+  const targetedCountriesForId = (promoCodeId: number): Country[] =>
+    db
+      .prepare(
+        'SELECT country FROM promo_code_countries WHERE promo_code_id = ? ORDER BY rowid ASC',
+      )
+      .all(promoCodeId)
+      .map((row) => (row as { country: Country }).country);
+
   return {
     findByCode(code) {
       const row = db.prepare('SELECT * FROM promo_codes WHERE code = ?').get(code) as
         PromoRow | undefined;
-      return row ? toRecord(row) : undefined;
+      return row ? toRecord(row, targetedCountriesForId(row.id)) : undefined;
+    },
+    targetedCountries(code) {
+      const row = db.prepare('SELECT id FROM promo_codes WHERE code = ?').get(code) as
+        { id: number } | undefined;
+      return row ? targetedCountriesForId(row.id) : [];
+    },
+    replaceTargetedCountries(code, countries) {
+      const row = db.prepare('SELECT id FROM promo_codes WHERE code = ?').get(code) as
+        { id: number } | undefined;
+      if (!row) throw new Error('Cannot target an unknown promo code');
+      db.prepare('DELETE FROM promo_code_countries WHERE promo_code_id = ?').run(row.id);
+      const insert = db.prepare(
+        'INSERT INTO promo_code_countries (promo_code_id, country) VALUES (?, ?)',
+      );
+      for (const country of countries) insert.run(row.id, country);
     },
     redemptionCountForUser(code, userId) {
       return (

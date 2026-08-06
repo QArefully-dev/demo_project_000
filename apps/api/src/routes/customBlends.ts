@@ -131,6 +131,7 @@ function sendMutationResult(
     | 'VARIANT_NOT_FOUND'
     | 'VARIANT_NOT_IN_CART'
     | 'CART_RESERVED'
+    | 'BLOCKED_IN_COUNTRY'
     | 'BELOW_MOQ'
     | 'INVALID_QUANTITY',
 ): CartResponse | void {
@@ -139,7 +140,11 @@ function sendMutationResult(
     reply.code(404).send({ error: 'Cart not found' });
     return;
   }
-  if (result === 'VARIANT_NOT_FOUND' || result === 'VARIANT_NOT_IN_CART') {
+  if (
+    result === 'VARIANT_NOT_FOUND' ||
+    result === 'VARIANT_NOT_IN_CART' ||
+    result === 'BLOCKED_IN_COUNTRY'
+  ) {
     reply.code(404).send({ error: 'Variant in cart not found' });
     return;
   }

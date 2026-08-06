@@ -16,6 +16,7 @@ import type {
   OrderSummary,
   ShipmentStatus,
 } from '@shop/contracts/orders';
+import type { Country } from '@shop/contracts/country';
 import type { CreateOrderParams, LifecycleEventInput, PersistedShipment } from './orderTypes.js';
 
 interface OrderRow {
@@ -97,7 +98,7 @@ export interface OrderAccessRepository {
 export interface OrderRepository extends OrderAccessRepository {
   create(params: CreateOrderParams): number;
   findById(orderId: number): Order | undefined;
-  findDetailById(orderId: number): OrderDetailResponse | undefined;
+  findDetailById(orderId: number, country?: Country): OrderDetailResponse | undefined;
   findOwnedDetail(orderId: number, userId: number): OrderDetailResponse | undefined;
   listOwned(
     userId: number,
@@ -293,7 +294,7 @@ function mapShipment(
 }
 
 export function createOrderRepository(db: Database.Database): OrderRepository {
-  const loadOrder = (orderId: number): OrderRow | undefined =>
+  const loadOrder = (orderId: number, country?: Country): OrderRow | undefined =>
     db
       .prepare(
         `SELECT id, promo_code_applied, promo_category_scope, subtotal_cents, discount_base_cents, discount_cents, total_cents, created_at,
@@ -301,9 +302,9 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
             delivery_mode, delivery_charge_cents, delivery_weight_grams,
             delivery_site_id, delivery_address_json, billing_entity_json,
             delivery_slot_date, delivery_slot_window, purchase_order_reference
-         FROM orders WHERE id = ?`,
+         FROM orders WHERE id = ?${country ? ' AND country = ?' : ''}`,
       )
-      .get(orderId) as OrderRow | undefined;
+      .get(...(country ? [orderId, country] : [orderId])) as OrderRow | undefined;
   const loadLineItems = (orderId: number) =>
     db
       .prepare(
@@ -359,8 +360,8 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
         'SELECT id, order_id, shipment_number, status, tracking_reference, version, created_at, updated_at FROM order_shipments WHERE order_id = ? ORDER BY shipment_number ASC, id ASC',
       )
       .all(orderId) as ShipmentRow[];
-  const findDetail = (orderId: number): OrderDetailResponse | undefined => {
-    const row = loadOrder(orderId);
+  const findDetail = (orderId: number, country?: Country): OrderDetailResponse | undefined => {
+    const row = loadOrder(orderId, country);
     if (!row) return undefined;
     const items = loadLineItems(orderId);
     const shipments = loadShipments(orderId);

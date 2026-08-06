@@ -37,7 +37,7 @@ export default function bundleRoutes(app: FastifyInstance, { services }: AppCont
         response: { 200: CuratedBundleListResponse, 400: ErrorResponse },
       },
     },
-    (request) => bundles.list(request.query.productId),
+    (request) => bundles.list(request.query.productId, request.resolvedCountry),
   );
 
   typed.post(

@@ -62,6 +62,15 @@ describe('CountryPicker', () => {
     expect(screen.getByText('Country')).toBeInTheDocument();
   });
 
+  it('uses the enabled Country label for an admin browsing another country', () => {
+    // CountryContext reports admins as not account-bound in stage 2.
+    countryState.isAccountBound = false;
+    renderPicker('DE', vi.fn(), false);
+
+    expect(screen.getByRole('combobox', { name: 'Country' })).not.toBeDisabled();
+    expect(screen.queryByText('Account country')).not.toBeInTheDocument();
+  });
+
   it('shows cart message when guest changes country with non-empty cart', async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();

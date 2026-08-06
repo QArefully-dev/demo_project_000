@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { CATALOG_PRODUCTS, CURATED_BUNDLES } from '@shop/catalog';
+import { COUNTRY_PROFILES } from '@shop/contracts/country-profiles';
 import { catalogProductSpecifications } from '../../src/features/catalog/catalogSpecifications.js';
 import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
 import { DEMO_ORDER_SCENARIO_KEYS } from '../../src/db/orderSeedScenarios.js';
@@ -1434,7 +1435,7 @@ void test('seed installs deterministic clearance windows and category-scoped pro
   );
 });
 
-void test('seed installs two Alice rows with distinct ids and distinct password hashes', (t) => {
+void test('seed installs two Alice rows with distinct ids and distinct passwords', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-de-alice-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
   t.after(() => {
@@ -1480,7 +1481,7 @@ void test('seed installs two Alice rows with distinct ids and distinct password 
       .update('seed-salt-alice@example.com-DE')
       .digest('hex')
       .slice(0, 64);
-    const expected = scryptSync('Password123!', salt, 64).toString('hex');
+    const expected = scryptSync('PasswordDE!1', salt, 64).toString('hex');
     assert.equal(deHash, expected);
   }
 });
@@ -1505,16 +1506,58 @@ void test('DE Alice password verifies only against its own row', (t) => {
   const [deSalt, deHash] = deRow.password_hash.split('.');
 
   const ukScrypt = scryptSync('Password123!', ukSalt, 64);
-  const deScrypt = scryptSync('Password123!', deSalt, 64);
+  const deScrypt = scryptSync('PasswordDE!1', deSalt, 64);
+  const deWithUkPassword = scryptSync('Password123!', deSalt, 64);
 
   assert.ok(timingSafeEqual(ukScrypt, Buffer.from(ukHash, 'hex')));
   assert.ok(timingSafeEqual(deScrypt, Buffer.from(deHash, 'hex')));
+  assert.ok(!timingSafeEqual(deWithUkPassword, Buffer.from(deHash, 'hex')));
   // Cross-check: DE hash does NOT match UK salt
-  const deAgainstUk = scryptSync('Password123!', ukSalt, 64);
+  const deAgainstUk = scryptSync('PasswordDE!1', ukSalt, 64);
   assert.ok(!timingSafeEqual(deAgainstUk, Buffer.from(deHash, 'hex')));
 });
 
-void test('seed installs DE Alice cart', (t) => {
+void test('seed installs stage-2 country fixtures and targeted promo idempotently', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-country-seed-fixtures-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+
+  assert.ok(COUNTRY_PROFILES.CN.blockedCategories.includes('Sports Nutrition'));
+  assert.ok(COUNTRY_PROFILES.ES.banner);
+  assert.equal(COUNTRY_PROFILES.UK.banner, undefined);
+  assert.ok(
+    (db
+      .prepare(
+        `SELECT 1
+           FROM products
+           WHERE category = 'Sports Nutrition' AND active = 1
+           LIMIT 1`,
+      )
+      .get() as { 1: number } | undefined) !== undefined,
+  );
+
+  const targetedCountries = () =>
+    db
+      .prepare(
+        `SELECT pcc.country
+         FROM promo_code_countries AS pcc
+         INNER JOIN promo_codes AS promos ON promos.id = pcc.promo_code_id
+         WHERE promos.code = 'LOC-UK-DE-10'
+         ORDER BY pcc.country`,
+      )
+      .all();
+  assert.deepEqual(targetedCountries(), [{ country: 'DE' }, { country: 'UK' }]);
+
+  seedDatabase(db);
+  assert.deepEqual(targetedCountries(), [{ country: 'DE' }, { country: 'UK' }]);
+});
+
+void test('seed installs independent Alice country carts', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-de-alice-cart-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
   t.after(() => {
@@ -1524,12 +1567,21 @@ void test('seed installs DE Alice cart', (t) => {
 
   seedDatabase(db);
 
-  const cart = db
-    .prepare("SELECT id, country FROM carts WHERE id = '00000000-0000-4000-8000-de0000000001'")
-    .get() as { id: string; country: string } | undefined;
-
-  assert.ok(cart);
-  assert.equal(cart.country, 'DE');
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT id, country
+         FROM carts
+         WHERE id IN ('00000000-0000-4000-8000-aa0000000001',
+                      '00000000-0000-4000-8000-de0000000001')
+         ORDER BY country`,
+      )
+      .all(),
+    [
+      { id: '00000000-0000-4000-8000-de0000000001', country: 'DE' },
+      { id: '00000000-0000-4000-8000-aa0000000001', country: 'UK' },
+    ],
+  );
 });
 
 void test('DE Alice fixture is idempotent across re-seed', (t) => {

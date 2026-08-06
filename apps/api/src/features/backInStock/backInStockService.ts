@@ -4,6 +4,7 @@ import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter, Clock } from '../audit/auditService.js';
 import type { VariantRow } from '../catalog/productRepository.js';
 import type { InventoryService } from '../inventory/inventoryService.js';
+import type { CountryProfileService } from '../countryProfile/countryProfileService.js';
 import { minimumOrderQuantity } from '../pricing/pricingRules.js';
 import { backInStockError, backInStockOk, type BackInStockResult } from './backInStockErrors.js';
 import {
@@ -26,6 +27,7 @@ export interface BackInStockDependencies {
   unitOfWork: UnitOfWork;
   audit: AuditWriter;
   clock: Clock;
+  countryProfiles?: Pick<CountryProfileService, 'isCategoryBlocked' | 'isProductBlocked'>;
 }
 
 export interface BackInStockService {
@@ -84,9 +86,17 @@ export function createBackInStockService(
       return dependencies.unitOfWork.run(() => {
         const variant = dependencies.variants.findVariantById(variantId);
         if (!variant) return backInStockError<BackInStockSubscription>('VARIANT_NOT_FOUND');
-        if (isRetired(variant)) return backInStockError<BackInStockSubscription>('VARIANT_RETIRED');
         const facts = dependencies.repository.variantFacts(variantId);
         if (!facts) return backInStockError<BackInStockSubscription>('VARIANT_NOT_FOUND');
+        const country = dependencies.repository.userCountry(userId);
+        if (!country) return backInStockError<BackInStockSubscription>('VARIANT_NOT_FOUND');
+        if (
+          dependencies.countryProfiles?.isCategoryBlocked(country, facts.product_category) ||
+          dependencies.countryProfiles?.isProductBlocked(country, facts.product_slug)
+        ) {
+          return backInStockError<BackInStockSubscription>('VARIANT_NOT_FOUND');
+        }
+        if (isRetired(variant)) return backInStockError<BackInStockSubscription>('VARIANT_RETIRED');
         const minimum = minimumOrderQuantity(facts.weight_grams, facts.moq_sacks);
         // An unusable weight/MOQ basis makes the variant unorderable, so it is not a valid target.
         if (minimum === undefined)

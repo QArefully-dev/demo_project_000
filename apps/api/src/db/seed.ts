@@ -9,6 +9,7 @@ import { seedCompanyAccounts } from './companyAccountsSeed.js';
 import { seedSavedLists } from './savedListSeed.js';
 import { seedAsyncScenarios } from './seedAsyncScenarios.js';
 import { seedBackInStock } from './backInStockSeed.js';
+import { assertProfilesMatchCatalog } from '../features/countryProfile/countryProfileService.js';
 
 const USERS = [
   {
@@ -71,6 +72,8 @@ const DE_ALICE = {
   role: 'customer',
   country: 'DE',
 } as const;
+
+const DE_ALICE_PASSWORD = 'PasswordDE!1';
 
 const ADMIN_DEACTIVATED_PROMO = {
   code: 'ADMINOFF',
@@ -226,6 +229,22 @@ const SCOPED_PROMOS = [
     category_scope: 'Household & Cleaning',
   },
 ] as const;
+
+const COUNTRY_TARGETED_PROMO = {
+  code: 'LOC-UK-DE-10',
+  discount_percent: 10,
+  min_item_count: 0,
+  active: 1,
+  kind: 'percent',
+  amount_cents: null,
+  min_subtotal_cents: null,
+  start_at: null,
+  end_at: null,
+  max_redemptions: null,
+  redemption_count: 0,
+  per_user_limit: null,
+  countries: ['UK', 'DE'] as const,
+} as const;
 
 /** Fixed clock makes active, expired, and future clearance fixtures deterministic on every reset. */
 const PRICING_PROMOTIONS_SEED_CLOCK = '2026-07-28T12:00:00.000Z';
@@ -403,12 +422,12 @@ const SEED_BILLING_ENTITIES = [
 /** Fixed creation instant for every seeded trade-account row. */
 const TRADE_ACCOUNT_SEED_INSTANT = '2026-07-01T09:00:00.000Z';
 
-function seededPassword(email: string, country: string): string {
+function seededPassword(email: string, country: string, password = 'Password123!'): string {
   const salt = createHash('sha256')
     .update(`seed-salt-${email}-${country}`)
     .digest('hex')
     .slice(0, 64);
-  return `${salt}.${scryptSync('Password123!', salt, 64).toString('hex')}`;
+  return `${salt}.${scryptSync(password, salt, 64).toString('hex')}`;
 }
 
 const CANONICAL_PRODUCT_IDS = new Set(
@@ -627,6 +646,8 @@ export function seedDatabase(db: Database.Database): void {
       }
     }
 
+    assertProfilesMatchCatalog(db);
+
     for (const bundle of CURATED_BUNDLES) {
       upsertBundle.run({
         id: bundle.id,
@@ -659,6 +680,21 @@ export function seedDatabase(db: Database.Database): void {
         (@code, @discount_percent, @min_item_count, @active, @kind, @amount_cents, @min_subtotal_cents, @start_at, @end_at, @max_redemptions, @redemption_count, @per_user_limit)
     `);
     for (const promo of PROMOS) insertPromo.run(promo);
+
+    insertPromo.run(COUNTRY_TARGETED_PROMO);
+    const targetedPromoId = db
+      .prepare('SELECT id FROM promo_codes WHERE code = ?')
+      .pluck()
+      .get(COUNTRY_TARGETED_PROMO.code) as number | undefined;
+    if (targetedPromoId === undefined) {
+      throw new Error(`Seed assertion failed: missing ${COUNTRY_TARGETED_PROMO.code} promo`);
+    }
+    const insertPromoCountry = db.prepare(
+      'INSERT OR IGNORE INTO promo_code_countries (promo_code_id, country) VALUES (?, ?)',
+    );
+    for (const country of COUNTRY_TARGETED_PROMO.countries) {
+      insertPromoCountry.run(targetedPromoId, country);
+    }
 
     const insertScopedPromo = db.prepare(`
       INSERT OR IGNORE INTO promo_codes
@@ -700,7 +736,7 @@ export function seedDatabase(db: Database.Database): void {
       });
     }
 
-    // DE Alice fixture — separate country, distinct password, own cart.
+    // Alice country fixtures — separate accounts, distinct passwords, independent carts.
     // The primary key is left to AUTOINCREMENT: pinning it collided with whatever row already
     // occupied that id on a database seeded before this branch, and `INSERT OR IGNORE` then
     // silently dropped the fixture. Idempotency keys on the `UNIQUE (email, country)` constraint
@@ -713,16 +749,20 @@ export function seedDatabase(db: Database.Database): void {
     `,
     ).run({
       ...DE_ALICE,
-      password_hash: seededPassword(DE_ALICE.email, DE_ALICE.country),
+      password_hash: seededPassword(DE_ALICE.email, DE_ALICE.country, DE_ALICE_PASSWORD),
       password_salt: '',
     });
-    const deAliceCartId = '00000000-0000-4000-8000-de0000000001';
-    db.prepare(
+    const aliceCountryCarts = [
+      { id: '00000000-0000-4000-8000-aa0000000001', country: 'UK' },
+      { id: '00000000-0000-4000-8000-de0000000001', country: 'DE' },
+    ] as const;
+    const insertAliceCart = db.prepare(
       `
       INSERT OR IGNORE INTO carts (id, created_at, updated_at, country)
-      VALUES (?, '2026-07-01T09:00:00.000Z', '2026-07-01T09:00:00.000Z', 'DE')
+      VALUES (?, '2026-07-01T09:00:00.000Z', '2026-07-01T09:00:00.000Z', ?)
     `,
-    ).run(deAliceCartId);
+    );
+    for (const cart of aliceCountryCarts) insertAliceCart.run(cart.id, cart.country);
 
     seedCompanyAccounts(db);
 

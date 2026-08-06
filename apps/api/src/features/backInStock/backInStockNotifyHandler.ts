@@ -4,6 +4,7 @@ import type { InventoryService } from '../inventory/inventoryService.js';
 import type { FaultSwitch } from '../jobs/faultSwitch.js';
 import type { JobHandler } from '../jobs/jobHandlerRegistry.js';
 import type { NotificationService } from '../notifications/notificationService.js';
+import type { CountryProfileService } from '../countryProfile/countryProfileService.js';
 import { minimumOrderQuantity } from '../pricing/pricingRules.js';
 import type { BackInStockRepository } from './backInStockRepository.js';
 import { backInStockNotificationCopy, isNotifiable } from './backInStockRules.js';
@@ -12,7 +13,12 @@ import type { BackInStockNotifyPayload } from './backInStockTrigger.js';
 export interface BackInStockNotifyHandlerDependencies {
   repository: Pick<
     BackInStockRepository,
-    'listPendingForVariant' | 'markNotified' | 'markCancelled' | 'variantFacts' | 'findOwned'
+    | 'listPendingForVariant'
+    | 'markNotified'
+    | 'markCancelled'
+    | 'variantFacts'
+    | 'findOwned'
+    | 'userCountry'
   >;
   notifications: Pick<NotificationService, 'notify'>;
   inventory: Pick<InventoryService, 'availableToSell'>;
@@ -20,6 +26,7 @@ export interface BackInStockNotifyHandlerDependencies {
   audit: AuditWriter;
   clock: Clock;
   faults: FaultSwitch;
+  countryProfiles?: Pick<CountryProfileService, 'isCategoryBlocked' | 'isProductBlocked'>;
 }
 
 /** Every fan-out row is written by the system, never by the buyer whose interest it settles. */
@@ -49,26 +56,35 @@ export function createBackInStockNotifyHandler(
     if (d.faults.isEnabled('async.back_in_stock_failure'))
       return { ok: false, error: 'Simulated back-in-stock notify failure' };
 
-    const facts = d.repository.variantFacts(variantId);
     const pending = d.repository.listPendingForVariant(variantId);
     if (pending.length === 0) return { ok: true };
 
-    // A retired or deleted lot can never come back, so the interest is closed rather than parked.
-    if (!facts || facts.active !== 1) {
-      for (const row of pending) {
-        d.unitOfWork.run(() => {
-          const current = d.repository.findOwned(row.id, row.user_id);
-          if (current?.status !== 'pending') return;
-          d.repository.markCancelled(row.id, d.clock.now().toISOString());
-          d.audit.append({
-            action: 'back_in_stock.cancelled',
-            subscriptionId: row.id,
-            context: systemContext,
-          });
-        });
-      }
-      return { ok: true };
-    }
+    const settleCancellation = (row: (typeof pending)[number]): boolean => {
+      const current = d.repository.findOwned(row.id, row.user_id);
+      if (current?.status !== 'pending') return true;
+      const currentFacts = d.repository.variantFacts(variantId);
+      const subscriberCountry = d.repository.userCountry(row.user_id);
+      const remainsOrderable =
+        currentFacts?.active === 1 &&
+        subscriberCountry !== undefined &&
+        !d.countryProfiles?.isCategoryBlocked(subscriberCountry, currentFacts.product_category) &&
+        !d.countryProfiles?.isProductBlocked(subscriberCountry, currentFacts.product_slug);
+      if (remainsOrderable) return false;
+      d.repository.markCancelled(row.id, d.clock.now().toISOString());
+      d.audit.append({
+        action: 'back_in_stock.cancelled',
+        subscriptionId: row.id,
+        context: systemContext,
+      });
+      return true;
+    };
+
+    // Country blocks and terminal lot states settle independently of stock. Each subscriber's
+    // persisted country and the current lot facts are read inside that row's transaction.
+    for (const row of pending) d.unitOfWork.run(() => settleCancellation(row));
+
+    const facts = d.repository.variantFacts(variantId);
+    if (!facts || facts.active !== 1) return { ok: true };
 
     const minimum = minimumOrderQuantity(facts.weight_grams, facts.moq_sacks);
     // An unusable weight/MOQ basis leaves nothing a buyer could order; wait for a later movement.
@@ -84,8 +100,7 @@ export function createBackInStockNotifyHandler(
     for (const row of pending) {
       d.unitOfWork.run(() => {
         // Re-read inside the transaction: a buyer may have cancelled since the list was taken.
-        const current = d.repository.findOwned(row.id, row.user_id);
-        if (current?.status !== 'pending') return;
+        if (settleCancellation(row)) return;
         const notified = d.notifications.notify({
           userId: row.user_id,
           kind: 'back_in_stock.available',

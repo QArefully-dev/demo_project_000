@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { MIXING_GROUPS } from '@shop/catalog';
+import type { Country } from '@shop/contracts/country';
 import type { VariantRow } from '../catalog/productRepository.js';
 import type { CustomBlendFactRow } from '../customBlend/customBlendRepository.js';
 
@@ -38,9 +39,18 @@ export interface CartLineRow {
   product_blend_source_variant_id: number | null;
 }
 
+export interface CartCountryVariantFact {
+  country: Country;
+  variant_id: number;
+  product_category: string;
+  product_slug: string;
+}
+
 export interface CartRepository {
   create(id: string, country: string): void;
   exists(cartId: string): boolean;
+  country(cartId: string): Country | undefined;
+  listCountryVariantFacts(cartId: string, variantIds: readonly number[]): CartCountryVariantFact[];
   listLines(cartId: string): CartLineRow[];
   listEligibleCustomBlendFacts(variantIds: number[]): CustomBlendFactRow[];
   variantExists(variantId: string): boolean;
@@ -84,6 +94,24 @@ export function createCartRepository(db: Database.Database): CartRepository {
     },
     exists(cartId) {
       return db.prepare('SELECT 1 FROM carts WHERE id = ?').get(cartId) !== undefined;
+    },
+    country(cartId) {
+      return db.prepare('SELECT country FROM carts WHERE id = ?').pluck().get(cartId) as
+        Country | undefined;
+    },
+    listCountryVariantFacts(cartId, variantIds) {
+      if (variantIds.length === 0) return [];
+      const placeholders = variantIds.map(() => '?').join(', ');
+      return db
+        .prepare(
+          `SELECT c.country, pv.id AS variant_id,
+                  p.category AS product_category, p.slug AS product_slug
+           FROM carts c
+           INNER JOIN product_variants pv ON pv.id IN (${placeholders})
+           INNER JOIN products p ON p.id = pv.product_id
+           WHERE c.id = ?`,
+        )
+        .all(...variantIds, cartId) as CartCountryVariantFact[];
     },
     listLines(cartId) {
       return db

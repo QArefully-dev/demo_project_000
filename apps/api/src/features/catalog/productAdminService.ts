@@ -8,6 +8,9 @@ import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter, Clock } from '../audit/auditService.js';
 import type { ProductRow } from './productRepository.js';
+import type { Country } from '@shop/contracts/country';
+import { countryProfile } from '@shop/contracts/country-profiles';
+import type { CatalogCountryExclusions } from './catalogSql.js';
 import type {
   ProductAdminInsert,
   ProductAdminRepository,
@@ -53,8 +56,8 @@ export interface ProductAdminPatch {
 }
 
 export interface ProductAdminService {
-  listAdmin(query?: { includeRetired?: boolean }): ProductRow[];
-  getAdmin(id: number): ProductRow | null;
+  listAdmin(query?: { includeRetired?: boolean }, country?: Country): ProductRow[];
+  getAdmin(id: number, country?: Country): ProductRow | null;
   create(input: ProductAdminCreateInput, context: AuditContext): ProductRow;
   update(id: number, patch: ProductAdminPatch, context: AuditContext): ProductRow;
   retire(id: number, context: AuditContext): ProductRow;
@@ -69,6 +72,15 @@ export interface ProductAdminServiceDependencies {
 
 const mixingGroups = new Set<string>(MIXING_GROUPS);
 const catalogCategories = new Set<string>(CATALOG_CATEGORIES);
+
+function exclusionsFor(country?: Country): CatalogCountryExclusions | undefined {
+  if (!country) return undefined;
+  const profile = countryProfile(country);
+  return {
+    blockedCategories: profile.blockedCategories,
+    blockedSlugs: profile.blockedProductSlugs,
+  };
+}
 
 function assertText(value: string): string {
   const normalized = value.trim();
@@ -159,11 +171,11 @@ export function createProductAdminService({
   };
 
   return {
-    listAdmin(query = {}) {
-      return repository.list(query.includeRetired === true);
+    listAdmin(query = {}, country) {
+      return repository.list(query.includeRetired === true, exclusionsFor(country));
     },
-    getAdmin(id) {
-      return repository.findById(id) ?? null;
+    getAdmin(id, country) {
+      return repository.findById(id, exclusionsFor(country)) ?? null;
     },
     create(input, context) {
       return unitOfWork.run(() => {

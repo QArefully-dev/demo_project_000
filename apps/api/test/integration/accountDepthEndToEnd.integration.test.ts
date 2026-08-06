@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { FREIGHT_HEAVY_WEIGHT_THRESHOLD_GRAMS } from '@shop/contracts/delivery';
+import { countryProfile } from '@shop/contracts/country-profiles';
 import { SACK_WEIGHT_GRAMS } from '@shop/contracts/pricing';
 import { buildApp } from '../../src/app.js';
 import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
@@ -118,6 +119,7 @@ void test('account depth composes self-service, company approval, and deletion r
     date: calculateLeadTime({
       deliverySummary: { mode: 'freight', weightGrams: FREIGHT_HEAVY_WEIGHT_THRESHOLD_GRAMS },
       now,
+      profile: countryProfile('UK'),
     }).earliestDate,
     window: 'am' as const,
   };

@@ -227,6 +227,21 @@ void test('a cart group verdict fans out to every member and counts source lines
   assert.deepEqual(countQuickOrderOutcomes(outcomes), { addedLineCount: 2, skippedLineCount: 0 });
 });
 
+void test('Quick Order preserves the cart country-blocking precedence verdict', () => {
+  const cement = variant();
+  const variants = new Map([[cement.sku, cement]]);
+  const lines = parseQuickOrderText('CEM-0001-001, 4');
+  const groups = buildQuickOrderDemand(lines, variants);
+  const outcomes = outcomesFor(
+    lines,
+    groups,
+    [{ key: cement.sku, status: 'skipped', reason: 'BLOCKED_IN_COUNTRY' }],
+    variants,
+  );
+
+  assert.equal(outcomes[0]?.reason, 'BLOCKED_IN_COUNTRY');
+});
+
 void test('a submitted group without a cart outcome is an invariant breach', () => {
   const cement = variant();
   const variants = new Map([[cement.sku, cement]]);

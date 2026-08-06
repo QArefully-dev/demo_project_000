@@ -1,4 +1,7 @@
 import type { AuditContext } from '../audit/auditEvent.js';
+import type { Country } from '@shop/contracts/country';
+import { countryProfile } from '@shop/contracts/country-profiles';
+import type { CatalogCountryExclusions } from './catalogSql.js';
 import type { AuditWriter, Clock } from '../audit/auditService.js';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import { noStockObserver, type StockChangeObserver } from '../inventory/stockObserver.js';
@@ -60,7 +63,7 @@ export interface VariantClearanceInput {
 }
 
 export interface VariantAdminService {
-  listAdmin(productId: number): VariantRow[];
+  listAdmin(productId: number, country?: Country): VariantRow[];
   create(input: VariantAdminCreateInput, context: AuditContext): VariantRow;
   update(id: number, input: VariantAdminUpdateInput, context: AuditContext): VariantRow;
   retire(id: number, context: AuditContext): VariantRow;
@@ -89,6 +92,15 @@ function validPositiveInteger(value: unknown): value is number {
 
 function validNonNegativeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+function exclusionsFor(country?: Country): CatalogCountryExclusions | undefined {
+  if (!country) return undefined;
+  const profile = countryProfile(country);
+  return {
+    blockedCategories: profile.blockedCategories,
+    blockedSlugs: profile.blockedProductSlugs,
+  };
 }
 
 function normalizeIsoInstant(value: string): string {
@@ -187,11 +199,11 @@ export function createVariantAdminService(
 ): VariantAdminService {
   const stockObserver = dependencies.stockObserver ?? noStockObserver;
   return {
-    listAdmin(productId) {
+    listAdmin(productId, country) {
       if (!validPositiveInteger(productId)) {
         throw new VariantAdminError('INVALID_VARIANT', 'productId must be a positive safe integer');
       }
-      return dependencies.repository.listAdmin(productId);
+      return dependencies.repository.listAdmin(productId, exclusionsFor(country));
     },
     create(input, context) {
       assertVariantValues(input);

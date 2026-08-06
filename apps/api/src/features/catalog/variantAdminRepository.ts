@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import type { VariantRow } from './productRepository.js';
+import type { CatalogCountryExclusions } from './catalogSql.js';
 
 export interface CreateVariantRecord {
   productId: number;
@@ -38,7 +39,7 @@ export interface ClearanceRecord {
 }
 
 export interface VariantAdminRepository {
-  listAdmin(productId: number): VariantRow[];
+  listAdmin(productId: number, exclusions?: CatalogCountryExclusions): VariantRow[];
   findById(id: number): VariantRow | undefined;
   findActiveReplacement(productId: number, retiredId: number): VariantRow | undefined;
   create(input: CreateVariantRecord): VariantRow;
@@ -54,16 +55,34 @@ export interface VariantAdminRepository {
 }
 
 export function createVariantAdminRepository(db: Database.Database): VariantAdminRepository {
+  const blockedSelect = (
+    exclusions?: CatalogCountryExclusions,
+  ): { expression: string; params: string[] } => {
+    if (
+      !exclusions ||
+      (exclusions.blockedCategories.length === 0 && exclusions.blockedSlugs.length === 0)
+    )
+      return { expression: '0 AS blocked_in_country', params: [] };
+    const categories = exclusions.blockedCategories.map(() => '?').join(', ');
+    const slugs = exclusions.blockedSlugs.map(() => '?').join(', ');
+    return {
+      expression: `CASE WHEN p.category IN (${categories}) OR p.slug IN (${slugs}) THEN 1 ELSE 0 END AS blocked_in_country`,
+      params: [...exclusions.blockedCategories, ...exclusions.blockedSlugs],
+    };
+  };
   const findById = (id: number): VariantRow | undefined =>
     db.prepare('SELECT * FROM product_variants WHERE id = ?').get(id) as VariantRow | undefined;
 
   return {
-    listAdmin(productId) {
+    listAdmin(productId, exclusions) {
+      const blocked = blockedSelect(exclusions);
       return db
         .prepare(
-          'SELECT * FROM product_variants WHERE product_id = ? ORDER BY active DESC, sort_order ASC, id ASC',
+          `SELECT v.*, ${blocked.expression} FROM product_variants v
+           INNER JOIN products p ON p.id = v.product_id
+           WHERE v.product_id = ? ORDER BY v.active DESC, v.sort_order ASC, v.id ASC`,
         )
-        .all(productId) as VariantRow[];
+        .all(...blocked.params, productId) as VariantRow[];
     },
     findById,
     findActiveReplacement(productId, retiredId) {

@@ -2,16 +2,24 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { CustomBlendSnapshot } from '@shop/contracts';
 import {
+  BULK_ADD_SKIP_REASONS,
   aggregateBulkAddDemand,
-  classifyBulkAddGroup,
+  classifyBulkAddGroup as classifyBulkAddGroupRule,
   fanOutBulkAddOutcome,
   type BulkAddRequest,
+  type ClassifyBulkAddGroupInput,
   type BulkAddVariantRow,
 } from './cartBulkAddRules.js';
 import { resolveUnitPriceCents } from '../pricing/pricingRules.js';
 
 const NOW = new Date('2026-07-31T12:00:00.000Z');
 const SACK_GRAMS = 25_000;
+
+function classifyBulkAddGroup(
+  input: Omit<ClassifyBulkAddGroupInput, 'blockedInCountry'> & { blockedInCountry?: boolean },
+) {
+  return classifyBulkAddGroupRule({ blockedInCountry: false, ...input });
+}
 
 function variantRow(overrides: Partial<BulkAddVariantRow> = {}): BulkAddVariantRow {
   return {
@@ -84,6 +92,50 @@ void test('aggregation keeps different config keys on the same variant apart', (
     ],
   );
   assert.equal(groups[1]?.customBlend?.configKey, 'aaa');
+});
+
+void test('country blocking outranks retirement, stock, MOQ, and quantity failures', () => {
+  assert.deepEqual(BULK_ADD_SKIP_REASONS, [
+    'BLOCKED_IN_COUNTRY',
+    'VARIANT_RETIRED',
+    'BLEND_UNAVAILABLE',
+    'INVALID_QUANTITY',
+    'INSUFFICIENT_STOCK',
+    'BELOW_MOQ',
+  ]);
+  const cases: Array<Omit<ClassifyBulkAddGroupInput, 'blockedInCountry' | 'now'>> = [
+    {
+      variantRow: variantRow({ active: 0 }),
+      existingQuantity: 0,
+      requestedQuantity: 4,
+      availability: { availableToSell: 100, backorderable: false },
+    },
+    {
+      variantRow: variantRow(),
+      existingQuantity: 0,
+      requestedQuantity: 4,
+      availability: { availableToSell: 0, backorderable: false },
+    },
+    {
+      variantRow: variantRow({ moq_sacks: 40 }),
+      existingQuantity: 0,
+      requestedQuantity: 4,
+      availability: { availableToSell: 100, backorderable: false },
+    },
+    {
+      variantRow: variantRow(),
+      existingQuantity: 0,
+      requestedQuantity: 0,
+      availability: { availableToSell: 100, backorderable: false },
+    },
+  ];
+
+  for (const input of cases) {
+    assert.deepEqual(classifyBulkAddGroup({ ...input, blockedInCountry: true, now: NOW }), {
+      status: 'skipped',
+      reason: 'BLOCKED_IN_COUNTRY',
+    });
+  }
 });
 
 void test('retired or missing variant outranks every other skip reason', () => {

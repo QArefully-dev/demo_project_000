@@ -18,6 +18,7 @@ export type QuickOrderState =
  * buyer without an explicit explanation, and the copy never exposes parsing or catalogue details.
  */
 const SKIP_REASON_MESSAGE: Readonly<Record<QuickOrderSkipReason, string>> = {
+  BLOCKED_IN_COUNTRY: 'This item cannot be ordered in your country.',
   MALFORMED_LINE: 'We could not read this line. Check its format and try again.',
   SKU_NOT_FOUND: 'We could not find an item matching this line.',
   INVALID_QUANTITY: 'The amount on this line is not valid.',

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import type Database from 'better-sqlite3';
 import { formatPostalAddress } from '@shop/contracts/address';
+import { countryProfile } from '@shop/contracts/country-profiles';
 import { MOQ_DEFAULT_SACKS, SACK_WEIGHT_GRAMS } from '@shop/contracts/pricing';
 import { calculateLeadTime } from '../../src/features/delivery/deliverySlotRules.js';
 import {
@@ -349,6 +350,7 @@ void test('checkout depth: destination, billing, slot, and buyer reference', asy
       calculateLeadTime({
         deliverySummary: { mode: 'freight', weightGrams: SACK_WEIGHT_GRAMS * MOQ_DEFAULT_SACKS },
         now: NOW,
+        profile: countryProfile('UK'),
       }).earliestDate,
     );
     assert.equal(gateway.calls(), 0);

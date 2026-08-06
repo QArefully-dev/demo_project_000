@@ -5,13 +5,14 @@ import {
   type CustomBlendSnapshot,
 } from '@shop/contracts';
 import { Value } from '@sinclair/typebox/value';
-import { LEGACY_DATA_COUNTRY } from '@shop/contracts/country';
+import { LEGACY_DATA_COUNTRY, type Country } from '@shop/contracts/country';
 import { toProductContract } from '../../mappers/product.js';
 import type { CartLineRow, CartRepository } from './cartRepository.js';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
 import type { InventoryService } from '../inventory/inventoryService.js';
+import type { CountryProfileService } from '../countryProfile/countryProfileService.js';
 import {
   minimumOrderQuantity,
   nextTierProgress,
@@ -42,6 +43,7 @@ export interface CartAuditDependencies {
 export interface CartAvailabilityDependencies {
   inventory: Pick<InventoryService, 'availableToSell'>;
   clock: { now(): Date };
+  countryProfiles?: Pick<CountryProfileService, 'isCategoryBlocked' | 'isProductBlocked'>;
 }
 
 /** Whole-request rejection codes for a bulk add; per-line problems are outcomes, not errors. */
@@ -56,6 +58,8 @@ export interface BulkAddResult {
 export interface CartService {
   create(context?: AuditContext, country?: string): { cartId: string };
   get(cartId: string): Cart | undefined;
+  country(cartId: string): Country | undefined;
+  blockedInCountry(cartId: string, variantIds: readonly number[]): boolean;
   /**
    * Adds many lines in one transaction with per-line outcomes. Classified skips still commit the
    * lines that succeeded; only an unexpected throw rolls the whole mutation back.
@@ -75,6 +79,7 @@ export interface CartService {
     | 'CART_NOT_FOUND'
     | 'VARIANT_NOT_FOUND'
     | 'CART_RESERVED'
+    | 'BLOCKED_IN_COUNTRY'
     | 'BELOW_MOQ'
     | 'INVALID_QUANTITY';
   update(
@@ -107,6 +112,7 @@ export interface CartService {
     | 'CART_NOT_FOUND'
     | 'VARIANT_NOT_FOUND'
     | 'CART_RESERVED'
+    | 'BLOCKED_IN_COUNTRY'
     | 'BELOW_MOQ'
     | 'INVALID_QUANTITY';
   replaceConfigured(
@@ -115,7 +121,7 @@ export interface CartService {
     previousConfigKey: string,
     customBlend: CustomBlendSnapshot,
     context?: AuditContext,
-  ): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_IN_CART' | 'CART_RESERVED';
+  ): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_IN_CART' | 'CART_RESERVED' | 'BLOCKED_IN_COUNTRY';
 }
 
 export function createCartService(
@@ -138,6 +144,9 @@ export function createCartService(
         return result;
       }),
     get: (cartId) => getCart(repository, cartId, availabilityDependencies),
+    country: (cartId) => repository.country(cartId),
+    blockedInCountry: (cartId, variantIds) =>
+      blockedInCountry(repository, cartId, variantIds, availabilityDependencies),
     addMany: (cartId, requests, context) => {
       if (!auditDependencies) throw new Error('Cart audit dependencies are required for bulk add');
       if (!availabilityDependencies) {
@@ -497,12 +506,16 @@ export function addItem(
   | 'CART_NOT_FOUND'
   | 'VARIANT_NOT_FOUND'
   | 'CART_RESERVED'
+  | 'BLOCKED_IN_COUNTRY'
   | 'BELOW_MOQ'
   | 'INVALID_QUANTITY' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
   if (!getCart(repository, cartId, availabilityDependencies)) return 'CART_NOT_FOUND';
   if (repository.isReserved(cartId, availabilityDependencies?.clock.now().toISOString()))
     return 'CART_RESERVED';
+  if (blockedInCountry(repository, cartId, [Number(variantId)], availabilityDependencies)) {
+    return 'BLOCKED_IN_COUNTRY';
+  }
   if (!repository.variantExists(variantId)) return 'VARIANT_NOT_FOUND';
   const variant = repository.getVariant(Number(variantId));
   if (!variant) return 'VARIANT_NOT_FOUND';
@@ -530,12 +543,23 @@ export function addConfiguredItem(
   | 'CART_NOT_FOUND'
   | 'VARIANT_NOT_FOUND'
   | 'CART_RESERVED'
+  | 'BLOCKED_IN_COUNTRY'
   | 'BELOW_MOQ'
   | 'INVALID_QUANTITY' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
   if (!getCart(repository, cartId, availabilityDependencies)) return 'CART_NOT_FOUND';
   if (repository.isReserved(cartId, availabilityDependencies?.clock.now().toISOString())) {
     return 'CART_RESERVED';
+  }
+  if (
+    blockedInCountry(
+      repository,
+      cartId,
+      [Number(variantId), ...customBlend.ingredients.map((ingredient) => ingredient.variantId)],
+      availabilityDependencies,
+    )
+  ) {
+    return 'BLOCKED_IN_COUNTRY';
   }
   const variant = repository.getVariant(Number(variantId));
   if (!variant || !repository.variantExists(variantId)) return 'VARIANT_NOT_FOUND';
@@ -564,8 +588,10 @@ export function addConfiguredItem(
  */
 function resolveBulkAddBlend(
   repository: CartRepository,
+  cartId: string,
   variantId: number,
   supplied: CustomBlendSnapshot,
+  availabilityDependencies: CartAvailabilityDependencies,
 ): CustomBlendSnapshot | undefined {
   let normalized;
   try {
@@ -575,6 +601,7 @@ function resolveBulkAddBlend(
   }
   if (normalized.configKey !== supplied.configKey) return undefined;
   const factIds = [variantId, ...normalized.ingredients.map((ingredient) => ingredient.variantId)];
+  if (blockedInCountry(repository, cartId, factIds, availabilityDependencies)) return undefined;
   const facts = repository.listEligibleCustomBlendFacts(factIds);
   if (facts.length !== factIds.length) return undefined;
   const byVariantId = new Map(facts.map((fact) => [fact.variant_id, fact]));
@@ -644,10 +671,22 @@ export function addManyItems(
       ? repository.getVariant(group.variantId)
       : undefined;
     const blend = group.customBlend
-      ? resolveBulkAddBlend(repository, group.variantId, group.customBlend)
+      ? resolveBulkAddBlend(
+          repository,
+          cartId,
+          group.variantId,
+          group.customBlend,
+          availabilityDependencies,
+        )
       : undefined;
     const availabilityRow = availability.get(group.variantId);
     const classification = classifyBulkAddGroup({
+      blockedInCountry: blockedInCountry(
+        repository,
+        cartId,
+        [group.variantId],
+        availabilityDependencies,
+      ),
       variantRow: variant,
       existingQuantity: repository.lineQuantity(cartId, String(group.variantId), group.configKey),
       requestedQuantity: group.requestedQuantity,
@@ -793,11 +832,21 @@ export function replaceConfiguredItem(
   previousConfigKey: string,
   customBlend: CustomBlendSnapshot,
   availabilityDependencies?: CartAvailabilityDependencies,
-): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_IN_CART' | 'CART_RESERVED' {
+): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_IN_CART' | 'CART_RESERVED' | 'BLOCKED_IN_COUNTRY' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
   if (!getCart(repository, cartId, availabilityDependencies)) return 'CART_NOT_FOUND';
   if (repository.isReserved(cartId, availabilityDependencies?.clock.now().toISOString())) {
     return 'CART_RESERVED';
+  }
+  if (
+    blockedInCountry(
+      repository,
+      cartId,
+      [Number(variantId), ...customBlend.ingredients.map((ingredient) => ingredient.variantId)],
+      availabilityDependencies,
+    )
+  ) {
+    return 'BLOCKED_IN_COUNTRY';
   }
   const changed = repository.replaceConfiguredLine(
     cartId,
@@ -809,4 +858,21 @@ export function replaceConfiguredItem(
   if (!changed) return 'VARIANT_NOT_IN_CART';
   repository.touch(cartId);
   return getCart(repository, cartId, availabilityDependencies) ?? 'CART_NOT_FOUND';
+}
+
+function blockedInCountry(
+  repository: CartRepository,
+  cartId: string,
+  variantIds: readonly number[],
+  availabilityDependencies?: CartAvailabilityDependencies,
+): boolean {
+  const countryProfiles = availabilityDependencies?.countryProfiles;
+  if (!countryProfiles) return false;
+  return repository
+    .listCountryVariantFacts(cartId, variantIds)
+    .some(
+      (fact) =>
+        countryProfiles.isCategoryBlocked(fact.country, fact.product_category) ||
+        countryProfiles.isProductBlocked(fact.country, fact.product_slug),
+    );
 }

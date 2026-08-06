@@ -20,6 +20,7 @@ import type { AuditWriter } from '../audit/auditService.js';
 import type { InventoryService } from '../inventory/inventoryService.js';
 import type { ApprovalService } from '../orderApprovals/approvalService.js';
 import type { CompanyService } from '../companyAccounts/companyService.js';
+import type { CountryProfileService } from '../countryProfile/countryProfileService.js';
 
 export type CheckoutErrorCode =
   | 'CART_NOT_FOUND'
@@ -32,6 +33,8 @@ export type CheckoutErrorCode =
   | 'IDEMPOTENT_IN_PROGRESS'
   | 'RESERVATION_EXPIRED'
   | 'INSUFFICIENT_STOCK'
+  | 'BLOCKED_IN_COUNTRY'
+  | 'DELIVERY_COUNTRY_NOT_ALLOWED'
   | 'BELOW_MOQ'
   /** A configured Custom Blend line no longer resolves to eligible catalog facts. */
   | 'CUSTOM_BLEND_INVALID'
@@ -59,6 +62,7 @@ export type CheckoutResult =
         CheckoutErrorCode,
         | 'RESERVATION_EXPIRED'
         | 'INSUFFICIENT_STOCK'
+        | 'BLOCKED_IN_COUNTRY'
         | 'DELIVERY_SLOT_UNAVAILABLE'
         | 'PENDING_APPROVAL'
         | 'APPROVAL_REJECTED'
@@ -70,6 +74,7 @@ export type CheckoutResult =
     }
   | { success: false; error: 'RESERVATION_EXPIRED'; reservationExpiresAt: string }
   | { success: false; error: 'INSUFFICIENT_STOCK'; productIds: string[] }
+  | { success: false; error: 'BLOCKED_IN_COUNTRY'; productIds: string[] }
   | { success: false; error: 'PENDING_APPROVAL'; approvalRequestId: string }
   | { success: false; error: 'APPROVAL_REJECTED' | 'APPROVAL_EXPIRED' | 'APPROVAL_TOTAL_DRIFT' }
   /** Carries the freshly derived earliest bookable date so the buyer can rebook without a round trip. */
@@ -123,6 +128,8 @@ export interface CheckoutDependencies {
   products: ProductRepository;
   audit: AuditWriter;
   inventory: InventoryService;
+  /** Production composition always supplies the checked-in country availability policy. */
+  countryProfiles?: Pick<CountryProfileService, 'isCategoryBlocked' | 'isProductBlocked'>;
   /** Optional only during composition convergence; production checkout wires both services. */
   approvals?: ApprovalService;
   companies?: CompanyService;

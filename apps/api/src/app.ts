@@ -4,6 +4,7 @@ import fastifyCookie from '@fastify/cookie';
 import type Database from 'better-sqlite3';
 import type { ErrorResponse } from '@shop/contracts/common';
 import { authPlugin } from './plugins/auth.js';
+import { countryContextPlugin } from './plugins/countryContext.js';
 import productsRoutes from './routes/products.js';
 import cartRoutes from './routes/cart.js';
 import promoRoutes from './routes/promo.js';
@@ -166,6 +167,10 @@ import {
 import { createFeatureFlagRepository } from './features/featureFlags/featureFlagRepository.js';
 import { createFeatureFlagResolver } from './features/featureFlags/featureFlagResolver.js';
 import type { FeatureFlagResolver } from './features/featureFlags/featureFlagResolver.js';
+import {
+  createCountryProfileService,
+  type CountryProfileService,
+} from './features/countryProfile/countryProfileService.js';
 import { createReorderService, type ReorderService } from './features/reorder/reorderService.js';
 import {
   createQuickOrderService,
@@ -234,6 +239,7 @@ export interface AppServices {
   passwordReset: PasswordResetService;
   mailbox: MailboxRepository;
   products: ProductService;
+  countryProfiles: CountryProfileService;
   carts: CartService;
   promos: PromoService;
   orders: OrderService;
@@ -282,6 +288,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
   const promos = createPromoRepository(dependencies.db);
   const orders = createOrderRepository(dependencies.db);
   const products = createProductRepository(dependencies.db);
+  const countryProfiles = createCountryProfileService();
   const sessionRepository = createSessionRepository(dependencies.db);
   const featureFlagRepository = createFeatureFlagRepository(dependencies.db);
   const featureFlagResolver = createFeatureFlagResolver(featureFlagRepository);
@@ -325,7 +332,15 @@ function createAppServices(dependencies: AppDependencies): AppServices {
   });
   // Hoisted: the slot service reads carts through the same cart service the routes use, so the
   // slot quote can never see a different view of a cart than the cart endpoints do.
-  const cartService = createCartService(carts, { unitOfWork, audit }, { inventory, clock });
+  const cartService = createCartService(
+    carts,
+    { unitOfWork, audit },
+    {
+      inventory,
+      clock,
+      countryProfiles,
+    },
+  );
   // Hoisted: checkout resolves saved destinations and re-validates slots through the very same
   // service instances the account and slot routes answer from, so no second view can exist.
   const tradeAccount: TradeAccountServices = {
@@ -385,6 +400,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     unitOfWork,
     audit,
     clock,
+    countryProfiles,
   });
   const reorder = createReorderService({
     orders: orderService,
@@ -457,6 +473,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       audit,
       clock,
       faults: featureFlagResolver,
+      countryProfiles,
     }),
   );
   registry.register('standing_order.run', ({ jobId, payload }) =>
@@ -499,7 +516,8 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       audit,
     }),
     mailbox,
-    products: createProductService(products, { clock }),
+    products: createProductService(products, { clock, countryProfiles }),
+    countryProfiles,
     carts: cartService,
     promos: createPromoService({ promos, carts, clock }),
     orders: orderService,
@@ -520,6 +538,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       products,
       audit,
       inventory,
+      countryProfiles,
       approvals,
       companies: companyAccounts,
       tradeAccount,
@@ -531,6 +550,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       unitOfWork,
       audit,
       availability: { inventory, clock },
+      countryProfiles,
     }),
     // Shares the cart service's own `unitOfWork`, so the reorder transaction nests over the bulk
     // add's transaction as a savepoint instead of opening a second, competing one.
@@ -538,6 +558,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     quickOrder: createQuickOrderService({
       carts: cartService,
       variants: products,
+      countryProfiles,
       unitOfWork,
       audit,
     }),
@@ -659,6 +680,7 @@ export async function buildApp(dependencies: AppDependencies) {
 
   await app.register(fastifyCookie);
   authPlugin(context.services.sessions)(app, {}, () => undefined);
+  countryContextPlugin(context.services.sessions)(app, {}, () => undefined);
   await app.register(productsRoutes, context);
   await app.register(cartRoutes, context);
   await app.register(promoRoutes, context);

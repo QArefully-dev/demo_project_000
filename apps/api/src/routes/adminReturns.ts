@@ -9,14 +9,16 @@ import {
   ReturnIdParam,
   ReturnRequest,
 } from '@shop/contracts/returns';
+import type { Country } from '@shop/contracts/country';
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../app.js';
+import type { AuditContext } from '../features/audit/auditEvent.js';
 import { ReturnDomainError } from '../features/returns/returnErrors.js';
 import { requireAdmin } from '../plugins/auth.js';
 import { sendConflict, sendNotFound } from '../utils/errors.js';
 
-function auditContext(userId: number, requestId: string) {
-  return { actor: { type: 'user' as const, userId }, requestId };
+function auditContext(userId: number, requestId: string, standingCountry: Country): AuditContext {
+  return { actor: { type: 'user' as const, userId }, requestId, standingCountry };
 }
 
 function sendReturnError(
@@ -93,7 +95,7 @@ export default function adminReturnsRoutes(app: FastifyInstance, { services }: A
           version: request.body.version,
           decision: request.body.decision,
           idempotencyKey: request.body.idempotencyKey,
-          context: auditContext(userId, request.id),
+          context: auditContext(userId, request.id, request.resolvedCountry),
         });
       } catch (error) {
         if (error instanceof ReturnDomainError) {
@@ -129,7 +131,7 @@ export default function adminReturnsRoutes(app: FastifyInstance, { services }: A
           returnId,
           version: request.body.version,
           idempotencyKey: request.body.idempotencyKey,
-          context: auditContext(userId, request.id),
+          context: auditContext(userId, request.id, request.resolvedCountry),
         });
       } catch (error) {
         if (error instanceof ReturnDomainError) {
@@ -166,7 +168,7 @@ export default function adminReturnsRoutes(app: FastifyInstance, { services }: A
           returnId,
           version: request.body.version,
           idempotencyKey: request.body.idempotencyKey,
-          context: auditContext(userId, request.id),
+          context: auditContext(userId, request.id, request.resolvedCountry),
         });
       } catch (error) {
         if (error instanceof ReturnDomainError) {

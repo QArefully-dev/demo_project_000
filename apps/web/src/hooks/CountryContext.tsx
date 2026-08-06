@@ -1,5 +1,14 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 import { DEFAULT_GUEST_COUNTRY, type Country } from '@shop/contracts/country';
+import { setActiveApiCountry } from '@/api/client';
 import { useAuth } from '@/hooks/AuthContext';
 import {
   browserStorage,
@@ -30,8 +39,13 @@ export function CountryProvider({
     readSelectedCountry(resolvedStorage),
   );
 
-  const isAccountBound = user !== null;
+  const isAccountBound = user !== null && user.role !== 'admin';
   const activeCountry = isAccountBound ? user.country : guestCountry;
+
+  useLayoutEffect(() => {
+    setActiveApiCountry(activeCountry);
+    return () => setActiveApiCountry(null);
+  }, [activeCountry]);
 
   const selectCountry = useCallback(
     (country: Country) => {

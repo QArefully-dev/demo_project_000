@@ -158,6 +158,7 @@ function CatalogNavigation() {
 describe('ProductPage', () => {
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
     cart.addItem.mockReset();
     cart.retryCart.mockReset();
     cart.isActionPending.mockReset();
@@ -191,6 +192,31 @@ describe('ProductPage', () => {
     productApi.getProduct.mockRejectedValueOnce(new ApiError('Missing', 404));
     renderPage();
     expect(await screen.findByText('Product not found')).toBeInTheDocument();
+  });
+
+  it('renders a country-blocked product detail exactly like an unknown product', async () => {
+    const actualProductApi =
+      await vi.importActual<typeof import('@/api/products')>('@/api/products');
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ error: 'Product not found' }, { status: 404 }));
+    vi.stubGlobal('fetch', fetchMock);
+    productApi.getProduct.mockImplementationOnce(actualProductApi.getProduct);
+    const { unmount } = renderPage('/products/country-availability-blocked-lot');
+    const blockedMessage = await screen.findByText('Product not found');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/products/country-availability-blocked-lot',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+    expect(screen.queryByText(/blocked|country restriction/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bundles-section')).not.toBeInTheDocument();
+    unmount();
+
+    productApi.getProduct.mockRejectedValueOnce(new ApiError('Missing', 404));
+    renderPage('/products/unknown-lot');
+    const missingMessage = await screen.findByText('Product not found');
+
+    expect(missingMessage.textContent).toBe(blockedMessage.textContent);
   });
 
   it('renders sale, regular, and stock purchase states from the product response', async () => {

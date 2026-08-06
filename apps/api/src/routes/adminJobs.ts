@@ -1,6 +1,7 @@
 import { Type } from '@sinclair/typebox';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { ErrorResponse } from '@shop/contracts/common';
+import type { Country } from '@shop/contracts/country';
 import {
   AdminJob,
   AdminJobDetail,
@@ -11,6 +12,7 @@ import {
 } from '@shop/contracts/jobs';
 import type { FastifyInstance } from 'fastify';
 import type { SessionService } from '../features/auth/sessionService.js';
+import type { AuditContext } from '../features/audit/auditEvent.js';
 import { JobAdminError, type JobService } from '../features/jobs/jobService.js';
 import { requireAdmin } from '../plugins/auth.js';
 import { sendBadRequest, sendConflict, sendNotFound } from '../utils/errors.js';
@@ -27,9 +29,14 @@ export interface AdminJobsRouteServices {
   clock: { now(): Date };
 }
 
-const auditContext = (userId: number, requestId: string) => ({
+const auditContext = (
+  userId: number,
+  requestId: string,
+  standingCountry: Country,
+): AuditContext => ({
   actor: { type: 'user' as const, userId },
   requestId,
+  standingCountry,
 });
 
 function sendJobError(reply: Parameters<typeof sendBadRequest>[0], error: JobAdminError) {
@@ -107,7 +114,7 @@ export default function adminJobsRoutes(
       try {
         const result = services.jobs.retry(Number(request.params.jobId), {
           idempotencyKey: request.body.idempotencyKey,
-          context: auditContext(request.authenticatedUser!.id, request.id),
+          context: auditContext(request.authenticatedUser!.id, request.id, request.resolvedCountry),
         });
         if (result.status === 'not_found') return sendNotFound(reply, 'Job');
         if (result.status === 'not_retryable') return sendConflict(reply, 'Job is not retryable');

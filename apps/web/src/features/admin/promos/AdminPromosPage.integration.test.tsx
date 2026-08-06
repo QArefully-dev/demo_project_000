@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminPromosPage } from './AdminPromosPage';
 const api = vi.hoisted(() => ({
   getAdminPromos: vi.fn(),
@@ -9,6 +9,15 @@ const api = vi.hoisted(() => ({
   deactivateAdminPromo: vi.fn(),
 }));
 vi.mock('@/api/adminPromos', () => api);
+const countryState = vi.hoisted(() => ({ activeCountry: 'DE' }));
+vi.mock('@/hooks/CountryContext', () => ({
+  useCountry: () => ({
+    activeCountry: countryState.activeCountry,
+    isAccountBound: false,
+    selectCountry: vi.fn(),
+    countryStorage: null,
+  }),
+}));
 const promo = {
   code: 'TRADE10',
   active: true,
@@ -23,8 +32,12 @@ const promo = {
   endAt: null,
   maxRedemptions: null,
   perUserLimit: null,
+  countries: ['UK', 'DE'] as const,
 };
 describe('AdminPromosPage', () => {
+  beforeEach(() => {
+    countryState.activeCountry = 'DE';
+  });
   afterEach(() => vi.resetAllMocks());
   it('creates a promotion through the typed client', async () => {
     api.getAdminPromos.mockResolvedValue({ items: [promo] });
@@ -64,7 +77,11 @@ describe('AdminPromosPage', () => {
     await waitFor(() =>
       expect(api.updateAdminPromo).toHaveBeenCalledWith(
         'TRADE10',
-        expect.objectContaining({ categoryScope: 'Drinks', maxRedemptions: 20 }),
+        expect.objectContaining({
+          categoryScope: 'Drinks',
+          maxRedemptions: 20,
+          countries: ['UK', 'DE'],
+        }),
       ),
     );
     const updateCall = api.updateAdminPromo.mock.calls[0] as unknown;
@@ -74,5 +91,29 @@ describe('AdminPromosPage', () => {
     expect(update).not.toHaveProperty('code');
     expect(update).not.toHaveProperty('active');
     expect(update).not.toHaveProperty('redemptionCount');
+  });
+
+  it('refetches the server-scoped list when the standing country changes', async () => {
+    api.getAdminPromos.mockResolvedValue({ items: [promo] });
+    const { rerender } = render(<AdminPromosPage />);
+    await screen.findByText('TRADE10');
+    expect(api.getAdminPromos).toHaveBeenCalledTimes(1);
+
+    countryState.activeCountry = 'UK';
+    rerender(<AdminPromosPage />);
+    await waitFor(() => expect(api.getAdminPromos).toHaveBeenCalledTimes(2));
+  });
+
+  it('labels an empty targeting selection as applying to all countries', async () => {
+    api.getAdminPromos.mockResolvedValue({ items: [promo] });
+    const user = userEvent.setup();
+    render(<AdminPromosPage />);
+    await user.click(await screen.findByRole('button', { name: 'TRADE10 Active' }));
+
+    expect(screen.getByLabelText('Country targeting')).toHaveValue(['UK', 'DE']);
+
+    await user.click(screen.getByRole('button', { name: 'New promotion' }));
+    expect(screen.getByLabelText('Country targeting')).toHaveValue([]);
+    expect(screen.getByText('Leave empty to apply to all countries.')).toBeInTheDocument();
   });
 });

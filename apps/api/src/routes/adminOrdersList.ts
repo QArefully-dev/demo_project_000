@@ -43,7 +43,7 @@ export default function adminOrdersListRoutes(
     },
     (r, reply) => {
       try {
-        return services.orderAdmin.listAdmin(r.query);
+        return services.orderAdmin.listAdmin(r.query, r.resolvedCountry);
       } catch (e) {
         if (e instanceof OrderAdminError) return sendError(reply, e);
         throw e;
@@ -67,7 +67,7 @@ export default function adminOrdersListRoutes(
     },
     (r, reply) => {
       try {
-        return services.orderAdmin.getAdminDetail(Number(r.params.orderId));
+        return services.orderAdmin.getAdminDetail(Number(r.params.orderId), r.resolvedCountry);
       } catch (e) {
         if (e instanceof OrderAdminError) return sendError(reply, e);
         throw e;

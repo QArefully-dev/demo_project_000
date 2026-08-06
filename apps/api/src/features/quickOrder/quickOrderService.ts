@@ -5,6 +5,7 @@ import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
 import type { CartService } from '../cart/cartService.js';
 import type { VariantWithProductRow } from '../catalog/productRepository.js';
+import type { CountryProfileService } from '../countryProfile/countryProfileService.js';
 import {
   QUICK_ORDER_MAX_INPUT_LINES,
   assembleQuickOrderOutcomes,
@@ -17,12 +18,16 @@ import { quickOrderError, quickOrderOk, type QuickOrderResult } from './quickOrd
 
 /** Narrow SKU reader; satisfied by `ProductRepository`. */
 export interface QuickOrderVariantReader {
-  findVariantsBySkus(skus: readonly string[]): VariantWithProductRow[];
+  findVariantsBySkus(
+    skus: readonly string[],
+    exclusions?: { blockedCategories: readonly string[]; blockedSlugs: readonly string[] },
+  ): VariantWithProductRow[];
 }
 
 export interface QuickOrderDependencies {
-  carts: Pick<CartService, 'addMany'>;
+  carts: Pick<CartService, 'addMany' | 'country'>;
   variants: QuickOrderVariantReader;
+  countryProfiles: Pick<CountryProfileService, 'blockedCategoriesFor' | 'blockedSlugsFor'>;
   unitOfWork: UnitOfWork;
   audit: AuditWriter;
 }
@@ -55,9 +60,22 @@ export function createQuickOrderService(dependencies: QuickOrderDependencies): Q
         if (lines.length > QUICK_ORDER_MAX_INPUT_LINES) {
           return quickOrderError<QuickOrderReport>('TOO_MANY_LINES');
         }
+        const country = dependencies.carts.country(cartId);
+        if (!country) return quickOrderError<QuickOrderReport>('CART_NOT_FOUND');
 
         const skus = [...new Set(lines.flatMap((line) => (line.sku === null ? [] : [line.sku])))];
-        const variants = dependencies.variants.findVariantsBySkus(skus);
+        const exclusions = {
+          blockedCategories: dependencies.countryProfiles.blockedCategoriesFor(country),
+          blockedSlugs: dependencies.countryProfiles.blockedSlugsFor(country),
+        };
+        const variants = dependencies.variants.findVariantsBySkus(skus, exclusions);
+        const visibleSkus = new Set(variants.map((variant) => variant.sku));
+        const blockedSkus = new Set(
+          dependencies.variants
+            .findVariantsBySkus(skus)
+            .filter((variant) => !visibleSkus.has(variant.sku))
+            .map((variant) => variant.sku),
+        );
         const variantBySku = new Map(variants.map((variant) => [variant.sku, variant]));
         const groups = buildQuickOrderDemand(lines, variantBySku);
         const result = dependencies.carts.addMany(
@@ -69,7 +87,16 @@ export function createQuickOrderService(dependencies: QuickOrderDependencies): Q
           return quickOrderError<QuickOrderReport>(result);
         }
 
-        const outcomes = assembleQuickOrderOutcomes(lines, groups, result.outcomes, variantBySku);
+        const outcomes = assembleQuickOrderOutcomes(
+          lines,
+          groups,
+          result.outcomes,
+          variantBySku,
+        ).map((outcome) =>
+          outcome.sku !== null && blockedSkus.has(outcome.sku)
+            ? { ...outcome, reason: 'BLOCKED_IN_COUNTRY' as const }
+            : outcome,
+        );
         const { addedLineCount, skippedLineCount } = countQuickOrderOutcomes(outcomes);
         dependencies.audit.append({
           action: 'cart.quick_order_added',

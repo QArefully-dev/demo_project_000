@@ -15,6 +15,8 @@ export type ReorderRequestBody = Static<typeof ReorderRequestBody>;
 
 /** Why one source order line could not be re-added. Transport enum only; no domain logic here. */
 export const ReorderSkipReason = Type.Union([
+  /** Outranks every other skip reason and never discloses retirement or stock state. */
+  Type.Literal('BLOCKED_IN_COUNTRY'),
   Type.Literal('VARIANT_RETIRED'),
   Type.Literal('VARIANT_UNRESOLVED'),
   Type.Literal('INSUFFICIENT_STOCK'),

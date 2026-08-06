@@ -1,9 +1,9 @@
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
+import { Type } from '@sinclair/typebox';
 import {
   AdminProduct,
   AdminProductIdParam,
   AdminProductListQuery,
-  AdminProductListResponse,
   CreateAdminProductBody,
   UpdateAdminProductBody,
   type AdminCatalogCategory,
@@ -11,8 +11,10 @@ import {
   type AdminProduct as AdminProductResponse,
 } from '@shop/contracts/admin-products';
 import { ErrorResponse } from '@shop/contracts/common';
+import type { Country } from '@shop/contracts/country';
 import type { FastifyInstance } from 'fastify';
 import type { SessionService } from '../features/auth/sessionService.js';
+import type { AuditContext } from '../features/audit/auditEvent.js';
 import {
   ProductAdminError,
   type ProductAdminService,
@@ -25,9 +27,10 @@ export interface AdminProductsRouteServices {
   sessions: SessionService;
   productAdmin: ProductAdminService;
 }
-const context = (userId: number, requestId: string) => ({
+const context = (userId: number, requestId: string, standingCountry: Country): AuditContext => ({
   actor: { type: 'user' as const, userId },
   requestId,
+  standingCountry,
 });
 function category(value: string): AdminCatalogCategory {
   switch (value) {
@@ -90,6 +93,18 @@ const map = (p: ProductRow): AdminProductResponse => ({
   blendSourceVariantId:
     p.blend_source_variant_id === null ? null : String(p.blend_source_variant_id),
 });
+const mapWithCountry = (p: ProductRow) => ({
+  ...map(p),
+  blockedInCountry: p.blocked_in_country === 1,
+});
+const AdminProductWithCountry = Type.Intersect([
+  AdminProduct,
+  Type.Object({ blockedInCountry: Type.Boolean() }, { additionalProperties: false }),
+]);
+const AdminProductWithCountryListResponse = Type.Object(
+  { items: Type.Array(AdminProductWithCountry) },
+  { additionalProperties: false },
+);
 function sendError(reply: Parameters<typeof sendBadRequest>[0], error: ProductAdminError) {
   if (error.code === 'PRODUCT_NOT_FOUND') return sendNotFound(reply, 'Product');
   if (error.code === 'DUPLICATE_SLUG') return sendConflict(reply, error.message);
@@ -108,14 +123,18 @@ export default function adminProductsRoutes(
       schema: {
         querystring: AdminProductListQuery,
         response: {
-          200: AdminProductListResponse,
+          200: AdminProductWithCountryListResponse,
           400: ErrorResponse,
           401: ErrorResponse,
           403: ErrorResponse,
         },
       },
     },
-    (request) => ({ items: services.productAdmin.listAdmin(request.query).map(map) }),
+    (request) => ({
+      items: services.productAdmin
+        .listAdmin(request.query, request.resolvedCountry)
+        .map(mapWithCountry),
+    }),
   );
   typed.get(
     '/api/admin/products/:productId',
@@ -123,13 +142,21 @@ export default function adminProductsRoutes(
       preHandler: [requireAdmin(services.sessions)],
       schema: {
         params: AdminProductIdParam,
-        response: { 200: AdminProduct, 401: ErrorResponse, 403: ErrorResponse, 404: ErrorResponse },
+        response: {
+          200: AdminProductWithCountry,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+        },
       },
     },
     (request, reply) => {
-      const product = services.productAdmin.getAdmin(Number(request.params.productId));
+      const product = services.productAdmin.getAdmin(
+        Number(request.params.productId),
+        request.resolvedCountry,
+      );
       if (!product) return sendNotFound(reply, 'Product');
-      return map(product);
+      return mapWithCountry(product);
     },
   );
   typed.post(
@@ -153,7 +180,7 @@ export default function adminProductsRoutes(
         return map(
           services.productAdmin.create(
             request.body,
-            context(request.authenticatedUser!.id, request.id),
+            context(request.authenticatedUser!.id, request.id, request.resolvedCountry),
           ),
         );
       } catch (e) {
@@ -185,7 +212,7 @@ export default function adminProductsRoutes(
           services.productAdmin.update(
             Number(request.params.productId),
             request.body,
-            context(request.authenticatedUser!.id, request.id),
+            context(request.authenticatedUser!.id, request.id, request.resolvedCountry),
           ),
         );
       } catch (e) {
@@ -208,7 +235,7 @@ export default function adminProductsRoutes(
         return map(
           services.productAdmin.retire(
             Number(request.params.productId),
-            context(request.authenticatedUser!.id, request.id),
+            context(request.authenticatedUser!.id, request.id, request.resolvedCountry),
           ),
         );
       } catch (e) {

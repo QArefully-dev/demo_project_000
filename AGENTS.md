@@ -65,7 +65,7 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
   - `src/app.ts`: composition root; services, plugins, routes
 - `src/routes/`: HTTP schemas, auth gates, transport mapping; `tradeAccount.ts` = saved delivery sites + billing entities, `deliverySlots.ts` = offered delivery slots, `savedLists.ts` = named buyer lists and cart/order saves, `backInStock.ts` = buyer back-in-stock subscriptions; `auth.ts` = login/signup carrying country selection per `packages/contracts/src/country.ts`
 - `src/features/`: domain services, repositories, workflow rules; `tradeAccount/` = delivery site + billing entity rules, shared address normalisation; `savedLists/` = variant-scoped lists that replaced the retired favourites domain; `jobs/`, `notifications/`, `webhooks/`, and `standingOrders/` = deterministic local async queue, buyer inbox delivery, webhook processing, and cart-only repeat schedules; `backInStock/` = sold-out subscription rules plus the stock-change trigger and notify job handler that consume the queue
-  - `src/db/`: database lifecycle, unit of work, migrations (head `032`), seed/reset
+  - `src/db/`: database lifecycle, unit of work, migrations (head `033`), seed/reset
   - `test/`: SQLite and `app.inject()` integration tests grouped by domain
 - `packages/contracts/`: TypeBox transport schemas/types and public subpath exports
 - `packages/catalog/`: canonical product/category/packaging content plus validation

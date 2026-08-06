@@ -11,8 +11,12 @@ import {
 import { buildBillingSelection, buildDeliveryDestination } from './checkoutValidation';
 
 function checkoutConflict(error: unknown): CheckoutConflict | null {
-  if (!(error instanceof ApiError) || error.status !== 409 || !error.response) return null;
+  if (!(error instanceof ApiError) || !error.response) return null;
   const response = error.response as Record<string, unknown>;
+  if (error.status === 400 && response.error === 'Selected delivery country is not available') {
+    return { code: 'DELIVERY_COUNTRY_NOT_ALLOWED' };
+  }
+  if (error.status !== 409) return null;
   if (
     response.error === 'RESERVATION_EXPIRED' &&
     typeof response.reservationExpiresAt === 'string'

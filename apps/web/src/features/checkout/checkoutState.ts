@@ -62,7 +62,11 @@ export type CheckoutConflict =
   | { code: 'PENDING_APPROVAL'; approvalRequestId: string }
   | { code: 'APPROVAL_REJECTED' }
   | { code: 'APPROVAL_EXPIRED' }
-  | { code: 'APPROVAL_TOTAL_DRIFT' };
+  | { code: 'APPROVAL_TOTAL_DRIFT' }
+  | { code: 'DELIVERY_COUNTRY_NOT_ALLOWED' };
+
+export const DELIVERY_COUNTRY_NOT_ALLOWED_MESSAGE =
+  'Your account cannot deliver to the selected country. Choose an available delivery country before retrying.';
 
 export type CheckoutState = {
   contact: Record<ContactField, string>;
@@ -331,7 +335,10 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
       return {
         ...state,
         conflict: event.conflict,
-        paymentError: null,
+        paymentError:
+          event.conflict.code === 'DELIVERY_COUNTRY_NOT_ALLOWED'
+            ? DELIVERY_COUNTRY_NOT_ALLOWED_MESSAGE
+            : null,
         idempotencyKey: event.idempotencyKey,
       };
     case 'submission-started':

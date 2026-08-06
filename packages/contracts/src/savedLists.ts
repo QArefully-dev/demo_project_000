@@ -124,6 +124,8 @@ export type SavedListItemIdParam = Static<typeof SavedListItemIdParam>;
 
 /** Why a saved list item could not be added to the target cart. */
 export const SavedListSkipReason = Type.Union([
+  /** Outranks every other skip reason and never discloses retirement or stock state. */
+  Type.Literal('BLOCKED_IN_COUNTRY'),
   Type.Literal('VARIANT_RETIRED'),
   Type.Literal('VARIANT_UNRESOLVED'),
   Type.Literal('INSUFFICIENT_STOCK'),

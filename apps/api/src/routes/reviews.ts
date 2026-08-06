@@ -21,6 +21,8 @@ import { ReviewServiceError, type ReviewService } from '../features/reviews/revi
 import type { AuditContext } from '../features/audit/auditEvent.js';
 import { requireAdmin, requireAuth, requireCustomer } from '../plugins/auth.js';
 import type { SessionService } from '../features/auth/sessionService.js';
+import type { ProductService } from '../features/catalog/productService.js';
+import type { Country } from '@shop/contracts/country';
 import {
   sendBadRequest,
   sendConflict,
@@ -32,6 +34,7 @@ import {
 export interface ReviewRouteServices {
   sessions: SessionService;
   reviews: ReviewService;
+  products: Pick<ProductService, 'findCustomerProductById'>;
 }
 
 function sendReviewError(
@@ -68,6 +71,15 @@ export default function reviewsRoutes(
     actor: { type: 'user', userId },
     requestId,
   });
+  const adminContextFor = (
+    userId: number,
+    requestId: string,
+    standingCountry: Country,
+  ): AuditContext => ({
+    actor: { type: 'user', userId },
+    requestId,
+    standingCountry,
+  });
 
   typed.get(
     '/api/products/:productId/reviews',
@@ -79,9 +91,14 @@ export default function reviewsRoutes(
       },
     },
     (request, reply) => {
+      const productId = Number(request.params.productId);
+      if (!services.products.findCustomerProductById(productId, request.resolvedCountry)) {
+        sendNotFound(reply, 'Product');
+        return;
+      }
       try {
         return services.reviews.listProduct(
-          Number(request.params.productId),
+          productId,
           request.query,
           request.authenticatedUser?.role === 'customer' ? request.authenticatedUser.id : null,
         );
@@ -105,11 +122,13 @@ export default function reviewsRoutes(
       },
     },
     (request, reply) => {
+      const productId = Number(request.params.productId);
+      if (!services.products.findCustomerProductById(productId, request.resolvedCountry)) {
+        sendNotFound(reply, 'Product');
+        return;
+      }
       try {
-        return services.reviews.findOwned(
-          request.authenticatedUser!.id,
-          Number(request.params.productId),
-        );
+        return services.reviews.findOwned(request.authenticatedUser!.id, productId);
       } catch (error) {
         if (error instanceof ReviewServiceError) {
           sendReviewError(reply, error);
@@ -351,7 +370,7 @@ export default function reviewsRoutes(
     },
     (request, reply) => {
       try {
-        return services.reviews.listModeration(request.query);
+        return services.reviews.listModeration(request.query, request.resolvedCountry);
       } catch (error) {
         if (error instanceof ReviewServiceError) {
           sendReviewError(reply, error);
@@ -383,7 +402,8 @@ export default function reviewsRoutes(
           Number(request.params.reviewId),
           request.body.decision,
           request.authenticatedUser!.id,
-          contextFor(request.authenticatedUser!.id, request.id),
+          adminContextFor(request.authenticatedUser!.id, request.id, request.resolvedCountry),
+          request.resolvedCountry,
         );
       } catch (error) {
         if (error instanceof ReviewServiceError) {
@@ -396,10 +416,15 @@ export default function reviewsRoutes(
   );
 
   for (const [action, handler] of [
-    ['hide', (reviewId: number, context: AuditContext) => services.reviews.hide(reviewId, context)],
+    [
+      'hide',
+      (reviewId: number, context: AuditContext, country: Country) =>
+        services.reviews.hide(reviewId, context, country),
+    ],
     [
       'restore',
-      (reviewId: number, context: AuditContext) => services.reviews.restore(reviewId, context),
+      (reviewId: number, context: AuditContext, country: Country) =>
+        services.reviews.restore(reviewId, context, country),
     ],
   ] as const) {
     typed.post(
@@ -421,7 +446,8 @@ export default function reviewsRoutes(
         try {
           return handler(
             Number(request.params.reviewId),
-            contextFor(request.authenticatedUser!.id, request.id),
+            adminContextFor(request.authenticatedUser!.id, request.id, request.resolvedCountry),
+            request.resolvedCountry,
           );
         } catch (error) {
           if (error instanceof ReviewServiceError) {

@@ -18,10 +18,12 @@ export interface BulkAddRequest {
 }
 
 /**
- * Reason precedence is fixed and evaluated in this order, so a line that fails several checks
- * always reports the most fundamental one.
+ * Reason precedence is fixed: `BLOCKED_IN_COUNTRY`, `VARIANT_RETIRED`, `BLEND_UNAVAILABLE`,
+ * `INVALID_QUANTITY`, `INSUFFICIENT_STOCK`, `BELOW_MOQ`. A line failing several checks always
+ * reports the first reason in that order.
  */
 export const BULK_ADD_SKIP_REASONS = [
+  'BLOCKED_IN_COUNTRY',
   'VARIANT_RETIRED',
   'BLEND_UNAVAILABLE',
   'INVALID_QUANTITY',
@@ -71,6 +73,7 @@ export interface BulkAddAvailability {
 }
 
 export interface ClassifyBulkAddGroupInput {
+  blockedInCountry: boolean;
   variantRow: BulkAddVariantRow | undefined;
   /** Quantity already on the `(variantId, configKey)` cart line before this add. */
   existingQuantity: number;
@@ -141,6 +144,7 @@ function supportsCartLineArithmetic(variant: BulkAddVariantRow, quantity: number
  * Clock is injected; this module never reads wall time.
  */
 export function classifyBulkAddGroup({
+  blockedInCountry,
   variantRow,
   existingQuantity,
   requestedQuantity,
@@ -148,6 +152,7 @@ export function classifyBulkAddGroup({
   blendValid,
   now,
 }: ClassifyBulkAddGroupInput): BulkAddClassification {
+  if (blockedInCountry) return { status: 'skipped', reason: 'BLOCKED_IN_COUNTRY' };
   if (!variantRow || variantRow.active !== 1)
     return { status: 'skipped', reason: 'VARIANT_RETIRED' };
   if (blendValid === false) return { status: 'skipped', reason: 'BLEND_UNAVAILABLE' };

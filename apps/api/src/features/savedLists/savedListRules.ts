@@ -1,6 +1,13 @@
 import { SACK_WEIGHT_GRAMS } from '@shop/contracts/pricing';
-import type { SavedListLineOutcome } from '@shop/contracts/saved-lists';
-import type { BulkAddOutcome, BulkAddRequest } from '../cart/cartBulkAddRules.js';
+import type {
+  SavedListLineOutcome,
+  SavedListSkipReason as ContractSavedListSkipReason,
+} from '@shop/contracts/saved-lists';
+import type {
+  BulkAddOutcome,
+  BulkAddRequest,
+  BulkAddSkipReason,
+} from '../cart/cartBulkAddRules.js';
 import type { VariantRow } from '../catalog/productRepository.js';
 import { moqShortfallSacks } from '../pricing/pricingRules.js';
 
@@ -18,6 +25,14 @@ export function safeSavedQuantity(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 }
 
+export type SavedListPreSkipReason = 'VARIANT_RETIRED' | 'VARIANT_UNRESOLVED' | 'INVALID_QUANTITY';
+export type SavedListSkipReason = SavedListPreSkipReason | BulkAddSkipReason;
+
+type SavedListSkipReasonIsContractAssignable =
+  SavedListSkipReason extends ContractSavedListSkipReason ? true : never;
+const savedListSkipReasonIsContractAssignable: SavedListSkipReasonIsContractAssignable = true;
+void savedListSkipReasonIsContractAssignable;
+
 export interface SavedListCartItemSource {
   itemId: number;
   variantId: number;
@@ -30,7 +45,7 @@ export interface SavedListCartItemSource {
 
 export interface SavedListCartPlan {
   requests: BulkAddRequest[];
-  preSkips: Map<number, 'VARIANT_RETIRED' | 'VARIANT_UNRESOLVED' | 'INVALID_QUANTITY'>;
+  preSkips: Map<number, SavedListPreSkipReason>;
   submittedQuantityByItemId: Map<number, number>;
   moqAdjustedByItemId: Map<number, boolean>;
 }
@@ -50,7 +65,7 @@ export function buildSavedListCartPlan(
   items: readonly SavedListCartItemSource[],
 ): SavedListCartPlan {
   const requests: BulkAddRequest[] = [];
-  const preSkips = new Map<number, 'VARIANT_RETIRED' | 'VARIANT_UNRESOLVED' | 'INVALID_QUANTITY'>();
+  const preSkips = new Map<number, SavedListPreSkipReason>();
   const submittedQuantityByItemId = new Map<number, number>();
   const moqAdjustedByItemId = new Map<number, boolean>();
   for (const item of items) {

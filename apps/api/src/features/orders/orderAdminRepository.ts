@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import type { OrderStatus } from '@shop/contracts/orders';
+import type { Country } from '@shop/contracts/country';
 
 export interface AdminOrderListQuery {
   status?: OrderStatus;
@@ -9,6 +10,8 @@ export interface AdminOrderListQuery {
   occurredTo?: string;
   page: number;
   pageSize: number;
+  /** Standing admin country; omitted only by legacy in-process callers. */
+  country?: Country;
 }
 
 export interface AdminOrderListItem {
@@ -67,6 +70,10 @@ export function createOrderAdminRepository(db: Database.Database): OrderAdminRep
       if (query.occurredTo) {
         where.push('o.created_at <= ?');
         params.push(query.occurredTo);
+      }
+      if (query.country) {
+        where.push('o.country = ?');
+        params.push(query.country);
       }
       const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
       const offset = (query.page - 1) * query.pageSize;

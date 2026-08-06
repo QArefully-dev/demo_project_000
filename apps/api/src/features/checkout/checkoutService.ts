@@ -1,6 +1,8 @@
 import { getCart } from '../cart/cartService.js';
 import type { Cart } from '@shop/contracts/cart';
 import type { PostalAddress } from '@shop/contracts/address';
+import type { Country } from '@shop/contracts/country';
+import { countryProfile } from '@shop/contracts/country-profiles';
 import type { BillingEntitySnapshot } from '@shop/contracts/trade-account';
 import { CUSTOM_BLEND_FEE_CENTS } from '@shop/contracts';
 import { isSlotBookable } from '../delivery/deliverySlotRules.js';
@@ -8,6 +10,7 @@ import {
   normalizeOptionalText,
   normalizePostalAddress,
   normalizeText,
+  isDeliverableCountryCode,
 } from '../tradeAccount/addressRules.js';
 import { toBillingEntitySnapshot } from '../tradeAccount/billingEntityRepository.js';
 import { normalizeCustomBlendSpec } from '../customBlend/customBlendRules.js';
@@ -119,6 +122,7 @@ function quoteTotalBeforeReservation(cart: Cart, promo: PromoValidation | undefi
  */
 function resolveCommitments(
   params: CheckoutParams,
+  cartCountry: Country,
   dependencies: CheckoutDependencies,
 ): { resolved: ResolvedCheckoutCommitments } | { failure: CheckoutResult } {
   const destination = params.deliveryDestination;
@@ -136,6 +140,9 @@ function resolveCommitments(
     // Saved addresses are normalized on the way into storage; an ad-hoc one is normalized here so
     // both destinations produce the same rendering and the same fingerprint for the same place.
     deliveryAddress = normalizePostalAddress(destination.address);
+  }
+  if (!isDeliverableCountryCode(countryProfile(cartCountry), deliveryAddress.countryCode)) {
+    return { failure: { success: false, error: 'DELIVERY_COUNTRY_NOT_ALLOWED' } };
   }
 
   const billing = params.billingSelection;
@@ -160,7 +167,14 @@ function resolveCommitments(
 
   const options = dependencies.deliverySlots.optionsForCart(params.cartId);
   if (options === 'CART_NOT_FOUND') return { failure: { success: false, error: 'CART_NOT_FOUND' } };
-  if (!isSlotBookable(params.deliverySlot, options.leadTime, dependencies.clock.now())) {
+  if (
+    !isSlotBookable(
+      params.deliverySlot,
+      options.leadTime,
+      dependencies.clock.now(),
+      countryProfile(cartCountry),
+    )
+  ) {
     return {
       failure: {
         success: false,
@@ -223,6 +237,18 @@ function prepare(
         params.auditContext,
         dependencies,
       );
+    const countryAvailability = cartLinesUnblocked(cart, dependencies);
+    if (!countryAvailability.unblocked)
+      return failPreparation(
+        params.idempotencyKey,
+        {
+          success: false,
+          error: 'BLOCKED_IN_COUNTRY',
+          productIds: countryAvailability.productIds,
+        },
+        params.auditContext,
+        dependencies,
+      );
     if (!customBlendLinesRemainEligible(cart, dependencies))
       return failPreparation(
         params.idempotencyKey,
@@ -246,7 +272,17 @@ function prepare(
       );
     // Destination, billing party, and slot are settled here: every branch below this point may take
     // a cart, promo, or inventory reservation, and none of these failures may leave one held.
-    const commitments = resolveCommitments(params, dependencies);
+    // Read the identity country from the persisted cart row. Request headers and postal country
+    // codes are intentionally irrelevant to this lookup.
+    const cartCountry = dependencies.carts.country(params.cartId);
+    if (!cartCountry)
+      return failPreparation(
+        params.idempotencyKey,
+        { success: false, error: 'CART_NOT_FOUND' },
+        params.auditContext,
+        dependencies,
+      );
+    const commitments = resolveCommitments(params, cartCountry, dependencies);
     if ('failure' in commitments)
       return failPreparation(
         params.idempotencyKey,
@@ -260,6 +296,7 @@ function prepare(
             code: params.promoCode,
             cartId: params.cartId,
             userId: params.userId,
+            country: cartCountry,
             now: dependencies.clock.now(),
           },
           dependencies,
@@ -472,6 +509,39 @@ function cartMeetsVariantMoq(cart: Cart, dependencies: CheckoutDependencies): bo
       validateMoq(item.quantity, variant.weight_grams, variant.moq_sacks)
     );
   });
+}
+
+function cartLinesUnblocked(
+  cart: Cart,
+  dependencies: CheckoutDependencies,
+): { unblocked: true } | { unblocked: false; productIds: string[] } {
+  const countryProfiles = dependencies.countryProfiles;
+  if (!countryProfiles) return { unblocked: true };
+
+  const lineVariantIds = cart.items.map((item) => [
+    ...(item.variantSnap ? [item.variantSnap.variantId] : []),
+    ...(item.customBlend?.ingredients.map((ingredient) => ingredient.variantId) ?? []),
+  ]);
+  const facts = dependencies.carts.listCountryVariantFacts(cart.id, lineVariantIds.flat());
+  const blockedVariantIds = new Set(
+    facts
+      .filter(
+        (fact) =>
+          countryProfiles.isCategoryBlocked(fact.country, fact.product_category) ||
+          countryProfiles.isProductBlocked(fact.country, fact.product_slug),
+      )
+      .map((fact) => fact.variant_id),
+  );
+  const productIds = [
+    ...new Set(
+      cart.items
+        .filter((_item, index) =>
+          lineVariantIds[index]!.some((variantId) => blockedVariantIds.has(variantId)),
+        )
+        .map((item) => item.productId),
+    ),
+  ];
+  return productIds.length === 0 ? { unblocked: true } : { unblocked: false, productIds };
 }
 
 function failPreparation(

@@ -13,11 +13,11 @@ import { useCountry } from '@/hooks/CountryContext';
 /** Composes the sticky storefront navigation and customer controls. */
 export function Header() {
   const { user } = useAuth();
-  const { activeCountry, selectCountry } = useCountry();
+  const { activeCountry, isAccountBound, selectCountry } = useCountry();
   const { defaultList } = useSavedLists();
   const defaultItemCount = defaultList?.items.length ?? 0;
 
-  const countryDisabled = user !== null;
+  const countryDisabled = isAccountBound;
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background shadow-sm">

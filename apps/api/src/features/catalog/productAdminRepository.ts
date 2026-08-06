@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import type { ProductRow } from './productRepository.js';
+import type { CatalogCountryExclusions } from './catalogSql.js';
 
 export type ProductAdminInsert = Pick<
   ProductRow,
@@ -34,8 +35,8 @@ export type ProductAdminUpdate = Partial<
 >;
 
 export interface ProductAdminRepository {
-  list(includeRetired: boolean): ProductRow[];
-  findById(id: number): ProductRow | undefined;
+  list(includeRetired: boolean, exclusions?: CatalogCountryExclusions): ProductRow[];
+  findById(id: number, exclusions?: CatalogCountryExclusions): ProductRow | undefined;
   findByCategoryAndSlug(category: string, slug: string): ProductRow | undefined;
   insert(input: ProductAdminInsert): ProductRow;
   update(id: number, patch: ProductAdminUpdate): void;
@@ -59,17 +60,36 @@ const writeColumns = [
 
 /** Catalog admin SQL surface. Deliberately has no DELETE operation: orders retain product history. */
 export function createProductAdminRepository(db: Database.Database): ProductAdminRepository {
+  const blockedSelect = (
+    exclusions?: CatalogCountryExclusions,
+  ): { expression: string; params: string[] } => {
+    if (
+      !exclusions ||
+      (exclusions.blockedCategories.length === 0 && exclusions.blockedSlugs.length === 0)
+    )
+      return { expression: '0 AS blocked_in_country', params: [] };
+    const categories = exclusions.blockedCategories.map(() => '?').join(', ');
+    const slugs = exclusions.blockedSlugs.map(() => '?').join(', ');
+    return {
+      expression: `CASE WHEN p.category IN (${categories}) OR p.slug IN (${slugs}) THEN 1 ELSE 0 END AS blocked_in_country`,
+      params: [...exclusions.blockedCategories, ...exclusions.blockedSlugs],
+    };
+  };
   return {
-    list(includeRetired) {
+    list(includeRetired, exclusions) {
+      const blocked = blockedSelect(exclusions);
       return db
         .prepare(
-          `SELECT * FROM products${includeRetired ? '' : ' WHERE active = 1'}
+          `SELECT p.*, ${blocked.expression} FROM products p${includeRetired ? '' : ' WHERE p.active = 1'}
            ORDER BY category COLLATE NOCASE ASC, name COLLATE NOCASE ASC, id ASC`,
         )
-        .all() as ProductRow[];
+        .all(...blocked.params) as ProductRow[];
     },
-    findById(id) {
-      return db.prepare('SELECT * FROM products WHERE id = ?').get(id) as ProductRow | undefined;
+    findById(id, exclusions) {
+      const blocked = blockedSelect(exclusions);
+      return db
+        .prepare(`SELECT p.*, ${blocked.expression} FROM products p WHERE p.id = ?`)
+        .get(...blocked.params, id) as ProductRow | undefined;
     },
     findByCategoryAndSlug(category, slug) {
       return db

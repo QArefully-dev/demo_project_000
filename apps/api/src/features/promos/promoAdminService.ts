@@ -1,4 +1,5 @@
 import { CATALOG_CATEGORIES, isUtcIsoInstant, type CatalogCategory } from '@shop/catalog';
+import { SUPPORTED_COUNTRIES, type Country } from '@shop/contracts/country';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
@@ -6,6 +7,7 @@ import type { PromoRecord } from './promoRepository.js';
 import type { PromoAdminRepository, PromoAdminWrite } from './promoAdminRepository.js';
 
 const categorySet = new Set<string>(CATALOG_CATEGORIES);
+const countrySet = new Set<string>(SUPPORTED_COUNTRIES);
 
 export class PromoAdminServiceError extends Error {
   constructor(
@@ -21,11 +23,21 @@ export type PromoAdminCreateInput = PromoAdminWrite;
 export type PromoAdminUpdateInput = Omit<PromoAdminWrite, 'code'>;
 
 export interface PromoAdminService {
-  listAdmin(query?: { code?: string; active?: boolean }): PromoRecord[];
-  get(code: string): PromoRecord;
-  create(input: PromoAdminCreateInput, context: AuditContext): PromoRecord;
-  update(code: string, input: PromoAdminUpdateInput, context: AuditContext): PromoRecord;
-  deactivate(code: string, context: AuditContext, options?: { force?: boolean }): PromoRecord;
+  listAdmin(query?: { code?: string; active?: boolean }, country?: Country): PromoRecord[];
+  get(code: string, country?: Country): PromoRecord;
+  create(input: PromoAdminCreateInput, context: AuditContext, country?: Country): PromoRecord;
+  update(
+    code: string,
+    input: PromoAdminUpdateInput,
+    context: AuditContext,
+    country?: Country,
+  ): PromoRecord;
+  deactivate(
+    code: string,
+    context: AuditContext,
+    options?: { force?: boolean },
+    country?: Country,
+  ): PromoRecord;
 }
 
 function requireCode(code: unknown): string {
@@ -85,6 +97,27 @@ function nullableCategory(value: unknown): CatalogCategory | null {
   return value as CatalogCategory;
 }
 
+function normalizeCountries(value: unknown): Country[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    throw new PromoAdminServiceError('INVALID_INPUT', 'countries must be an array');
+  }
+  const seen = new Set<string>();
+  for (const country of value) {
+    if (typeof country !== 'string' || !countrySet.has(country)) {
+      throw new PromoAdminServiceError(
+        'INVALID_INPUT',
+        'countries must contain only supported countries',
+      );
+    }
+    if (seen.has(country)) {
+      throw new PromoAdminServiceError('INVALID_INPUT', 'countries must not contain duplicates');
+    }
+    seen.add(country);
+  }
+  return value as Country[];
+}
+
 function normalizeWrite(input: PromoAdminWrite, includeCode: true): PromoAdminCreateInput;
 function normalizeWrite(input: PromoAdminUpdateInput, includeCode: false): PromoAdminUpdateInput;
 function normalizeWrite(
@@ -117,6 +150,7 @@ function normalizeWrite(
     amountCents,
     minSubtotalCents: nullableNonNegativeInteger(input.minSubtotalCents, 'minSubtotalCents'),
     categoryScope: nullableCategory(input.categoryScope),
+    countries: normalizeCountries(input.countries),
     startAt,
     endAt,
     maxRedemptions: nullableNonNegativeInteger(input.maxRedemptions, 'maxRedemptions'),
@@ -127,8 +161,12 @@ function normalizeWrite(
     : normalized;
 }
 
-function requirePromo(repository: PromoAdminRepository, code: string): PromoRecord {
-  const promo = repository.get(code);
+function requirePromo(
+  repository: PromoAdminRepository,
+  code: string,
+  country?: Country,
+): PromoRecord {
+  const promo = repository.get(code, country);
   if (!promo) throw new PromoAdminServiceError('NOT_FOUND', 'Promo code not found');
   return promo;
 }
@@ -140,27 +178,29 @@ export function createPromoAdminService(dependencies: {
 }): PromoAdminService {
   const { repository, unitOfWork, audit } = dependencies;
   return {
-    listAdmin(query = {}) {
-      return repository.list(query);
+    listAdmin(query = {}, country) {
+      return repository.list(query, country);
     },
-    get(code) {
-      return requirePromo(repository, requireCode(code));
+    get(code, country) {
+      return requirePromo(repository, requireCode(code), country);
     },
     create(input, context) {
       const normalized = normalizeWrite(input, true);
       return unitOfWork.run(() => {
         if (repository.get(normalized.code))
           throw new PromoAdminServiceError('DUPLICATE', 'Promo code already exists');
-        const promo = repository.create(normalized);
+        repository.create(normalized);
+        repository.replaceTargetedCountries(normalized.code, normalized.countries ?? []);
+        const promo = requirePromo(repository, normalized.code);
         audit.append({ action: 'promo.created', context, promoCode: promo.code });
         return promo;
       });
     },
-    update(code, input, context) {
+    update(code, input, context, country) {
       const promoCode = requireCode(code);
       const normalized = normalizeWrite(input, false);
       return unitOfWork.run(() => {
-        const existing = requirePromo(repository, promoCode);
+        const existing = requirePromo(repository, promoCode, country);
         const activeReservations = repository.activeReservationCount(promoCode);
         if (
           normalized.maxRedemptions !== null &&
@@ -171,16 +211,23 @@ export function createPromoAdminService(dependencies: {
             'maxRedemptions must be at least the current redemption count plus active reservations',
           );
         }
-        const promo = repository.update(promoCode, normalized);
-        if (!promo) throw new PromoAdminServiceError('NOT_FOUND', 'Promo code not found');
+        const updated = repository.update(promoCode, normalized);
+        if (!updated) throw new PromoAdminServiceError('NOT_FOUND', 'Promo code not found');
+        if (input.countries !== undefined)
+          repository.replaceTargetedCountries(promoCode, normalized.countries ?? []);
+        // Country scoping protects the pre-write lookup above. Once the
+        // targeting set is replaced, the standing country may no longer be a
+        // target; load the updated row without the old scope so a valid
+        // retarget (for example UK -> DE) can be returned.
+        const promo = requirePromo(repository, promoCode);
         audit.append({ action: 'promo.updated', context, promoCode: promo.code });
         return promo;
       });
     },
-    deactivate(code, context, options = {}) {
+    deactivate(code, context, options = {}, country) {
       const promoCode = requireCode(code);
       return unitOfWork.run(() => {
-        requirePromo(repository, promoCode);
+        requirePromo(repository, promoCode, country);
         if (!options.force && repository.activeReservationCount(promoCode) > 0) {
           throw new PromoAdminServiceError(
             'ACTIVE_RESERVATIONS',

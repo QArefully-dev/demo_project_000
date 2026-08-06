@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Cart } from '@shop/contracts/cart';
+import type { Country } from '@shop/contracts/country';
 import type { CartRepository, CartLineRow } from '../cart/cartRepository.js';
 import type { PromoRecord, PromoRepository } from './promoRepository.js';
 
@@ -58,11 +59,16 @@ function cartLine(category: string, quantity: number, priceCents: number): CartL
   };
 }
 
-function cartsWith(...lines: CartLineRow[]): CartRepository {
+function cartsWithCountry(country: Country, ...lines: CartLineRow[]): CartRepository {
   return {
     exists: () => true,
+    country: () => country,
     listLines: () => lines,
   } as unknown as CartRepository;
+}
+
+function cartsWith(...lines: CartLineRow[]): CartRepository {
+  return cartsWithCountry('UK', ...lines);
 }
 
 function promo(overrides: Partial<PromoRecord> = {}): PromoRecord {
@@ -87,11 +93,60 @@ function promo(overrides: Partial<PromoRecord> = {}): PromoRecord {
 function promosWith(record: PromoRecord): PromoRepository {
   return {
     findByCode: () => record,
+    targetedCountries: () => record.countries ?? [],
     redemptionCountForUser: () => 0,
     activeReservationCount: () => 0,
     activeReservationCountForUser: () => 0,
   } as unknown as PromoRepository;
 }
+
+void test('targeted promos apply only for the persisted cart country and disclose no scope', () => {
+  const targeted = promo({ code: 'LOCAL10', countries: ['UK'] });
+  const dependencies = {
+    carts: cartsWith(cartLine('Drinks', 1, 100)),
+    promos: promosWith(targeted),
+  };
+  assert.equal(
+    validatePromo(
+      {
+        code: 'LOCAL10',
+        cartId: 'cart',
+        userId: null,
+        country: 'UK',
+        now: new Date('2026-07-28T00:00:00.000Z'),
+      },
+      dependencies,
+    ).valid,
+    true,
+  );
+  const outside = validatePromo(
+    {
+      code: 'LOCAL10',
+      cartId: 'cart',
+      userId: null,
+      country: 'US',
+      now: new Date('2026-07-28T00:00:00.000Z'),
+    },
+    { ...dependencies, carts: cartsWithCountry('US', cartLine('Drinks', 1, 100)) },
+  );
+  const unknown = validatePromo(
+    {
+      code: 'UNKNOWN',
+      cartId: 'cart',
+      userId: null,
+      country: 'US',
+      now: new Date('2026-07-28T00:00:00.000Z'),
+    },
+    {
+      ...dependencies,
+      promos: {
+        ...promosWith(promo({ code: 'UNKNOWN' })),
+        findByCode: () => undefined,
+      },
+    },
+  );
+  assert.deepEqual(outside, unknown);
+});
 
 void test('percentage discount uses integer cents and rounds down', () => {
   assert.equal(

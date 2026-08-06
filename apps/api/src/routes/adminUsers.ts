@@ -9,8 +9,10 @@ import {
 } from '@shop/contracts/admin-users';
 import { AdminUserView } from '@shop/contracts/auth';
 import { ErrorResponse } from '@shop/contracts/common';
+import type { Country } from '@shop/contracts/country';
 import type { FastifyInstance } from 'fastify';
 import type { SessionService } from '../features/auth/sessionService.js';
+import type { AuditContext } from '../features/audit/auditEvent.js';
 import { UserAdminServiceError, type UserAdminService } from '../features/auth/userAdminService.js';
 import { requireAdmin } from '../plugins/auth.js';
 import { sendBadRequest, sendConflict, sendNotFound } from '../utils/errors.js';
@@ -18,9 +20,10 @@ export interface AdminUsersRouteServices {
   sessions: SessionService;
   userAdmin: UserAdminService;
 }
-const context = (userId: number, requestId: string) => ({
+const context = (userId: number, requestId: string, standingCountry: Country): AuditContext => ({
   actor: { type: 'user' as const, userId },
   requestId,
+  standingCountry,
 });
 const map = (u: ReturnType<UserAdminService['get']>): AdminUserView => ({
   ...u,
@@ -53,7 +56,7 @@ export default function adminUsersRoutes(
         },
       },
     },
-    (r) => ({ items: services.userAdmin.list(r.query).map(map) }),
+    (r) => ({ items: services.userAdmin.list(r.query, r.resolvedCountry).map(map) }),
   );
   typed.get(
     '/api/admin/users/:userId',
@@ -72,7 +75,7 @@ export default function adminUsersRoutes(
     },
     (r, reply) => {
       try {
-        return map(services.userAdmin.get(Number(r.params.userId)));
+        return map(services.userAdmin.get(Number(r.params.userId), r.resolvedCountry));
       } catch (e) {
         if (e instanceof UserAdminServiceError) return sendError(reply, e);
         throw e;
@@ -101,7 +104,8 @@ export default function adminUsersRoutes(
           services.userAdmin.updateDisplayName(
             Number(r.params.userId),
             r.body.displayName,
-            context(r.authenticatedUser!.id, r.id),
+            context(r.authenticatedUser!.id, r.id, r.resolvedCountry),
+            r.resolvedCountry,
           ),
         );
       } catch (e) {
@@ -133,7 +137,8 @@ export default function adminUsersRoutes(
           services.userAdmin.setRole(
             Number(r.params.userId),
             r.body.role,
-            context(r.authenticatedUser!.id, r.id),
+            context(r.authenticatedUser!.id, r.id, r.resolvedCountry),
+            r.resolvedCountry,
           ),
         );
       } catch (e) {
@@ -166,7 +171,8 @@ export default function adminUsersRoutes(
             Number(r.params.userId),
             r.body.reason,
             r.authenticatedUser!.id,
-            context(r.authenticatedUser!.id, r.id),
+            context(r.authenticatedUser!.id, r.id, r.resolvedCountry),
+            r.resolvedCountry,
           ),
         );
       } catch (e) {
@@ -196,7 +202,8 @@ export default function adminUsersRoutes(
           services.userAdmin.reactivate(
             Number(r.params.userId),
             r.authenticatedUser!.id,
-            context(r.authenticatedUser!.id, r.id),
+            context(r.authenticatedUser!.id, r.id, r.resolvedCountry),
+            r.resolvedCountry,
           ),
         );
       } catch (e) {

@@ -8,8 +8,10 @@ import {
   type AdminFeatureFlag as AdminFeatureFlagResponse,
 } from '@shop/contracts/feature-flags';
 import { ErrorResponse, SuccessResponse } from '@shop/contracts/common';
+import type { Country } from '@shop/contracts/country';
 import type { FastifyInstance } from 'fastify';
 import type { SessionService } from '../features/auth/sessionService.js';
+import type { AuditContext } from '../features/audit/auditEvent.js';
 import {
   FeatureFlagServiceError,
   type FeatureFlagService,
@@ -21,9 +23,10 @@ export interface AdminFeatureFlagsRouteServices {
   sessions: SessionService;
   featureFlags: FeatureFlagService;
 }
-const context = (userId: number, requestId: string) => ({
+const context = (userId: number, requestId: string, standingCountry: Country): AuditContext => ({
   actor: { type: 'user' as const, userId },
   requestId,
+  standingCountry,
 });
 function sendError(reply: Parameters<typeof sendBadRequest>[0], e: FeatureFlagServiceError) {
   if (e.code === 'NOT_FOUND') return sendNotFound(reply, 'Feature flag');
@@ -92,7 +95,12 @@ export default function adminFeatureFlagsRoutes(
     (r, reply) => {
       try {
         reply.code(201);
-        return map(services.featureFlags.create(r.body, context(r.authenticatedUser!.id, r.id)));
+        return map(
+          services.featureFlags.create(
+            r.body,
+            context(r.authenticatedUser!.id, r.id, r.resolvedCountry),
+          ),
+        );
       } catch (e) {
         if (e instanceof FeatureFlagServiceError) return sendError(reply, e);
         throw e;
@@ -121,7 +129,7 @@ export default function adminFeatureFlagsRoutes(
           services.featureFlags.update(
             r.params.key,
             r.body,
-            context(r.authenticatedUser!.id, r.id),
+            context(r.authenticatedUser!.id, r.id, r.resolvedCountry),
           ),
         );
       } catch (e) {
@@ -147,7 +155,10 @@ export default function adminFeatureFlagsRoutes(
     },
     (r, reply) => {
       try {
-        services.featureFlags.delete(r.params.key, context(r.authenticatedUser!.id, r.id));
+        services.featureFlags.delete(
+          r.params.key,
+          context(r.authenticatedUser!.id, r.id, r.resolvedCountry),
+        );
         return { success: true as const };
       } catch (e) {
         if (e instanceof FeatureFlagServiceError) return sendError(reply, e);

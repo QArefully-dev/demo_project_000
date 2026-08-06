@@ -33,7 +33,7 @@ export default function productsRoutes(app: FastifyInstance, { services }: AppCo
         },
       },
     },
-    () => products.listFilterOptions(),
+    (request) => products.listFilterOptions(request.resolvedCountry),
   );
 
   typed.get(
@@ -45,8 +45,8 @@ export default function productsRoutes(app: FastifyInstance, { services }: AppCo
         },
       },
     },
-    () => {
-      return products.listCategories();
+    (request) => {
+      return products.listCategories(request.resolvedCountry);
     },
   );
 
@@ -59,8 +59,8 @@ export default function productsRoutes(app: FastifyInstance, { services }: AppCo
         },
       },
     },
-    () => {
-      return products.listBestsellers().map(toProductContract);
+    (request) => {
+      return products.listBestsellers(request.resolvedCountry).map(toProductContract);
     },
   );
 
@@ -76,7 +76,7 @@ export default function productsRoutes(app: FastifyInstance, { services }: AppCo
     },
     (request, reply) => {
       try {
-        const result = products.list(request.query);
+        const result = products.list(request.query, request.resolvedCountry);
         return {
           items: result.items.map(toProductContract),
           total: result.total,
@@ -106,7 +106,7 @@ export default function productsRoutes(app: FastifyInstance, { services }: AppCo
     },
     (request, reply) => {
       try {
-        return products.compare(request.query.ids);
+        return products.compare(request.query.ids, request.resolvedCountry);
       } catch (error) {
         if (error instanceof ComparisonSelectionError) {
           sendBadRequest(reply, error.message);
@@ -138,12 +138,12 @@ export default function productsRoutes(app: FastifyInstance, { services }: AppCo
         return;
       }
 
-      const product = products.findCustomerProductById(productId);
+      const product = products.findCustomerProductById(productId, request.resolvedCountry);
       if (!product) {
         sendNotFound(reply, 'Product');
         return;
       }
-      const variants = products.listVariants(productId);
+      const variants = products.listVariants(productId, request.resolvedCountry);
       return toProductWithVariantsContract(product, variants, clock.now());
     },
   );
@@ -167,7 +167,7 @@ export default function productsRoutes(app: FastifyInstance, { services }: AppCo
         return;
       }
 
-      const similar = products.listSimilar(productId);
+      const similar = products.listSimilar(productId, request.resolvedCountry);
       if (!similar) {
         sendNotFound(reply, 'Product');
         return;
@@ -197,7 +197,7 @@ export default function productsRoutes(app: FastifyInstance, { services }: AppCo
         return;
       }
 
-      const similar = products.listRelated(productId);
+      const similar = products.listRelated(productId, request.resolvedCountry);
       if (!similar) {
         sendNotFound(reply, 'Product');
         return;

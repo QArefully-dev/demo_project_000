@@ -115,18 +115,20 @@ Most variants ship as standard parcel. Heavy variants or orders exceeding a comb
 
 ### User Credentials
 
-All seeded accounts are `UK`. The default landing country for a logged-out visitor is `US`, so UK Alice fails to log in until the country dropdown is changed to `UK`.
+All seeded accounts are `UK` except the separate `DE` Alice fixture. The default landing country for a logged-out visitor is `US`, so UK Alice fails to log in until the country dropdown is changed to `UK`.
 
 | Email               | Password      | Country | Role     |
 | ------------------- | ------------- | ------- | -------- |
 | alice@example.com   | Password123!  | UK      | customer |
-| alice@example.com   | Password123!  | DE      | customer |
+| alice@example.com   | PasswordDE!1  | DE      | customer |
 | bob@example.com     | Password123!  | UK      | customer |
 | admin@example.com   | Password123!  | UK      | admin    |
 
-The same email exists once per country as separate accounts. Use the country dropdown on the login form to select which account to authenticate against. Both Alice accounts share `Password123!` as their plaintext password; the stored hashes differ because the salt includes the country.
+The same email exists once per country as separate accounts with separate passwords and carts. Use the country dropdown on the login form to select which account to authenticate against. UK Alice uses `Password123!`; DE Alice uses `PasswordDE!1`.
 
 UK Alice has a pre-seeded default Favourites list with 3 products. Her `Monthly restock` list demonstrates all four whole-list add outcomes after `npm run reset`: an ordinary added line, a quantity raised to the 4-sack MOQ, a retired variant skipped, and an insufficient-stock variant skipped.
+
+Country behaviour demos are seeded for stage 2. China blocks the `Sports Nutrition` category server-side, so a CN visitor cannot browse, open, add, or check out those lots; UK can access the same lots. Spain alone shows the country banner. `LOC-UK-DE-10` applies in UK and DE carts but is rejected in US carts. Delivery remains country-bound: UK carts accept `GB` destinations, while DE carts accept `DE` destinations only.
 
 ### Local Administration
 

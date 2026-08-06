@@ -1,5 +1,9 @@
+import { useEffect } from 'react';
 import type { PostalAddress } from '@shop/contracts/address';
+import { LEGACY_DATA_COUNTRY, type Country } from '@shop/contracts/country';
+import { countryProfile } from '@shop/contracts/country-profiles';
 import { Input } from '@/components/ui/input';
+import { useOptionalCountry } from '@/hooks/CountryContext';
 
 /**
  * Shared postal address sub-form.
@@ -20,23 +24,40 @@ export interface PostalAddressDraft {
   region: string;
   postcode: string;
   countryCode: string;
+  /** Identity-country snapshot used by advisory validation outside React render paths. */
+  profileCountry: Country;
 }
 
-export type PostalAddressFieldName = keyof PostalAddressDraft;
+export type PostalAddressFieldName = Exclude<keyof PostalAddressDraft, 'profileCountry'>;
 
 export type PostalAddressFieldErrors = Partial<Record<PostalAddressFieldName, string>>;
 
-export const EMPTY_POSTAL_ADDRESS_DRAFT: PostalAddressDraft = {
-  line1: '',
-  line2: '',
-  city: '',
-  region: '',
-  postcode: '',
-  countryCode: 'GB',
-};
+function firstDeliveryCountryCode(country: Country): string {
+  const countryCode = countryProfile(country).deliveryCountryCodes[0];
+  if (!countryCode) throw new Error(`Country profile ${country} has no delivery country code`);
+  return countryCode;
+}
+
+export function emptyPostalAddressDraft(country: Country): PostalAddressDraft {
+  return {
+    line1: '',
+    line2: '',
+    city: '',
+    region: '',
+    postcode: '',
+    countryCode: firstDeliveryCountryCode(country),
+    profileCountry: country,
+  };
+}
+
+/** Compatibility seed for callers that have not yet rendered inside the active country context. */
+export const EMPTY_POSTAL_ADDRESS_DRAFT = emptyPostalAddressDraft(LEGACY_DATA_COUNTRY);
 
 /** Turns a stored address back into an editable draft. */
-export function toPostalAddressDraft(address: PostalAddress): PostalAddressDraft {
+export function toPostalAddressDraft(
+  address: PostalAddress,
+  profileCountry: Country = LEGACY_DATA_COUNTRY,
+): PostalAddressDraft {
   return {
     line1: address.line1,
     line2: address.line2 ?? '',
@@ -44,6 +65,7 @@ export function toPostalAddressDraft(address: PostalAddress): PostalAddressDraft
     region: address.region ?? '',
     postcode: address.postcode,
     countryCode: address.countryCode,
+    profileCountry,
   };
 }
 
@@ -51,7 +73,6 @@ export function toPostalAddressDraft(address: PostalAddress): PostalAddressDraft
 const MAX_LINE_LENGTH = 120;
 const MAX_LOCALITY_LENGTH = 80;
 const MAX_POSTCODE_LENGTH = 16;
-const POSTCODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9 -]*$/;
 const COUNTRY_CODE_PATTERN = /^[A-Z]{2}$/;
 const MARKUP_PATTERN = /[<>]/;
 
@@ -74,6 +95,8 @@ export type PostalAddressValidation =
  * Blank optional fields are omitted rather than sent as empty strings, which the contract rejects.
  */
 export function validatePostalAddressDraft(draft: PostalAddressDraft): PostalAddressValidation {
+  const profile = countryProfile(draft.profileCountry);
+  const postcodeRule = profile.postcode;
   const line1 = draft.line1.trim();
   const line2 = draft.line2.trim();
   const city = draft.city.trim();
@@ -94,15 +117,19 @@ export function validatePostalAddressDraft(draft: PostalAddressDraft): PostalAdd
   if (regionError) errors.region = regionError;
 
   if (postcode.length === 0) {
-    errors.postcode = 'Postcode is required';
+    errors.postcode = `${postcodeRule.label} is required`;
   } else if (postcode.length > MAX_POSTCODE_LENGTH) {
-    errors.postcode = `Postcode must be ${MAX_POSTCODE_LENGTH} characters or fewer`;
-  } else if (!POSTCODE_PATTERN.test(postcode)) {
-    errors.postcode = 'Postcode may use letters, numbers, spaces, and hyphens only';
+    errors.postcode = `${postcodeRule.label} must be ${MAX_POSTCODE_LENGTH} characters or fewer`;
+  } else if (MARKUP_PATTERN.test(postcode)) {
+    errors.postcode = `${postcodeRule.label} cannot contain < or >`;
+  } else if (!new RegExp(postcodeRule.pattern).test(postcode.toUpperCase())) {
+    errors.postcode = `Enter a valid ${postcodeRule.label}, for example ${postcodeRule.example}`;
   }
 
   if (!COUNTRY_CODE_PATTERN.test(countryCode)) {
-    errors.countryCode = 'Country code must be two letters, for example GB';
+    errors.countryCode = `Country code must be two letters, for example ${firstDeliveryCountryCode(draft.profileCountry)}`;
+  } else if (!profile.deliveryCountryCodes.includes(countryCode)) {
+    errors.countryCode = `Delivery is not available to ${countryCode} for this account`;
   }
 
   if (Object.keys(errors).length > 0) return { ok: false, errors };
@@ -135,6 +162,7 @@ interface FieldProps {
   maxLength: number;
   optional?: boolean;
   className?: string;
+  placeholder?: string;
 }
 
 function AddressField({
@@ -148,6 +176,7 @@ function AddressField({
   maxLength,
   optional,
   className,
+  placeholder,
 }: FieldProps) {
   const errorId = `${id}-error`;
   return (
@@ -162,6 +191,7 @@ function AddressField({
         maxLength={maxLength}
         disabled={disabled}
         autoComplete={autoComplete}
+        placeholder={placeholder}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}
         onChange={(event) => onChange(event.target.value)}
@@ -184,6 +214,24 @@ export function PostalAddressFields({
   disabled,
   legend = 'Address',
 }: PostalAddressFieldsProps) {
+  const countryContext = useOptionalCountry();
+  // Provider-free legacy tests and fixtures retain their draft profile; real app surfaces always
+  // resolve the active account/guest country from CountryProvider.
+  const activeCountry =
+    countryContext.countryStorage === null && !countryContext.isAccountBound
+      ? value.profileCountry
+      : countryContext.activeCountry;
+  const profile = countryProfile(activeCountry);
+
+  useEffect(() => {
+    if (value.profileCountry === activeCountry) return;
+    onChange({
+      ...value,
+      profileCountry: activeCountry,
+      countryCode: firstDeliveryCountryCode(activeCountry),
+    });
+  }, [activeCountry, onChange, value]);
+
   function setField(field: PostalAddressFieldName, next: string) {
     onChange({ ...value, [field]: next });
   }
@@ -232,12 +280,13 @@ export function PostalAddressFields({
         />
         <AddressField
           id={`${idPrefix}-postcode`}
-          label="Postcode"
+          label={profile.postcode.label}
           value={value.postcode}
           onChange={(next) => setField('postcode', next)}
           error={errors.postcode}
           autoComplete="postal-code"
           maxLength={MAX_POSTCODE_LENGTH}
+          placeholder={profile.postcode.example}
         />
         <AddressField
           id={`${idPrefix}-countryCode`}

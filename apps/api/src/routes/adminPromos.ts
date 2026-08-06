@@ -11,8 +11,10 @@ import {
 } from '@shop/contracts/admin-promos';
 import type { AdminCatalogCategory } from '@shop/contracts/admin-products';
 import { ErrorResponse } from '@shop/contracts/common';
+import type { Country } from '@shop/contracts/country';
 import type { FastifyInstance } from 'fastify';
 import type { SessionService } from '../features/auth/sessionService.js';
+import type { AuditContext } from '../features/audit/auditEvent.js';
 import {
   PromoAdminServiceError,
   type PromoAdminService,
@@ -24,9 +26,10 @@ export interface AdminPromosRouteServices {
   sessions: SessionService;
   promoAdmin: PromoAdminService;
 }
-const context = (userId: number, requestId: string) => ({
+const context = (userId: number, requestId: string, standingCountry: Country): AuditContext => ({
   actor: { type: 'user' as const, userId },
   requestId,
+  standingCountry,
 });
 function sendError(reply: Parameters<typeof sendBadRequest>[0], e: PromoAdminServiceError) {
   if (e.code === 'NOT_FOUND') return sendNotFound(reply, 'Promo code');
@@ -72,7 +75,7 @@ export default function adminPromosRoutes(
         },
       },
     },
-    (r) => ({ items: services.promoAdmin.listAdmin(r.query).map(map) }),
+    (r) => ({ items: services.promoAdmin.listAdmin(r.query, r.resolvedCountry).map(map) }),
   );
   typed.get(
     '/api/admin/promos/:code',
@@ -91,7 +94,7 @@ export default function adminPromosRoutes(
     },
     (r, reply) => {
       try {
-        return map(services.promoAdmin.get(r.params.code));
+        return map(services.promoAdmin.get(r.params.code, r.resolvedCountry));
       } catch (e) {
         if (e instanceof PromoAdminServiceError) return sendError(reply, e);
         throw e;
@@ -116,7 +119,13 @@ export default function adminPromosRoutes(
     (r, reply) => {
       try {
         reply.code(201);
-        return map(services.promoAdmin.create(r.body, context(r.authenticatedUser!.id, r.id)));
+        return map(
+          services.promoAdmin.create(
+            r.body,
+            context(r.authenticatedUser!.id, r.id, r.resolvedCountry),
+            r.resolvedCountry,
+          ),
+        );
       } catch (e) {
         if (e instanceof PromoAdminServiceError) return sendError(reply, e);
         throw e;
@@ -143,7 +152,12 @@ export default function adminPromosRoutes(
     (r, reply) => {
       try {
         return map(
-          services.promoAdmin.update(r.params.code, r.body, context(r.authenticatedUser!.id, r.id)),
+          services.promoAdmin.update(
+            r.params.code,
+            r.body,
+            context(r.authenticatedUser!.id, r.id, r.resolvedCountry),
+            r.resolvedCountry,
+          ),
         );
       } catch (e) {
         if (e instanceof PromoAdminServiceError) return sendError(reply, e);
@@ -173,8 +187,9 @@ export default function adminPromosRoutes(
         return map(
           services.promoAdmin.deactivate(
             r.params.code,
-            context(r.authenticatedUser!.id, r.id),
+            context(r.authenticatedUser!.id, r.id, r.resolvedCountry),
             r.body,
+            r.resolvedCountry,
           ),
         );
       } catch (e) {

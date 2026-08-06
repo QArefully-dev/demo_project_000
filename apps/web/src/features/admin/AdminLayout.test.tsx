@@ -17,6 +17,17 @@ const authState = vi.hoisted(() => ({
 
 vi.mock('@/hooks/AuthContext', () => ({ useAuth: () => authState }));
 
+const countryState = vi.hoisted(() => ({ activeCountry: 'DE' as const }));
+
+vi.mock('@/hooks/CountryContext', () => ({
+  useCountry: () => ({
+    activeCountry: countryState.activeCountry,
+    isAccountBound: false,
+    selectCountry: vi.fn(),
+    countryStorage: null,
+  }),
+}));
+
 describe('AdminLayout', () => {
   it('renders administration navigation and mounts the index inside AdminRoute', () => {
     render(
@@ -39,6 +50,10 @@ describe('AdminLayout', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Administration overview' })).toBeInTheDocument();
+    expect(screen.getByTestId('admin-standing-country')).toHaveTextContent('Standing country: DE');
+    expect(
+      screen.getByText('Jobs, webhooks, and feature flags are global sections.'),
+    ).toBeInTheDocument();
     const navigation = screen.getByRole('navigation', { name: 'Administration' });
     expect(navigation).toHaveTextContent('Products');
     expect(navigation).toHaveTextContent('Variants');

@@ -5,8 +5,10 @@ import {
   type AdminRefund as AdminRefundResponse,
 } from '@shop/contracts/admin-refunds';
 import { ErrorResponse } from '@shop/contracts/common';
+import type { Country } from '@shop/contracts/country';
 import type { FastifyInstance } from 'fastify';
 import type { SessionService } from '../features/auth/sessionService.js';
+import type { AuditContext } from '../features/audit/auditEvent.js';
 import {
   AdminRefundError,
   type AdminRefundService,
@@ -18,9 +20,10 @@ export interface AdminRefundsRouteServices {
   sessions: SessionService;
   adminRefunds: AdminRefundService;
 }
-const context = (userId: number, requestId: string) => ({
+const context = (userId: number, requestId: string, standingCountry: Country): AuditContext => ({
   actor: { type: 'user' as const, userId },
   requestId,
+  standingCountry,
 });
 function sendError(reply: Parameters<typeof sendBadRequest>[0], e: AdminRefundError) {
   if (e.code === 'PAYMENT_NOT_REFUNDABLE' || e.code === 'PAYMENT_ORDER_MISMATCH')
@@ -61,7 +64,7 @@ export default function adminRefundsRoutes(
             amountCents: r.body.amountCents,
             reason: r.body.reason,
             idempotencyKey: r.body.idempotencyKey,
-            context: context(r.authenticatedUser!.id, r.id),
+            context: context(r.authenticatedUser!.id, r.id, r.resolvedCountry),
           }),
         );
       } catch (e) {

@@ -78,7 +78,7 @@ const PaymentConflictFallbackError = Type.String({
   // Detail-bearing conflict codes must select their dedicated schema. Generic legacy messages
   // remain valid, but cannot make a required detail field optional through the catch-all member.
   pattern:
-    '^(?!(?:RESERVATION_EXPIRED|INSUFFICIENT_STOCK|DELIVERY_SLOT_UNAVAILABLE|PENDING_APPROVAL|APPROVAL_REJECTED|APPROVAL_EXPIRED|APPROVAL_TOTAL_DRIFT|CUSTOM_BLEND_INVALID)$).+$',
+    '^(?!(?:RESERVATION_EXPIRED|INSUFFICIENT_STOCK|BLOCKED_IN_COUNTRY|DELIVERY_SLOT_UNAVAILABLE|PENDING_APPROVAL|APPROVAL_REJECTED|APPROVAL_EXPIRED|APPROVAL_TOTAL_DRIFT|CUSTOM_BLEND_INVALID)$).+$',
 });
 
 export const PaymentConflictResponse = Type.Union([
@@ -92,6 +92,13 @@ export const PaymentConflictResponse = Type.Union([
   Type.Object(
     {
       error: Type.Literal('INSUFFICIENT_STOCK'),
+      productIds: Type.Array(PositiveIntegerString, { minItems: 1 }),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      error: Type.Literal('BLOCKED_IN_COUNTRY'),
       productIds: Type.Array(PositiveIntegerString, { minItems: 1 }),
     },
     { additionalProperties: false },

@@ -194,11 +194,11 @@ void test('country identity composes signup, /me, cart isolation, and cross-coun
     ukAliceId = body.id;
   });
 
-  await t.test('seeded DE Alice logs in with correct country and Password123!', async () => {
+  await t.test('seeded DE Alice logs in with correct country and PasswordDE!1', async () => {
     const login = await app.inject({
       method: 'POST',
       url: '/login',
-      payload: { email: 'alice@example.com', password: 'Password123!', country: 'DE' },
+      payload: { email: 'alice@example.com', password: 'PasswordDE!1', country: 'DE' },
     });
     assert.equal(login.statusCode, 200);
     const cookie = sessionCookie(login);

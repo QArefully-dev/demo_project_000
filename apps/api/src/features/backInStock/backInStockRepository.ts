@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import type { BackInStockStatus } from '@shop/contracts/back-in-stock';
+import type { Country } from '@shop/contracts/country';
 
 export interface BackInStockRow {
   id: number;
@@ -20,6 +21,8 @@ export interface BackInStockSubscriptionRow extends BackInStockRow {
   label: string;
   product_id: number;
   product_name: string;
+  product_category: string;
+  product_slug: string;
   weight_grams: number;
   moq_sacks: number;
   active: number;
@@ -32,6 +35,8 @@ export interface BackInStockVariantFacts {
   label: string;
   product_id: number;
   product_name: string;
+  product_category: string;
+  product_slug: string;
   weight_grams: number;
   moq_sacks: number;
   active: number;
@@ -48,6 +53,7 @@ export interface BackInStockRepository {
   markNotified(id: number, notificationId: number | null, at: string): void;
   markCancelled(id: number, at: string): void;
   variantFacts(variantId: number): BackInStockVariantFacts | undefined;
+  userCountry(userId: number): Country | undefined;
 }
 
 const SUBSCRIPTION_COLUMNS = `id, user_id, variant_id, status, requested_at, notified_at,
@@ -55,7 +61,8 @@ const SUBSCRIPTION_COLUMNS = `id, user_id, variant_id, status, requested_at, not
 const SUBSCRIPTION_COLUMNS_WITH_ALIAS = `s.id, s.user_id, s.variant_id, s.status, s.requested_at,
   s.notified_at, s.cancelled_at, s.notification_id, s.created_at, s.updated_at`;
 const VARIANT_FACT_COLUMNS = `v.sku, v.label, v.weight_grams, v.moq_sacks, v.active,
-  p.id AS product_id, p.name AS product_name`;
+  p.id AS product_id, p.name AS product_name, p.category AS product_category,
+  p.slug AS product_slug`;
 /** Newest interest first; the id tiebreak keeps same-instant rows deterministically ordered. */
 const SUBSCRIPTION_ORDER = 'ORDER BY s.requested_at DESC, s.id DESC';
 
@@ -151,6 +158,10 @@ export function createBackInStockRepository(db: Database.Database): BackInStockR
            WHERE v.id = ?`,
         )
         .get(variantId) as BackInStockVariantFacts | undefined;
+    },
+    userCountry(userId) {
+      return db.prepare('SELECT country FROM users WHERE id = ?').pluck().get(userId) as
+        Country | undefined;
     },
   };
 }

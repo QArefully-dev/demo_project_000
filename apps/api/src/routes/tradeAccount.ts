@@ -14,8 +14,11 @@ import {
   UpdateDeliverySiteBody,
 } from '@shop/contracts/trade-account';
 import { requireAuth } from '../plugins/auth.js';
-import { sendConflict, sendNotFound } from '../utils/errors.js';
-import type { TradeAccountErrorCode } from '../features/tradeAccount/tradeAccountErrors.js';
+import { sendBadRequest, sendConflict, sendNotFound } from '../utils/errors.js';
+import type {
+  TradeAccountErrorCode,
+  TradeAccountResult,
+} from '../features/tradeAccount/tradeAccountErrors.js';
 import type { AppContext } from '../app.js';
 
 /**
@@ -33,7 +36,7 @@ import type { AppContext } from '../app.js';
  */
 const TRADE_ACCOUNT_ERROR_RESPONSE: Record<
   TradeAccountErrorCode,
-  { notFound: string } | { conflict: string }
+  { notFound: string } | { conflict: string } | { badRequest: string }
 > = {
   SITE_NOT_FOUND: { notFound: 'Delivery site' },
   BILLING_ENTITY_NOT_FOUND: { notFound: 'Billing entity' },
@@ -41,12 +44,23 @@ const TRADE_ACCOUNT_ERROR_RESPONSE: Record<
   BILLING_ENTITY_LIMIT_REACHED: { conflict: 'Billing entity limit reached' },
   DUPLICATE_LABEL: { conflict: 'A delivery site with this label already exists' },
   DUPLICATE_LEGAL_NAME: { conflict: 'A billing entity with this legal name already exists' },
+  INVALID_POSTCODE: { badRequest: 'Invalid postcode' },
+  DELIVERY_COUNTRY_NOT_ALLOWED: {
+    badRequest: 'This delivery country is not available for your account.',
+  },
 };
 
-function sendTradeAccountError(reply: FastifyReply, code: TradeAccountErrorCode): void {
-  const mapped = TRADE_ACCOUNT_ERROR_RESPONSE[code];
+function sendTradeAccountError(
+  reply: FastifyReply,
+  failure: Extract<TradeAccountResult<unknown>, { ok: false }>,
+): void {
+  const mapped = TRADE_ACCOUNT_ERROR_RESPONSE[failure.code];
   if ('notFound' in mapped) {
     sendNotFound(reply, mapped.notFound);
+    return;
+  }
+  if ('badRequest' in mapped) {
+    sendBadRequest(reply, failure.message ?? mapped.badRequest);
     return;
   }
   sendConflict(reply, mapped.conflict);
@@ -100,7 +114,7 @@ export default function tradeAccountRoutes(app: FastifyInstance, { services }: A
       const user = request.authenticatedUser!;
       const result = sites.create(user.id, request.body);
       if (!result.ok) {
-        sendTradeAccountError(reply, result.code);
+        sendTradeAccountError(reply, result);
         return;
       }
       reply.code(201).send(result.value);
@@ -128,7 +142,7 @@ export default function tradeAccountRoutes(app: FastifyInstance, { services }: A
       const user = request.authenticatedUser!;
       const result = sites.update(user.id, Number(request.params.siteId), request.body);
       if (!result.ok) {
-        sendTradeAccountError(reply, result.code);
+        sendTradeAccountError(reply, result);
         return;
       }
       reply.code(200).send(result.value);
@@ -155,7 +169,7 @@ export default function tradeAccountRoutes(app: FastifyInstance, { services }: A
       // Retires the site; the row survives so historic orders keep their foreign key.
       const result = sites.retire(user.id, Number(request.params.siteId));
       if (!result.ok) {
-        sendTradeAccountError(reply, result.code);
+        sendTradeAccountError(reply, result);
         return;
       }
       reply.code(200).send({ success: true as const });
@@ -199,7 +213,7 @@ export default function tradeAccountRoutes(app: FastifyInstance, { services }: A
       const user = request.authenticatedUser!;
       const result = billingEntities.create(user.id, request.body);
       if (!result.ok) {
-        sendTradeAccountError(reply, result.code);
+        sendTradeAccountError(reply, result);
         return;
       }
       reply.code(201).send(result.value);
@@ -229,7 +243,7 @@ export default function tradeAccountRoutes(app: FastifyInstance, { services }: A
       // means "clear it", and collapsing the two here would silently drop the clear instruction.
       const result = billingEntities.update(user.id, Number(request.params.entityId), request.body);
       if (!result.ok) {
-        sendTradeAccountError(reply, result.code);
+        sendTradeAccountError(reply, result);
         return;
       }
       reply.code(200).send(result.value);
@@ -255,7 +269,7 @@ export default function tradeAccountRoutes(app: FastifyInstance, { services }: A
       const user = request.authenticatedUser!;
       const result = billingEntities.retire(user.id, Number(request.params.entityId));
       if (!result.ok) {
-        sendTradeAccountError(reply, result.code);
+        sendTradeAccountError(reply, result);
         return;
       }
       reply.code(200).send({ success: true as const });

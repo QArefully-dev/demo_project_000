@@ -1,4 +1,5 @@
 import type { OrderStatus } from '@shop/contracts/orders';
+import type { Country } from '@shop/contracts/country';
 import type { AdminOrderDetailResponse } from '@shop/contracts/admin-orders-list';
 import type { OrderRepository } from './orderRepository.js';
 import type {
@@ -15,13 +16,16 @@ export class OrderAdminError extends Error {
 }
 
 export interface OrderAdminService {
-  listAdmin(query: Partial<AdminOrderListQuery>): {
+  listAdmin(
+    query: Partial<AdminOrderListQuery>,
+    country?: Country,
+  ): {
     items: AdminOrderListItem[];
     total: number;
     page: number;
     pageSize: number;
   };
-  getAdminDetail(orderId: number): AdminOrderDetailResponse;
+  getAdminDetail(orderId: number, country?: Country): AdminOrderDetailResponse;
 }
 
 const statuses = new Set<OrderStatus>([
@@ -61,7 +65,7 @@ export function createOrderAdminService(deps: {
   orderRepository: Pick<OrderRepository, 'findDetailById'>;
 }): OrderAdminService {
   return {
-    listAdmin(input) {
+    listAdmin(input, country) {
       const status = input.status;
       if (status !== undefined && !statuses.has(status)) throw new OrderAdminError('INVALID_QUERY');
       const occurredFrom = optionalIso(input.occurredFrom);
@@ -77,14 +81,15 @@ export function createOrderAdminService(deps: {
         occurredTo,
         page: page(input.page, 'page'),
         pageSize: page(input.pageSize, 'pageSize'),
+        country,
       };
       const result = deps.repository.list(query);
       return { ...result, page: query.page, pageSize: query.pageSize };
     },
-    getAdminDetail(orderId) {
+    getAdminDetail(orderId, country) {
       if (!Number.isSafeInteger(orderId) || orderId < 1)
         throw new OrderAdminError('ORDER_NOT_FOUND');
-      const order = deps.orderRepository.findDetailById(orderId);
+      const order = deps.orderRepository.findDetailById(orderId, country);
       if (!order) throw new OrderAdminError('ORDER_NOT_FOUND');
       return { ...order, refundPayment: deps.repository.findRefundPayment(orderId) };
     },

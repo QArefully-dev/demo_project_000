@@ -268,6 +268,41 @@ void test('enforces actor shape and request context rules', () => {
   );
 });
 
+void test('records standing country for admin contexts only', () => {
+  const admin = buildAuditEvent({
+    action: 'product.updated',
+    context: {
+      actor: { type: 'user', userId: 9 },
+      requestId: 'admin-country-request',
+      standingCountry: 'DE',
+    },
+    productId: 12,
+  });
+  assert.deepEqual(admin.metadata, { country: 'DE' });
+
+  const customer = buildAuditEvent({
+    action: 'cart.created',
+    context: userContext,
+    cartId: 'cart-customer',
+  });
+  assert.deepEqual(customer.metadata, {});
+
+  const system = buildAuditEvent({
+    action: 'job.succeeded',
+    context: { actor: { type: 'system', userId: null }, requestId: null },
+    jobId: 4,
+  });
+  assert.deepEqual(system.metadata, {});
+
+  expectEventError(() =>
+    buildAuditEvent({
+      action: 'product.updated',
+      context: { ...userContext, standingCountry: 'GB' },
+      productId: 12,
+    } as unknown as AuditEventInput),
+  );
+});
+
 void test('rejects unknown actions and invalid scalar metadata values', () => {
   expectEventError(() =>
     buildAuditEvent({

@@ -1,4 +1,5 @@
 import type { Cart } from '@shop/contracts/cart';
+import type { Country } from '@shop/contracts/country';
 import type { CartRepository } from '../cart/cartRepository.js';
 import { getCart } from '../cart/cartService.js';
 import type { Clock } from '../auth/authService.js';
@@ -29,7 +30,12 @@ export type PromoValidation =
   | { valid: false; error: string; errorCode: PromoValidationError };
 
 export interface PromoService {
-  validate(params: { code: string; cartId: string; userId: number | null }): PromoValidation;
+  validate(params: {
+    code: string;
+    cartId: string;
+    userId: number | null;
+    country?: Country;
+  }): PromoValidation;
 }
 
 export function createPromoService(dependencies: {
@@ -94,7 +100,13 @@ export function resolvePromoScope(params: {
 }
 
 export function validatePromo(
-  params: { code: string; cartId: string; userId: number | null; now: Date },
+  params: {
+    code: string;
+    cartId: string;
+    userId: number | null;
+    country?: Country;
+    now: Date;
+  },
   dependencies: {
     promos: PromoRepository;
     carts: CartRepository;
@@ -102,6 +114,10 @@ export function validatePromo(
 ): PromoValidation {
   const promo = dependencies.promos.findByCode(params.code);
   if (!promo || !promo.active) return invalid('Promo code not found or inactive', 'INVALID');
+  const cartCountry = dependencies.carts.country(params.cartId);
+  const targetedCountries = dependencies.promos.targetedCountries(promo.code);
+  if (targetedCountries.length > 0 && (!cartCountry || !targetedCountries.includes(cartCountry)))
+    return invalid('Promo code not found or inactive', 'INVALID');
   const { now } = params;
   if (promo.startAt && now < new Date(promo.startAt))
     return invalid('This promo code is not yet active', 'NOT_STARTED');

@@ -2,6 +2,7 @@ import { Type, type Static } from '@sinclair/typebox';
 import { MoneyCents, PromoCodeValue } from './common.js';
 import { AdminCatalogCategory } from './adminProducts.js';
 import { PromoCodeKind } from './promos.js';
+import { Country } from './country.js';
 
 const UtcIsoInstant = Type.String({
   minLength: 24,
@@ -15,6 +16,7 @@ const PromoWriteProperties = {
   amountCents: Type.Union([MoneyCents, Type.Null()]),
   minSubtotalCents: Type.Union([MoneyCents, Type.Null()]),
   categoryScope: Type.Union([AdminCatalogCategory, Type.Null()]),
+  countries: Type.Optional(Type.Array(Country)),
   startAt: Type.Union([UtcIsoInstant, Type.Null()]),
   endAt: Type.Union([UtcIsoInstant, Type.Null()]),
   maxRedemptions: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]),

@@ -23,6 +23,7 @@ export type BuyAgainState =
  * jargon: the shopper must understand the row without documentation.
  */
 const SKIP_REASON_MESSAGE: Readonly<Record<ReorderSkipReason, string>> = {
+  BLOCKED_IN_COUNTRY: 'This item cannot be ordered in your country.',
   VARIANT_RETIRED: 'We no longer sell this item.',
   VARIANT_UNRESOLVED: 'We could not find this item in what we sell today.',
   INSUFFICIENT_STOCK: 'There is not enough in stock to repeat this amount.',

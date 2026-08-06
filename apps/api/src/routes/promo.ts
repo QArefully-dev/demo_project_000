@@ -24,11 +24,17 @@ export default function promoRoutes(app: FastifyInstance, { services }: AppConte
         sendNotFound(reply, 'Cart');
         return;
       }
+      const country = services.carts.country(request.body.cartId);
+      if (!country) {
+        sendNotFound(reply, 'Cart');
+        return;
+      }
       const userId = request.authenticatedUser?.id ?? null;
       const result = services.promos.validate({
         code: request.body.promoCode,
         cartId: request.body.cartId,
         userId,
+        country,
       });
       if (result.valid && result.promoCode) {
         const scope = resolvePromoScope({ promo: result.promoCode, cart });

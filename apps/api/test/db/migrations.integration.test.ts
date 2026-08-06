@@ -52,6 +52,7 @@ const expectedVersions = [
   '030',
   '031',
   '032',
+  '033',
 ];
 
 /** Every migration up to but excluding `021`, i.e. the schema powderizer still existed in. */
@@ -1290,10 +1291,13 @@ void test('seed and reset operate on a migrated database', (t) => {
       .count > 0,
     true,
   );
-  // Reset clears every cart; the canonical seed then re-creates its own DE cart fixture, so the
-  // post-seed table holds seeded carts only and never the row this test inserted before reset.
+  // Reset clears every cart; the canonical seed then re-creates its UK and DE Alice fixtures, so
+  // the post-seed table holds seeded carts only and never the row this test inserted before reset.
   assert.equal(db.prepare("SELECT 1 FROM carts WHERE id = 'migration-test-cart'").get(), undefined);
-  assert.deepEqual(db.prepare('SELECT DISTINCT country FROM carts').pluck().all(), ['DE']);
+  assert.deepEqual(
+    db.prepare('SELECT DISTINCT country FROM carts ORDER BY country').pluck().all(),
+    ['DE', 'UK'],
+  );
   assert.deepEqual(migrationVersions(db), expectedVersions);
 });
 

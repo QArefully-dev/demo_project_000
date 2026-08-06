@@ -1,7 +1,9 @@
 import type Database from 'better-sqlite3';
+import type { Country } from '@shop/contracts/country';
 import type { PromoRecord } from './promoRepository.js';
 
 interface PromoRow {
+  id: number;
   code: string;
   discount_percent: number;
   min_item_count: number;
@@ -25,6 +27,7 @@ export interface PromoAdminWrite {
   amountCents: number | null;
   minSubtotalCents: number | null;
   categoryScope: string | null;
+  countries?: Country[];
   startAt: string | null;
   endAt: string | null;
   maxRedemptions: number | null;
@@ -32,10 +35,11 @@ export interface PromoAdminWrite {
 }
 
 export interface PromoAdminRepository {
-  list(input?: { code?: string; active?: boolean }): PromoRecord[];
-  get(code: string): PromoRecord | undefined;
+  list(input?: { code?: string; active?: boolean }, country?: Country): PromoRecord[];
+  get(code: string, country?: Country): PromoRecord | undefined;
   create(input: PromoAdminWrite): PromoRecord;
   update(code: string, input: Omit<PromoAdminWrite, 'code'>): PromoRecord | undefined;
+  replaceTargetedCountries(code: string, countries: readonly Country[]): void;
   deactivate(code: string): PromoRecord | undefined;
   activeReservationCount(code: string): number;
 }
@@ -59,16 +63,34 @@ function toRecord(row: PromoRow): PromoRecord {
 }
 
 export function createPromoAdminRepository(db: Database.Database): PromoAdminRepository {
-  const select = `SELECT code, discount_percent, min_item_count, active, kind, amount_cents,
+  const select = `SELECT id, code, discount_percent, min_item_count, active, kind, amount_cents,
     min_subtotal_cents, category_scope, start_at, end_at, max_redemptions, redemption_count,
     per_user_limit FROM promo_codes`;
-  const get = (code: string): PromoRecord | undefined => {
-    const row = db.prepare(`${select} WHERE code = ?`).get(code) as PromoRow | undefined;
-    return row ? toRecord(row) : undefined;
+  const targetedCountriesForId = (promoCodeId: number): Country[] =>
+    db
+      .prepare(
+        'SELECT country FROM promo_code_countries WHERE promo_code_id = ? ORDER BY rowid ASC',
+      )
+      .all(promoCodeId)
+      .map((row) => (row as { country: Country }).country);
+  const toAdminRecord = (row: PromoRow): PromoRecord => {
+    const record = toRecord(row);
+    const countries = targetedCountriesForId(row.id);
+    return countries.length > 0 ? { ...record, countries } : record;
+  };
+  const get = (code: string, country?: Country): PromoRecord | undefined => {
+    const countryClause = country
+      ? ` AND (NOT EXISTS (SELECT 1 FROM promo_code_countries pc0 WHERE pc0.promo_code_id = promo_codes.id)
+              OR EXISTS (SELECT 1 FROM promo_code_countries pc1 WHERE pc1.promo_code_id = promo_codes.id AND pc1.country = ?))`
+      : '';
+    const row = db
+      .prepare(`${select} WHERE code = ?${countryClause}`)
+      .get(...(country ? [code, country] : [code])) as PromoRow | undefined;
+    return row ? toAdminRecord(row) : undefined;
   };
 
   return {
-    list(input = {}) {
+    list(input = {}, country) {
       const clauses: string[] = [];
       const values: (string | number)[] = [];
       if (input.code !== undefined) {
@@ -79,11 +101,17 @@ export function createPromoAdminRepository(db: Database.Database): PromoAdminRep
         clauses.push('active = ?');
         values.push(input.active ? 1 : 0);
       }
+      if (country) {
+        clauses.push(
+          '(NOT EXISTS (SELECT 1 FROM promo_code_countries pc0 WHERE pc0.promo_code_id = promo_codes.id) OR EXISTS (SELECT 1 FROM promo_code_countries pc1 WHERE pc1.promo_code_id = promo_codes.id AND pc1.country = ?))',
+        );
+        values.push(country);
+      }
       const where = clauses.length === 0 ? '' : ` WHERE ${clauses.join(' AND ')}`;
       return db
         .prepare(`${select}${where} ORDER BY code ASC`)
         .all(...values)
-        .map((row) => toRecord(row as PromoRow));
+        .map((row) => toAdminRecord(row as PromoRow));
     },
     get,
     create(input) {
@@ -130,6 +158,16 @@ export function createPromoAdminRepository(db: Database.Database): PromoAdminRep
           code,
         );
       return result.changes === 1 ? get(code) : undefined;
+    },
+    replaceTargetedCountries(code, countries) {
+      const row = db.prepare('SELECT id FROM promo_codes WHERE code = ?').get(code) as
+        { id: number } | undefined;
+      if (!row) throw new Error('Cannot target an unknown promo code');
+      db.prepare('DELETE FROM promo_code_countries WHERE promo_code_id = ?').run(row.id);
+      const insert = db.prepare(
+        'INSERT INTO promo_code_countries (promo_code_id, country) VALUES (?, ?)',
+      );
+      for (const country of countries) insert.run(row.id, country);
     },
     deactivate(code) {
       const result = db.prepare('UPDATE promo_codes SET active = 0 WHERE code = ?').run(code);

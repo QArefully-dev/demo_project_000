@@ -1,4 +1,5 @@
 import type { OrderLineItem } from '@shop/contracts/orders';
+import type { ReorderSkipReason as ContractReorderSkipReason } from '@shop/contracts/reorder';
 import type {
   BulkAddOutcome,
   BulkAddRequest,
@@ -25,6 +26,12 @@ export type ReorderPreSkipReason = (typeof REORDER_PRE_SKIP_REASONS)[number];
 
 /** Every reason a source order line can fail to re-add: pre-cart plus cart-classified. */
 export type ReorderSkipReason = ReorderPreSkipReason | BulkAddSkipReason;
+
+type ReorderSkipReasonIsContractAssignable = ReorderSkipReason extends ContractReorderSkipReason
+  ? true
+  : never;
+const reorderSkipReasonIsContractAssignable: ReorderSkipReasonIsContractAssignable = true;
+void reorderSkipReasonIsContractAssignable;
 
 /** Facts about one source order line, independent of its fate. */
 interface ReorderLineIdentity {

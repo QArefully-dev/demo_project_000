@@ -1,3 +1,5 @@
+import { SUPPORTED_COUNTRIES, type Country } from '@shop/contracts/country';
+
 const textEncoder = new TextEncoder();
 
 export const AUDIT_ACTIONS = [
@@ -137,6 +139,8 @@ export type AuditActor =
 export interface AuditContext {
   actor: AuditActor;
   requestId: string | null;
+  /** Country selected by an administrator for this request, when applicable. */
+  standingCountry?: Country;
 }
 
 export const PRE_GATEWAY_FAILURE_CODES = [
@@ -443,7 +447,7 @@ function requireContext(value: unknown): AuditContext {
   if (!isRecord(value) || !isRecord(value.actor)) {
     throw new AuditEventValidationError('context must include a valid actor');
   }
-  const { actor, requestId } = value;
+  const { actor, requestId, standingCountry } = value;
   if (actor.type === 'user') {
     requirePositiveSafeInteger(actor.userId, 'actor.userId');
   } else if ((actor.type !== 'anonymous' && actor.type !== 'system') || actor.userId !== null) {
@@ -455,7 +459,21 @@ function requireContext(value: unknown): AuditContext {
   if (actor.type !== 'system' && requestId === null) {
     throw new AuditEventValidationError('requestId is required for anonymous and user actors');
   }
-  return { actor: actor as AuditActor, requestId: requestId as string | null };
+  if (
+    standingCountry !== undefined &&
+    (actor.type !== 'user' ||
+      typeof standingCountry !== 'string' ||
+      !(SUPPORTED_COUNTRIES as readonly string[]).includes(standingCountry))
+  ) {
+    throw new AuditEventValidationError(
+      'standingCountry must be a supported country for user actors',
+    );
+  }
+  return {
+    actor: actor as AuditActor,
+    requestId: requestId as string | null,
+    ...(standingCountry === undefined ? {} : { standingCountry: standingCountry as Country }),
+  };
 }
 
 function serializeMetadata(metadata: Record<string, string | number>): string {
@@ -984,6 +1002,12 @@ export function buildAuditEvent(input: AuditEventInput): BuiltAuditEvent {
         amountCents: requireNonNegativeSafeInteger(input.amountCents, 'amountCents'),
       };
       break;
+  }
+
+  // Standing country is retained only for explicitly annotated user contexts (admin routes).
+  // Customer and system contexts omit it, leaving their metadata unchanged.
+  if (context.actor.type === 'user' && context.standingCountry !== undefined) {
+    metadata = { ...metadata, country: context.standingCountry };
   }
 
   const metadataJson = serializeMetadata(metadata);

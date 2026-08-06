@@ -88,6 +88,7 @@ function cartReducer(state: CartState, event: CartEvent): CartState {
  */
 const ERROR_MESSAGE_BY_CODE: Readonly<Record<string, string>> = {
   BELOW_MOQ: 'Minimum order quantity not met. Adjust pallet quantity and try again.',
+  BLOCKED_IN_COUNTRY: 'This item cannot be ordered in your country.',
   NO_INPUT_LINES: 'Enter at least one line before submitting your quick order.',
   ORDER_NOT_FOUND: 'That order is no longer available. Refresh your order history and try again.',
   TOO_MANY_LINES:

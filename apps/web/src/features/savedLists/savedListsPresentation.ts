@@ -11,6 +11,7 @@ export type SavedListAddState =
   | { kind: 'result'; response: SavedListAddToCartResponse };
 
 const SKIP_REASON_LABEL: Readonly<Record<SavedListSkipReason, string>> = {
+  BLOCKED_IN_COUNTRY: 'This item cannot be ordered in your country.',
   VARIANT_RETIRED: 'We no longer sell this item.',
   VARIANT_UNRESOLVED: 'We could not find this item in what we sell today.',
   INSUFFICIENT_STOCK: 'There is not enough in stock for this amount.',

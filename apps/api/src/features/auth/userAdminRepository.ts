@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import type { PublicUser } from '@shop/contracts/auth';
+import type { Country } from '@shop/contracts/country';
 
 export interface AdminUserRecord {
   id: number;
@@ -24,8 +25,8 @@ interface AdminUserRow {
 }
 
 export interface UserAdminRepository {
-  list(query?: { search?: string }): AdminUserRecord[];
-  get(userId: number): AdminUserRecord | undefined;
+  list(query?: { search?: string }, country?: Country): AdminUserRecord[];
+  get(userId: number, country?: Country): AdminUserRecord | undefined;
   updateDisplayName(userId: number, displayName: string): AdminUserRecord | undefined;
   setRole(userId: number, role: PublicUser['role']): AdminUserRecord | undefined;
   suspend(input: {
@@ -54,18 +55,23 @@ function toRecord(row: AdminUserRow): AdminUserRecord {
 export function createUserAdminRepository(db: Database.Database): UserAdminRepository {
   const select = `SELECT id, email, display_name, role, country, suspended_at, suspension_reason,
     suspended_by_user_id FROM users`;
-  const get = (userId: number): AdminUserRecord | undefined => {
-    const row = db.prepare(`${select} WHERE id = ?`).get(userId) as AdminUserRow | undefined;
+  const get = (userId: number, country?: Country): AdminUserRecord | undefined => {
+    const row = db
+      .prepare(`${select} WHERE id = ?${country ? ' AND country = ?' : ''}`)
+      .get(...(country ? [userId, country] : [userId])) as AdminUserRow | undefined;
     return row ? toRecord(row) : undefined;
   };
 
   return {
-    list(query = {}) {
+    list(query = {}, country) {
       const search = query.search?.trim();
-      const where = search
-        ? ' WHERE email LIKE ? COLLATE NOCASE OR display_name LIKE ? COLLATE NOCASE'
-        : '';
+      const predicates: string[] = [];
+      if (search)
+        predicates.push('(email LIKE ? COLLATE NOCASE OR display_name LIKE ? COLLATE NOCASE)');
+      if (country) predicates.push('country = ?');
+      const where = predicates.length ? ` WHERE ${predicates.join(' AND ')}` : '';
       const values = search ? [`%${search}%`, `%${search}%`] : [];
+      if (country) values.push(country);
       return db
         .prepare(`${select}${where} ORDER BY id ASC`)
         .all(...values)

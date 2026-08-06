@@ -35,6 +35,13 @@ const response = (outcomes: SavedListLineOutcome[]): SavedListAddToCartResponse 
 });
 
 describe('saved-list presentation', () => {
+  it('explains the country restriction and includes it in the derived reason list', () => {
+    expect(savedListSkipReasonLabel('BLOCKED_IN_COUNTRY')).toBe(
+      'This item cannot be ordered in your country.',
+    );
+    expect(SAVED_LIST_SKIP_REASONS).toContain('BLOCKED_IN_COUNTRY');
+  });
+
   it('has buyer copy for every contract skip reason', () => {
     for (const reason of SAVED_LIST_SKIP_REASONS) {
       expect(savedListSkipReasonLabel(reason)).toMatch(/\.$/);

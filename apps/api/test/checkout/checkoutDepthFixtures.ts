@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import type { PostalAddress } from '@shop/contracts/address';
 import type { DeliverySlot } from '@shop/contracts/delivery';
 import { FREIGHT_HEAVY_WEIGHT_THRESHOLD_GRAMS } from '@shop/contracts/delivery';
+import { countryProfile } from '@shop/contracts/country-profiles';
 import type { BillingSelection, DeliveryDestination } from '@shop/contracts/payments';
 import { createCartRepository } from '../../src/features/cart/cartRepository.js';
 import { createCartService } from '../../src/features/cart/cartService.js';
@@ -48,6 +49,7 @@ export function bookableSlot(now: Date = new Date()): DeliverySlot {
   const leadTime = calculateLeadTime({
     deliverySummary: { mode: 'freight', weightGrams: FREIGHT_HEAVY_WEIGHT_THRESHOLD_GRAMS },
     now,
+    profile: countryProfile('UK'),
   });
   return { date: leadTime.earliestDate, window: 'am' };
 }

@@ -20,6 +20,8 @@ export type QuickOrderRequestBody = Static<typeof QuickOrderRequestBody>;
 
 /** Why an input Quick Order line was skipped. */
 export const QuickOrderSkipReason = Type.Union([
+  /** Outranks every other skip reason and never discloses retirement or stock state. */
+  Type.Literal('BLOCKED_IN_COUNTRY'),
   Type.Literal('MALFORMED_LINE'),
   Type.Literal('SKU_NOT_FOUND'),
   Type.Literal('INVALID_QUANTITY'),

@@ -10,7 +10,7 @@ Reason: original consumer-shop idea works but B2B bulk trade is more grounded in
 
 Pivot is additive, not rewrite. Reuse catalog/pricing/inventory/checkout/orders foundations. Reframe UI + rules toward trade buyer; retain production boundaries.
 
-Phase status: rebrand pass COMPLETE. Three passes landed and merged -> B2B rebrand, gap closure, catalog colour schemes and pigments. Expansion items landed since the pivot: Custom Blend (16), Checkout depth (4), Pricing and promotions (5), Account depth (7), Secondary admin (9), Buy Again / reorder (12), Saved Lists (13), Quick Order (14), Async behavior (8), Back-in-stock notification (15). Country localisation (10) is the only remaining item and is now partially delivered: stage 1 of 3 landed 2026-08-03. Current phase: expansion per `Future Expansion Order` below.
+Phase status: rebrand pass COMPLETE. Three passes landed and merged -> B2B rebrand, gap closure, catalog colour schemes and pigments. Expansion items landed since the pivot: Custom Blend (16), Checkout depth (4), Pricing and promotions (5), Account depth (7), Secondary admin (9), Buy Again / reorder (12), Saved Lists (13), Quick Order (14), Async behavior (8), Back-in-stock notification (15). Country localisation (10) stage 2 landed 2026-08-05; stage 3 remains. Current phase: expansion per `Future Expansion Order` below.
 
 ## Purpose
 
@@ -189,10 +189,10 @@ Precursor B2B rebrand pass: COMPLETE. Brand/copy, sack/pallet unit model, `£/to
    - constraint: admin stays behind the `admin` role and off the customer journey; every mutation writes an audit event
    - QA surface, live: retiring a variant held in a cart, editing a promo mid-redemption, suspension revoking live sessions, duplicate refund idempotency key, refund exceeding captured amount, admin acting on another admin, flag toggle visible to a cached resolver
    - remaining: wire a flag to real checkout behavior when a named demo needs it (see Agentic AI and QA Surface). 8's `async.*` fault flags are the first live consumers, but they gate injected failures, not commerce rules
-10. Country localisation: stage 1 complete
+10. Country localisation: stage 2 complete
     - stage 1 landed 2026-08-03 (`259b2bf`), merged `a37104a`: migration `032_country_localisation.ts` adds `country` column to users (unique per `(email, country)`), carts, and related tables; login and signup carry country; /me and PublicUser include country; top-bar country picker; guest default `US`; all existing data migrated to `UK`; seeded DE Alice fixture
-    - stage 1 deferral, carried into stage 2: the picker is disabled for every signed-in user, admins included, so the `admin` role unlock described below is NOT yet built and no admin behaviour changed. Stage 2 must first settle how an admin's browsing country relates to their account country and cart. Current behaviour is pinned by `apps/web/src/components/Header.test.tsx` and that test must be updated when the unlock ships
-    - remaining: stages 2 and 3 per `plans/country_localisation_handoff.md`. Stage 1 delivered identity and selection only; every behavioural rule below (availability, delivery, money, language, configuration, `BLOCKED_IN_COUNTRY`) is still unbuilt
+    - stage 2 landed 2026-08-05: migration `033_promo_country_targeting.ts`, country profile availability enforcement, banners, targeted promos, cross-border delivery refusal, postcode rules, time-zone cut-off, and admin country picker/scoping are complete. Seed fixtures and operator demos are documented in `README.md`
+    - remaining: stage 3 per `plans/country_localisation_handoff.md` -> translation lookup layer, formatting consolidation, and money/date formatter defork
     - product decisions agreed 2026-08-03; `plans/country_localisation_handoff.md` holds the settled shape and the rejected alternatives. Supersedes the earlier `USA / Europe / China` region-profile sketch
     - countries: seven named countries (`UK`, `US`, `CN`, `PL`, `ES`, `DE`, `FR`). Country, not trading bloc, because it is a login field and an address rule. `US` is the default for a logged-out visitor; all existing data migrates to `UK`
     - identity: a user account belongs to exactly one country, so one email may exist once per country as separate accounts, and login carries a country dropdown. `users.email` uniqueness becomes per `(email, country)`. Admins are ordinary country-bound accounts whose role unlocks a top-bar country picker; a switching admin holds an independent cart per country. Companies stay single-country and reject cross-country invites
@@ -288,7 +288,7 @@ Recommended order:
 
 1. Reorder chain: 12, 13, and 14 are landed. Saved Lists and Quick Order consume the multi-line cart-add path 12 established (`CartService.addMany`) under the constraints listed against 13 and 14; neither forks a second implementation.
 2. Async behavior (8) and Back-in-stock (15) are landed; 15 consumed 8's queue as its first product consumer.
-3. Country localisation (10) is the only remaining item and carries the balance of the LOC target on its own. Its stage 1 (identity and selection) is landed; take stage 2 (behaviour: blocking, banners, country-targeted promos, cross-border refusal, postcode rules, time-zone cut-off) next, then stage 3 (translation lookup and formatting/money defork). The stages are sequential, not parallel - stage 3's formatting sweep consolidates code stage 2 writes.
+3. Country localisation (10) stage 2 is landed and carries the remaining LOC target. Stage 3 (translation lookup and formatting/money defork) remains. The stages are sequential, not parallel - stage 3's formatting sweep consolidates stage 2 writes.
 
 Custom Small Order retirement (11), Custom Blend (16), Checkout depth (4), Pricing and promotions (5), Account depth (7), Secondary admin (9), Buy Again / reorder (12), Saved Lists (13), Quick Order (14), Async behavior (8), and Back-in-stock notification (15) are complete. 16 landed before 4, taking 11's freed nav slot and Custom Blend CSS; 4 then landed on the settled checkout path, 5 closed the money path, and 7 + 9 landed in parallel with the shared user/session lane owned by 7.
 

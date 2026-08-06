@@ -86,6 +86,9 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
         case 'DELIVERY_SITE_NOT_FOUND':
           sendBadRequest(reply, 'Selected delivery site is not available');
           return;
+        case 'DELIVERY_COUNTRY_NOT_ALLOWED':
+          sendBadRequest(reply, 'Selected delivery country is not available');
+          return;
         case 'BILLING_ENTITY_INVALID':
           sendBadRequest(reply, 'Selected billing details are not available');
           return;
@@ -133,6 +136,9 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
         case 'INSUFFICIENT_STOCK':
           reply.code(409).send({ error: 'INSUFFICIENT_STOCK', productIds: result.productIds });
           return;
+        case 'BLOCKED_IN_COUNTRY':
+          reply.code(409).send({ error: 'BLOCKED_IN_COUNTRY', productIds: result.productIds });
+          return;
         case 'IDEMPOTENT_IN_PROGRESS':
           sendConflict(reply, 'Payment is already being processed');
           return;
@@ -140,6 +146,9 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
           reply.code(500).send({ error: 'Checkout could not be completed' });
           return;
       }
+
+      const exhaustiveResult: never = result;
+      void exhaustiveResult;
     },
   );
 }

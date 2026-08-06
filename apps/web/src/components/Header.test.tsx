@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { Header } from './Header';
@@ -19,9 +19,23 @@ vi.mock('./CategoryNav', () => ({
 vi.mock('./SearchBar', () => ({ SearchBar: () => <input aria-label="Search materials" /> }));
 vi.mock('./AccountMenu', () => ({ AccountMenu: () => <button type="button">Account</button> }));
 vi.mock('./CountryPicker', () => ({
-  CountryPicker: ({ value, disabled }: { value: string; disabled?: boolean }) => (
-    <select data-testid="country-picker" value={value} disabled={disabled}>
-      <option>{value}</option>
+  CountryPicker: ({
+    value,
+    disabled,
+    onChange,
+  }: {
+    value: string;
+    disabled?: boolean;
+    onChange: (country: string) => void;
+  }) => (
+    <select
+      data-testid="country-picker"
+      value={value}
+      disabled={disabled}
+      onChange={(event) => onChange(event.target.value)}
+    >
+      <option value={value}>{value}</option>
+      {value !== 'DE' && <option value="DE">DE</option>}
     </select>
   ),
 }));
@@ -95,19 +109,22 @@ describe('Header', () => {
     expect(picker).toBeDisabled();
   });
 
-  // Stage 1 behaviour: admins are disabled alongside customers. The admin unlock is deferred to
-  // stage 2 -- see the "Stage 1 deferral -- admin picker unlock" note in the Identity section of
-  // plans/country_localisation_handoff.md.
-  it('also disables the country picker for admins in stage 1', () => {
+  // Stage 2 decision: admins can switch the browsing country while customer accounts stay pinned.
+  it('allows admins to change the country picker in stage 2', () => {
     authState.user = { id: '2', country: 'UK', role: 'admin' };
     countryState.activeCountry = 'UK' as const;
-    countryState.isAccountBound = true;
+    countryState.isAccountBound = false;
+    countryState.selectCountry.mockClear();
     render(
       <MemoryRouter>
         <Header />
       </MemoryRouter>,
     );
 
-    expect(screen.getByTestId('country-picker')).toBeDisabled();
+    const picker = screen.getByTestId('country-picker');
+    expect(picker).not.toBeDisabled();
+
+    fireEvent.change(picker, { target: { value: 'DE' } });
+    expect(countryState.selectCountry).toHaveBeenCalledWith('DE');
   });
 });

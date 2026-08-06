@@ -1,17 +1,19 @@
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
+import { Type } from '@sinclair/typebox';
 import {
   AdminProductVariantsParam,
   AdminVariant,
   AdminVariantIdParam,
-  AdminVariantListResponse,
   CreateAdminVariantBody,
   SetAdminVariantClearanceBody,
   UpdateAdminVariantBody,
   type AdminVariant as AdminVariantResponse,
 } from '@shop/contracts/admin-variants';
 import { ErrorResponse } from '@shop/contracts/common';
+import type { Country } from '@shop/contracts/country';
 import type { FastifyInstance } from 'fastify';
 import type { SessionService } from '../features/auth/sessionService.js';
+import type { AuditContext } from '../features/audit/auditEvent.js';
 import {
   VariantAdminError,
   type VariantAdminService,
@@ -23,9 +25,10 @@ export interface AdminVariantsRouteServices {
   sessions: SessionService;
   variantAdmin: VariantAdminService;
 }
-const context = (userId: number, requestId: string) => ({
+const context = (userId: number, requestId: string, standingCountry: Country): AuditContext => ({
   actor: { type: 'user' as const, userId },
   requestId,
+  standingCountry,
 });
 function deliveryClass(value: string): AdminVariantResponse['deliveryClass'] {
   if (value === 'parcel' || value === 'freight') return value;
@@ -57,6 +60,18 @@ const map = (v: VariantRow): AdminVariantResponse => ({
   createdAt: v.created_at,
   updatedAt: v.updated_at,
 });
+const mapWithCountry = (v: VariantRow) => ({
+  ...map(v),
+  blockedInCountry: v.blocked_in_country === 1,
+});
+const AdminVariantWithCountry = Type.Intersect([
+  AdminVariant,
+  Type.Object({ blockedInCountry: Type.Boolean() }, { additionalProperties: false }),
+]);
+const AdminVariantWithCountryListResponse = Type.Object(
+  { items: Type.Array(AdminVariantWithCountry) },
+  { additionalProperties: false },
+);
 function sendError(reply: Parameters<typeof sendBadRequest>[0], e: VariantAdminError) {
   if (e.code === 'VARIANT_NOT_FOUND') return sendNotFound(reply, 'Variant');
   if (e.code === 'VARIANT_RETIRED' || e.code === 'VARIANT_NO_ACTIVE_REPLACEMENT')
@@ -76,7 +91,7 @@ export default function adminVariantsRoutes(
       schema: {
         params: AdminProductVariantsParam,
         response: {
-          200: AdminVariantListResponse,
+          200: AdminVariantWithCountryListResponse,
           400: ErrorResponse,
           401: ErrorResponse,
           403: ErrorResponse,
@@ -85,7 +100,11 @@ export default function adminVariantsRoutes(
     },
     (r, reply) => {
       try {
-        return { items: services.variantAdmin.listAdmin(Number(r.params.productId)).map(map) };
+        return {
+          items: services.variantAdmin
+            .listAdmin(Number(r.params.productId), r.resolvedCountry)
+            .map(mapWithCountry),
+        };
       } catch (e) {
         if (e instanceof VariantAdminError) return sendError(reply, e);
         throw e;
@@ -107,7 +126,7 @@ export default function adminVariantsRoutes(
         return map(
           services.variantAdmin.create(
             { ...r.body, productId: Number(r.body.productId) },
-            context(r.authenticatedUser!.id, r.id),
+            context(r.authenticatedUser!.id, r.id, r.resolvedCountry),
           ),
         );
       } catch (e) {
@@ -139,7 +158,7 @@ export default function adminVariantsRoutes(
           services.variantAdmin.update(
             Number(r.params.variantId),
             r.body,
-            context(r.authenticatedUser!.id, r.id),
+            context(r.authenticatedUser!.id, r.id, r.resolvedCountry),
           ),
         );
       } catch (e) {
@@ -169,7 +188,7 @@ export default function adminVariantsRoutes(
         return map(
           services.variantAdmin.retire(
             Number(r.params.variantId),
-            context(r.authenticatedUser!.id, r.id),
+            context(r.authenticatedUser!.id, r.id, r.resolvedCountry),
           ),
         );
       } catch (e) {
@@ -201,7 +220,7 @@ export default function adminVariantsRoutes(
           services.variantAdmin.setClearance(
             Number(r.params.variantId),
             r.body.clearance,
-            context(r.authenticatedUser!.id, r.id),
+            context(r.authenticatedUser!.id, r.id, r.resolvedCountry),
           ),
         );
       } catch (e) {

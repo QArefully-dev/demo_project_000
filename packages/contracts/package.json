@@ -157,6 +157,10 @@
     "./country": {
       "types": "./dist/country.d.ts",
       "import": "./dist/country.js"
+    },
+    "./country-profiles": {
+      "types": "./dist/countryProfiles/index.d.ts",
+      "import": "./dist/countryProfiles/index.js"
     }
   },
   "dependencies": {
