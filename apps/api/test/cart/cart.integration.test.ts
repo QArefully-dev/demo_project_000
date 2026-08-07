@@ -345,6 +345,47 @@ void test('cart HTTP enforces MOQ and defaults omitted add quantity to its floor
   });
 });
 
+void test('cart HTTP resolves omitted variant to the product default when variants are ambiguous', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-default-variant-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
+  t.after(async () => {
+    await app.close();
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const product = db
+    .prepare(
+      `SELECT p.id AS product_id, p.default_variant_id
+       FROM products p
+       INNER JOIN product_variants v ON v.product_id = p.id AND v.active = 1
+       WHERE p.active = 1 AND p.default_variant_id IS NOT NULL
+       GROUP BY p.id
+       HAVING COUNT(v.id) > 1
+       ORDER BY p.id LIMIT 1`,
+    )
+    .get() as { product_id: number; default_variant_id: number | null } | undefined;
+  if (!product || product.default_variant_id === null) {
+    throw new Error('Expected an active product with multiple variants and a default variant');
+  }
+
+  const create = await app.inject({ method: 'POST', url: '/api/cart' });
+  const cartId = Value.Parse(CreateCartResponse, create.json()).cartId;
+  const added = await app.inject({
+    method: 'POST',
+    url: `/api/cart/${cartId}/items`,
+    payload: { productId: String(product.product_id) },
+  });
+
+  assert.equal(added.statusCode, 200);
+  const cart = Value.Parse(Cart, added.json());
+  assert.equal(cart.items.length, 1);
+  assert.equal(cart.items[0]?.productId, String(product.product_id));
+  assert.equal(cart.items[0]?.variantSnap?.variantId, product.default_variant_id);
+});
+
 void test('cart HTTP validates quantities and targets exact variant cart lines', async (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-cart-variant-mutation-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
