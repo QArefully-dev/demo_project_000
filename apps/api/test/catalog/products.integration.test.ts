@@ -113,8 +113,9 @@ void test('similar products endpoint is deterministic and related remains its co
   ).id;
   db.prepare('UPDATE products SET active = 0 WHERE id NOT IN (?, ?)').run(1, candidate);
   db.prepare(
-    'UPDATE products SET category = (SELECT category FROM products WHERE id = 1), price_cents = (SELECT price_cents FROM products WHERE id = 1), stock_count = 0, active = 1 WHERE id = ?',
+    'UPDATE products SET category = (SELECT category FROM products WHERE id = 1), price_cents = (SELECT price_cents FROM products WHERE id = 1), active = 1 WHERE id = ?',
   ).run(candidate);
+  db.prepare('UPDATE product_variants SET stock_count = 0 WHERE product_id = ?').run(candidate);
   const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
   t.after(async () => {
     await app.close();

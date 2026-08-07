@@ -41,12 +41,17 @@ export function buildCountryExclusionPredicate(
  * Bound-time available-to-sell expression. `p` is intentionally fixed so no
  * caller can introduce a dynamic SQL identifier.
  */
-export const availableToSellSql = `MAX(0, p.stock_count - COALESCE((
-  SELECT SUM(r.reserved_quantity)
-  FROM inventory_reservations r
-  JOIN product_variants v ON v.id = r.variant_id
-  WHERE v.product_id = p.id AND (r.expires_at IS NULL OR r.expires_at > ?)
-), 0))`;
+export const availableToSellSql = `COALESCE((
+  SELECT SUM(MAX(0, v.stock_count - COALESCE(reserved.total_reserved, 0)))
+  FROM product_variants v
+  LEFT JOIN (
+    SELECT r.variant_id, SUM(r.reserved_quantity) AS total_reserved
+    FROM inventory_reservations r
+    WHERE r.expires_at IS NULL OR r.expires_at > ?
+    GROUP BY r.variant_id
+  ) reserved ON reserved.variant_id = v.id
+  WHERE v.product_id = p.id AND v.active = 1
+), 0)`;
 
 function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, '\\$&');
