@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import type { Country } from '@shop/contracts/country';
 import type {
   NormalizedAdminReviewQueueQuery,
   NormalizedReviewReport,
@@ -60,7 +61,7 @@ export interface ReviewRepository {
   ): ReviewRecord[];
   summaryPublished(productId: number): ReviewSummaryRecord;
   findOwnedByProduct(userId: number, productId: number): ReviewRecord | undefined;
-  findById(reviewId: number): ReviewRecord | undefined;
+  findById(reviewId: number, country?: Country): ReviewRecord | undefined;
   create(input: {
     productId: number;
     userId: number;
@@ -92,7 +93,10 @@ export interface ReviewRepository {
     now: string,
   ): void;
   withdrawReport(reviewId: number, userId: number, now: string): boolean;
-  listModeration(query: NormalizedAdminReviewQueueQuery): {
+  listModeration(
+    query: NormalizedAdminReviewQueueQuery,
+    country?: Country,
+  ): {
     total: number;
     items: AdminQueueRecord[];
   };
@@ -101,6 +105,7 @@ export interface ReviewRepository {
     decision: 'hide_review' | 'dismiss_reports',
     adminUserId: number,
     now: string,
+    country?: Country,
   ): { review: ReviewRecord; resolvedReportCount: number };
 }
 
@@ -148,7 +153,7 @@ function mapRow(row: ReviewRow): ReviewRecord {
 function selectByWhere(
   db: Database.Database,
   where: string,
-  params: readonly number[],
+  params: readonly unknown[],
 ): ReviewRecord | undefined {
   const row = db
     .prepare(
@@ -210,8 +215,12 @@ export function createReviewRepository(db: Database.Database): ReviewRepository 
     findOwnedByProduct(userId, productId) {
       return selectByWhere(db, 'r.user_id = ? AND r.product_id = ?', [userId, productId]);
     },
-    findById(reviewId) {
-      return selectByWhere(db, 'r.id = ?', [reviewId]);
+    findById(reviewId, country) {
+      return selectByWhere(
+        db,
+        `r.id = ?${country ? ' AND u.country = ?' : ''}`,
+        country ? [reviewId, country] : [reviewId],
+      );
     },
     create(input) {
       const result = db
@@ -307,15 +316,20 @@ export function createReviewRepository(db: Database.Database): ReviewRepository 
           .run(now, now, reviewId, userId).changes === 1
       );
     },
-    listModeration(query) {
-      const where =
+    listModeration(query, country) {
+      const queueWhere =
         query.queue === 'reported'
           ? "EXISTS (SELECT 1 FROM review_reports rr WHERE rr.review_id = r.id AND rr.status = 'open')"
           : "r.status = 'hidden'";
+      const where = country ? `u.country = ? AND ${queueWhere}` : queueWhere;
       const order =
         query.sort === 'oldest' ? 'r.created_at ASC, r.id ASC' : 'r.created_at DESC, r.id DESC';
       const total = (
-        db.prepare(`SELECT COUNT(*) AS count FROM reviews r WHERE ${where}`).get() as {
+        db
+          .prepare(
+            `SELECT COUNT(*) AS count FROM reviews r INNER JOIN users u ON u.id = r.user_id WHERE ${where}`,
+          )
+          .get(...(country ? [country] : [])) as {
           count: number;
         }
       ).count;
@@ -323,7 +337,11 @@ export function createReviewRepository(db: Database.Database): ReviewRepository 
         .prepare(
           `SELECT ${REVIEW_COLUMNS}, p.name AS product_name, p.slug AS product_slug, (SELECT COUNT(*) FROM review_helpful_votes hv WHERE hv.review_id = r.id) AS helpful_count, (SELECT COUNT(*) FROM review_reports rr WHERE rr.review_id = r.id AND rr.status = 'open') AS open_report_count, 0 AS viewer_has_helpful_vote, 0 AS viewer_has_open_report FROM reviews r INNER JOIN users u ON u.id = r.user_id INNER JOIN products p ON p.id = r.product_id WHERE ${where} ORDER BY ${order} LIMIT ? OFFSET ?`,
         )
-        .all(query.pageSize, (query.page - 1) * query.pageSize) as Array<
+        .all(
+          ...(country ? [country] : []),
+          query.pageSize,
+          (query.page - 1) * query.pageSize,
+        ) as Array<
         ReviewRow & { product_name: string; product_slug: string; open_report_count: number }
       >;
       const reportRows =
@@ -370,8 +388,12 @@ export function createReviewRepository(db: Database.Database): ReviewRepository 
         })),
       };
     },
-    decideModeration(reviewId, decision, adminUserId, now) {
-      const review = selectByWhere(db, 'r.id = ?', [reviewId]);
+    decideModeration(reviewId, decision, adminUserId, now, country) {
+      const review = selectByWhere(
+        db,
+        `r.id = ?${country ? ' AND u.country = ?' : ''}`,
+        country ? [reviewId, country] : [reviewId],
+      );
       if (!review) throw new Error('Review not found');
       if (decision === 'hide_review' && review.status === 'published')
         db.prepare("UPDATE reviews SET status = 'hidden', updated_at = ? WHERE id = ?").run(

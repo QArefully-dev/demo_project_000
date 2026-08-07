@@ -1,18 +1,302 @@
 import assert from 'node:assert/strict';
+import { createHash, scryptSync, timingSafeEqual } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { CATALOG_PRODUCTS, CURATED_BUNDLES } from '@shop/catalog';
+import { COUNTRY_PROFILES } from '@shop/contracts/country-profiles';
 import { catalogProductSpecifications } from '../../src/features/catalog/catalogSpecifications.js';
 import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
 import { DEMO_ORDER_SCENARIO_KEYS } from '../../src/db/orderSeedScenarios.js';
+import { createUnitOfWork } from '../../src/db/unitOfWork.js';
+import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
+import { createAuditWriter } from '../../src/features/audit/auditService.js';
+import { createCartRepository } from '../../src/features/cart/cartRepository.js';
+import { createCartService } from '../../src/features/cart/cartService.js';
+import { createProductRepository } from '../../src/features/catalog/productRepository.js';
+import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
+import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
+import { createSavedListRepository } from '../../src/features/savedLists/savedListRepository.js';
+import { createSavedListService } from '../../src/features/savedLists/savedListService.js';
 
 const CANONICAL_IDS = new Set(
   Array.from({ length: 50 }, (_, i) => i + 1).concat(
     Array.from({ length: 50 }, (_, i) => 1001 + i),
   ),
 );
+
+void test('seed installs Alice saved-list fixtures idempotently', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-saved-list-seed-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const aliceLists = () =>
+    db
+      .prepare(
+        `SELECT lists.name, lists.is_default, items.quantity, variants.sku,
+                variants.active, variants.stock_count
+         FROM saved_lists AS lists
+         JOIN users ON users.id = lists.user_id
+         LEFT JOIN saved_list_items AS items ON items.saved_list_id = lists.id
+         LEFT JOIN product_variants AS variants ON variants.id = items.variant_id
+         WHERE users.email = 'alice@example.com'
+         ORDER BY lists.is_default DESC, lists.name COLLATE NOCASE, variants.sku`,
+      )
+      .all();
+
+  seedDatabase(db);
+  const first = aliceLists();
+  assert.deepEqual(first, [
+    {
+      name: 'Favourites',
+      is_default: 1,
+      quantity: 4,
+      sku: 'BKP-0001-001',
+      active: 1,
+      stock_count: 85,
+    },
+    {
+      name: 'Favourites',
+      is_default: 1,
+      quantity: 4,
+      sku: 'DRK-0014-001',
+      active: 1,
+      stock_count: 28,
+    },
+    {
+      name: 'Favourites',
+      is_default: 1,
+      quantity: 4,
+      sku: 'SPN-0008-001',
+      active: 1,
+      stock_count: 42,
+    },
+    {
+      name: 'Monthly restock',
+      is_default: 0,
+      quantity: 4,
+      sku: 'GDN-1043-001',
+      active: 1,
+      stock_count: 35,
+    },
+    {
+      name: 'Monthly restock',
+      is_default: 0,
+      quantity: 1,
+      sku: 'SPN-0008-001',
+      active: 1,
+      stock_count: 42,
+    },
+    {
+      name: 'Monthly restock',
+      is_default: 0,
+      quantity: 4,
+      sku: 'SPN-0009-002',
+      active: 0,
+      stock_count: 40,
+    },
+    {
+      name: 'Monthly restock',
+      is_default: 0,
+      quantity: 20,
+      sku: 'SPN-1007-001',
+      active: 1,
+      stock_count: 15,
+    },
+  ]);
+  assert.equal(
+    (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM saved_lists
+         JOIN users ON users.id = saved_lists.user_id
+         WHERE users.email = 'alice@example.com'`,
+        )
+        .get() as { count: number }
+    ).count,
+    2,
+  );
+
+  seedDatabase(db);
+  assert.deepEqual(aliceLists(), first);
+});
+
+void test('saved-list seed preserves Alice default rename and buyer replacement of the monthly fixture', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-saved-list-seed-ownership-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+  const aliceId = Number(
+    db
+      .prepare("SELECT id FROM users WHERE email = 'alice@example.com' AND country = 'UK'")
+      .pluck()
+      .get(),
+  );
+  const defaultId = Number(
+    db
+      .prepare('SELECT id FROM saved_lists WHERE user_id = ? AND is_default = 1')
+      .pluck()
+      .get(aliceId),
+  );
+  db.prepare("UPDATE saved_lists SET name = 'My renamed favourites' WHERE id = ?").run(defaultId);
+  seedDatabase(db);
+  assert.deepEqual(
+    db.prepare('SELECT id, name, is_default FROM saved_lists WHERE id = ?').get(defaultId),
+    { id: defaultId, name: 'My renamed favourites', is_default: 1 },
+  );
+  assert.equal(
+    db
+      .prepare('SELECT COUNT(*) FROM saved_lists WHERE user_id = ? AND is_default = 1')
+      .pluck()
+      .get(aliceId),
+    1,
+  );
+
+  const monthlyFixtureId = Number(
+    db
+      .prepare("SELECT id FROM saved_lists WHERE user_id = ? AND name = 'Monthly restock'")
+      .pluck()
+      .get(aliceId),
+  );
+  db.prepare('DELETE FROM saved_lists WHERE id = ?').run(monthlyFixtureId);
+  const buyerReplacement = db
+    .prepare(
+      `INSERT INTO saved_lists (user_id, name, is_default, created_at, updated_at)
+       VALUES (?, 'Monthly restock', 0, '2026-08-01T10:00:00.000Z', '2026-08-01T10:00:00.000Z')`,
+    )
+    .run(aliceId);
+  const buyerListId = Number(buyerReplacement.lastInsertRowid);
+  const buyerVariantId = Number(
+    db.prepare("SELECT id FROM product_variants WHERE sku = 'BKP-0001-001'").pluck().get(),
+  );
+  db.prepare(
+    `INSERT INTO saved_list_items (saved_list_id, variant_id, quantity, created_at, updated_at)
+     VALUES (?, ?, 9, '2026-08-01T10:00:00.000Z', '2026-08-01T10:00:00.000Z')`,
+  ).run(buyerListId, buyerVariantId);
+
+  seedDatabase(db);
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT lists.id, lists.created_at, items.quantity, variants.sku
+         FROM saved_lists AS lists
+         JOIN saved_list_items AS items ON items.saved_list_id = lists.id
+         JOIN product_variants AS variants ON variants.id = items.variant_id
+         WHERE lists.id = ?`,
+      )
+      .all(buyerListId),
+    [
+      {
+        id: buyerListId,
+        created_at: '2026-08-01T10:00:00.000Z',
+        quantity: 9,
+        sku: 'BKP-0001-001',
+      },
+    ],
+  );
+});
+
+void test('Alice monthly restock fixture reports its four cart outcomes', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-saved-list-seed-cart-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+  seedDatabase(db);
+
+  const clock = { now: () => new Date('2026-08-01T12:00:00.000Z') };
+  const unitOfWork = createUnitOfWork(db);
+  const audit = createAuditWriter({ repository: createAuditRepository(db), clock });
+  const carts = createCartService(
+    createCartRepository(db),
+    { unitOfWork, audit },
+    { inventory: createInventoryService({ repository: createInventoryRepository(db) }), clock },
+  );
+  const savedLists = createSavedListService({
+    repository: createSavedListRepository(db),
+    variants: createProductRepository(db),
+    carts,
+    orders: { getOwned: () => undefined },
+    unitOfWork,
+    audit,
+    clock,
+  });
+  const aliceId = Number(
+    db
+      .prepare("SELECT id FROM users WHERE email = 'alice@example.com' AND country = 'UK'")
+      .pluck()
+      .get(),
+  );
+  const monthlyListId = Number(
+    db
+      .prepare("SELECT id FROM saved_lists WHERE user_id = ? AND name = 'Monthly restock'")
+      .pluck()
+      .get(aliceId),
+  );
+  const { cartId } = carts.create({
+    actor: { type: 'user', userId: aliceId },
+    requestId: 'seed-monthly-cart',
+  });
+  const result = savedLists.addToCart(aliceId, monthlyListId, cartId, {
+    actor: { type: 'user', userId: aliceId },
+    requestId: 'seed-monthly-cart',
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(
+    result.value.outcomes.map((outcome) => ({
+      sku: outcome.sku,
+      status: outcome.status,
+      reason: outcome.reason,
+      savedQuantity: outcome.savedQuantity,
+      submittedQuantity: outcome.submittedQuantity,
+      moqAdjusted: outcome.moqAdjusted,
+    })),
+    [
+      {
+        sku: 'SPN-1007-001',
+        status: 'skipped',
+        reason: 'INSUFFICIENT_STOCK',
+        savedQuantity: 20,
+        submittedQuantity: 20,
+        moqAdjusted: false,
+      },
+      {
+        sku: 'SPN-0009-002',
+        status: 'skipped',
+        reason: 'VARIANT_RETIRED',
+        savedQuantity: 4,
+        submittedQuantity: null,
+        moqAdjusted: false,
+      },
+      {
+        sku: 'SPN-0008-001',
+        status: 'added',
+        reason: null,
+        savedQuantity: 1,
+        submittedQuantity: 4,
+        moqAdjusted: true,
+      },
+      {
+        sku: 'GDN-1043-001',
+        status: 'added',
+        reason: null,
+        savedQuantity: 4,
+        submittedQuantity: 4,
+        moqAdjusted: false,
+      },
+    ],
+  );
+});
 
 void test('seed installs deterministic lifecycle scenarios once and reset restores them', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-order-seed-'));
@@ -32,6 +316,12 @@ void test('seed installs deterministic lifecycle scenarios once and reset restor
     )
     .all();
   assert.deepEqual(scenarioRows, [
+    {
+      demo_seed_key: 'alice-reorder-mix',
+      email: 'alice@example.com',
+      lifecycle_status: 'processing',
+      created_at: '2026-07-16T09:00:00.000Z',
+    },
     {
       demo_seed_key: 'alice-processing',
       email: 'alice@example.com',
@@ -226,7 +516,9 @@ void test('seed installs deterministic lifecycle scenarios once and reset restor
         )
         .get() as { count: number }
     ).count,
-    19,
+    // 19 lifecycle events across the five original scenarios, plus the single `order_created`
+    // event of the `alice-reorder-mix` buy-again fixture.
+    20,
   );
 
   resetDatabase(db);
@@ -453,9 +745,11 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   );
   assert.equal(
     (db.prepare('SELECT COUNT(*) AS count FROM users').get() as { count: number }).count,
-    3,
+    8,
   );
-  db.prepare("UPDATE users SET display_name = 'Local' WHERE email = 'alice@example.com'").run();
+  db.prepare(
+    "UPDATE users SET display_name = 'Local' WHERE email = 'alice@example.com' AND country = 'UK'",
+  ).run();
   db.prepare(
     "INSERT INTO products (id, name, description, price_cents, category, stock_count, image_set_id, slug, sales_count) VALUES (99, 'Local', 'Local row', 100, 'Local', 1, 'local', 'local', 0)",
   ).run();
@@ -477,7 +771,11 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   seedDatabase(db);
   assert.equal(
     (
-      db.prepare("SELECT display_name FROM users WHERE email = 'alice@example.com'").get() as {
+      db
+        .prepare(
+          "SELECT display_name FROM users WHERE email = 'alice@example.com' AND country = 'UK'",
+        )
+        .get() as {
         display_name: string;
       }
     ).display_name,
@@ -631,7 +929,9 @@ void test('seed preserves local state; reset restores canonical data', (t) => {
   for (const [table, expectedCount] of [
     ['inventory_reservations', 0],
     ['order_access_grants', 0],
-    ['order_lifecycle_events', 19],
+    // 19 across the five original lifecycle scenarios, plus one `order_created` event for the
+    // `alice-reorder-mix` buy-again fixture.
+    ['order_lifecycle_events', 20],
     ['order_shipment_items', 6],
     ['order_shipments', 5],
   ] as const) {
@@ -915,6 +1215,81 @@ void test('seed is idempotent for canonical catalog and variants', (t) => {
   assert.equal(secondSpecs.count, firstSpecs.count);
 });
 
+void test('seed preserves a local signup that occupies the suspended fixture ID', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-seed-suspended-user-id-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  // This represents a retained database from before the suspended fixture was introduced.
+  // The three existing normal fixtures occupy IDs 1-3, so a local signup receives ID 4.
+  for (const [id, email, displayName, role] of [
+    [1, 'alice@example.com', 'Alice', 'customer'],
+    [2, 'bob@example.com', 'Bob', 'customer'],
+    [3, 'admin@example.com', 'Admin', 'admin'],
+  ]) {
+    db.prepare(
+      `INSERT INTO users (id, email, display_name, password_hash, password_salt, role)
+       VALUES (?, ?, ?, 'hash', '', ?)`,
+    ).run(id, email, displayName, role);
+  }
+  db.prepare(
+    `INSERT INTO users (email, display_name, password_hash, password_salt, role)
+     VALUES ('local-signup@example.test', 'Local signup', 'hash', '', 'customer')`,
+  ).run();
+
+  seedDatabase(db);
+
+  assert.deepEqual(
+    db.prepare("SELECT id, email FROM users WHERE email = 'local-signup@example.test'").get(),
+    { id: 4, email: 'local-signup@example.test' },
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        "SELECT email, suspended_at, suspension_reason FROM users WHERE email = 'suspended@example.com'",
+      )
+      .get(),
+    {
+      email: 'suspended@example.com',
+      suspended_at: '2026-07-28T12:00:00.000Z',
+      suspension_reason: 'Seeded administration fixture',
+    },
+  );
+});
+
+void test('seed restores a retired canonical variant by SKU', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-seed-retired-variant-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+  const product = CATALOG_PRODUCTS.find((candidate) => candidate.variants.length > 0)!;
+  const variant = product.variants[0];
+  db.prepare('UPDATE product_variants SET active = 0, sort_order = 0 WHERE sku = ?').run(
+    variant.sku,
+  );
+
+  seedDatabase(db);
+
+  assert.deepEqual(
+    db
+      .prepare('SELECT product_id, sku, active, sort_order FROM product_variants WHERE sku = ?')
+      .get(variant.sku),
+    {
+      product_id: product.id,
+      sku: variant.sku,
+      active: variant.active ? 1 : 0,
+      sort_order: variant.sortOrder,
+    },
+  );
+});
+
 void test('repeat seed keeps canonical defaults product-owned and preserves noncanonical products', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-repeat-seed-defaults-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
@@ -1057,5 +1432,238 @@ void test('seed installs deterministic clearance windows and category-scoped pro
       }
     ).category_scope,
     'Drinks',
+  );
+});
+
+void test('seed installs two Alice rows with distinct ids and distinct passwords', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-de-alice-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+
+  const [ukAlice, deAlice] = db
+    .prepare(
+      "SELECT id, email, country, password_hash, password_salt FROM users WHERE email = 'alice@example.com' ORDER BY id",
+    )
+    .all() as Array<{
+    id: number;
+    email: string;
+    country: string;
+    password_hash: string;
+    password_salt: string;
+  }>;
+
+  assert.equal(ukAlice.email, 'alice@example.com');
+  assert.equal(ukAlice.country, 'UK');
+  assert.equal(deAlice.email, 'alice@example.com');
+  assert.equal(deAlice.country, 'DE');
+  assert.notEqual(ukAlice.id, deAlice.id);
+  assert.notEqual(ukAlice.password_hash, deAlice.password_hash);
+
+  const ukHash = ukAlice.password_hash.split('.')[1];
+  const deHash = deAlice.password_hash.split('.')[1];
+
+  {
+    const salt = createHash('sha256')
+      .update('seed-salt-alice@example.com-UK')
+      .digest('hex')
+      .slice(0, 64);
+    const expected = scryptSync('Password123!', salt, 64).toString('hex');
+    assert.equal(ukHash, expected);
+  }
+
+  {
+    const salt = createHash('sha256')
+      .update('seed-salt-alice@example.com-DE')
+      .digest('hex')
+      .slice(0, 64);
+    const expected = scryptSync('PasswordDE!1', salt, 64).toString('hex');
+    assert.equal(deHash, expected);
+  }
+});
+
+void test('DE Alice password verifies only against its own row', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-de-alice-verify-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+
+  const [ukRow, deRow] = db
+    .prepare(
+      "SELECT id, email, country, password_hash FROM users WHERE email = 'alice@example.com' ORDER BY id",
+    )
+    .all() as Array<{ id: number; email: string; country: string; password_hash: string }>;
+
+  const [ukSalt, ukHash] = ukRow.password_hash.split('.');
+  const [deSalt, deHash] = deRow.password_hash.split('.');
+
+  const ukScrypt = scryptSync('Password123!', ukSalt, 64);
+  const deScrypt = scryptSync('PasswordDE!1', deSalt, 64);
+  const deWithUkPassword = scryptSync('Password123!', deSalt, 64);
+
+  assert.ok(timingSafeEqual(ukScrypt, Buffer.from(ukHash, 'hex')));
+  assert.ok(timingSafeEqual(deScrypt, Buffer.from(deHash, 'hex')));
+  assert.ok(!timingSafeEqual(deWithUkPassword, Buffer.from(deHash, 'hex')));
+  // Cross-check: DE hash does NOT match UK salt
+  const deAgainstUk = scryptSync('PasswordDE!1', ukSalt, 64);
+  assert.ok(!timingSafeEqual(deAgainstUk, Buffer.from(deHash, 'hex')));
+});
+
+void test('seed installs stage-2 country fixtures and targeted promo idempotently', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-country-seed-fixtures-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+
+  assert.ok(COUNTRY_PROFILES.CN.blockedCategories.includes('Sports Nutrition'));
+  assert.ok(
+    (db
+      .prepare(
+        `SELECT 1
+           FROM products
+           WHERE category = 'Sports Nutrition' AND active = 1
+           LIMIT 1`,
+      )
+      .get() as { 1: number } | undefined) !== undefined,
+  );
+
+  const targetedCountries = () =>
+    db
+      .prepare(
+        `SELECT pcc.country
+         FROM promo_code_countries AS pcc
+         INNER JOIN promo_codes AS promos ON promos.id = pcc.promo_code_id
+         WHERE promos.code = 'LOC-UK-DE-10'
+         ORDER BY pcc.country`,
+      )
+      .all();
+  assert.deepEqual(targetedCountries(), [{ country: 'DE' }, { country: 'UK' }]);
+
+  seedDatabase(db);
+  assert.deepEqual(targetedCountries(), [{ country: 'DE' }, { country: 'UK' }]);
+});
+
+void test('seed installs independent Alice country carts', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-de-alice-cart-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT id, country
+         FROM carts
+         WHERE id IN ('00000000-0000-4000-8000-aa0000000001',
+                      '00000000-0000-4000-8000-de0000000001')
+         ORDER BY country`,
+      )
+      .all(),
+    [
+      { id: '00000000-0000-4000-8000-de0000000001', country: 'DE' },
+      { id: '00000000-0000-4000-8000-aa0000000001', country: 'UK' },
+    ],
+  );
+});
+
+void test('DE Alice fixture is idempotent across re-seed', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-de-alice-idempotent-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+
+  const firstIds = db
+    .prepare(
+      "SELECT id, country, password_hash FROM users WHERE email = 'alice@example.com' ORDER BY id",
+    )
+    .all() as Array<{ id: number; country: string; password_hash: string }>;
+
+  seedDatabase(db);
+
+  const secondIds = db
+    .prepare(
+      "SELECT id, country, password_hash FROM users WHERE email = 'alice@example.com' ORDER BY id",
+    )
+    .all() as Array<{ id: number; country: string; password_hash: string }>;
+
+  assert.deepEqual(secondIds, firstIds);
+});
+
+/**
+ * Regression: every other seed test starts from an empty directory, so the canonical seed only ever
+ * ran against a `users` table whose ids it fully controlled. On a database seeded before this
+ * branch, ids 1-6 are the explicit fixtures and the suspended fixture took id 7 from AUTOINCREMENT;
+ * migration 032 preserves those ids. A DE Alice pinned to id 7 therefore collided on the primary
+ * key and was silently discarded by `INSERT OR IGNORE`, leaving the documented DE credentials
+ * unusable with no error. `npm run seed` must converge on an already-populated database.
+ */
+void test('seed creates DE Alice on a database whose id 7 is already taken', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-de-alice-existing-db-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  // Reproduce the user rows a pre-branch database carries into migration 032: the six explicit
+  // fixtures, plus the suspended fixture that AUTOINCREMENT placed at id 7.
+  const insertLegacyUser = db.prepare(
+    `INSERT INTO users (id, email, display_name, password_hash, password_salt, role, country)
+     VALUES (?, ?, ?, 'legacy-hash', '', 'customer', 'UK')`,
+  );
+  const legacyUsers: Array<[number, string, string]> = [
+    [1, 'alice@example.com', 'Alice'],
+    [2, 'bob@example.com', 'Bob'],
+    [3, 'admin@example.com', 'Admin'],
+    [4, 'acme@example.com', 'Acme Owner'],
+    [5, 'buyer@example.com', 'Acme Buyer'],
+    [6, 'approver@example.com', 'Acme Approver'],
+    [7, 'suspended@example.com', 'Suspended Demo'],
+  ];
+  for (const [id, email, displayName] of legacyUsers) insertLegacyUser.run(id, email, displayName);
+
+  assert.equal(
+    db.prepare('SELECT id FROM users WHERE id = 7').pluck().get(),
+    7,
+    'precondition: id 7 is occupied before seeding',
+  );
+
+  seedDatabase(db);
+
+  const deAlice = db
+    .prepare("SELECT id, country FROM users WHERE email = 'alice@example.com' AND country = 'DE'")
+    .get() as { id: number; country: string } | undefined;
+
+  assert.ok(deAlice, 'seeding an existing database must still create the DE Alice fixture');
+  assert.notEqual(deAlice.id, 7);
+
+  // Re-seeding the same database must not add a second DE Alice.
+  seedDatabase(db);
+  assert.equal(
+    db
+      .prepare("SELECT COUNT(*) FROM users WHERE email = 'alice@example.com' AND country = 'DE'")
+      .pluck()
+      .get(),
+    1,
   );
 });

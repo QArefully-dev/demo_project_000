@@ -3,6 +3,10 @@ import type { Product } from '@shop/contracts/products';
 import { ProductCard } from '@/components/ProductCard';
 import { ProductGrid } from '@/components/ProductGrid';
 import { Button } from '@/components/ui/button';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { discoveryMessages } from '@shop/localisation/messages/discovery';
+import { webMessages } from '@shop/localisation/messages/webShell';
+import { commonMessages } from '@shop/localisation/messages/common';
 
 interface Props {
   eyebrow: string;
@@ -29,6 +33,8 @@ export function ProductShelf({
   isAdding,
   onAddToCart,
 }: Props) {
+  const { translate } = useLocalisation();
+  const t = (key: keyof typeof discoveryMessages) => translate(discoveryMessages, key);
   const headingId = `${title.replaceAll(' ', '-').toLowerCase()}-heading`;
   return (
     <section aria-labelledby={headingId}>
@@ -40,7 +46,7 @@ export function ProductShelf({
           </h2>
         </div>
         <Link to={href} className="section-link">
-          View all →
+          {translate(discoveryMessages, 'catalog.browseAll')} →
         </Link>
       </div>
       {error ? (
@@ -48,21 +54,21 @@ export function ProductShelf({
           role="status"
           className="rounded-xl border bg-surface-raised p-5 text-sm text-muted-foreground"
         >
-          This collection is temporarily unavailable.{' '}
+          {translate(webMessages, 'home.collectionUnavailable')}{' '}
           <Button variant="link" className="h-auto px-0 py-0 font-semibold" onClick={onRetry}>
-            Try again
+            {translate(commonMessages, 'common.retry')}
           </Button>{' '}
           <Link className="font-semibold text-primary underline" to={href}>
-            Browse the catalog
+            {t('home.browseCatalog')}
           </Link>
         </p>
       ) : isLoading ? (
         <ProductShelfSkeleton />
       ) : products.length === 0 ? (
         <p className="rounded-xl border bg-surface-raised p-5 text-sm text-muted-foreground">
-          No products are available in this collection yet.{' '}
+          {t('home.noProducts')}{' '}
           <Link className="font-semibold text-primary underline" to={href}>
-            Browse the catalog
+            {t('home.browseCatalog')}
           </Link>
         </p>
       ) : (
@@ -83,9 +89,10 @@ export function ProductShelf({
 }
 
 function ProductShelfSkeleton() {
+  const { translate } = useLocalisation();
   return (
     <div
-      aria-label="Loading collection"
+      aria-label={translate(discoveryMessages, 'catalog.loadingMaterials')}
       className="grid grid-cols-1 gap-x-4 gap-y-6 min-[440px]:grid-cols-2 lg:grid-cols-4 min-[1440px]:grid-cols-5"
     >
       {Array.from({ length: 5 }, (_, index) => (

@@ -1,5 +1,7 @@
 import { cond, condWidth, irritant, lab, UI_FONT } from './svgText';
 import type { VesselArtworkProps } from './packagingSpec';
+import { productMessages } from '@shop/localisation/messages/product';
+import { useLocalisation } from '@/i18n/LocaleContext';
 
 const EDGE = '#33403f';
 const SHELL = '#e7e9e4';
@@ -16,11 +18,14 @@ const SHELL = '#e7e9e4';
  */
 export function KegArtwork({ name, spec, ariaLabel, className }: VesselArtworkProps) {
   const { ink, alert } = spec.ink;
+  const { translate } = useLocalisation();
   const tone = spec.tone ?? 'corrosive';
   const stripeFill = tone === 'corrosive' ? alert : ink;
   const [line1 = '', line2] = spec.titleLines;
   const decorative = ariaLabel === '';
-  const label = decorative ? undefined : (ariaLabel ?? `${name} keg`);
+  const label = decorative
+    ? undefined
+    : (ariaLabel ?? translate(productMessages, 'product.kegAria', { name }));
 
   return (
     <svg
@@ -108,7 +113,7 @@ export function KegArtwork({ name, spec, ariaLabel, className }: VesselArtworkPr
           letterSpacing="3.4"
           fill="#fff"
         >
-          CORROSIVE
+          {translate(productMessages, 'product.corrosive')}
         </text>
       )}
 
@@ -137,7 +142,9 @@ export function KegArtwork({ name, spec, ariaLabel, className }: VesselArtworkPr
       {tone === 'corrosive' && spec.never && (
         <>
           <rect x="284" y="464" width="200" height="40" fill={alert} />
-          {lab(292, 480, 'DANGER', 9, '#fff', 2, { opacity: 0.85 })}
+          {lab(292, 480, translate(productMessages, 'product.danger'), 9, '#fff', 2, {
+            opacity: 0.85,
+          })}
           {lab(292, 496, spec.never.toUpperCase(), 9, '#fff', 0.7, {
             // `never` is extracted "Do not"/"Never" clause(s) from `CleaningFacts.hazardStatement`
             // (contract max 500 chars total, so theoretically the whole statement) -- width
@@ -149,13 +156,20 @@ export function KegArtwork({ name, spec, ariaLabel, className }: VesselArtworkPr
 
       {spec.dose && (
         <>
-          {lab(284, 522, 'DOSE', 8, ink, 1.3, { opacity: 0.65 })}
+          {lab(284, 522, translate(productMessages, 'product.dose'), 8, ink, 1.3, {
+            opacity: 0.65,
+          })}
           {cond(284, 540, spec.dose, 10, condWidth(spec.dose, 6, 40, 200), ink)}
         </>
       )}
       <path d="M284 556H484" stroke={ink} strokeWidth="1.3" opacity="0.35" />
-      {lab(284, 580, `LOT ${spec.lot}`, 9, ink, 0.8, { opacity: 0.7 })}
-      {lab(414, 580, 'NET', 8, ink, 1.3, { anchor: 'end', opacity: 0.65 })}
+      {lab(284, 580, `${translate(productMessages, 'product.lot')} ${spec.lot}`, 9, ink, 0.8, {
+        opacity: 0.7,
+      })}
+      {lab(414, 580, translate(productMessages, 'product.netWeight'), 8, ink, 1.3, {
+        anchor: 'end',
+        opacity: 0.65,
+      })}
       {spec.netWeight &&
         cond(484, 582, spec.netWeight, 32, condWidth(spec.netWeight, 12, 30, 66), ink, {
           anchor: 'end',

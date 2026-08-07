@@ -1,5 +1,7 @@
 import { cond, condWidth, ghs, lab, MONO_FONT } from './svgText';
 import type { VesselArtworkProps } from './packagingSpec';
+import { productMessages } from '@shop/localisation/messages/product';
+import { useLocalisation } from '@/i18n/LocaleContext';
 
 const KRAFT = '#c9ae83';
 const SHADE = '#b3966d';
@@ -14,9 +16,18 @@ const PAPER = '#f2efe7';
  */
 export function KraftSackArtwork({ name, spec, ariaLabel, className }: VesselArtworkProps) {
   const { ink, alert } = spec.ink;
+  const { translate } = useLocalisation();
+  const hazard =
+    spec.hazard === 'Not for consumption'
+      ? translate(productMessages, 'product.notForConsumption')
+      : spec.hazard === 'Caution -- handle with protective equipment'
+        ? translate(productMessages, 'product.cautionHandling')
+        : spec.hazard;
   const [line1 = '', line2] = spec.titleLines;
   const decorative = ariaLabel === '';
-  const label = decorative ? undefined : (ariaLabel ?? `${name} stitched kraft sack`);
+  const label = decorative
+    ? undefined
+    : (ariaLabel ?? translate(productMessages, 'product.kraftSackAria', { name }));
 
   return (
     <svg
@@ -105,20 +116,24 @@ export function KraftSackArtwork({ name, spec, ariaLabel, className }: VesselArt
       <text x="278" y="511" fontFamily={MONO_FONT} fontSize="14" fontWeight="700" fill={ink}>
         {spec.lot}
       </text>
-      {lab(268, 542, 'PRODUCTION LOT', 9, ink, 1.2, { opacity: 0.7 })}
+      {lab(268, 542, translate(productMessages, 'product.productionLot'), 9, ink, 1.2, {
+        opacity: 0.7,
+      })}
 
-      {lab(556, 486, 'NET WEIGHT', 10, ink, 1.6, { anchor: 'end' })}
+      {lab(556, 486, translate(productMessages, 'product.netWeight'), 10, ink, 1.6, {
+        anchor: 'end',
+      })}
       {spec.netWeight &&
         cond(556, 552, spec.netWeight, 74, condWidth(spec.netWeight, 22, 60, 152), ink, {
           anchor: 'end',
         })}
-      {spec.hazard &&
-        lab(190, 586, spec.hazard.toUpperCase(), 9.5, ink, 0.9, {
+      {hazard &&
+        lab(190, 586, hazard.toUpperCase(), 9.5, ink, 0.9, {
           opacity: 0.85,
           // `hazard` here is `TradeFacts.ppe.join(', ')`, unbounded prose (up to 10 items x 200
           // chars in the contract, real catalog worst case ~120 chars) -- width-constrained to the
           // sack's printable panel (x=190 up to the right-hand NET WEIGHT column) per R4-F1.
-          width: condWidth(spec.hazard, 3, 40, 370),
+          width: condWidth(hazard, 3, 40, 370),
         })}
     </svg>
   );

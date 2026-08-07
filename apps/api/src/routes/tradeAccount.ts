@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { ErrorResponse, SuccessResponse } from '@shop/contracts/common';
 import {
@@ -14,42 +14,31 @@ import {
   UpdateDeliverySiteBody,
 } from '@shop/contracts/trade-account';
 import { requireAuth } from '../plugins/auth.js';
-import { sendConflict, sendNotFound } from '../utils/errors.js';
-import type { TradeAccountErrorCode } from '../features/tradeAccount/tradeAccountErrors.js';
+import { sendPublicError } from '../utils/errors.js';
+import type {
+  TradeAccountErrorCode,
+  TradeAccountResult,
+} from '../features/tradeAccount/tradeAccountErrors.js';
 import type { AppContext } from '../app.js';
 
-/**
- * Domain failure -> HTTP status for the trade-account routes.
- *
- * Two buckets, applied identically to both record types:
- * - `*_NOT_FOUND` -> `404`. Emitted both when the record does not exist and when it belongs to
- *   another user, because the services resolve by `(userId, id)` pair. A `403` here would confirm
- *   that the identifier exists on someone else's account, so ownership failures must stay
- *   indistinguishable from absence.
- * - `DUPLICATE_*` and `*_LIMIT_REACHED` -> `409`, matching the repository convention for a request
- *   that is well-formed but conflicts with stored state (see `routes/auth.ts` duplicate email).
- *
- * Messages are fixed domain strings; no exception text or stack reaches the response.
- */
-const TRADE_ACCOUNT_ERROR_RESPONSE: Record<
-  TradeAccountErrorCode,
-  { notFound: string } | { conflict: string }
-> = {
-  SITE_NOT_FOUND: { notFound: 'Delivery site' },
-  BILLING_ENTITY_NOT_FOUND: { notFound: 'Billing entity' },
-  SITE_LIMIT_REACHED: { conflict: 'Delivery site limit reached' },
-  BILLING_ENTITY_LIMIT_REACHED: { conflict: 'Billing entity limit reached' },
-  DUPLICATE_LABEL: { conflict: 'A delivery site with this label already exists' },
-  DUPLICATE_LEGAL_NAME: { conflict: 'A billing entity with this legal name already exists' },
+/** Domain failure -> preserved HTTP status. Ownership failures stay indistinguishable 404s. */
+const TRADE_ACCOUNT_ERROR_STATUS: Record<TradeAccountErrorCode, 400 | 404 | 409> = {
+  SITE_NOT_FOUND: 404,
+  BILLING_ENTITY_NOT_FOUND: 404,
+  SITE_LIMIT_REACHED: 409,
+  BILLING_ENTITY_LIMIT_REACHED: 409,
+  DUPLICATE_LABEL: 409,
+  DUPLICATE_LEGAL_NAME: 409,
+  INVALID_POSTCODE: 400,
+  DELIVERY_COUNTRY_NOT_ALLOWED: 400,
 };
 
-function sendTradeAccountError(reply: FastifyReply, code: TradeAccountErrorCode): void {
-  const mapped = TRADE_ACCOUNT_ERROR_RESPONSE[code];
-  if ('notFound' in mapped) {
-    sendNotFound(reply, mapped.notFound);
-    return;
-  }
-  sendConflict(reply, mapped.conflict);
+function sendTradeAccountError(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  failure: Extract<TradeAccountResult<unknown>, { ok: false }>,
+): void {
+  sendPublicError(request, reply, TRADE_ACCOUNT_ERROR_STATUS[failure.code], failure.code);
 }
 
 /**
@@ -100,7 +89,7 @@ export default function tradeAccountRoutes(app: FastifyInstance, { services }: A
       const user = request.authenticatedUser!;
       const result = sites.create(user.id, request.body);
       if (!result.ok) {
-        sendTradeAccountError(reply, result.code);
+        sendTradeAccountError(request, reply, result);
         return;
       }
       reply.code(201).send(result.value);
@@ -128,7 +117,7 @@ export default function tradeAccountRoutes(app: FastifyInstance, { services }: A
       const user = request.authenticatedUser!;
       const result = sites.update(user.id, Number(request.params.siteId), request.body);
       if (!result.ok) {
-        sendTradeAccountError(reply, result.code);
+        sendTradeAccountError(request, reply, result);
         return;
       }
       reply.code(200).send(result.value);
@@ -155,7 +144,7 @@ export default function tradeAccountRoutes(app: FastifyInstance, { services }: A
       // Retires the site; the row survives so historic orders keep their foreign key.
       const result = sites.retire(user.id, Number(request.params.siteId));
       if (!result.ok) {
-        sendTradeAccountError(reply, result.code);
+        sendTradeAccountError(request, reply, result);
         return;
       }
       reply.code(200).send({ success: true as const });
@@ -199,7 +188,7 @@ export default function tradeAccountRoutes(app: FastifyInstance, { services }: A
       const user = request.authenticatedUser!;
       const result = billingEntities.create(user.id, request.body);
       if (!result.ok) {
-        sendTradeAccountError(reply, result.code);
+        sendTradeAccountError(request, reply, result);
         return;
       }
       reply.code(201).send(result.value);
@@ -229,7 +218,7 @@ export default function tradeAccountRoutes(app: FastifyInstance, { services }: A
       // means "clear it", and collapsing the two here would silently drop the clear instruction.
       const result = billingEntities.update(user.id, Number(request.params.entityId), request.body);
       if (!result.ok) {
-        sendTradeAccountError(reply, result.code);
+        sendTradeAccountError(request, reply, result);
         return;
       }
       reply.code(200).send(result.value);
@@ -255,7 +244,7 @@ export default function tradeAccountRoutes(app: FastifyInstance, { services }: A
       const user = request.authenticatedUser!;
       const result = billingEntities.retire(user.id, Number(request.params.entityId));
       if (!result.ok) {
-        sendTradeAccountError(reply, result.code);
+        sendTradeAccountError(request, reply, result);
         return;
       }
       reply.code(200).send({ success: true as const });

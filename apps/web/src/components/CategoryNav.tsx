@@ -1,7 +1,9 @@
 import { useLocation, useSearchParams, Link } from 'react-router-dom';
 import { useCategories } from '@/hooks/useCategories';
 import { cn } from '@/lib/utils';
-import { bundlesItem, customBlendItem } from './nav/navItems';
+import { customBlendItem } from './nav/navItems';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { webMessages } from '@shop/localisation/messages/webShell';
 
 /**
  * Functional category filter navigation.
@@ -15,6 +17,7 @@ export function CategoryNav() {
   const activeCategory = searchParams.get('category') ?? '';
   const isDealsActive = isCatalog && searchParams.get('onSale') === 'true';
   const { categories, isLoading } = useCategories();
+  const { translate } = useLocalisation();
 
   const linkClassName = (isActive: boolean) =>
     cn(
@@ -23,13 +26,16 @@ export function CategoryNav() {
     );
 
   return (
-    <nav aria-label="Product categories" className="flex min-w-max items-center gap-0.5">
+    <nav
+      aria-label={translate(webMessages, 'shell.productCategories')}
+      className="flex min-w-max items-center gap-0.5"
+    >
       <Link
         to="/catalog"
         aria-current={isCatalog && activeCategory === '' && !isDealsActive ? 'page' : undefined}
         className={linkClassName(isCatalog && activeCategory === '' && !isDealsActive)}
       >
-        All Materials
+        {translate(webMessages, 'shell.allMaterials')}
       </Link>
       {!isLoading &&
         categories.slice(0, 6).map((category) => (
@@ -49,7 +55,7 @@ export function CategoryNav() {
         aria-current={pathname === '/bundles' ? 'page' : undefined}
         className={linkClassName(pathname === '/bundles')}
       >
-        {bundlesItem.label}
+        {translate(webMessages, 'shell.bundles')}
       </Link>
       <Link
         to="/custom-blend"
@@ -59,7 +65,7 @@ export function CategoryNav() {
           customBlendItem.className,
         )}
       >
-        {customBlendItem.label}
+        {translate(webMessages, 'shell.customBlend')}
       </Link>
       <Link
         to="/catalog?onSale=true&sort=bestselling"
@@ -69,7 +75,7 @@ export function CategoryNav() {
           isDealsActive && 'bg-sale/10',
         )}
       >
-        Stock offers
+        {translate(webMessages, 'shell.stockOffers')}
       </Link>
     </nav>
   );

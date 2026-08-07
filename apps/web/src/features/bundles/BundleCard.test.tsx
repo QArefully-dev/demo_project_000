@@ -53,7 +53,7 @@ describe('BundleCard', () => {
   it('shows current total, component quantities, and product links', () => {
     renderCard();
     expect(screen.getByRole('heading', { name: 'Starter set', level: 2 })).toBeInTheDocument();
-    expect(screen.getByText('£50.00')).toBeInTheDocument();
+    expect(screen.getByText('$62.50')).toBeInTheDocument();
     expect(screen.getByText('×2')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Protein Powder' })).toHaveAttribute(
       'href',

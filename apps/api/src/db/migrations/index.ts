@@ -23,6 +23,16 @@ import { removePowderizerMigration } from './021_remove_powderizer.js';
 import { customBlendsMigration } from './022_custom_blends.js';
 import { tradeDeliveryAndCheckoutDepthMigration } from './023_trade_delivery_and_checkout_depth.js';
 import { pricingPromotionsMigration } from './024_pricing_promotions.js';
+import { accountSelfServiceMigration } from './025_account_self_service.js';
+import { companyAccountsApprovalsMigration } from './026_company_accounts_approvals.js';
+import { adminSurfaceMigration } from './027_admin_surface.js';
+import { retiredVariantSortOrderMigration } from './028_retired_variant_sort_order.js';
+import { savedListsMigration } from './029_saved_lists.js';
+import { asyncBehaviorMigration } from './030_async_behavior.js';
+import { backInStockMigration } from './031_back_in_stock.js';
+import { countryLocalisationMigration } from './032_country_localisation.js';
+import { promoCountryTargetingMigration } from './033_promo_country_targeting.js';
+import { mailboxOrderReceiptMigration } from './034_mailbox_order_receipt.js';
 
 export const migrations: readonly Migration[] = [
   initialMigration,
@@ -49,4 +59,14 @@ export const migrations: readonly Migration[] = [
   customBlendsMigration,
   tradeDeliveryAndCheckoutDepthMigration,
   pricingPromotionsMigration,
+  accountSelfServiceMigration,
+  companyAccountsApprovalsMigration,
+  adminSurfaceMigration,
+  retiredVariantSortOrderMigration,
+  savedListsMigration,
+  asyncBehaviorMigration,
+  backInStockMigration,
+  countryLocalisationMigration,
+  promoCountryTargetingMigration,
+  mailboxOrderReceiptMigration,
 ];

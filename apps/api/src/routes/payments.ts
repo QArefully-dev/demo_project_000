@@ -1,12 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
-import { sendBadRequest, sendNotFound, sendPaymentError, sendConflict } from '../utils/errors.js';
-import {
-  PaymentBody,
-  PaymentConflictResponse,
-  PaymentErrorResponse,
-  PaymentSuccessResponse,
-} from '@shop/contracts/payments';
+import { sendPublicError } from '../utils/errors.js';
+import { PaymentBody, PaymentSuccessResponse } from '@shop/contracts/payments';
 import { ErrorResponse } from '@shop/contracts/common';
 import type { AppContext } from '../app.js';
 
@@ -21,8 +16,8 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
         response: {
           201: PaymentSuccessResponse,
           400: ErrorResponse,
-          402: PaymentErrorResponse,
-          409: PaymentConflictResponse,
+          402: ErrorResponse,
+          409: ErrorResponse,
           500: ErrorResponse,
         },
       },
@@ -67,65 +62,127 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
 
       switch (result.error) {
         case 'CART_NOT_FOUND':
-          sendNotFound(reply, 'Cart');
+          sendPublicError(request, reply, 404, 'CART_NOT_FOUND');
           return;
         case 'CART_EMPTY':
-          sendBadRequest(reply, 'Cart is empty');
+          sendPublicError(request, reply, 400, 'CART_EMPTY');
           return;
         case 'CARD_INVALID':
-          sendBadRequest(reply, 'Invalid card details');
+          sendPublicError(request, reply, 400, 'CARD_INVALID');
           return;
         case 'BELOW_MOQ':
-          sendBadRequest(reply, 'Cart quantity does not meet a variant minimum order quantity');
+          sendPublicError(request, reply, 400, 'BELOW_MOQ', {
+            minQuantity: result.minQuantity,
+          });
           return;
         case 'PROMO_INVALID':
-          sendBadRequest(reply, result.promoError ?? 'Invalid or ineligible promo code');
+          switch (result.promoErrorCode) {
+            case 'EXPIRED':
+              sendPublicError(request, reply, 400, 'PROMO_EXPIRED');
+              return;
+            case 'NOT_STARTED':
+              sendPublicError(request, reply, 400, 'PROMO_NOT_STARTED');
+              return;
+            case 'MIN_ITEMS':
+              // Legacy checkout results do not carry the qualifying count. Keep this fallback
+              // parameter-free until a canonical count is available.
+              sendPublicError(request, reply, 400, 'PROMO_INVALID');
+              return;
+            case 'MIN_SUBTOTAL':
+              // Legacy checkout records do not carry the threshold, so keep the fallback
+              // parameter-free rather than emitting a parameterized code without metadata.
+              if ('minSubtotalCents' in result && result.minSubtotalCents !== undefined) {
+                sendPublicError(request, reply, 400, 'PROMO_MIN_SUBTOTAL', {
+                  minSubtotalCents: result.minSubtotalCents,
+                });
+              } else {
+                sendPublicError(request, reply, 400, 'PROMO_INVALID');
+              }
+              return;
+            case 'USAGE_LIMIT':
+              sendPublicError(request, reply, 400, 'PROMO_USAGE_LIMIT');
+              return;
+            case 'AUTH_REQUIRED':
+              sendPublicError(request, reply, 400, 'AUTH_REQUIRED');
+              return;
+            case 'CATEGORY_MISMATCH':
+              sendPublicError(request, reply, 400, 'PROMO_CATEGORY_MISMATCH');
+              return;
+            default:
+              sendPublicError(request, reply, 400, 'PROMO_INVALID');
+              return;
+          }
+        case 'DELIVERY_COUNTRY_NOT_ALLOWED':
+          sendPublicError(request, reply, 400, 'DELIVERY_COUNTRY_NOT_ALLOWED');
           return;
         // Both resolution failures answer 400 with one message each. A saved record that is
         // unknown, retired, or another buyer's must be indistinguishable from here.
         case 'DELIVERY_SITE_NOT_FOUND':
-          sendBadRequest(reply, 'Selected delivery site is not available');
+          sendPublicError(request, reply, 400, 'DELIVERY_SITE_NOT_FOUND');
           return;
         case 'BILLING_ENTITY_INVALID':
-          sendBadRequest(reply, 'Selected billing details are not available');
+          sendPublicError(request, reply, 400, 'BILLING_ENTITY_INVALID');
           return;
         case 'DELIVERY_SLOT_UNAVAILABLE':
           // Same conflict class as stock shortfall: well-formed request, the buyer must rebook.
           // The freshly derived earliest date travels with it so the picker can recover in place.
-          reply
-            .code(409)
-            .send({ error: 'DELIVERY_SLOT_UNAVAILABLE', earliestDate: result.earliestDate });
+          sendPublicError(request, reply, 409, 'DELIVERY_SLOT_UNAVAILABLE', {
+            earliestDate: result.earliestDate,
+          });
+          return;
+        case 'PENDING_APPROVAL':
+          sendPublicError(request, reply, 409, 'PENDING_APPROVAL', {
+            approvalRequestId: result.approvalRequestId,
+          });
+          return;
+        case 'APPROVAL_REJECTED':
+          sendPublicError(request, reply, 409, 'APPROVAL_REJECTED');
+          return;
+        case 'APPROVAL_EXPIRED':
+          sendPublicError(request, reply, 409, 'APPROVAL_EXPIRED');
+          return;
+        case 'APPROVAL_TOTAL_DRIFT':
+          sendPublicError(request, reply, 409, 'APPROVAL_TOTAL_DRIFT');
           return;
         case 'DECLINED':
-          sendPaymentError(reply, 'Payment failed', 'CARD_DECLINED');
+          sendPublicError(request, reply, 402, 'CARD_DECLINED');
           return;
         case 'TIMEOUT':
-          sendPaymentError(reply, 'Payment failed', 'GATEWAY_TIMEOUT');
+          sendPublicError(request, reply, 402, 'GATEWAY_TIMEOUT');
           return;
         case 'IDEMPOTENT_CONFLICT':
-          sendConflict(reply, 'Payment already submitted with different data');
+          sendPublicError(request, reply, 409, 'IDEMPOTENT_CONFLICT');
           return;
         case 'RESERVATION_EXPIRED':
-          reply.code(409).send({
-            error: 'RESERVATION_EXPIRED',
+          sendPublicError(request, reply, 409, 'RESERVATION_EXPIRED', {
             reservationExpiresAt: result.reservationExpiresAt,
           });
           return;
         case 'CUSTOM_BLEND_INVALID':
           // Catalog state moved under a configured line. Same conflict class as stock shortfall:
           // the request was well formed, the cart must be revisited before paying.
-          reply.code(409).send({ error: 'CUSTOM_BLEND_INVALID' });
+          sendPublicError(request, reply, 409, 'CUSTOM_BLEND_INVALID');
           return;
         case 'INSUFFICIENT_STOCK':
-          reply.code(409).send({ error: 'INSUFFICIENT_STOCK', productIds: result.productIds });
+          sendPublicError(request, reply, 409, 'INSUFFICIENT_STOCK', {
+            productIds: result.productIds,
+          });
+          return;
+        case 'BLOCKED_IN_COUNTRY':
+          sendPublicError(request, reply, 409, 'BLOCKED_IN_COUNTRY', {
+            productIds: result.productIds,
+          });
           return;
         case 'IDEMPOTENT_IN_PROGRESS':
-          sendConflict(reply, 'Payment is already being processed');
+          sendPublicError(request, reply, 409, 'IDEMPOTENT_IN_PROGRESS');
           return;
         case 'CHECKOUT_FAILED':
-          reply.code(500).send({ error: 'Checkout could not be completed' });
+          sendPublicError(request, reply, 500, 'CHECKOUT_FAILED');
           return;
       }
+
+      const exhaustiveResult: never = result;
+      void exhaustiveResult;
     },
   );
 }

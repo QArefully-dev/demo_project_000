@@ -41,6 +41,17 @@ const entityTypeSet = new Set<AuditEntityType>([
   'order',
   'shipment',
   'review',
+  'return',
+  'product',
+  'variant',
+  'promo',
+  'feature_flag',
+  'saved_list',
+  'job',
+  'notification',
+  'webhook',
+  'standing_order',
+  'back_in_stock_subscription',
 ]);
 
 function normalizeDate(value: string, field: 'occurredFrom' | 'occurredTo'): string {

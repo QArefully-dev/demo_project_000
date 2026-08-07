@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { ProductWithVariants, CatalogVariant, CategoryFacts } from '@shop/contracts/products';
 import type { PublicUser } from '@shop/contracts/auth';
 import type { ComponentProps } from 'react';
@@ -12,10 +12,6 @@ import {
 } from '@/features/comparison/ComparisonSelectionContext';
 
 const authState = vi.hoisted(() => ({ user: null as PublicUser | null }));
-const favouriteState = vi.hoisted(() => ({
-  favouriteIds: new Set<string>(),
-  toggleFavourite: vi.fn(),
-}));
 const comparisonStorage = {
   getItem: () => null,
   setItem: () => undefined,
@@ -26,13 +22,28 @@ vi.mock('@/hooks/AuthContext', () => ({
   useAuth: () => ({ user: authState.user }),
 }));
 
-vi.mock('@/hooks/useFavourites', () => ({
-  useFavourites: () => ({
-    ...favouriteState,
-    favourites: [],
+const backInStockState = vi.hoisted(() => ({ subscribe: vi.fn() }));
+vi.mock('@/hooks/useBackInStock', () => ({
+  useBackInStock: () => ({
+    subscriptions: [],
+    pendingVariantIds: new Set<number>(),
     loading: false,
-    removeProduct: vi.fn(),
+    error: null,
+    refresh: vi.fn(),
+    subscribe: backInStockState.subscribe,
+    cancel: vi.fn(),
   }),
+}));
+
+vi.mock('@/features/savedLists/AddToListMenu', () => ({
+  AddToListMenu: ({ variantId, quantity }: { variantId?: number; quantity?: number }) => (
+    <button
+      type="button"
+      aria-label="Save to list"
+      data-variant-id={variantId}
+      data-quantity={quantity}
+    />
+  ),
 }));
 
 const defaultVariant: CatalogVariant = {
@@ -129,11 +140,6 @@ function renderPanel(overrides: Partial<ComponentProps<typeof ProductPurchasePan
     </MemoryRouter>,
   );
   return { ...result, onAddToCart, onRetryCart };
-}
-
-function Location() {
-  const location = useLocation();
-  return <output>{location.pathname}</output>;
 }
 
 function ComparisonPath() {
@@ -233,10 +239,10 @@ describe('ProductPurchasePanel', () => {
 
     await user.click(screen.getByRole('radio', { name: /25 kg Sack/i }));
 
-    expect(screen.getAllByText('Clearance price $99.99').length).toBeGreaterThan(0);
-    expect(screen.getAllByLabelText('Clearance ends 1 Aug 2026').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Clearance price $124.99').length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('Clearance ends 7/31/26').length).toBeGreaterThan(0);
     expect(
-      screen.getAllByText('$129.99').some((element) => element.classList.contains('line-through')),
+      screen.getAllByText('$162.49').some((element) => element.classList.contains('line-through')),
     ).toBe(true);
   });
 
@@ -344,57 +350,20 @@ describe('ProductPurchasePanel', () => {
     expect(screen.getByRole('button', { name: 'Add to order' })).toBeEnabled();
   });
 
-  it('sends anonymous wishlist actions to sign-in and toggles authenticated favourites', async () => {
+  it('passes the selected variant and entered quantity to the list action', async () => {
     const user = userEvent.setup();
-    authState.user = null;
-    favouriteState.favouriteIds = new Set();
-    favouriteState.toggleFavourite.mockReset();
-    render(
-      <MemoryRouter initialEntries={['/products/powdered-water']}>
-        <ComparisonSelectionProvider storage={comparisonStorage}>
-          <Routes>
-            <Route
-              path="*"
-              element={
-                <>
-                  <ProductPurchasePanel
-                    product={product()}
-                    isCartAvailable
-                    isAdding={false}
-                    actionError={null}
-                    cartError={null}
-                    onAddToCart={async () => {}}
-                    onRetryCart={() => {}}
-                  />
-                  <Location />
-                </>
-              }
-            />
-            <Route path="/login" element={<Location />} />
-          </Routes>
-        </ComparisonSelectionProvider>
-      </MemoryRouter>,
+    renderPanel();
+    await user.click(screen.getByRole('radio'));
+    await user.clear(screen.getByLabelText(/order quantity/i));
+    await user.type(screen.getByLabelText(/order quantity/i), '7');
+    expect(screen.getByRole('button', { name: 'Save to list' })).toHaveAttribute(
+      'data-variant-id',
+      '1',
     );
-
-    await user.click(screen.getByRole('button', { name: 'Add to wishlist' }));
-    expect(screen.getByText('/login')).toBeInTheDocument();
-    expect(favouriteState.toggleFavourite).not.toHaveBeenCalled();
-
-    authState.user = {
-      id: 'user-1',
-      email: 'shopper@example.test',
-      displayName: 'Shopper',
-      role: 'customer',
-    };
-    favouriteState.favouriteIds = new Set();
-    favouriteState.toggleFavourite.mockReset();
-    const authenticated = renderPanel();
-    await user.click(screen.getByRole('button', { name: 'Add to wishlist' }));
-    expect(favouriteState.toggleFavourite).toHaveBeenCalledWith(
-      'powdered-water',
-      expect.objectContaining({ id: 'powdered-water' }),
+    expect(screen.getByRole('button', { name: 'Save to list' })).toHaveAttribute(
+      'data-quantity',
+      '7',
     );
-    authenticated.unmount();
   });
 
   it('adds a secondary comparison action without changing cart availability', async () => {
@@ -452,7 +421,7 @@ describe('ProductPurchasePanel', () => {
     await user.click(screen.getByRole('radio'));
     expect(screen.getAllByText(/SKU: PW-001/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('8 pallets available')).toBeInTheDocument();
-    expect(screen.getAllByText('$129.99').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('$162.49').length).toBeGreaterThanOrEqual(1);
   });
 
   it('renders API-supplied pack, tonne, MOQ, tier, and freight details', async () => {
@@ -476,11 +445,11 @@ describe('ProductPurchasePanel', () => {
     });
 
     await user.click(screen.getByRole('radio', { name: /1,000 kg Pallet/i }));
-    expect(screen.getAllByText('Pack price $4,100.00').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('$4,100.00 / tonne')).toBeInTheDocument();
+    expect(screen.getAllByText('Pack price $5,125.00').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('$5,125.00 / tonne')).toBeInTheDocument();
     expect(screen.getByText('Minimum order: 1 × 1,000 kg Pallet.')).toBeInTheDocument();
     expect(screen.getByText('Total weight')).toBeInTheDocument();
-    expect(screen.getByLabelText('Volume pricing tiers')).toHaveTextContent('5 tonnes: 5% off');
+    expect(screen.getByLabelText('Volume pricing')).toHaveTextContent('5 tonnes: 5% off');
     expect(screen.getAllByText(/Pallet freight.*lead time 7 days/i).length).toBeGreaterThanOrEqual(
       1,
     );
@@ -494,6 +463,41 @@ describe('ProductPurchasePanel', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Quantity does not meet this variant minimum order quantity.',
     );
+  });
+
+  it('offers the waiting list only for the selected sold-out, non-backorderable variant', async () => {
+    const user = userEvent.setup();
+    const notify = 'Notify me when this is back in stock';
+    renderPanel({
+      product: product({
+        stock: 0,
+        availability: 'out_of_stock',
+        baseAvailability: 'out_of_stock',
+        variants: [
+          { ...defaultVariant, variantId: 1, label: 'Sold out sack', stockCount: 0 },
+          {
+            ...defaultVariant,
+            variantId: 2,
+            label: 'Backorder pallet',
+            stockCount: 0,
+            backorderable: true,
+            backorderLeadDays: 14,
+          },
+          { ...defaultVariant, variantId: 3, label: 'Stocked sack', stockCount: 8 },
+        ],
+      }),
+    });
+
+    expect(screen.queryByRole('button', { name: notify })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: /Sold out sack/i }));
+    expect(screen.getByRole('button', { name: notify })).toBeEnabled();
+
+    await user.click(screen.getByRole('radio', { name: /Backorder pallet/i }));
+    expect(screen.queryByRole('button', { name: notify })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('radio', { name: /Stocked sack/i }));
+    expect(screen.queryByRole('button', { name: notify })).not.toBeInTheDocument();
   });
 
   it('derives MOQ units from the shared sack-weight floor for sacks and pallets', async () => {

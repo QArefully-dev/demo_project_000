@@ -42,7 +42,7 @@ describe('ReviewList', () => {
   it('shows public helpful count but hides engagement controls for ineligible viewers', () => {
     renderList({ viewerCanEngage: false });
 
-    expect(screen.getByText('2 found this helpful')).toBeInTheDocument();
+    expect(screen.getByText('2 people found this helpful')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Helpful' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Report review' })).not.toBeInTheDocument();
   });

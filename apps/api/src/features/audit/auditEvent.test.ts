@@ -48,6 +48,202 @@ void test('builds a sanitized bundle-added audit event', () => {
   assert.equal(event.metadataJson.includes('9999'), false);
 });
 
+void test('builds a sanitized reorder-added audit event', () => {
+  const event = buildAuditEvent({
+    action: 'cart.reorder_added',
+    context: userContext,
+    cartId: 'cart-1',
+    orderId: 12,
+    addedLineCount: 2,
+    skippedLineCount: 0,
+    productNames: ['Powdered Tuesday'],
+    totalCents: 9_999,
+  } as AuditEventInput);
+
+  assert.equal(event.entityType, 'cart');
+  assert.equal(event.entityId, 'cart-1');
+  assert.deepEqual(event.metadata, { orderId: 12, addedLineCount: 2, skippedLineCount: 0 });
+  assert.equal(event.metadataJson.includes('Powdered Tuesday'), false);
+  assert.equal(event.metadataJson.includes('9999'), false);
+});
+
+void test('rejects a reorder-added audit event with unusable counts', () => {
+  expectEventError(() =>
+    buildAuditEvent({
+      action: 'cart.reorder_added',
+      context: userContext,
+      cartId: 'cart-1',
+      orderId: 0,
+      addedLineCount: 1,
+      skippedLineCount: 0,
+    } as unknown as AuditEventInput),
+  );
+  expectEventError(() =>
+    buildAuditEvent({
+      action: 'cart.reorder_added',
+      context: userContext,
+      cartId: 'cart-1',
+      orderId: 12,
+      addedLineCount: -1,
+      skippedLineCount: 0,
+    } as unknown as AuditEventInput),
+  );
+});
+
+void test('builds a scalar-only quick-order-added audit event', () => {
+  const event = buildAuditEvent({
+    action: 'cart.quick_order_added',
+    context: userContext,
+    cartId: 'cart-1',
+    lineCount: 3,
+    addedLineCount: 2,
+    skippedLineCount: 1,
+    pastedText: 'CEM-0001-001, 4',
+    skus: ['CEM-0001-001'],
+  } as AuditEventInput);
+
+  assert.equal(event.entityType, 'cart');
+  assert.equal(event.entityId, 'cart-1');
+  assert.deepEqual(event.metadata, { lineCount: 3, addedLineCount: 2, skippedLineCount: 1 });
+  assert.equal(event.metadataJson.includes('CEM-0001-001'), false);
+});
+
+void test('rejects a quick-order-added audit event with unusable counts', () => {
+  for (const input of [
+    { lineCount: -1, addedLineCount: 0, skippedLineCount: 0 },
+    { lineCount: 1.5, addedLineCount: 0, skippedLineCount: 0 },
+    { lineCount: 1, addedLineCount: Number.MAX_SAFE_INTEGER + 1, skippedLineCount: 0 },
+    { lineCount: 1, addedLineCount: 0, skippedLineCount: -1 },
+  ]) {
+    expectEventError(() =>
+      buildAuditEvent({
+        action: 'cart.quick_order_added',
+        context: userContext,
+        cartId: 'cart-1',
+        ...input,
+      } as unknown as AuditEventInput),
+    );
+  }
+});
+
+void test('builds saved-list audit events with allowlisted scalar metadata', () => {
+  const cases: Array<{
+    input: AuditEventInput;
+    entityType: 'saved_list' | 'cart';
+    entityId: string;
+    metadata: Record<string, string | number>;
+  }> = [
+    {
+      input: {
+        action: 'saved_list.created',
+        context: userContext,
+        savedListId: 9,
+        name: 'Monthly restock',
+      },
+      entityType: 'saved_list',
+      entityId: '9',
+      metadata: { savedListId: 9, name: 'Monthly restock' },
+    },
+    {
+      input: {
+        action: 'saved_list.renamed',
+        context: userContext,
+        savedListId: 9,
+        name: 'Quarterly restock',
+      },
+      entityType: 'saved_list',
+      entityId: '9',
+      metadata: { savedListId: 9, name: 'Quarterly restock' },
+    },
+    {
+      input: { action: 'saved_list.deleted', context: userContext, savedListId: 9 },
+      entityType: 'saved_list',
+      entityId: '9',
+      metadata: { savedListId: 9 },
+    },
+    {
+      input: {
+        action: 'saved_list.item_added',
+        context: userContext,
+        savedListId: 9,
+        variantId: 12,
+        quantity: 4,
+      },
+      entityType: 'saved_list',
+      entityId: '9',
+      metadata: { savedListId: 9, variantId: 12, quantity: 4 },
+    },
+    {
+      input: {
+        action: 'saved_list.item_updated',
+        context: userContext,
+        savedListId: 9,
+        itemId: 4,
+        quantity: 6,
+      },
+      entityType: 'saved_list',
+      entityId: '9',
+      metadata: { savedListId: 9, itemId: 4, quantity: 6 },
+    },
+    {
+      input: { action: 'saved_list.item_removed', context: userContext, savedListId: 9, itemId: 4 },
+      entityType: 'saved_list',
+      entityId: '9',
+      metadata: { savedListId: 9, itemId: 4 },
+    },
+    {
+      input: {
+        action: 'cart.saved_list_added',
+        context: userContext,
+        cartId: 'cart-1',
+        savedListId: 9,
+        itemCount: 4,
+        addedLineCount: 3,
+        skippedLineCount: 1,
+      },
+      entityType: 'cart',
+      entityId: 'cart-1',
+      metadata: { savedListId: 9, itemCount: 4, addedLineCount: 3, skippedLineCount: 1 },
+    },
+  ];
+
+  for (const { input, entityType, entityId, metadata } of cases) {
+    const event = buildAuditEvent(input);
+    assert.equal(event.entityType, entityType);
+    assert.equal(event.entityId, entityId);
+    assert.deepEqual(event.metadata, metadata);
+  }
+});
+
+void test('rejects unusable saved-list audit scalars', () => {
+  for (const input of [
+    { action: 'saved_list.created', savedListId: 0, name: 'Restock' },
+    { action: 'saved_list.renamed', savedListId: 9, name: '' },
+    { action: 'saved_list.item_added', savedListId: 9, variantId: 0, quantity: 1 },
+    { action: 'saved_list.item_updated', savedListId: 9, itemId: 4, quantity: 0 },
+    { action: 'saved_list.item_removed', savedListId: 9, itemId: 0 },
+    {
+      action: 'cart.saved_list_added',
+      cartId: 'cart-1',
+      savedListId: 9,
+      itemCount: -1,
+      addedLineCount: 0,
+      skippedLineCount: 0,
+    },
+  ]) {
+    expectEventError(() =>
+      buildAuditEvent({ context: userContext, ...input } as unknown as AuditEventInput),
+    );
+  }
+});
+
+function acceptAuditEventInput(_input: AuditEventInput): void {
+  void _input;
+}
+
+// @ts-expect-error Saved-list actions require their discriminated fields.
+acceptAuditEventInput({ action: 'saved_list.deleted', context: userContext });
+
 void test('enforces actor shape and request context rules', () => {
   expectEventError(() =>
     buildAuditEvent({
@@ -68,6 +264,41 @@ void test('enforces actor shape and request context rules', () => {
       action: 'cart.created',
       context: { actor: { type: 'anonymous', userId: null }, requestId: null },
       cartId: 'cart-1',
+    } as unknown as AuditEventInput),
+  );
+});
+
+void test('records standing country for admin contexts only', () => {
+  const admin = buildAuditEvent({
+    action: 'product.updated',
+    context: {
+      actor: { type: 'user', userId: 9 },
+      requestId: 'admin-country-request',
+      standingCountry: 'DE',
+    },
+    productId: 12,
+  });
+  assert.deepEqual(admin.metadata, { country: 'DE' });
+
+  const customer = buildAuditEvent({
+    action: 'cart.created',
+    context: userContext,
+    cartId: 'cart-customer',
+  });
+  assert.deepEqual(customer.metadata, {});
+
+  const system = buildAuditEvent({
+    action: 'job.succeeded',
+    context: { actor: { type: 'system', userId: null }, requestId: null },
+    jobId: 4,
+  });
+  assert.deepEqual(system.metadata, {});
+
+  expectEventError(() =>
+    buildAuditEvent({
+      action: 'product.updated',
+      context: { ...userContext, standingCountry: 'GB' },
+      productId: 12,
     } as unknown as AuditEventInput),
   );
 });
@@ -241,6 +472,45 @@ void test('accepts shipment audit entity filters', () => {
     page: 1,
     pageSize: 50,
   });
+});
+
+void test('accepts admin and saved-list audit actions and entity type filters', () => {
+  const actions = [
+    'product.created',
+    'product.updated',
+    'product.retired',
+    'variant.created',
+    'variant.updated',
+    'variant.retired',
+    'variant.clearance_set',
+    'variant.clearance_cleared',
+    'promo.created',
+    'promo.updated',
+    'promo.deactivated',
+    'user.role_changed',
+    'user.suspended',
+    'user.reactivated',
+    'user.display_name_updated',
+    'feature_flag.created',
+    'feature_flag.updated',
+    'feature_flag.deleted',
+    'payment.admin_refunded',
+    'saved_list.created',
+    'saved_list.renamed',
+    'saved_list.deleted',
+    'saved_list.item_added',
+    'saved_list.item_updated',
+    'saved_list.item_removed',
+    'cart.saved_list_added',
+  ];
+  const entityTypes = ['product', 'variant', 'promo', 'feature_flag', 'saved_list'];
+
+  for (const action of actions) {
+    assert.equal(normalizeAuditEventQuery({ action }).action, action);
+  }
+  for (const entityType of entityTypes) {
+    assert.equal(normalizeAuditEventQuery({ entityType }).entityType, entityType);
+  }
 });
 
 void test('rejects malformed, inverted, and out-of-bounds audit query values', () => {

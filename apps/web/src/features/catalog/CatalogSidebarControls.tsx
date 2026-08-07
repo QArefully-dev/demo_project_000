@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import type { ProductFilterOptionsResponse } from '@shop/contracts/products';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { discoveryMessages } from '@shop/localisation/messages/discovery';
 import type { Availability } from './catalogSidebarTypes';
 
 type CatalogSidebarControlsProps = {
@@ -47,13 +49,16 @@ export function CatalogSidebarControls({
   onTagChange,
   onSpecChange,
 }: CatalogSidebarControlsProps) {
+  const { translate } = useLocalisation();
+  const t = (key: keyof typeof discoveryMessages, params?: Record<string, string | number>) =>
+    translate(discoveryMessages, key, params);
   return (
     <>
       <fieldset>
-        <legend className="mb-2 text-sm font-semibold">Material type</legend>
+        <legend className="mb-2 text-sm font-semibold">{t('catalog.materialType')}</legend>
         <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 lg:mx-0 lg:block lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0">
           <CategoryChoice checked={!category} onChange={() => onCategoryChange(undefined)}>
-            All materials
+            {t('catalog.allMaterials')}
           </CategoryChoice>
           {categories.map((item) => (
             <CategoryChoice
@@ -67,7 +72,7 @@ export function CatalogSidebarControls({
         </div>
       </fieldset>
       <fieldset>
-        <legend className="mb-2 text-sm font-semibold">Offers</legend>
+        <legend className="mb-2 text-sm font-semibold">{t('catalog.offers')}</legend>
         <label className="flex cursor-pointer items-center gap-3 rounded-xl border bg-background p-3 text-sm font-medium">
           <input
             type="checkbox"
@@ -75,22 +80,22 @@ export function CatalogSidebarControls({
             onChange={(event) => onSaleChange(event.target.checked)}
             className="size-4 accent-primary"
           />
-          On sale now
+          {t('catalog.onSale')}
         </label>
       </fieldset>
       <fieldset>
-        <legend className="mb-2 text-sm font-semibold">Price</legend>
+        <legend className="mb-2 text-sm font-semibold">{t('catalog.price')}</legend>
         <div className="grid grid-cols-2 gap-2">
           <DraftInput
             id="catalog-min-price"
-            label="Minimum (cents)"
+            label={t('catalog.minimumCents')}
             type="number"
             value={minPriceDraft}
             onChange={(value) => onPriceDraftChange(value, 'min')}
           />
           <DraftInput
             id="catalog-max-price"
-            label="Maximum (cents)"
+            label={t('catalog.maximumCents')}
             type="number"
             value={maxPriceDraft}
             onChange={(value) => onPriceDraftChange(value, 'max')}
@@ -98,18 +103,18 @@ export function CatalogSidebarControls({
         </div>
       </fieldset>
       <fieldset>
-        <legend className="mb-2 text-sm font-semibold">Date added</legend>
+        <legend className="mb-2 text-sm font-semibold">{t('catalog.dateAdded')}</legend>
         <div className="grid gap-2">
           <DraftInput
             id="catalog-added-from"
-            label="From"
+            label={t('catalog.from')}
             type="date"
             value={addedFromDraft}
             onChange={(value) => onDateDraftChange(value, 'from')}
           />
           <DraftInput
             id="catalog-added-to"
-            label="To"
+            label={t('catalog.to')}
             type="date"
             value={addedToDraft}
             onChange={(value) => onDateDraftChange(value, 'to')}
@@ -117,28 +122,28 @@ export function CatalogSidebarControls({
         </div>
       </fieldset>
       <fieldset>
-        <legend className="mb-2 text-sm font-semibold">Availability</legend>
+        <legend className="mb-2 text-sm font-semibold">{t('catalog.availability')}</legend>
         <div className="grid gap-2">
           <AvailabilityChoice
             checked={!availability}
-            label="All availability"
+            label={t('catalog.allAvailability')}
             onChange={() => onAvailabilityChange(undefined)}
           />
           <AvailabilityChoice
             checked={availability === 'available'}
-            label="In stock"
+            label={t('catalog.inStock')}
             value="available"
             onChange={() => onAvailabilityChange('available')}
           />
           <AvailabilityChoice
             checked={availability === 'backorder'}
-            label="Backorder available"
+            label={t('catalog.backorder')}
             value="backorder"
             onChange={() => onAvailabilityChange('backorder')}
           />
           <AvailabilityChoice
             checked={availability === 'out_of_stock'}
-            label="Out of stock"
+            label={t('catalog.outOfStock')}
             value="out_of_stock"
             onChange={() => onAvailabilityChange('out_of_stock')}
           />
@@ -146,16 +151,16 @@ export function CatalogSidebarControls({
       </fieldset>
       {filterOptionsLoading ? (
         <p className="text-sm text-muted-foreground" role="status">
-          Loading more filtersâ€¦
+          {t('catalog.loadingMoreFilters')}
         </p>
       ) : filterOptionsError ? (
         <p className="text-sm text-muted-foreground" role="status">
-          More filters are unavailable.
+          {t('catalog.moreFiltersUnavailable')}
         </p>
       ) : filterOptions ? (
         <>
           <fieldset>
-            <legend className="mb-2 text-sm font-semibold">Tags</legend>
+            <legend className="mb-2 text-sm font-semibold">{t('catalog.tags')}</legend>
             <div className="grid gap-2">
               {filterOptions.tags.map((tag) => (
                 <label key={tag.key} className="flex cursor-pointer items-center gap-2 text-sm">
@@ -189,7 +194,9 @@ export function CatalogSidebarControls({
                       }
                       className="h-10 rounded-lg border bg-background px-3 text-sm font-normal focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      <option value="">Any {specification.label.toLowerCase()}</option>
+                      <option value="">
+                        {t('catalog.any', { label: specification.label.toLowerCase() })}
+                      </option>
                       {specification.values.map((value) => (
                         <option key={value.key} value={value.key}>
                           {value.label}

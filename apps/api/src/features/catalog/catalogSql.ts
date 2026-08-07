@@ -5,6 +5,38 @@ export interface CatalogPredicate {
   params: readonly unknown[];
 }
 
+export interface CatalogCountryExclusions {
+  blockedCategories: readonly string[];
+  blockedSlugs: readonly string[];
+}
+
+const NO_COUNTRY_EXCLUSIONS: CatalogCountryExclusions = {
+  blockedCategories: [],
+  blockedSlugs: [],
+};
+
+/** Builds bound country clauses for SQL statements whose product alias is fixed as `p`. */
+export function buildCountryExclusionPredicate(
+  exclusions: CatalogCountryExclusions = NO_COUNTRY_EXCLUSIONS,
+): { sql: string; params: readonly string[] } {
+  const conditions: string[] = [];
+  const params: string[] = [];
+  if (exclusions.blockedCategories.length > 0) {
+    conditions.push(
+      `p.category NOT IN (${exclusions.blockedCategories.map(() => '?').join(', ')})`,
+    );
+    params.push(...exclusions.blockedCategories);
+  }
+  if (exclusions.blockedSlugs.length > 0) {
+    conditions.push(`p.slug NOT IN (${exclusions.blockedSlugs.map(() => '?').join(', ')})`);
+    params.push(...exclusions.blockedSlugs);
+  }
+  return {
+    sql: conditions.length > 0 ? ` AND ${conditions.join(' AND ')}` : '',
+    params,
+  };
+}
+
 /**
  * Bound-time available-to-sell expression. `p` is intentionally fixed so no
  * caller can introduce a dynamic SQL identifier.
@@ -24,9 +56,15 @@ function escapeLike(value: string): string {
 export function buildCatalogPredicate(
   query: NormalizedCatalogQuery,
   now: string,
+  exclusions: CatalogCountryExclusions = NO_COUNTRY_EXCLUSIONS,
 ): CatalogPredicate {
   const conditions: string[] = ['p.active = 1'];
   const params: unknown[] = [];
+  const countryExclusions = buildCountryExclusionPredicate(exclusions);
+  if (countryExclusions.sql) {
+    conditions.push(countryExclusions.sql.slice(' AND '.length));
+    params.push(...countryExclusions.params);
+  }
   if (query.q) {
     const escaped = escapeLike(query.q);
     conditions.push("(p.name LIKE ? ESCAPE '\\' OR p.description LIKE ? ESCAPE '\\')");

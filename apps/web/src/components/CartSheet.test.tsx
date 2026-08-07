@@ -1,10 +1,14 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
 import type { Cart, CartLine } from '@shop/contracts/cart';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { useCartContext } from '@/hooks/CartContext';
 import type { useCart } from '@/hooks/useCart';
+import { CountryProvider } from '@/hooks/CountryContext';
+import { LocaleProvider } from '@/i18n/LocaleContext';
+import type { CountryStorage } from '@/lib/countryStorage';
 import { CartSheet } from './CartSheet';
 
 vi.mock('@/hooks/CartContext', () => ({ useCartContext: vi.fn() }));
@@ -102,7 +106,11 @@ interface CartContextOverrides {
   isActionPending?: ReturnType<typeof vi.fn>;
 }
 
-function renderSheet(cart: Cart, overrides: CartContextOverrides = {}) {
+function renderSheet(
+  cart: Cart,
+  overrides: CartContextOverrides = {},
+  country: 'US' | 'DE' = 'US',
+) {
   vi.mocked(useCartContext).mockReturnValue({
     cart,
     isLoading: false,
@@ -113,15 +121,26 @@ function renderSheet(cart: Cart, overrides: CartContextOverrides = {}) {
     retryCart: vi.fn(),
     isActionPending: overrides.isActionPending ?? vi.fn(),
   } as unknown as ReturnType<typeof useCart>);
-  return render(
+  const content: ReactNode = (
     <MemoryRouter>
       <CartSheet />
-    </MemoryRouter>,
+    </MemoryRouter>
+  );
+  if (country === 'US') return render(content);
+  const storage: CountryStorage = {
+    getItem: () => country,
+    setItem: () => undefined,
+    removeItem: () => undefined,
+  };
+  return render(
+    <CountryProvider storage={storage}>
+      <LocaleProvider>{content}</LocaleProvider>
+    </CountryProvider>,
   );
 }
 
 async function openSheet(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('button', { name: /Open cart/ }));
+  await user.click(screen.getByRole('button', { name: /Open cart|Warenkorb öffnen/ }));
 }
 
 describe('CartSheet', () => {
@@ -171,8 +190,45 @@ describe('CartSheet', () => {
 
     expect(await screen.findByText('Material subtotal')).toBeInTheDocument();
     expect(screen.getByText('Blending fees')).toBeInTheDocument();
-    expect(screen.getByText('$50.00')).toBeInTheDocument();
-    expect(screen.getByText('$70.00')).toBeInTheDocument();
+    expect(screen.getByText('$62.50')).toBeInTheDocument();
+    expect(screen.getByText('$87.50')).toBeInTheDocument();
+  });
+
+  it('formats non-US counts, tier values, and semantic weights', async () => {
+    const user = userEvent.setup();
+    renderSheet(
+      {
+        ...twoBlendCart,
+        items: [
+          {
+            ...plainLine,
+            quantity: 1_234,
+            variantSnap: { ...plainLine.variantSnap!, weightGrams: 1_250_000 },
+            nextTierProgress: {
+              minTonnes: 1_234.5,
+              discountPct: 12.5,
+              sacksToNextTier: 1_234,
+              weightToNextTierGrams: 25_000,
+            },
+          },
+        ],
+        totalItems: 1_234,
+        deliveryPreview: { ...twoBlendCart.deliveryPreview!, weightGrams: 1_250_000 },
+      },
+      {},
+      'DE',
+    );
+    expect(
+      screen.getByRole('button', { name: 'Warenkorb öffnen (1.234 Artikel)' }),
+    ).toBeInTheDocument();
+    await openSheet(user);
+
+    expect(screen.getAllByText('1.234').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/1,25 tonnes/).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Fortschritt zur nächsten Mengenstufe')).toHaveTextContent(
+      '1.234 S\u00e4cke bis zur 1.234,5-Tonnen-Stufe (12,5% Rabatt)',
+    );
+    expect(screen.getByText('Gesamtgewicht der Bestellung: 1,25 tonnes')).toBeInTheDocument();
   });
 
   it('omits the blending fee breakdown when the order holds no configured line', async () => {

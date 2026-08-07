@@ -47,6 +47,7 @@ export type CustomBlendMutationResult =
   | 'VARIANT_NOT_FOUND'
   | 'VARIANT_NOT_IN_CART'
   | 'CART_RESERVED'
+  | 'BLOCKED_IN_COUNTRY'
   | 'BELOW_MOQ'
   | 'INVALID_QUANTITY';
 
@@ -121,6 +122,14 @@ export function createCustomBlendService(repository: CustomBlendRepository): Cus
       };
     },
     create(carts, cartId, body, context) {
+      if (
+        carts.blockedInCountry(cartId, [
+          body.baseVariantId,
+          ...body.ingredients.map((ingredient) => ingredient.variantId),
+        ])
+      ) {
+        return 'BLOCKED_IN_COUNTRY';
+      }
       const snapshot = resolveSnapshot(repository, body.baseVariantId, body.ingredients);
       return carts.addConfigured(
         cartId,
@@ -131,6 +140,14 @@ export function createCustomBlendService(repository: CustomBlendRepository): Cus
       );
     },
     replace(carts, cartId, body, context) {
+      if (
+        carts.blockedInCountry(cartId, [
+          body.baseVariantId,
+          ...body.ingredients.map((ingredient) => ingredient.variantId),
+        ])
+      ) {
+        return 'BLOCKED_IN_COUNTRY';
+      }
       const snapshot = resolveSnapshot(repository, body.baseVariantId, body.ingredients);
       return carts.replaceConfigured(
         cartId,

@@ -2,17 +2,19 @@ import type { Cart, CartLineVariantSnap } from '@shop/contracts/cart';
 import {
   CUSTOM_BLEND_FEE_CENTS,
   CustomBlendSnapshot as CustomBlendSnapshotSchema,
-  SACK_WEIGHT_GRAMS,
   type CustomBlendSnapshot,
 } from '@shop/contracts';
 import { Value } from '@sinclair/typebox/value';
+import { LEGACY_DATA_COUNTRY, type Country } from '@shop/contracts/country';
 import { toProductContract } from '../../mappers/product.js';
 import type { CartLineRow, CartRepository } from './cartRepository.js';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
 import type { InventoryService } from '../inventory/inventoryService.js';
+import type { CountryProfileService } from '../countryProfile/countryProfileService.js';
 import {
+  minimumOrderQuantity,
   nextTierProgress,
   perTonneCents,
   resolveUnitPriceCents,
@@ -24,6 +26,14 @@ import {
   calculateCustomBlendLinePricing,
   normalizeCustomBlendSpec,
 } from '../customBlend/customBlendRules.js';
+import {
+  aggregateBulkAddDemand,
+  classifyBulkAddGroup,
+  fanOutBulkAddOutcome,
+  type BulkAddGroup,
+  type BulkAddOutcome,
+  type BulkAddRequest,
+} from './cartBulkAddRules.js';
 
 export interface CartAuditDependencies {
   unitOfWork: UnitOfWork;
@@ -33,11 +43,32 @@ export interface CartAuditDependencies {
 export interface CartAvailabilityDependencies {
   inventory: Pick<InventoryService, 'availableToSell'>;
   clock: { now(): Date };
+  countryProfiles?: Pick<CountryProfileService, 'isCategoryBlocked' | 'isProductBlocked'>;
+}
+
+/** Whole-request rejection codes for a bulk add; per-line problems are outcomes, not errors. */
+export type BulkAddRejection = 'CART_NOT_FOUND' | 'CART_RESERVED';
+
+export interface BulkAddResult {
+  cart: Cart;
+  /** One outcome per submitted request, in submission order. */
+  outcomes: BulkAddOutcome[];
 }
 
 export interface CartService {
-  create(context?: AuditContext): { cartId: string };
+  create(context?: AuditContext, country?: string): { cartId: string };
   get(cartId: string): Cart | undefined;
+  country(cartId: string): Country | undefined;
+  blockedInCountry(cartId: string, variantIds: readonly number[]): boolean;
+  /**
+   * Adds many lines in one transaction with per-line outcomes. Classified skips still commit the
+   * lines that succeeded; only an unexpected throw rolls the whole mutation back.
+   */
+  addMany(
+    cartId: string,
+    requests: readonly BulkAddRequest[],
+    context?: AuditContext,
+  ): BulkAddResult | BulkAddRejection;
   add(
     cartId: string,
     variantId: string,
@@ -48,6 +79,7 @@ export interface CartService {
     | 'CART_NOT_FOUND'
     | 'VARIANT_NOT_FOUND'
     | 'CART_RESERVED'
+    | 'BLOCKED_IN_COUNTRY'
     | 'BELOW_MOQ'
     | 'INVALID_QUANTITY';
   update(
@@ -80,6 +112,7 @@ export interface CartService {
     | 'CART_NOT_FOUND'
     | 'VARIANT_NOT_FOUND'
     | 'CART_RESERVED'
+    | 'BLOCKED_IN_COUNTRY'
     | 'BELOW_MOQ'
     | 'INVALID_QUANTITY';
   replaceConfigured(
@@ -88,7 +121,7 @@ export interface CartService {
     previousConfigKey: string,
     customBlend: CustomBlendSnapshot,
     context?: AuditContext,
-  ): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_IN_CART' | 'CART_RESERVED';
+  ): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_IN_CART' | 'CART_RESERVED' | 'BLOCKED_IN_COUNTRY';
 }
 
 export function createCartService(
@@ -97,10 +130,10 @@ export function createCartService(
   availabilityDependencies?: CartAvailabilityDependencies,
 ): CartService {
   return {
-    create: (context) =>
+    create: (context, country) =>
       runCartMutation(auditDependencies, () => {
         requireAuditContext(auditDependencies, context);
-        const result = createCart(repository);
+        const result = createCart(repository, country);
         if (context && auditDependencies) {
           auditDependencies.audit.append({
             action: 'cart.created',
@@ -111,6 +144,26 @@ export function createCartService(
         return result;
       }),
     get: (cartId) => getCart(repository, cartId, availabilityDependencies),
+    country: (cartId) => repository.country(cartId),
+    blockedInCountry: (cartId, variantIds) =>
+      blockedInCountry(repository, cartId, variantIds, availabilityDependencies),
+    addMany: (cartId, requests, context) => {
+      if (!auditDependencies) throw new Error('Cart audit dependencies are required for bulk add');
+      if (!availabilityDependencies) {
+        throw new Error('Cart availability dependencies are required for bulk add');
+      }
+      return runCartMutation(auditDependencies, () => {
+        requireAuditContext(auditDependencies, context);
+        return addManyItems(
+          repository,
+          cartId,
+          requests,
+          availabilityDependencies,
+          auditDependencies,
+          context!,
+        );
+      });
+    },
     add: (cartId, variantId, quantityOrContext, context) =>
       runCartMutation(auditDependencies, () => {
         const quantity = typeof quantityOrContext === 'number' ? quantityOrContext : undefined;
@@ -251,9 +304,9 @@ function requireAuditContext(
   if (dependencies && !context) throw new Error('Cart audit context is required');
 }
 
-export function createCart(repository: CartRepository): { cartId: string } {
+export function createCart(repository: CartRepository, country?: string): { cartId: string } {
   const cartId = crypto.randomUUID();
-  repository.create(cartId);
+  repository.create(cartId, country ?? LEGACY_DATA_COUNTRY);
   return { cartId };
 }
 
@@ -453,12 +506,16 @@ export function addItem(
   | 'CART_NOT_FOUND'
   | 'VARIANT_NOT_FOUND'
   | 'CART_RESERVED'
+  | 'BLOCKED_IN_COUNTRY'
   | 'BELOW_MOQ'
   | 'INVALID_QUANTITY' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
   if (!getCart(repository, cartId, availabilityDependencies)) return 'CART_NOT_FOUND';
   if (repository.isReserved(cartId, availabilityDependencies?.clock.now().toISOString()))
     return 'CART_RESERVED';
+  if (blockedInCountry(repository, cartId, [Number(variantId)], availabilityDependencies)) {
+    return 'BLOCKED_IN_COUNTRY';
+  }
   if (!repository.variantExists(variantId)) return 'VARIANT_NOT_FOUND';
   const variant = repository.getVariant(Number(variantId));
   if (!variant) return 'VARIANT_NOT_FOUND';
@@ -486,12 +543,23 @@ export function addConfiguredItem(
   | 'CART_NOT_FOUND'
   | 'VARIANT_NOT_FOUND'
   | 'CART_RESERVED'
+  | 'BLOCKED_IN_COUNTRY'
   | 'BELOW_MOQ'
   | 'INVALID_QUANTITY' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
   if (!getCart(repository, cartId, availabilityDependencies)) return 'CART_NOT_FOUND';
   if (repository.isReserved(cartId, availabilityDependencies?.clock.now().toISOString())) {
     return 'CART_RESERVED';
+  }
+  if (
+    blockedInCountry(
+      repository,
+      cartId,
+      [Number(variantId), ...customBlend.ingredients.map((ingredient) => ingredient.variantId)],
+      availabilityDependencies,
+    )
+  ) {
+    return 'BLOCKED_IN_COUNTRY';
   }
   const variant = repository.getVariant(Number(variantId));
   if (!variant || !repository.variantExists(variantId)) return 'VARIANT_NOT_FOUND';
@@ -512,21 +580,178 @@ export function addConfiguredItem(
   return getCart(repository, cartId, availabilityDependencies) ?? 'CART_NOT_FOUND';
 }
 
+/**
+ * Re-derives a configured blend from live facts instead of trusting the caller snapshot: the spec
+ * is re-normalized, re-hashed, and matched against the supplied `configKey`, ingredient facts are
+ * re-read, and the blending fee is always the current constant. Returns `undefined` when the blend
+ * can no longer be sold, which the classifier reports as `BLEND_UNAVAILABLE`.
+ */
+function resolveBulkAddBlend(
+  repository: CartRepository,
+  cartId: string,
+  variantId: number,
+  supplied: CustomBlendSnapshot,
+  availabilityDependencies: CartAvailabilityDependencies,
+): CustomBlendSnapshot | undefined {
+  let normalized;
+  try {
+    normalized = normalizeCustomBlendSpec(variantId, supplied.ingredients);
+  } catch {
+    return undefined;
+  }
+  if (normalized.configKey !== supplied.configKey) return undefined;
+  const factIds = [variantId, ...normalized.ingredients.map((ingredient) => ingredient.variantId)];
+  if (blockedInCountry(repository, cartId, factIds, availabilityDependencies)) return undefined;
+  const facts = repository.listEligibleCustomBlendFacts(factIds);
+  if (facts.length !== factIds.length) return undefined;
+  const byVariantId = new Map(facts.map((fact) => [fact.variant_id, fact]));
+  const base = byVariantId.get(variantId);
+  if (!base) return undefined;
+  const ingredients: CustomBlendSnapshot['ingredients'] = [];
+  for (const ingredient of normalized.ingredients) {
+    const fact = byVariantId.get(ingredient.variantId);
+    if (!fact || fact.variant_id === base.variant_id || fact.mixing_group !== base.mixing_group) {
+      return undefined;
+    }
+    ingredients.push({
+      variantId: fact.variant_id,
+      productId: String(fact.product_id),
+      productName: fact.product_name,
+      productDescription: fact.product_description,
+      mixingGroup: fact.mixing_group,
+      percentage: ingredient.percentage,
+    });
+  }
+  return {
+    configKey: normalized.configKey,
+    basePercentage: normalized.basePercentage,
+    mixingGroup: base.mixing_group,
+    ...(supplied.basePresentation ? { basePresentation: supplied.basePresentation } : {}),
+    ingredients,
+    blendingFeeCents: CUSTOM_BLEND_FEE_CENTS,
+    madeToOrder: true,
+    returnable: false,
+  };
+}
+
+/**
+ * Adds many lines at once. Ordinary and configured lines share one stock pre-flight, one cart
+ * touch, and one transaction; a line that fails classification is skipped without disturbing the
+ * rest. Each line is added at its full ordered quantity or not at all.
+ */
+export function addManyItems(
+  repository: CartRepository,
+  cartId: string,
+  requests: readonly BulkAddRequest[],
+  availabilityDependencies: CartAvailabilityDependencies,
+  auditDependencies: CartAuditDependencies,
+  context: AuditContext,
+): BulkAddResult | BulkAddRejection {
+  if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
+  if (!getCart(repository, cartId, availabilityDependencies)) return 'CART_NOT_FOUND';
+  const now = availabilityDependencies.clock.now();
+  if (repository.isReserved(cartId, now.toISOString())) return 'CART_RESERVED';
+
+  const groups = aggregateBulkAddDemand(requests);
+  const variantIds = [...new Set(groups.map((group) => group.variantId))];
+  const availability = new Map(
+    availabilityDependencies.inventory
+      .availableToSell(variantIds, now.toISOString())
+      .map((row) => [row.variantId, row]),
+  );
+
+  const outcomeByIdentity = new Map<string, BulkAddOutcome[]>();
+  const applied: Array<{
+    group: BulkAddGroup;
+    blend: CustomBlendSnapshot | undefined;
+    resultingQuantity: number;
+  }> = [];
+  for (const group of groups) {
+    const variant = repository.variantExists(String(group.variantId))
+      ? repository.getVariant(group.variantId)
+      : undefined;
+    const blend = group.customBlend
+      ? resolveBulkAddBlend(
+          repository,
+          cartId,
+          group.variantId,
+          group.customBlend,
+          availabilityDependencies,
+        )
+      : undefined;
+    const availabilityRow = availability.get(group.variantId);
+    const classification = classifyBulkAddGroup({
+      blockedInCountry: blockedInCountry(
+        repository,
+        cartId,
+        [group.variantId],
+        availabilityDependencies,
+      ),
+      variantRow: variant,
+      existingQuantity: repository.lineQuantity(cartId, String(group.variantId), group.configKey),
+      requestedQuantity: group.requestedQuantity,
+      availability: availabilityRow
+        ? {
+            availableToSell: availabilityRow.availableToSell,
+            backorderable: availabilityRow.backorderable,
+          }
+        : undefined,
+      ...(group.customBlend ? { blendValid: blend !== undefined } : {}),
+      now,
+    });
+    outcomeByIdentity.set(
+      `${group.variantId} ${group.configKey}`,
+      fanOutBulkAddOutcome(group, classification),
+    );
+    if (classification.status === 'added') {
+      applied.push({ group, blend, resultingQuantity: classification.resultingQuantity });
+    }
+  }
+
+  for (const { group, blend } of applied) {
+    if (blend) {
+      repository.addConfiguredLineQuantity(
+        cartId,
+        String(group.variantId),
+        blend.configKey,
+        JSON.stringify(blend),
+        group.requestedQuantity,
+      );
+    } else {
+      repository.addLineQuantity(cartId, String(group.variantId), group.requestedQuantity);
+    }
+  }
+  if (applied.length > 0) {
+    repository.touch(cartId);
+    for (const { group, resultingQuantity } of applied) {
+      auditDependencies.audit.append({
+        action: 'cart.product_added',
+        cartId,
+        productId: group.variantId,
+        // `cart.product_added` metadata carries the post-add cumulative line quantity, matching
+        // the single-line `add`/`addConfigured` emitters — not the delta this request contributed.
+        quantity: resultingQuantity,
+        context,
+      });
+    }
+  }
+
+  const cart = getCart(repository, cartId, availabilityDependencies);
+  if (!cart) return 'CART_NOT_FOUND';
+  const cursorByIdentity = new Map<string, number>();
+  const outcomes = requests.map((request) => {
+    const identity = `${request.variantId} ${request.customBlend?.configKey ?? ''}`;
+    const cursor = cursorByIdentity.get(identity) ?? 0;
+    cursorByIdentity.set(identity, cursor + 1);
+    const outcome = outcomeByIdentity.get(identity)?.[cursor];
+    if (!outcome) throw new Error('Bulk add outcome is missing for a submitted request');
+    return outcome;
+  });
+  return { cart, outcomes };
+}
+
 function minimumMoqQuantity(weightGrams: number, moqSacks: number): number | undefined {
-  if (
-    !Number.isSafeInteger(weightGrams) ||
-    weightGrams < 1 ||
-    !Number.isSafeInteger(moqSacks) ||
-    moqSacks < 1 ||
-    moqSacks > Math.floor(Number.MAX_SAFE_INTEGER / SACK_WEIGHT_GRAMS)
-  ) {
-    return undefined;
-  }
-  const quantity = Math.ceil((moqSacks * SACK_WEIGHT_GRAMS) / weightGrams);
-  if (!Number.isSafeInteger(quantity) || quantity < 1) {
-    return undefined;
-  }
-  return quantity;
+  return minimumOrderQuantity(weightGrams, moqSacks);
 }
 
 function supportsCartLineArithmetic(
@@ -607,11 +832,21 @@ export function replaceConfiguredItem(
   previousConfigKey: string,
   customBlend: CustomBlendSnapshot,
   availabilityDependencies?: CartAvailabilityDependencies,
-): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_IN_CART' | 'CART_RESERVED' {
+): Cart | 'CART_NOT_FOUND' | 'VARIANT_NOT_IN_CART' | 'CART_RESERVED' | 'BLOCKED_IN_COUNTRY' {
   if (!repository.exists(cartId)) return 'CART_NOT_FOUND';
   if (!getCart(repository, cartId, availabilityDependencies)) return 'CART_NOT_FOUND';
   if (repository.isReserved(cartId, availabilityDependencies?.clock.now().toISOString())) {
     return 'CART_RESERVED';
+  }
+  if (
+    blockedInCountry(
+      repository,
+      cartId,
+      [Number(variantId), ...customBlend.ingredients.map((ingredient) => ingredient.variantId)],
+      availabilityDependencies,
+    )
+  ) {
+    return 'BLOCKED_IN_COUNTRY';
   }
   const changed = repository.replaceConfiguredLine(
     cartId,
@@ -623,4 +858,21 @@ export function replaceConfiguredItem(
   if (!changed) return 'VARIANT_NOT_IN_CART';
   repository.touch(cartId);
   return getCart(repository, cartId, availabilityDependencies) ?? 'CART_NOT_FOUND';
+}
+
+function blockedInCountry(
+  repository: CartRepository,
+  cartId: string,
+  variantIds: readonly number[],
+  availabilityDependencies?: CartAvailabilityDependencies,
+): boolean {
+  const countryProfiles = availabilityDependencies?.countryProfiles;
+  if (!countryProfiles) return false;
+  return repository
+    .listCountryVariantFacts(cartId, variantIds)
+    .some(
+      (fact) =>
+        countryProfiles.isCategoryBlocked(fact.country, fact.product_category) ||
+        countryProfiles.isProductBlocked(fact.country, fact.product_slug),
+    );
 }

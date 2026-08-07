@@ -9,7 +9,7 @@ import type { InventoryService } from '../features/inventory/inventoryService.js
 import type { InventoryReceiptResult } from '../features/inventory/inventoryTypes.js';
 import { InventoryError } from '../features/inventory/inventoryTypes.js';
 import { requireAdmin } from '../plugins/auth.js';
-import { sendConflict, sendNotFound } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 
 /** Composition root supplies transaction and injected clock; inventory service remains transaction-free. */
 export interface AdminInventoryRouteServices {
@@ -24,14 +24,22 @@ export interface AdminInventoryRouteServices {
 }
 
 function sendInventoryError(
-  reply: Parameters<typeof sendConflict>[0],
+  request: Parameters<typeof sendPublicError>[0],
+  reply: Parameters<typeof sendPublicError>[1],
   error: InventoryError,
 ): void {
-  if (error.code === 'IDEMPOTENCY_KEY_REUSED') {
-    sendConflict(reply, error.message);
-    return;
+  switch (error.code) {
+    case 'RESERVATION_EXPIRED':
+    case 'INSUFFICIENT_STOCK':
+      // This admin receipt boundary has no canonical reservation/stock metadata. Preserve the
+      // conflict status without fabricating product IDs or expiry timestamps.
+      sendPublicError(request, reply, 409, 'CONFLICT');
+      return;
+    case 'IDEMPOTENCY_KEY_REUSED':
+    case 'INVENTORY_CORRUPTION':
+      sendPublicError(request, reply, 409, error.code);
+      return;
   }
-  sendConflict(reply, error.message);
 }
 
 /** Hidden local replenishment command. First write returns 201; exact replay returns 200. */
@@ -61,7 +69,7 @@ export default function adminInventoryRoutes(
       const now = services.clock.now().toISOString();
       const variantId = request.body.variantId;
       if (services.inventory.availableToSell([variantId], now).length === 0) {
-        sendNotFound(reply, 'Variant');
+        sendPublicError(request, reply, 404, 'VARIANT_NOT_FOUND');
         return;
       }
       try {
@@ -90,7 +98,7 @@ export default function adminInventoryRoutes(
         };
       } catch (error) {
         if (error instanceof InventoryError) {
-          sendInventoryError(reply, error);
+          sendInventoryError(request, reply, error);
           return;
         }
         throw error;

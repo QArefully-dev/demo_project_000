@@ -88,6 +88,7 @@ const signedInUser = {
   email: 'buyer@example.test',
   displayName: 'Trade Buyer',
   role: 'customer' as const,
+  country: 'UK' as const,
 };
 
 function mockAnonymous() {
@@ -169,9 +170,12 @@ const clearCart = vi.fn();
 const cartContext: ReturnType<typeof useCart> = {
   cart,
   cartId: cart.id,
+  cartGeneration: 0,
   isInitializing: false,
   isLoading: false,
   error: null,
+  errorCode: null,
+  errorState: null,
   isCartAvailable: true,
   pendingActions: {},
   isActionPending: () => false,
@@ -179,8 +183,11 @@ const cartContext: ReturnType<typeof useCart> = {
   addBundle: vi.fn().mockResolvedValue(true),
   addCustomBlend: vi.fn().mockResolvedValue(true),
   replaceCustomBlend: vi.fn().mockResolvedValue(true),
+  quickOrder: vi.fn().mockResolvedValue(false),
   updateQuantity: vi.fn().mockResolvedValue(true),
   removeItem: vi.fn().mockResolvedValue(true),
+  reorder: vi.fn().mockResolvedValue(false),
+  addSavedListToCart: vi.fn().mockResolvedValue(false),
   refreshCart: vi.fn().mockResolvedValue(true),
   retryCart: vi.fn().mockResolvedValue(true),
   clearCart,
@@ -257,9 +264,9 @@ describe('CheckoutPage', { timeout: 20_000 }, () => {
   it('renders server-resolved pack, tonne, and pack-weight values in the order summary', () => {
     renderCheckout();
 
-    expect(screen.getByText(/Resolved pack price: \$10.00/)).toBeInTheDocument();
-    expect(screen.getByText(/\$400.00 \/ tonne/)).toBeInTheDocument();
-    expect(screen.getByText(/25,?000g pack/)).toBeInTheDocument();
+    expect(screen.getByText(/Resolved pack price: \$12.50/)).toBeInTheDocument();
+    expect(screen.getByText(/\$500.00 \/ tonne/)).toBeInTheDocument();
+    expect(screen.getByText(/25 kg pack/)).toBeInTheDocument();
   });
 
   it('discloses blend composition, the fee split, and the made-to-order terms', async () => {
@@ -307,7 +314,7 @@ describe('CheckoutPage', { timeout: 20_000 }, () => {
     expect(screen.getByText(/80% Powdered Water — 20% Chalk Filler/)).toBeInTheDocument();
     expect(screen.getByText('Custom blend')).toBeInTheDocument();
     expect(screen.getByTestId('custom-blend-livery')).toBeInTheDocument();
-    expect(screen.getByText(/Base material: \$10.00 · Blending fee: \$25.00/)).toBeInTheDocument();
+    expect(screen.getByText(/Base material: \$12.50 · Blending fee: \$31.25/)).toBeInTheDocument();
     expect(screen.getByText('Blending fees')).toBeInTheDocument();
     expect(
       screen.getByText(/Made to order\. Custom blends cannot be returned/),
@@ -317,8 +324,8 @@ describe('CheckoutPage', { timeout: 20_000 }, () => {
   it('adds the server-provided delivery preview to the checkout total', () => {
     renderCheckout();
 
-    expect(screen.getByText('$9.99')).toBeInTheDocument();
-    expect(screen.getByText('$19.99')).toBeInTheDocument();
+    expect(screen.getByText('$12.49')).toBeInTheDocument();
+    expect(screen.getByText('$24.99')).toBeInTheDocument();
   });
 
   it('displays the freight-inclusive total returned by a valid promo quote', async () => {
@@ -351,8 +358,8 @@ describe('CheckoutPage', { timeout: 20_000 }, () => {
     await user.type(screen.getByLabelText('Order promotion'), 'SAVE10');
     await user.click(screen.getByRole('button', { name: 'Apply' }));
 
-    expect(await screen.findByText('$54.99')).toBeInTheDocument();
-    expect(screen.getByText('$9.99')).toBeInTheDocument();
+    expect(await screen.findByText('$68.74')).toBeInTheDocument();
+    expect(screen.getByText('$12.49')).toBeInTheDocument();
   });
 
   it('renders server-provided scoped promo details without recalculating totals', async () => {
@@ -388,9 +395,9 @@ describe('CheckoutPage', { timeout: 20_000 }, () => {
     await user.click(screen.getByRole('button', { name: 'Apply' }));
 
     expect(await screen.findByText('Eligible subtotal (aggregates)')).toBeInTheDocument();
-    expect(screen.getByText('$32.00')).toBeInTheDocument();
+    expect(screen.getByText('$40.00')).toBeInTheDocument();
     expect(screen.getByText('Discount (AGG10 · aggregates)')).toBeInTheDocument();
-    expect(screen.getByText('$48.79')).toBeInTheDocument();
+    expect(screen.getByText('$60.99')).toBeInTheDocument();
   });
 
   it('carries a clearance-priced catalog line into a scoped-promo checkout total', async () => {
@@ -450,14 +457,14 @@ describe('CheckoutPage', { timeout: 20_000 }, () => {
     const user = userEvent.setup();
     renderCheckout();
 
-    expect(screen.getByText(/Resolved pack price: \$24.00/)).toBeInTheDocument();
+    expect(screen.getByText(/Resolved pack price: \$30.00/)).toBeInTheDocument();
     await user.type(screen.getByLabelText('Order promotion'), 'GARDEN10');
     await user.click(screen.getByRole('button', { name: 'Apply' }));
 
     expect(await screen.findByText('Eligible subtotal (Garden & Outdoors)')).toBeInTheDocument();
-    expect(screen.getAllByText('$120.00')).toHaveLength(3);
+    expect(screen.getAllByText('$150.00')).toHaveLength(3);
     expect(screen.getByText('Discount (GARDEN10 · Garden & Outdoors)')).toBeInTheDocument();
-    expect(screen.getByText('$117.99')).toBeInTheDocument();
+    expect(screen.getByText('$147.49')).toBeInTheDocument();
   });
 
   it('renders a category mismatch promo error', async () => {
@@ -642,7 +649,7 @@ describe('CheckoutPage', { timeout: 20_000 }, () => {
     renderCheckout();
     await completeDeliveryStep(user);
 
-    expect(await screen.findByText('Delivery slots are unavailable')).toBeInTheDocument();
+    expect(await screen.findByText('Delivery slots are unavailable.')).toBeInTheDocument();
     expect(screen.queryByLabelText(/August 3, 2026 · Morning/)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Retry delivery slots' }));
@@ -668,7 +675,7 @@ describe('CheckoutPage', { timeout: 20_000 }, () => {
     expect(
       await screen.findByText('The delivery slot you chose is no longer bookable.'),
     ).toBeInTheDocument();
-    expect(screen.getByText(/earliest delivery date is now 2026-08-06/)).toBeInTheDocument();
+    expect(screen.getByText(/earliest delivery date is now August 6, 2026/)).toBeInTheDocument();
     expect(clearCart).not.toHaveBeenCalled();
     const firstKey = vi.mocked(pay).mock.calls[0]![0].idempotencyKey;
 
@@ -869,7 +876,7 @@ describe('CheckoutPage', { timeout: 20_000 }, () => {
       resolveSecond({ valid: false, error: 'New promo invalid' });
       await second;
     });
-    await screen.findByText('New promo invalid');
+    await screen.findByText('Invalid promo code');
     expect(screen.getByRole('button', { name: 'Apply' })).toBeEnabled();
   });
 

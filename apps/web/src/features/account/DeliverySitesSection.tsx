@@ -17,6 +17,13 @@ import {
   type PostalAddressFieldErrors,
 } from './PostalAddressFields';
 import { TradeCheckbox, TradeListStatus, TradeTextField } from './TradeFormFields';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { identityAccountMessages } from '@shop/localisation/messages/identityAccount';
+import {
+  localizeAccountError,
+  localizeValidationErrors,
+  localizeValidationMessage,
+} from './accountError';
 import {
   TRADE_FIELD_BOUNDS,
   CONTACT_PHONE_BOUNDS,
@@ -113,6 +120,7 @@ function DeliverySiteForm({
   onCancel,
   onSubmit,
 }: SiteFormProps) {
+  const { translate } = useLocalisation();
   const [draft, setDraft] = useState<SiteDraft>(initialDraft);
   const [errors, setErrors] = useState<SiteDraftErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -131,7 +139,7 @@ function DeliverySiteForm({
     try {
       await onSubmit(result.body);
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : 'Unable to save delivery site');
+      setSubmitError(localizeAccountError(error, translate, 'account.common.saveError'));
     } finally {
       setSubmitting(false);
     }
@@ -149,28 +157,28 @@ function DeliverySiteForm({
       )}
       <TradeTextField
         id={`${idPrefix}-label`}
-        label="Site name"
+        label={translate(identityAccountMessages, 'account.trade.siteName')}
         value={draft.label}
         onChange={(label) => setDraft({ ...draft, label })}
-        error={errors.label}
+        error={localizeValidationMessage(errors.label, translate, translate)}
         maxLength={TRADE_FIELD_BOUNDS.label}
       />
       <div className="grid gap-3 sm:grid-cols-2">
         <TradeTextField
           id={`${idPrefix}-contactName`}
-          label="Contact name"
+          label={translate(identityAccountMessages, 'account.trade.contactName')}
           value={draft.contactName}
           onChange={(contactName) => setDraft({ ...draft, contactName })}
-          error={errors.contactName}
+          error={localizeValidationMessage(errors.contactName, translate, translate)}
           maxLength={TRADE_FIELD_BOUNDS.contactName}
           autoComplete="name"
         />
         <TradeTextField
           id={`${idPrefix}-contactPhone`}
-          label="Contact phone"
+          label={translate(identityAccountMessages, 'account.trade.contactPhone')}
           value={draft.contactPhone}
           onChange={(contactPhone) => setDraft({ ...draft, contactPhone })}
-          error={errors.contactPhone}
+          error={localizeValidationMessage(errors.contactPhone, translate, translate)}
           maxLength={CONTACT_PHONE_BOUNDS.max}
           autoComplete="tel"
           inputMode="tel"
@@ -178,23 +186,23 @@ function DeliverySiteForm({
       </div>
       <PostalAddressFields
         idPrefix={idPrefix}
-        legend="Delivery address"
+        legend={translate(identityAccountMessages, 'account.delivery.addressLegend')}
         value={draft.address}
-        errors={errors.address}
+        errors={localizeValidationErrors(errors.address, translate, translate)}
         onChange={(address) => setDraft({ ...draft, address })}
       />
       <TradeCheckbox
         id={`${idPrefix}-isDefault`}
-        label="Use as my default delivery site"
+        label={translate(identityAccountMessages, 'account.delivery.defaultCheckbox')}
         checked={draft.isDefault}
         onChange={(isDefault) => setDraft({ ...draft, isDefault })}
       />
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={submitting}>
-          {submitting ? 'Saving…' : submitLabel}
+          {submitting ? translate(identityAccountMessages, 'account.common.saving') : submitLabel}
         </Button>
         <Button type="button" size="sm" variant="outline" onClick={onCancel} disabled={submitting}>
-          Cancel
+          {translate(identityAccountMessages, 'account.common.cancel')}
         </Button>
       </div>
     </form>
@@ -206,6 +214,7 @@ interface DeliverySitesSectionProps {
 }
 
 export function DeliverySitesSection({ profile }: DeliverySitesSectionProps) {
+  const { translate } = useLocalisation();
   const { deliverySites } = profile;
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -220,7 +229,7 @@ export function DeliverySitesSection({ profile }: DeliverySitesSectionProps) {
     try {
       await action();
     } catch (error) {
-      setRowError(error instanceof Error ? error.message : 'Action failed');
+      setRowError(localizeAccountError(error, translate, 'account.common.actionFailed'));
     } finally {
       setBusyId(null);
     }
@@ -232,15 +241,15 @@ export function DeliverySitesSection({ profile }: DeliverySitesSectionProps) {
         <div>
           <h2 id="delivery-sites-heading" className="flex items-center gap-2 text-base font-medium">
             <MapPin className="h-4 w-4 text-muted-foreground" />
-            Delivery sites
+            {translate(identityAccountMessages, 'account.delivery.title')}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Saved destinations you can pick at checkout.
+            {translate(identityAccountMessages, 'account.delivery.description')}
           </p>
         </div>
         {!adding && (
           <Button type="button" size="sm" onClick={() => setAdding(true)}>
-            Add delivery site
+            {translate(identityAccountMessages, 'account.delivery.add')}
           </Button>
         )}
       </div>
@@ -250,7 +259,7 @@ export function DeliverySitesSection({ profile }: DeliverySitesSectionProps) {
           <DeliverySiteForm
             idPrefix="new-site"
             initialDraft={EMPTY_SITE_DRAFT}
-            submitLabel="Save delivery site"
+            submitLabel={translate(identityAccountMessages, 'account.delivery.save')}
             onCancel={() => setAdding(false)}
             onSubmit={async (body) => {
               await profile.addDeliverySite(body);
@@ -265,8 +274,8 @@ export function DeliverySitesSection({ profile }: DeliverySitesSectionProps) {
         error={deliverySites.error}
         onRetry={profile.reloadDeliverySites}
         isEmpty={activeSites.length === 0}
-        loadingLabel="Loading delivery sites…"
-        emptyLabel="No delivery sites saved yet."
+        loadingLabel={translate(identityAccountMessages, 'account.delivery.loading')}
+        emptyLabel={translate(identityAccountMessages, 'account.delivery.empty')}
       />
 
       {rowError && (
@@ -282,7 +291,7 @@ export function DeliverySitesSection({ profile }: DeliverySitesSectionProps) {
               <DeliverySiteForm
                 idPrefix={`site-${site.id}`}
                 initialDraft={draftFromSite(site)}
-                submitLabel="Save changes"
+                submitLabel={translate(identityAccountMessages, 'account.common.save')}
                 onCancel={() => setEditingId(null)}
                 onSubmit={async (body) => {
                   const patch: UpdateDeliverySiteBody = body;
@@ -295,7 +304,11 @@ export function DeliverySitesSection({ profile }: DeliverySitesSectionProps) {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{site.label}</span>
-                    {site.isDefault && <Badge variant="secondary">Default</Badge>}
+                    {site.isDefault && (
+                      <Badge variant="secondary">
+                        {translate(identityAccountMessages, 'account.delivery.default')}
+                      </Badge>
+                    )}
                   </div>
                   {/* An absent phone renders nothing at all — no dangling separator, no empty label. */}
                   <p className="mt-1 text-sm text-muted-foreground">
@@ -318,7 +331,7 @@ export function DeliverySitesSection({ profile }: DeliverySitesSectionProps) {
                         void runRowAction(site.id, () => profile.setDefaultDeliverySite(site.id))
                       }
                     >
-                      Set as default
+                      {translate(identityAccountMessages, 'account.delivery.setDefault')}
                     </Button>
                   )}
                   <Button
@@ -327,7 +340,9 @@ export function DeliverySitesSection({ profile }: DeliverySitesSectionProps) {
                     variant="outline"
                     onClick={() => setEditingId(site.id)}
                   >
-                    Edit {site.label}
+                    {translate(identityAccountMessages, 'account.delivery.edit', {
+                      name: site.label,
+                    })}
                   </Button>
                   <Button
                     type="button"
@@ -336,7 +351,9 @@ export function DeliverySitesSection({ profile }: DeliverySitesSectionProps) {
                     disabled={busyId === site.id}
                     onClick={() => void runRowAction(site.id, () => profile.retireSite(site.id))}
                   >
-                    Remove {site.label}
+                    {translate(identityAccountMessages, 'account.delivery.remove', {
+                      name: site.label,
+                    })}
                   </Button>
                 </div>
               </div>

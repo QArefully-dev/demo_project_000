@@ -1,4 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
+import type { Country } from '@shop/contracts/country';
+import { passwordResetCopy } from '@shop/localisation/messages/asyncContent';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
@@ -14,7 +16,7 @@ export type PasswordResetResult =
 export type ResetTokenSource = () => string;
 
 export interface PasswordResetService {
-  request(email: string, context?: AuditContext): void;
+  request(email: string, country: Country, context?: AuditContext): void;
   reset(params: {
     token: string;
     newPassword: string;
@@ -47,12 +49,12 @@ export function createPasswordResetService(dependencies: {
   new URL(dependencies.baseUrl);
 
   return {
-    request(email, context) {
+    request(email, country, context) {
       if (context && context.actor.type !== 'anonymous') {
         throw new Error('Password reset request audit requires an anonymous actor');
       }
       const now = dependencies.clock.now();
-      const user = dependencies.repository.findUserByEmail(normalizeEmail(email));
+      const user = dependencies.repository.findUserByEmail(normalizeEmail(email), country);
       if (!user) return;
 
       const token = tokenSource();
@@ -67,11 +69,17 @@ export function createPasswordResetService(dependencies: {
           expiresAt,
           createdAt,
         });
+        const copy = passwordResetCopy(country, createResetLink(dependencies.baseUrl, token));
         dependencies.mailbox.add({
           recipient: user.email,
-          subject: 'Password Reset Request',
-          body: `Click the link to reset your password: ${createResetLink(dependencies.baseUrl, token)}`,
-          kind: 'reset',
+          subject: copy.subject,
+          body: copy.body,
+          kind: 'template',
+          templateKey: 'password_reset',
+          templateParams: {
+            resetUrl: createResetLink(dependencies.baseUrl, token),
+          },
+          country,
           createdAt,
         });
         if (context) {
@@ -106,7 +114,11 @@ export function createPasswordResetService(dependencies: {
         if (new Date(current.expiresAt) <= new Date(now)) return 'EXPIRED';
         if (!dependencies.repository.consume(current.id, now)) return 'ALREADY_USED';
 
-        dependencies.repository.updatePassword(current.userId, passwordHash);
+        // The guarded update is the final deletion boundary. It prevents a reset that began
+        // before account deletion from restoring credentials after the tombstone commits.
+        if (!dependencies.repository.updatePassword(current.userId, passwordHash)) {
+          return 'INVALID_TOKEN';
+        }
         dependencies.repository.invalidateSessions(current.userId);
         if (requestId !== undefined) {
           if (!dependencies.audit) {

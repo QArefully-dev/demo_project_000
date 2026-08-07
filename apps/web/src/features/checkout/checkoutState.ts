@@ -1,5 +1,9 @@
 import type { DeliverySlot } from '@shop/contracts/delivery';
 import type { PromoValidationErrorCode } from '@shop/contracts/promos';
+import type { PublicErrorCode } from '@shop/contracts/public-errors';
+import type { ApiErrorMeta } from '@/api/client';
+import type { MessageParams } from '@shop/localisation';
+import { checkoutMessages } from '@shop/localisation/messages/checkout';
 import {
   EMPTY_POSTAL_ADDRESS_DRAFT,
   type PostalAddressDraft,
@@ -17,6 +21,15 @@ export type BillingField =
 export type CardField = 'cardNumber' | 'cardExpiry' | 'cardCvc';
 export type Field = ContactField | DeliveryField | ScheduleField | BillingField | CardField;
 export type FieldErrors = Partial<Record<Field, string>>;
+
+/** Stable checkout failure identity. Copy resolves at render time for active country. */
+export type CheckoutMessageKey = keyof typeof checkoutMessages;
+export type CheckoutErrorState = {
+  readonly code: PublicErrorCode | null;
+  readonly meta: ApiErrorMeta | null;
+  readonly key: CheckoutMessageKey;
+  readonly params?: MessageParams;
+};
 
 /**
  * Whether a destination or billing party is a stored trade record or entered for this order only.
@@ -58,7 +71,15 @@ export type CheckoutBilling = {
 export type CheckoutConflict =
   | { code: 'RESERVATION_EXPIRED'; reservationExpiresAt: string }
   | { code: 'INSUFFICIENT_STOCK'; productIds: string[] }
-  | { code: 'DELIVERY_SLOT_UNAVAILABLE'; earliestDate: string };
+  | { code: 'DELIVERY_SLOT_UNAVAILABLE'; earliestDate: string }
+  | { code: 'PENDING_APPROVAL'; approvalRequestId: string }
+  | { code: 'APPROVAL_REJECTED' }
+  | { code: 'APPROVAL_EXPIRED' }
+  | { code: 'APPROVAL_TOTAL_DRIFT' }
+  | { code: 'DELIVERY_COUNTRY_NOT_ALLOWED' };
+
+export const DELIVERY_COUNTRY_NOT_ALLOWED_MESSAGE =
+  'Your account cannot deliver to the selected country. Choose an available delivery country before retrying.';
 
 export type CheckoutState = {
   contact: Record<ContactField, string>;
@@ -75,10 +96,13 @@ export type CheckoutState = {
   promoCategoryScope: string | null;
   promoTotalCents: number | null;
   promoError: string | null;
+  promoErrorState: CheckoutErrorState | null;
   promoErrorCode: PromoValidationErrorCode | null;
+  promoMinSubtotalCents: number | null;
   promoValidating: boolean;
   submitting: boolean;
   paymentError: string | null;
+  paymentErrorState: CheckoutErrorState | null;
   idempotencyKey: string;
   cartRecoveryMessage: string | null;
   conflict: CheckoutConflict | null;
@@ -105,13 +129,19 @@ export type CheckoutEvent =
       promoCategoryScope: string | null;
       totalCents: number;
     }
-  | { type: 'promo-failed'; error: string; errorCode: PromoValidationErrorCode | null }
+  | {
+      type: 'promo-failed';
+      error?: string;
+      errorState?: CheckoutErrorState;
+      errorCode: PromoValidationErrorCode | null;
+      minSubtotalCents?: number | null;
+    }
   | { type: 'promo-removed'; idempotencyKey: string }
   | { type: 'quote-changed'; idempotencyKey: string }
   | { type: 'cart-recovered'; message: string }
   | { type: 'conflict'; conflict: CheckoutConflict; idempotencyKey: string }
   | { type: 'submission-started' }
-  | { type: 'submission-failed'; error: string }
+  | { type: 'submission-failed'; error?: string; errorState?: CheckoutErrorState }
   | { type: 'submission-finished' };
 
 export const contactFields: ContactField[] = ['customerName', 'customerEmail'];
@@ -165,10 +195,13 @@ export function initialCheckoutState(): CheckoutState {
     promoCategoryScope: null,
     promoTotalCents: null,
     promoError: null,
+    promoErrorState: null,
     promoErrorCode: null,
+    promoMinSubtotalCents: null,
     promoValidating: false,
     submitting: false,
     paymentError: null,
+    paymentErrorState: null,
     idempotencyKey: createIdempotencyKey(),
     cartRecoveryMessage: null,
     conflict: null,
@@ -190,6 +223,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         ...state,
         contact: { ...state.contact, [event.field]: event.value },
         paymentError: null,
+        paymentErrorState: null,
         idempotencyKey: event.idempotencyKey,
       };
     case 'delivery-changed':
@@ -197,6 +231,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         ...state,
         delivery: { ...state.delivery, ...event.patch, initialized: true },
         paymentError: null,
+        paymentErrorState: null,
         idempotencyKey: event.idempotencyKey,
       };
     case 'schedule-changed':
@@ -206,6 +241,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         // A newly chosen slot supersedes a slot-unavailable rejection; other conflicts stand.
         conflict: state.conflict?.code === 'DELIVERY_SLOT_UNAVAILABLE' ? null : state.conflict,
         paymentError: null,
+        paymentErrorState: null,
         idempotencyKey: event.idempotencyKey,
       };
     case 'billing-changed':
@@ -213,6 +249,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         ...state,
         billing: { ...state.billing, ...event.patch, initialized: true },
         paymentError: null,
+        paymentErrorState: null,
         idempotencyKey: event.idempotencyKey,
       };
     case 'delivery-sites-loaded': {
@@ -248,6 +285,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         ...state,
         card: { ...state.card, [event.field]: event.value },
         paymentError: null,
+        paymentErrorState: null,
         idempotencyKey: event.idempotencyKey,
       };
     case 'field-touched':
@@ -265,19 +303,31 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         ...state,
         promoCode: event.value,
         promoError: null,
+        promoErrorState: null,
         promoErrorCode: null,
+        promoMinSubtotalCents: null,
         promoValidating: false,
         paymentError: null,
+        paymentErrorState: null,
         idempotencyKey: event.idempotencyKey,
       };
     case 'promo-started':
-      return { ...state, promoValidating: true, promoError: null, promoErrorCode: null };
+      return {
+        ...state,
+        promoValidating: true,
+        promoError: null,
+        promoErrorState: null,
+        promoErrorCode: null,
+        promoMinSubtotalCents: null,
+      };
     case 'promo-applied':
       return {
         ...state,
         promoValidating: false,
         promoError: null,
+        promoErrorState: null,
         promoErrorCode: null,
+        promoMinSubtotalCents: null,
         appliedPromo: event.promoCode,
         appliedPromoQuoteKey: event.quoteKey,
         discountCents: event.discountCents,
@@ -289,8 +339,10 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
       return {
         ...state,
         promoValidating: false,
-        promoError: event.error,
+        promoError: event.error ?? event.errorState?.code ?? event.errorState?.key ?? null,
+        promoErrorState: event.errorState ?? null,
         promoErrorCode: event.errorCode,
+        promoMinSubtotalCents: event.minSubtotalCents ?? null,
       };
     case 'promo-removed':
       return {
@@ -303,7 +355,9 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         promoCategoryScope: null,
         promoTotalCents: null,
         promoError: null,
+        promoErrorState: null,
         promoErrorCode: null,
+        promoMinSubtotalCents: null,
         idempotencyKey: event.idempotencyKey,
       };
     case 'quote-changed':
@@ -316,9 +370,14 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         promoCategoryScope: null,
         promoTotalCents: null,
         promoError: null,
+        promoErrorState: null,
         promoErrorCode: null,
+        promoMinSubtotalCents: null,
         promoValidating: false,
         conflict: null,
+        submitting: false,
+        paymentError: null,
+        paymentErrorState: null,
         idempotencyKey: event.idempotencyKey,
       };
     case 'cart-recovered':
@@ -327,13 +386,26 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
       return {
         ...state,
         conflict: event.conflict,
-        paymentError: null,
+        paymentError:
+          event.conflict.code === 'DELIVERY_COUNTRY_NOT_ALLOWED' ? event.conflict.code : null,
+        paymentErrorState:
+          event.conflict.code === 'DELIVERY_COUNTRY_NOT_ALLOWED'
+            ? {
+                code: 'DELIVERY_COUNTRY_NOT_ALLOWED',
+                meta: null,
+                key: 'checkout.error.deliveryCountry',
+              }
+            : null,
         idempotencyKey: event.idempotencyKey,
       };
     case 'submission-started':
-      return { ...state, submitting: true, paymentError: null };
+      return { ...state, submitting: true, paymentError: null, paymentErrorState: null };
     case 'submission-failed':
-      return { ...state, paymentError: event.error };
+      return {
+        ...state,
+        paymentError: event.error ?? event.errorState?.code ?? event.errorState?.key ?? null,
+        paymentErrorState: event.errorState ?? null,
+      };
     case 'submission-finished':
       return { ...state, submitting: false };
   }

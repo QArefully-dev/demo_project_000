@@ -16,44 +16,44 @@ import {
 } from '@shop/contracts/reviews';
 import { ErrorResponse, SuccessResponse } from '@shop/contracts/common';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { ReviewServiceError, type ReviewService } from '../features/reviews/reviewService.js';
 import type { AuditContext } from '../features/audit/auditEvent.js';
 import { requireAdmin, requireAuth, requireCustomer } from '../plugins/auth.js';
 import type { SessionService } from '../features/auth/sessionService.js';
-import {
-  sendBadRequest,
-  sendConflict,
-  sendError,
-  sendForbidden,
-  sendNotFound,
-} from '../utils/errors.js';
+import type { ProductService } from '../features/catalog/productService.js';
+import type { Country } from '@shop/contracts/country';
+import { sendPublicError } from '../utils/errors.js';
 
 export interface ReviewRouteServices {
   sessions: SessionService;
   reviews: ReviewService;
+  products: Pick<ProductService, 'findCustomerProductById'>;
 }
 
 function sendReviewError(
-  reply: Parameters<typeof sendBadRequest>[0],
+  request: FastifyRequest,
+  reply: FastifyReply,
   error: ReviewServiceError,
 ): void {
   switch (error.code) {
     case 'INVALID_INPUT':
-      sendBadRequest(reply, error.message);
+      sendPublicError(request, reply, 400, 'INVALID_INPUT');
       return;
     case 'FORBIDDEN':
-      sendForbidden(reply);
+      sendPublicError(request, reply, 403, 'FORBIDDEN');
       return;
     case 'NOT_FOUND':
-      sendNotFound(reply, 'Review');
+      sendPublicError(request, reply, 404, 'NOT_FOUND');
+      return;
+    case 'INVALID_TRANSITION':
+      sendPublicError(request, reply, 409, 'INVALID_TRANSITION');
       return;
     case 'DUPLICATE':
-    case 'INVALID_TRANSITION':
-      sendConflict(reply, error.message);
+      sendPublicError(request, reply, 409, 'DUPLICATE');
       return;
     case 'TOO_MANY_REPORTS':
-      sendError(reply, 429, error.message);
+      sendPublicError(request, reply, 429, 'TOO_MANY_REPORTS');
       return;
   }
 }
@@ -68,6 +68,15 @@ export default function reviewsRoutes(
     actor: { type: 'user', userId },
     requestId,
   });
+  const adminContextFor = (
+    userId: number,
+    requestId: string,
+    standingCountry: Country,
+  ): AuditContext => ({
+    actor: { type: 'user', userId },
+    requestId,
+    standingCountry,
+  });
 
   typed.get(
     '/api/products/:productId/reviews',
@@ -79,15 +88,20 @@ export default function reviewsRoutes(
       },
     },
     (request, reply) => {
+      const productId = Number(request.params.productId);
+      if (!services.products.findCustomerProductById(productId, request.resolvedCountry)) {
+        sendPublicError(request, reply, 404, 'PRODUCT_NOT_FOUND');
+        return;
+      }
       try {
         return services.reviews.listProduct(
-          Number(request.params.productId),
+          productId,
           request.query,
           request.authenticatedUser?.role === 'customer' ? request.authenticatedUser.id : null,
         );
       } catch (error) {
         if (error instanceof ReviewServiceError) {
-          sendReviewError(reply, error);
+          sendReviewError(request, reply, error);
           return;
         }
         throw error;
@@ -105,14 +119,16 @@ export default function reviewsRoutes(
       },
     },
     (request, reply) => {
+      const productId = Number(request.params.productId);
+      if (!services.products.findCustomerProductById(productId, request.resolvedCountry)) {
+        sendPublicError(request, reply, 404, 'PRODUCT_NOT_FOUND');
+        return;
+      }
       try {
-        return services.reviews.findOwned(
-          request.authenticatedUser!.id,
-          Number(request.params.productId),
-        );
+        return services.reviews.findOwned(request.authenticatedUser!.id, productId);
       } catch (error) {
         if (error instanceof ReviewServiceError) {
-          sendReviewError(reply, error);
+          sendReviewError(request, reply, error);
           return;
         }
         throw error;
@@ -148,7 +164,7 @@ export default function reviewsRoutes(
         );
       } catch (error) {
         if (error instanceof ReviewServiceError) {
-          sendReviewError(reply, error);
+          sendReviewError(request, reply, error);
           return;
         }
         throw error;
@@ -182,7 +198,7 @@ export default function reviewsRoutes(
         );
       } catch (error) {
         if (error instanceof ReviewServiceError) {
-          sendReviewError(reply, error);
+          sendReviewError(request, reply, error);
           return;
         }
         throw error;
@@ -214,7 +230,7 @@ export default function reviewsRoutes(
         return { success: true as const };
       } catch (error) {
         if (error instanceof ReviewServiceError) {
-          sendReviewError(reply, error);
+          sendReviewError(request, reply, error);
           return;
         }
         throw error;
@@ -259,7 +275,7 @@ export default function reviewsRoutes(
           );
         } catch (error) {
           if (error instanceof ReviewServiceError) {
-            sendReviewError(reply, error);
+            sendReviewError(request, reply, error);
             return;
           }
           throw error;
@@ -296,7 +312,7 @@ export default function reviewsRoutes(
         );
       } catch (error) {
         if (error instanceof ReviewServiceError) {
-          sendReviewError(reply, error);
+          sendReviewError(request, reply, error);
           return;
         }
         throw error;
@@ -327,7 +343,7 @@ export default function reviewsRoutes(
         );
       } catch (error) {
         if (error instanceof ReviewServiceError) {
-          sendReviewError(reply, error);
+          sendReviewError(request, reply, error);
           return;
         }
         throw error;
@@ -351,10 +367,10 @@ export default function reviewsRoutes(
     },
     (request, reply) => {
       try {
-        return services.reviews.listModeration(request.query);
+        return services.reviews.listModeration(request.query, request.resolvedCountry);
       } catch (error) {
         if (error instanceof ReviewServiceError) {
-          sendReviewError(reply, error);
+          sendReviewError(request, reply, error);
           return;
         }
         throw error;
@@ -383,11 +399,12 @@ export default function reviewsRoutes(
           Number(request.params.reviewId),
           request.body.decision,
           request.authenticatedUser!.id,
-          contextFor(request.authenticatedUser!.id, request.id),
+          adminContextFor(request.authenticatedUser!.id, request.id, request.resolvedCountry),
+          request.resolvedCountry,
         );
       } catch (error) {
         if (error instanceof ReviewServiceError) {
-          sendReviewError(reply, error);
+          sendReviewError(request, reply, error);
           return;
         }
         throw error;
@@ -396,10 +413,15 @@ export default function reviewsRoutes(
   );
 
   for (const [action, handler] of [
-    ['hide', (reviewId: number, context: AuditContext) => services.reviews.hide(reviewId, context)],
+    [
+      'hide',
+      (reviewId: number, context: AuditContext, country: Country) =>
+        services.reviews.hide(reviewId, context, country),
+    ],
     [
       'restore',
-      (reviewId: number, context: AuditContext) => services.reviews.restore(reviewId, context),
+      (reviewId: number, context: AuditContext, country: Country) =>
+        services.reviews.restore(reviewId, context, country),
     ],
   ] as const) {
     typed.post(
@@ -421,11 +443,12 @@ export default function reviewsRoutes(
         try {
           return handler(
             Number(request.params.reviewId),
-            contextFor(request.authenticatedUser!.id, request.id),
+            adminContextFor(request.authenticatedUser!.id, request.id, request.resolvedCountry),
+            request.resolvedCountry,
           );
         } catch (error) {
           if (error instanceof ReviewServiceError) {
-            sendReviewError(reply, error);
+            sendReviewError(request, reply, error);
             return;
           }
           throw error;

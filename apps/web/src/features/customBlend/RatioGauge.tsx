@@ -1,3 +1,6 @@
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { customBlendMessages } from '@shop/localisation/messages/customBlend';
+
 export function RatioGauge({
   basePercentage,
   totalPercentage,
@@ -9,10 +12,11 @@ export function RatioGauge({
   ingredientCount: number;
   isValid: boolean;
 }) {
+  const { translate, formatCount } = useLocalisation();
   return (
     <section aria-labelledby="custom-blend-summary-heading">
       <h2 id="custom-blend-summary-heading" className="text-xl font-semibold">
-        Blend summary
+        {translate(customBlendMessages, 'customBlend.blendRecap')}
       </h2>
       <div
         aria-hidden="true"
@@ -24,8 +28,12 @@ export function RatioGauge({
         />
       </div>
       <p className="mt-2 text-sm" aria-live="polite" aria-atomic="true">
-        Base {basePercentage}% · ingredients {totalPercentage}% · {ingredientCount} of 4 ingredients
-        selected
+        {translate(customBlendMessages, 'customBlend.ratioSummary', {
+          baseLabel: formatCount(basePercentage),
+          totalLabel: formatCount(totalPercentage),
+          count: ingredientCount,
+          countLabel: formatCount(ingredientCount),
+        })}
       </p>
     </section>
   );

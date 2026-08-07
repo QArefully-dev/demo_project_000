@@ -1,7 +1,9 @@
+export const AUTHORITATIVE_CURRENCY = 'GBP' as const;
+
 export interface PaymentGatewayRequest {
   idempotencyKey: string;
   amountCents: number;
-  currency: 'USD';
+  currency: typeof AUTHORITATIVE_CURRENCY;
   cardNumber: string;
 }
 

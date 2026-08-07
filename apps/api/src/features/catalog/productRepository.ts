@@ -10,7 +10,13 @@ import type {
   ProductSpecificationGroup,
   ProductTag,
 } from '@shop/contracts/products';
-import { availableToSellSql, buildCatalogPredicate, catalogOrderBy } from './catalogSql.js';
+import {
+  availableToSellSql,
+  buildCatalogPredicate,
+  buildCountryExclusionPredicate,
+  catalogOrderBy,
+  type CatalogCountryExclusions,
+} from './catalogSql.js';
 import { normalizeCatalogQuery } from './catalogQuery.js';
 
 export interface ProductRow {
@@ -35,6 +41,8 @@ export interface ProductRow {
   default_variant_id: number | null;
   blend_source_variant_id: number | null;
   has_active_clearance?: number;
+  /** Admin-only annotation; never used as a customer visibility predicate. */
+  blocked_in_country?: number;
 }
 
 export interface CustomerProductRow extends ProductRow {
@@ -62,6 +70,12 @@ export interface VariantRow {
   sort_order: number;
   created_at: string;
   updated_at: string;
+  /** Admin-only annotation; never used as a customer visibility predicate. */
+  blocked_in_country?: number;
+}
+
+export interface VariantWithProductRow extends VariantRow {
+  product_name: string;
 }
 
 export interface ProductList {
@@ -72,18 +86,44 @@ export interface ProductList {
 }
 
 export interface ProductRepository {
-  list(query: ProductQuery, now?: string): ProductList;
-  listFilterOptions(): ProductFilterOptionsResponse;
-  findById(id: number): ProductRow | undefined;
-  findActiveById(id: number, now?: string): CustomerProductRow | undefined;
-  listCategories(): string[];
-  listBestsellers(limit?: number, now?: string): CustomerProductRow[];
-  listByIds(ids: readonly number[], now?: string): CustomerProductRow[];
-  listActiveCandidatesExcluding(sourceId: number, now?: string): CustomerProductRow[];
-  findAllVariants(productId: number): VariantRow[];
-  findVariantById(variantId: number): VariantRow | undefined;
-  findVariantsByIds(variantIds: readonly number[]): VariantRow[];
-  findDefaultVariant(productId: number): VariantRow | undefined;
+  list(query: ProductQuery, now?: string, exclusions?: CatalogCountryExclusions): ProductList;
+  listFilterOptions(exclusions?: CatalogCountryExclusions): ProductFilterOptionsResponse;
+  findById(id: number, exclusions?: CatalogCountryExclusions): ProductRow | undefined;
+  findActiveById(
+    id: number,
+    now?: string,
+    exclusions?: CatalogCountryExclusions,
+  ): CustomerProductRow | undefined;
+  listCategories(exclusions?: CatalogCountryExclusions): string[];
+  listBestsellers(
+    limit?: number,
+    now?: string,
+    exclusions?: CatalogCountryExclusions,
+  ): CustomerProductRow[];
+  listByIds(
+    ids: readonly number[],
+    now?: string,
+    exclusions?: CatalogCountryExclusions,
+  ): CustomerProductRow[];
+  listActiveCandidatesExcluding(
+    sourceId: number,
+    now?: string,
+    exclusions?: CatalogCountryExclusions,
+  ): CustomerProductRow[];
+  findAllVariants(productId: number, exclusions?: CatalogCountryExclusions): VariantRow[];
+  findVariantById(variantId: number, exclusions?: CatalogCountryExclusions): VariantRow | undefined;
+  findVariantsByIds(
+    variantIds: readonly number[],
+    exclusions?: CatalogCountryExclusions,
+  ): VariantRow[];
+  findVariantsBySkus(
+    skus: readonly string[],
+    exclusions?: CatalogCountryExclusions,
+  ): VariantWithProductRow[];
+  findDefaultVariant(
+    productId: number,
+    exclusions?: CatalogCountryExclusions,
+  ): VariantRow | undefined;
 }
 
 export function createProductRepository(db: Database.Database): ProductRepository {
@@ -164,10 +204,10 @@ export function createProductRepository(db: Database.Database): ProductRepositor
   }
 
   return {
-    list(query, now) {
+    list(query, now, exclusions) {
       const at = currentTime(now);
       const normalized = normalizeCatalogQuery(query);
-      const predicate = buildCatalogPredicate(normalized, at);
+      const predicate = buildCatalogPredicate(normalized, at, exclusions);
       const total = (
         db
           .prepare(`SELECT COUNT(*) AS count FROM products p ${predicate.where}`)
@@ -208,25 +248,26 @@ export function createProductRepository(db: Database.Database): ProductRepositor
         pageSize: normalized.pageSize,
       };
     },
-    listFilterOptions() {
+    listFilterOptions(exclusions) {
+      const countryExclusions = buildCountryExclusionPredicate(exclusions);
       const tags = db
         .prepare(
           `SELECT DISTINCT ct.key, ct.label
            FROM catalog_tags ct
            INNER JOIN product_tags pt ON pt.tag_key = ct.key
            INNER JOIN products p ON p.id = pt.product_id
-           WHERE p.active = 1
+           WHERE p.active = 1${countryExclusions.sql}
            ORDER BY ct.label COLLATE NOCASE ASC, ct.key ASC`,
         )
-        .all() as ProductFilterOptionsResponse['tags'];
+        .all(...countryExclusions.params) as ProductFilterOptionsResponse['tags'];
       const values = db
         .prepare(
           `SELECT DISTINCT ps.specification_key, ps.value_key, ps.display_value
            FROM product_specifications ps
            INNER JOIN products p ON p.id = ps.product_id
-           WHERE p.active = 1`,
+           WHERE p.active = 1${countryExclusions.sql}`,
         )
-        .all() as Array<{
+        .all(...countryExclusions.params) as Array<{
         specification_key: string;
         value_key: string;
         display_value: string;
@@ -269,77 +310,126 @@ export function createProductRepository(db: Database.Database): ProductRepositor
       });
       return { tags, specificationGroups };
     },
-    findById(id) {
-      return db.prepare('SELECT * FROM products WHERE id = ?').get(id) as ProductRow | undefined;
+    findById(id, exclusions) {
+      const countryExclusions = buildCountryExclusionPredicate(exclusions);
+      return db
+        .prepare(`SELECT p.* FROM products p WHERE p.id = ?${countryExclusions.sql}`)
+        .get(id, ...countryExclusions.params) as ProductRow | undefined;
     },
-    findActiveById(id, now) {
+    findActiveById(id, now, exclusions) {
+      const countryExclusions = buildCountryExclusionPredicate(exclusions);
       const row = db
-        .prepare(`SELECT ${customerColumns} FROM products p WHERE p.id = ? AND p.active = 1`)
-        .get(currentTime(now), id) as ProductRow | undefined;
+        .prepare(
+          `SELECT ${customerColumns} FROM products p
+           WHERE p.id = ? AND p.active = 1${countryExclusions.sql}`,
+        )
+        .get(currentTime(now), id, ...countryExclusions.params) as ProductRow | undefined;
       return row ? hydrateCustomerRows([row])[0] : undefined;
     },
-    listCategories() {
+    listCategories(exclusions) {
+      const countryExclusions = buildCountryExclusionPredicate(exclusions);
       return (
         db
-          .prepare('SELECT DISTINCT category FROM products WHERE active = 1 ORDER BY category ASC')
-          .all() as {
+          .prepare(
+            `SELECT DISTINCT p.category FROM products p
+             WHERE p.active = 1${countryExclusions.sql} ORDER BY p.category ASC`,
+          )
+          .all(...countryExclusions.params) as {
           category: string;
         }[]
       ).map((row) => row.category);
     },
-    listBestsellers(limit = 8, now) {
+    listBestsellers(limit = 8, now, exclusions) {
+      const countryExclusions = buildCountryExclusionPredicate(exclusions);
       const rows = db
         .prepare(
           `SELECT ${customerColumns} FROM products p
-           WHERE p.active = 1 AND p.sales_count >= 250
+           WHERE p.active = 1 AND p.sales_count >= 250${countryExclusions.sql}
            ORDER BY p.sales_count DESC, p.id ASC LIMIT ?`,
         )
-        .all(currentTime(now), limit) as ProductRow[];
+        .all(currentTime(now), ...countryExclusions.params, limit) as ProductRow[];
       return hydrateCustomerRows(rows);
     },
-    listByIds(ids, now) {
+    listByIds(ids, now, exclusions) {
       if (ids.length === 0) return [];
       const placeholders = ids.map(() => '?').join(', ');
-      const rows = db
-        .prepare(`SELECT ${customerColumns} FROM products p WHERE p.id IN (${placeholders})`)
-        .all(currentTime(now), ...ids) as ProductRow[];
-      return hydrateCustomerRows(rows);
-    },
-    listActiveCandidatesExcluding(sourceId, now) {
+      const countryExclusions = buildCountryExclusionPredicate(exclusions);
       const rows = db
         .prepare(
           `SELECT ${customerColumns} FROM products p
-           WHERE p.active = 1 AND p.id != ? ORDER BY p.id ASC`,
+           WHERE p.id IN (${placeholders})${countryExclusions.sql}`,
         )
-        .all(currentTime(now), sourceId) as ProductRow[];
+        .all(currentTime(now), ...ids, ...countryExclusions.params) as ProductRow[];
       return hydrateCustomerRows(rows);
     },
-    findAllVariants(productId) {
+    listActiveCandidatesExcluding(sourceId, now, exclusions) {
+      const countryExclusions = buildCountryExclusionPredicate(exclusions);
+      const rows = db
+        .prepare(
+          `SELECT ${customerColumns} FROM products p
+           WHERE p.active = 1 AND p.id != ?${countryExclusions.sql} ORDER BY p.id ASC`,
+        )
+        .all(currentTime(now), sourceId, ...countryExclusions.params) as ProductRow[];
+      return hydrateCustomerRows(rows);
+    },
+    findAllVariants(productId, exclusions) {
+      const countryExclusions = buildCountryExclusionPredicate(exclusions);
       return db
         .prepare(
-          `SELECT * FROM product_variants WHERE product_id = ? AND active = 1 ORDER BY sort_order ASC`,
+          `SELECT v.* FROM product_variants v
+           INNER JOIN products p ON p.id = v.product_id
+           WHERE v.product_id = ? AND v.active = 1${countryExclusions.sql}
+           ORDER BY v.sort_order ASC`,
         )
-        .all(productId) as VariantRow[];
+        .all(productId, ...countryExclusions.params) as VariantRow[];
     },
-    findVariantById(variantId) {
-      return db.prepare('SELECT * FROM product_variants WHERE id = ?').get(variantId) as
-        VariantRow | undefined;
+    findVariantById(variantId, exclusions) {
+      const countryExclusions = buildCountryExclusionPredicate(exclusions);
+      return db
+        .prepare(
+          `SELECT v.* FROM product_variants v
+           INNER JOIN products p ON p.id = v.product_id
+           WHERE v.id = ?${countryExclusions.sql}`,
+        )
+        .get(variantId, ...countryExclusions.params) as VariantRow | undefined;
     },
-    findVariantsByIds(variantIds) {
+    findVariantsByIds(variantIds, exclusions) {
       if (variantIds.length === 0) return [];
       const placeholders = variantIds.map(() => '?').join(', ');
+      const countryExclusions = buildCountryExclusionPredicate(exclusions);
       return db
         .prepare(
-          `SELECT * FROM product_variants WHERE id IN (${placeholders}) ORDER BY sort_order ASC`,
+          `SELECT v.* FROM product_variants v
+           INNER JOIN products p ON p.id = v.product_id
+           WHERE v.id IN (${placeholders})${countryExclusions.sql}
+           ORDER BY v.sort_order ASC`,
         )
-        .all(...variantIds) as VariantRow[];
+        .all(...variantIds, ...countryExclusions.params) as VariantRow[];
     },
-    findDefaultVariant(productId) {
+    findVariantsBySkus(skus, exclusions) {
+      if (skus.length === 0) return [];
+      const placeholders = skus.map(() => '?').join(', ');
+      const countryExclusions = buildCountryExclusionPredicate(exclusions);
       return db
         .prepare(
-          `SELECT * FROM product_variants WHERE product_id = ? AND sort_order = 1 AND active = 1 LIMIT 1`,
+          `SELECT v.*, p.name AS product_name
+           FROM product_variants v
+           INNER JOIN products p ON p.id = v.product_id
+           WHERE v.sku IN (${placeholders})${countryExclusions.sql}
+           ORDER BY v.id ASC`,
         )
-        .get(productId) as VariantRow | undefined;
+        .all(...skus, ...countryExclusions.params) as VariantWithProductRow[];
+    },
+    findDefaultVariant(productId, exclusions) {
+      const countryExclusions = buildCountryExclusionPredicate(exclusions);
+      return db
+        .prepare(
+          `SELECT v.* FROM product_variants v
+           INNER JOIN products p ON p.id = v.product_id
+           WHERE v.product_id = ? AND v.sort_order = 1 AND v.active = 1${countryExclusions.sql}
+           LIMIT 1`,
+        )
+        .get(productId, ...countryExclusions.params) as VariantRow | undefined;
     },
   };
 }

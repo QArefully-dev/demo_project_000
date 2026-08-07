@@ -1,4 +1,6 @@
 import type { PublicUser } from '@shop/contracts/auth';
+import type { Country } from '@shop/contracts/country';
+import { SUPPORTED_COUNTRIES } from '@shop/contracts/country';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
@@ -28,9 +30,10 @@ export interface AuthService {
     email: string;
     password: string;
     displayName: string;
+    country: Country;
     auditContext?: AuditContext;
   }): Promise<SignupResult>;
-  login(params: { email: string; password: string }): Promise<LoginResult>;
+  login(params: { email: string; password: string; country: Country }): Promise<LoginResult>;
   changePassword(params: {
     userId: number;
     currentPassword: string;
@@ -46,16 +49,32 @@ export type SignupResult =
       ok: false;
       error: 'EMAIL_EXISTS' | 'WEAK_PASSWORD' | 'INVALID_DISPLAY_NAME' | 'INVALID_EMAIL';
     };
-export type LoginResult = { ok: true; userId: number; user: PublicUser } | { ok: false };
+export type LoginResult =
+  { ok: true; userId: number; user: PublicUser } | { ok: false; error?: 'AUTH_SUSPENDED' };
 export type ChangePasswordResult =
   'SUCCESS' | 'INVALID_CURRENT' | 'SAME_PASSWORD' | 'WEAK_PASSWORD';
 
 export function toPublicUser(user: UserRecord): PublicUser {
-  return { id: String(user.id), email: user.email, displayName: user.displayName, role: user.role };
+  const country = user.country;
+  if (!(SUPPORTED_COUNTRIES as readonly string[]).includes(country)) {
+    throw new Error(`Unexpected user country: ${country}`);
+  }
+  return {
+    id: String(user.id),
+    email: user.email,
+    displayName: user.displayName,
+    role: user.role,
+    country: country as PublicUser['country'],
+  };
 }
 
 function storedPassword(user: UserCredentials): string {
   return user.passwordSalt ? `${user.passwordSalt}.${user.passwordHash}` : user.passwordHash;
+}
+
+/** Account deletion clears both credential fields; never let a tolerant password adapter revive it. */
+function hasLiveCredentials(user: UserCredentials): boolean {
+  return user.passwordHash !== '' || user.passwordSalt !== '';
 }
 
 function isUniqueEmailError(error: unknown): boolean {
@@ -85,6 +104,7 @@ export function createAuthService(dependencies: {
       email: providedEmail,
       password,
       displayName: providedDisplayName,
+      country,
       auditContext,
     }) {
       if (auditContext && auditContext.actor.type !== 'anonymous') {
@@ -102,6 +122,7 @@ export function createAuthService(dependencies: {
           const user = dependencies.users.create({
             email,
             displayName,
+            country,
             passwordHash,
             now: dependencies.clock.now().toISOString(),
           });
@@ -121,9 +142,18 @@ export function createAuthService(dependencies: {
         throw error;
       }
     },
-    async login({ email: providedEmail, password }) {
-      const user = dependencies.users.findCredentialsByEmail(normalizeEmail(providedEmail));
-      if (!user || !(await passwords.verify(password, storedPassword(user)))) return { ok: false };
+    async login({ email: providedEmail, password, country }) {
+      const user = dependencies.users.findCredentialsByEmail(
+        normalizeEmail(providedEmail),
+        country,
+      );
+      if (
+        !user ||
+        !hasLiveCredentials(user) ||
+        !(await passwords.verify(password, storedPassword(user)))
+      )
+        return { ok: false };
+      if (user.suspendedAt !== null) return { ok: false, error: 'AUTH_SUSPENDED' };
       return { ok: true, userId: user.id, user: toPublicUser(user) };
     },
     async changePassword({
@@ -141,7 +171,11 @@ export function createAuthService(dependencies: {
       }
       if (!isValidPassword(newPassword)) return 'WEAK_PASSWORD';
       const user = dependencies.users.findCredentialsById(userId);
-      if (!user || !(await passwords.verify(currentPassword, storedPassword(user))))
+      if (
+        !user ||
+        !hasLiveCredentials(user) ||
+        !(await passwords.verify(currentPassword, storedPassword(user)))
+      )
         return 'INVALID_CURRENT';
       if (currentPassword === newPassword) return 'SAME_PASSWORD';
       const passwordHash = await passwords.hash(newPassword);

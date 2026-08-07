@@ -2,22 +2,28 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Button } from '@/components/ui/button';
 import { useCartContext } from '@/hooks/CartContext';
 import { useBundles } from '@/hooks/useBundles';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { discoveryMessages } from '@shop/localisation/messages/discovery';
 import { BundleCard } from './BundleCard';
 
 export function BundlesPage() {
+  const { translate } = useLocalisation();
+  const t = (key: keyof typeof discoveryMessages) => translate(discoveryMessages, key);
   const { bundles, error: loadError, isLoading, refetch } = useBundles();
   const { addBundle, error: cartError, isActionPending, isCartAvailable } = useCartContext();
 
   if (isLoading && bundles.length === 0) return <LoadingSpinner />;
-  if (loadError && bundles.length === 0)
+  const displayLoadError =
+    loadError === 'Failed to load bundles' ? t('bundle.loadError') : loadError;
+  if (displayLoadError && bundles.length === 0)
     return (
       <div
         role="alert"
         className="flex flex-col items-center justify-center gap-4 py-12 text-center"
       >
-        <p className="text-destructive">{loadError}</p>
+        <p className="text-destructive">{displayLoadError}</p>
         <Button size="sm" onClick={() => void refetch()}>
-          Try Again
+          {t('bundle.tryAgain')}
         </Button>
       </div>
     );
@@ -25,20 +31,20 @@ export function BundlesPage() {
   return (
     <section className="mx-auto max-w-5xl space-y-7 pb-12">
       <header className="max-w-2xl">
-        <p className="section-eyebrow">Curated bundles</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Bundle sets</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Fixed selections of materials, with current prices and availability shown here.
-        </p>
+        <p className="section-eyebrow">{t('bundle.eyebrow')}</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
+          {t('bundle.title')}
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">{t('bundle.description')}</p>
       </header>
-      {loadError && (
+      {displayLoadError && (
         <p role="alert" className="text-sm text-destructive">
-          {loadError}
+          {displayLoadError}
         </p>
       )}
       {bundles.length === 0 ? (
         <p className="rounded-xl border bg-surface-raised p-6 text-muted-foreground">
-          No bundles are available right now.
+          {t('bundle.empty')}
         </p>
       ) : (
         <div className="grid gap-5 md:grid-cols-2">

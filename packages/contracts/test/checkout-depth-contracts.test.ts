@@ -363,7 +363,7 @@ void test('payment body carries the B2B commitments and no free-text shipping ad
   );
 });
 
-void test('slot unavailability is a distinct payment conflict member', () => {
+void test('payment conflict detail members cannot degrade to a generic conflict', () => {
   assert.equal(
     Value.Check(PaymentConflictResponse, {
       error: 'DELIVERY_SLOT_UNAVAILABLE',
@@ -371,13 +371,24 @@ void test('slot unavailability is a distinct payment conflict member', () => {
     }),
     true,
   );
-  // The union's trailing `{error: string}` member is a pre-existing catch-all: a malformed
-  // detail field degrades to a plain conflict rather than failing validation. Asserted so the
-  // limitation is visible to readers, and matching the existing RESERVATION_EXPIRED behaviour.
   assert.equal(
     Value.Check(PaymentConflictResponse, {
       error: 'DELIVERY_SLOT_UNAVAILABLE',
       earliestDate: '05/08/2026',
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(PaymentConflictResponse, {
+      error: 'PENDING_APPROVAL',
+      approvalRequestId: '17',
+    }),
+    true,
+  );
+  assert.equal(Value.Check(PaymentConflictResponse, { error: 'PENDING_APPROVAL' }), false);
+  assert.equal(
+    Value.Check(PaymentConflictResponse, {
+      error: 'Payment already submitted with different data',
     }),
     true,
   );

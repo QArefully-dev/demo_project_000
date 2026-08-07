@@ -1,4 +1,5 @@
 import { CATALOG_PRODUCTS } from '@shop/catalog';
+import { LEGACY_DATA_COUNTRY } from '@shop/contracts';
 import type Database from 'better-sqlite3';
 
 export const DEMO_ORDER_SCENARIO_KEYS = [
@@ -7,6 +8,7 @@ export const DEMO_ORDER_SCENARIO_KEYS = [
   'alice-split-shipped',
   'alice-delivery-failed',
   'bob-delivered',
+  'alice-reorder-mix',
 ] as const;
 
 type ScenarioKey = (typeof DEMO_ORDER_SCENARIO_KEYS)[number];
@@ -249,6 +251,33 @@ const SCENARIOS: readonly Scenario[] = [
       },
     ],
   },
+  {
+    // Buy-again fixture: one past order that deliberately reorders into a mixed result.
+    //
+    // The order is placed on 2026-07-16, five days before the seeded clearance window on
+    // `GDN-1043-001` opens (`seed.ts` anchors that window to `PRICING_PROMOTIONS_SEED_CLOCK`
+    // = 2026-07-28, running from -7 to +7 days, i.e. 2026-07-21 to 2026-08-04). Reordering it
+    // inside that window therefore discloses genuine downward price drift on line 0, while
+    // line 1 is short of stock and line 2 re-adds cleanly:
+    //   0. Lawn Feed        GDN-1043-001  stock 35, clearance active -> added, price drifted
+    //   1. HMB Material     SPN-1007-001  stock 15, ordered 20       -> INSUFFICIENT_STOCK
+    //   2. All-Purpose Flour BKP-0001-001 stock 85, ordered 4        -> added, price steady
+    // Quantities clear the 4-sack MOQ floor and stay under the 1 t quantity-break tier, so the
+    // resolved unit price is exactly the list or clearance price with no tier discount applied.
+    key: 'alice-reorder-mix',
+    userEmail: 'alice@example.com',
+    createdAt: '2026-07-16T09:00:00.000Z',
+    status: 'processing',
+    version: 0,
+    productLines: [
+      { productId: 1043, quantity: 4 },
+      { productId: 1007, quantity: 20 },
+      { productId: 1, quantity: 4 },
+    ],
+    events: [
+      { type: 'order_created', title: 'Order created', occurredAt: '2026-07-16T09:00:00.000Z' },
+    ],
+  },
 ];
 
 function product(productId: number) {
@@ -265,7 +294,9 @@ function product(productId: number) {
 
 /** Inserts immutable local-demo order fixtures once. Existing fixture state is never rewritten. */
 export function seedOrderScenarios(db: Database.Database): void {
-  const findUser = db.prepare('SELECT id, display_name, email FROM users WHERE email = ?');
+  const findUser = db.prepare(
+    'SELECT id, display_name, email FROM users WHERE email = ? AND country = ?',
+  );
   const insertOrder = db.prepare(`
     INSERT OR IGNORE INTO orders
       (customer_name, customer_email, shipping_address, subtotal_cents, discount_cents, total_cents, delivery_mode, delivery_charge_cents, delivery_weight_grams, created_at, user_id, lifecycle_status, version, demo_seed_key)
@@ -302,7 +333,7 @@ export function seedOrderScenarios(db: Database.Database): void {
   `);
 
   for (const scenario of SCENARIOS) {
-    const user = findUser.get(scenario.userEmail) as
+    const user = findUser.get(scenario.userEmail, LEGACY_DATA_COUNTRY) as
       { id: number; display_name: string; email: string } | undefined;
     if (!user) throw new Error(`Missing seeded user ${scenario.userEmail} for order scenario`);
     const productLines = scenario.productLines.map((line) => ({

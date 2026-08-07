@@ -19,7 +19,7 @@ async function login(app: Awaited<ReturnType<typeof buildApp>>, email: string): 
   const response = await app.inject({
     method: 'POST',
     url: '/login',
-    payload: { email, password: 'Password123!' },
+    payload: { email, password: 'Password123!', country: 'UK' },
   });
   assert.equal(response.statusCode, 200);
   return cookieValue(response);
@@ -300,7 +300,7 @@ void test('guest payment grants an exact-order, expiring capability cookie', asy
       customerEmail: 'guest@example.test',
       deliveryDestination: adhocDestination,
       billingSelection: adhocBilling,
-      deliverySlot: bookableSlot(),
+      deliverySlot: bookableSlot(now),
       cardNumber: '4242 4242 4242 4242',
       cardExpiry: '12/99',
       cardCvc: '123',
@@ -329,7 +329,7 @@ void test('guest payment grants an exact-order, expiring capability cookie', asy
       customerEmail: 'guest@example.test',
       deliveryDestination: adhocDestination,
       billingSelection: adhocBilling,
-      deliverySlot: bookableSlot(),
+      deliverySlot: bookableSlot(now),
       cardNumber: '4242 4242 4242 4242',
       cardExpiry: '12/99',
       cardCvc: '123',

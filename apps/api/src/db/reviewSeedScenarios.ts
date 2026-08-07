@@ -1,3 +1,4 @@
+import { LEGACY_DATA_COUNTRY } from '@shop/contracts';
 import type Database from 'better-sqlite3';
 
 type ReviewScenario = {
@@ -42,7 +43,7 @@ const SCENARIOS: readonly ReviewScenario[] = [
 
 /** Installs moderation examples without changing local reviews outside canonical scenario rows. */
 export function seedReviewScenarios(db: Database.Database): void {
-  const findUser = db.prepare('SELECT id FROM users WHERE email = ?');
+  const findUser = db.prepare('SELECT id FROM users WHERE email = ? AND country = ?');
   const insertReview = db.prepare(`
     INSERT OR IGNORE INTO reviews
       (product_id, user_id, rating, body, status, created_at, updated_at)
@@ -53,6 +54,7 @@ export function seedReviewScenarios(db: Database.Database): void {
     FROM reviews
     INNER JOIN users ON users.id = reviews.user_id
     WHERE users.email = ?
+      AND users.country = ?
       AND reviews.product_id = ?
       AND reviews.rating = ?
       AND reviews.body = ?
@@ -63,7 +65,8 @@ export function seedReviewScenarios(db: Database.Database): void {
   const reviewIds = new Map<string, number>();
 
   for (const scenario of SCENARIOS) {
-    const user = findUser.get(scenario.userEmail) as { id: number } | undefined;
+    const user = findUser.get(scenario.userEmail, LEGACY_DATA_COUNTRY) as
+      { id: number } | undefined;
     if (!user) throw new Error(`Missing seeded user ${scenario.userEmail} for review scenario`);
     insertReview.run(
       scenario.productId,
@@ -76,6 +79,7 @@ export function seedReviewScenarios(db: Database.Database): void {
     );
     const review = findCanonicalReview.get(
       scenario.userEmail,
+      LEGACY_DATA_COUNTRY,
       scenario.productId,
       scenario.rating,
       scenario.body,
@@ -86,8 +90,9 @@ export function seedReviewScenarios(db: Database.Database): void {
     if (review) reviewIds.set(scenario.key, review.id);
   }
 
-  const alice = findUser.get('alice@example.com') as { id: number } | undefined;
-  const bob = findUser.get('bob@example.com') as { id: number } | undefined;
+  const alice = findUser.get('alice@example.com', LEGACY_DATA_COUNTRY) as
+    { id: number } | undefined;
+  const bob = findUser.get('bob@example.com', LEGACY_DATA_COUNTRY) as { id: number } | undefined;
   if (!alice || !bob) throw new Error('Missing seeded customer for review scenario');
 
   const insertHelpfulVote = db.prepare(`

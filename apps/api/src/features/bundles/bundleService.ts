@@ -1,5 +1,6 @@
 import type { Cart } from '@shop/contracts/cart';
 import type { CuratedBundle } from '@shop/contracts/bundles';
+import type { Country } from '@shop/contracts/country';
 import { toProductContract } from '../../mappers/product.js';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import { getCart } from '../cart/cartService.js';
@@ -8,7 +9,8 @@ import type { InventoryService } from '../inventory/inventoryService.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
 import type { BundleComponentRow, BundleRepository, BundleRow } from './bundleRepository.js';
-import type { VariantRow } from '../catalog/productRepository.js';
+import type { ProductRow, VariantRow } from '../catalog/productRepository.js';
+import type { CountryProfileService } from '../countryProfile/countryProfileService.js';
 
 export interface BundleServiceDependencies {
   bundles: BundleRepository;
@@ -16,6 +18,7 @@ export interface BundleServiceDependencies {
   unitOfWork: UnitOfWork;
   audit: AuditWriter;
   availability?: BundleAvailabilityDependencies;
+  countryProfiles?: Pick<CountryProfileService, 'isCategoryBlocked' | 'isProductBlocked'>;
 }
 
 export interface BundleAvailabilityDependencies {
@@ -32,15 +35,22 @@ export type BundleMutationResult =
   Cart | 'CART_NOT_FOUND' | 'CART_RESERVED' | 'BUNDLE_NOT_FOUND' | BundleUnavailable;
 
 export interface BundleService {
-  list(productId?: string): CuratedBundle[];
+  list(productId?: string, country?: Country): CuratedBundle[];
   addToCart(cartId: string, bundleId: string, context?: AuditContext): BundleMutationResult;
 }
 
-function isVisible(bundle: BundleRow): boolean {
+type ProductCountryAvailability = (product: ProductRow) => boolean;
+
+function isVisible(
+  bundle: BundleRow,
+  isAvailableInCountry: ProductCountryAvailability = () => true,
+): boolean {
   return (
     bundle.active === 1 &&
     bundle.components.length >= 2 &&
-    bundle.components.every((component) => component.product?.active === 1)
+    bundle.components.every(
+      (component) => component.product?.active === 1 && isAvailableInCountry(component.product),
+    )
   );
 }
 
@@ -58,8 +68,11 @@ function variantToDetail(variant: VariantRow) {
 export function toCuratedBundle(
   bundle: BundleRow,
   variantMap: Map<number, VariantRow>,
+  isAvailableInCountry: ProductCountryAvailability = () => true,
 ): CuratedBundle {
-  if (!isVisible(bundle)) throw new Error('Cannot map a hidden curated bundle');
+  if (!isVisible(bundle, isAvailableInCountry)) {
+    throw new Error('Cannot map a hidden curated bundle');
+  }
   const components = bundle.components.map((component) => {
     if (!component.product) throw new Error('Curated bundle component product is missing');
     const variant = component.variantId != null ? variantMap.get(component.variantId) : undefined;
@@ -126,6 +139,7 @@ export function collectUnavailableComponentVariantIds(
   cartId: string,
   components: readonly BundleComponentRow[],
   carts: CartRepository,
+  isAvailableInCountry: ProductCountryAvailability = () => true,
 ): string[] {
   const unavailable = new Set<string>();
   for (const component of components) {
@@ -141,6 +155,7 @@ export function collectUnavailableComponentVariantIds(
       variant.active !== 1 ||
       !component.product ||
       component.product.active !== 1 ||
+      !isAvailableInCountry(component.product) ||
       !Number.isSafeInteger(component.quantity) ||
       component.quantity <= 0 ||
       (availableToSell <
@@ -182,8 +197,16 @@ function assertPersistedShape(bundle: BundleRow): void {
 
 /** Coordinates all-or-nothing ordinary cart-line mutations for fixed curated bundles. */
 export function createBundleService(dependencies: BundleServiceDependencies): BundleService {
+  const countryAvailability = (country?: Country): ProductCountryAvailability => {
+    if (!country || !dependencies.countryProfiles) return () => true;
+    return (product) =>
+      !dependencies.countryProfiles!.isCategoryBlocked(country, product.category) &&
+      !dependencies.countryProfiles!.isProductBlocked(country, product.slug);
+  };
+
   return {
-    list(productId) {
+    list(productId, country) {
+      const isAvailableInCountry = countryAvailability(country);
       const bundles = withAvailableToSell(
         dependencies.bundles.list(productId),
         dependencies.availability,
@@ -200,12 +223,15 @@ export function createBundleService(dependencies: BundleServiceDependencies): Bu
         const variant = dependencies.carts.getVariant(vId);
         if (variant) variantMap.set(vId, variant);
       }
-      return bundles.filter(isVisible).map((b) => toCuratedBundle(b, variantMap));
+      return bundles
+        .filter((bundle) => isVisible(bundle, isAvailableInCountry))
+        .map((bundle) => toCuratedBundle(bundle, variantMap, isAvailableInCountry));
     },
     addToCart(cartId, bundleId, context) {
       requireAuditContext(context);
       return dependencies.unitOfWork.run(() => {
         if (!dependencies.carts.exists(cartId)) return 'CART_NOT_FOUND';
+        const isAvailableInCountry = countryAvailability(dependencies.carts.country(cartId));
         if (
           dependencies.carts.isReserved(
             cartId,
@@ -227,6 +253,7 @@ export function createBundleService(dependencies: BundleServiceDependencies): Bu
           cartId,
           bundle.components,
           dependencies.carts,
+          isAvailableInCountry,
         );
         if (unavailable.length > 0) return { error: 'BUNDLE_UNAVAILABLE', variantIds: unavailable };
 

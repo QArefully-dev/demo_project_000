@@ -1,15 +1,100 @@
 import { createHash, scryptSync } from 'node:crypto';
 import { CATALOG_PRODUCTS, CURATED_BUNDLES, validateCatalog } from '@shop/catalog';
+import { LEGACY_DATA_COUNTRY } from '@shop/contracts';
 import type Database from 'better-sqlite3';
 import { catalogProductSpecifications } from '../features/catalog/catalogSpecifications.js';
 import { seedOrderScenarios } from './orderSeedScenarios.js';
 import { seedReviewScenarios } from './reviewSeedScenarios.js';
+import { seedCompanyAccounts } from './companyAccountsSeed.js';
+import { seedSavedLists } from './savedListSeed.js';
+import { seedAsyncScenarios } from './seedAsyncScenarios.js';
+import { seedBackInStock } from './backInStockSeed.js';
+import { assertProfilesMatchCatalog } from '../features/countryProfile/countryProfileService.js';
 
 const USERS = [
-  { id: 1, email: 'alice@example.com', display_name: 'Alice', role: 'customer' },
-  { id: 2, email: 'bob@example.com', display_name: 'Bob', role: 'customer' },
-  { id: 3, email: 'admin@example.com', display_name: 'Admin', role: 'admin' },
+  {
+    id: 1,
+    email: 'alice@example.com',
+    display_name: 'Alice',
+    role: 'customer',
+    country: LEGACY_DATA_COUNTRY,
+  },
+  {
+    id: 2,
+    email: 'bob@example.com',
+    display_name: 'Bob',
+    role: 'customer',
+    country: LEGACY_DATA_COUNTRY,
+  },
+  {
+    id: 3,
+    email: 'admin@example.com',
+    display_name: 'Admin',
+    role: 'admin',
+    country: LEGACY_DATA_COUNTRY,
+  },
+  {
+    id: 4,
+    email: 'acme@example.com',
+    display_name: 'Acme Owner',
+    role: 'customer',
+    country: LEGACY_DATA_COUNTRY,
+  },
+  {
+    id: 5,
+    email: 'buyer@example.com',
+    display_name: 'Acme Buyer',
+    role: 'customer',
+    country: LEGACY_DATA_COUNTRY,
+  },
+  {
+    id: 6,
+    email: 'approver@example.com',
+    display_name: 'Acme Approver',
+    role: 'customer',
+    country: LEGACY_DATA_COUNTRY,
+  },
 ] as const;
+
+const ADMIN_SUSPENDED_USER = {
+  id: 4,
+  email: 'suspended@example.com',
+  display_name: 'Suspended Demo',
+  role: 'customer',
+  country: LEGACY_DATA_COUNTRY,
+  suspended_at: '2026-07-28T12:00:00.000Z',
+  suspension_reason: 'Seeded administration fixture',
+} as const;
+
+const DE_ALICE = {
+  email: 'alice@example.com',
+  display_name: 'Alice',
+  role: 'customer',
+  country: 'DE',
+} as const;
+
+const DE_ALICE_PASSWORD = 'PasswordDE!1';
+
+const ADMIN_DEACTIVATED_PROMO = {
+  code: 'ADMINOFF',
+  discount_percent: 10,
+  min_item_count: 0,
+  active: 0,
+  kind: 'percent',
+  amount_cents: null,
+  min_subtotal_cents: null,
+  start_at: null,
+  end_at: null,
+  max_redemptions: null,
+  redemption_count: 0,
+  per_user_limit: null,
+} as const;
+
+const ADMIN_FEATURE_FLAG = {
+  key: 'admin.example_flag',
+  description: 'Seeded local administration fixture.',
+  enabled: 0,
+} as const;
 
 const PROMOS = [
   {
@@ -144,6 +229,22 @@ const SCOPED_PROMOS = [
     category_scope: 'Household & Cleaning',
   },
 ] as const;
+
+const COUNTRY_TARGETED_PROMO = {
+  code: 'LOC-UK-DE-10',
+  discount_percent: 10,
+  min_item_count: 0,
+  active: 1,
+  kind: 'percent',
+  amount_cents: null,
+  min_subtotal_cents: null,
+  start_at: null,
+  end_at: null,
+  max_redemptions: null,
+  redemption_count: 0,
+  per_user_limit: null,
+  countries: ['UK', 'DE'] as const,
+} as const;
 
 /** Fixed clock makes active, expired, and future clearance fixtures deterministic on every reset. */
 const PRICING_PROMOTIONS_SEED_CLOCK = '2026-07-28T12:00:00.000Z';
@@ -321,15 +422,12 @@ const SEED_BILLING_ENTITIES = [
 /** Fixed creation instant for every seeded trade-account row. */
 const TRADE_ACCOUNT_SEED_INSTANT = '2026-07-01T09:00:00.000Z';
 
-const ALICE_FAVOURITE_SLUGS = [
-  'all-purpose-flour',
-  'whey-protein-isolate',
-  'matcha-green-tea-powder',
-] as const;
-
-function seededPassword(email: string): string {
-  const salt = createHash('sha256').update(`seed-salt-${email}`).digest('hex').slice(0, 64);
-  return `${salt}.${scryptSync('Password123!', salt, 64).toString('hex')}`;
+function seededPassword(email: string, country: string, password = 'Password123!'): string {
+  const salt = createHash('sha256')
+    .update(`seed-salt-${email}-${country}`)
+    .digest('hex')
+    .slice(0, 64);
+  return `${salt}.${scryptSync(password, salt, 64).toString('hex')}`;
 }
 
 const CANONICAL_PRODUCT_IDS = new Set(
@@ -343,7 +441,7 @@ const CANONICAL_PRODUCT_IDS = new Set(
  *
  * Product IDs 1-50 and 1001-1050 are reserved canonical rows and are updated in place.
  * This preserves foreign-key references while leaving rows outside that range and
- * all user-created data untouched. Seed users, promos, and favourites are
+ * all user-created data untouched. Seed users and promos are
  * insert-only; resetDatabase is the explicit destructive clean-slate path.
  */
 export function seedDatabase(db: Database.Database): void {
@@ -378,7 +476,8 @@ export function seedDatabase(db: Database.Database): void {
         (product_id, sku, label, weight_grams, price_cents, compare_at_price_cents, clearance_price_cents, clearance_starts_at, clearance_ends_at, stock_count, backorderable, backorder_lead_days, delivery_class, active, sort_order, moq_sacks, created_at, updated_at)
       VALUES
         (@product_id, @sku, @label, @weight_grams, @price_cents, @compare_at_price_cents, @clearance_price_cents, @clearance_starts_at, @clearance_ends_at, @stock_count, @backorderable, @backorder_lead_days, @delivery_class, @active, @sort_order, @moq_sacks, @created_at, @updated_at)
-      ON CONFLICT(product_id, sort_order) DO UPDATE SET
+      ON CONFLICT(sku) DO UPDATE SET
+        product_id = excluded.product_id,
         sku = excluded.sku,
         label = excluded.label,
         weight_grams = excluded.weight_grams,
@@ -392,6 +491,7 @@ export function seedDatabase(db: Database.Database): void {
         backorder_lead_days = excluded.backorder_lead_days,
         delivery_class = excluded.delivery_class,
         active = excluded.active,
+        sort_order = excluded.sort_order,
         moq_sacks = excluded.moq_sacks,
         updated_at = excluded.updated_at
     `);
@@ -546,6 +646,8 @@ export function seedDatabase(db: Database.Database): void {
       }
     }
 
+    assertProfilesMatchCatalog(db);
+
     for (const bundle of CURATED_BUNDLES) {
       upsertBundle.run({
         id: bundle.id,
@@ -579,6 +681,21 @@ export function seedDatabase(db: Database.Database): void {
     `);
     for (const promo of PROMOS) insertPromo.run(promo);
 
+    insertPromo.run(COUNTRY_TARGETED_PROMO);
+    const targetedPromoId = db
+      .prepare('SELECT id FROM promo_codes WHERE code = ?')
+      .pluck()
+      .get(COUNTRY_TARGETED_PROMO.code) as number | undefined;
+    if (targetedPromoId === undefined) {
+      throw new Error(`Seed assertion failed: missing ${COUNTRY_TARGETED_PROMO.code} promo`);
+    }
+    const insertPromoCountry = db.prepare(
+      'INSERT OR IGNORE INTO promo_code_countries (promo_code_id, country) VALUES (?, ?)',
+    );
+    for (const country of COUNTRY_TARGETED_PROMO.countries) {
+      insertPromoCountry.run(targetedPromoId, country);
+    }
+
     const insertScopedPromo = db.prepare(`
       INSERT OR IGNORE INTO promo_codes
         (code, discount_percent, min_item_count, active, kind, amount_cents, min_subtotal_cents, start_at, end_at, max_redemptions, redemption_count, per_user_limit, category_scope)
@@ -587,18 +704,106 @@ export function seedDatabase(db: Database.Database): void {
     `);
     for (const promo of SCOPED_PROMOS) insertScopedPromo.run(promo);
 
+    const upsertAdminPromo = db.prepare(`
+      INSERT INTO promo_codes
+        (code, discount_percent, min_item_count, active, kind, amount_cents, min_subtotal_cents, start_at, end_at, max_redemptions, redemption_count, per_user_limit)
+      VALUES
+        (@code, @discount_percent, @min_item_count, @active, @kind, @amount_cents, @min_subtotal_cents, @start_at, @end_at, @max_redemptions, @redemption_count, @per_user_limit)
+      ON CONFLICT(code) DO UPDATE SET
+        discount_percent = excluded.discount_percent,
+        min_item_count = excluded.min_item_count,
+        active = excluded.active,
+        kind = excluded.kind,
+        amount_cents = excluded.amount_cents,
+        min_subtotal_cents = excluded.min_subtotal_cents,
+        start_at = excluded.start_at,
+        end_at = excluded.end_at,
+        max_redemptions = excluded.max_redemptions,
+        redemption_count = excluded.redemption_count,
+        per_user_limit = excluded.per_user_limit
+    `);
+    upsertAdminPromo.run(ADMIN_DEACTIVATED_PROMO);
+
     const insertUser = db.prepare(`
-      INSERT OR IGNORE INTO users (id, email, display_name, password_hash, password_salt, role)
-      VALUES (@id, @email, @display_name, @password_hash, @password_salt, @role)
+      INSERT OR IGNORE INTO users (id, email, display_name, password_hash, password_salt, role, country)
+      VALUES (@id, @email, @display_name, @password_hash, @password_salt, @role, @country)
     `);
     for (const user of USERS) {
-      insertUser.run({ ...user, password_hash: seededPassword(user.email), password_salt: '' });
+      insertUser.run({
+        ...user,
+        password_hash: seededPassword(user.email, user.country),
+        password_salt: '',
+      });
     }
+
+    // Alice country fixtures — separate accounts, distinct passwords, independent carts.
+    // The primary key is left to AUTOINCREMENT: pinning it collided with whatever row already
+    // occupied that id on a database seeded before this branch, and `INSERT OR IGNORE` then
+    // silently dropped the fixture. Idempotency keys on the `UNIQUE (email, country)` constraint
+    // from migration 032 instead, which is the fixture's real identity. Nothing may assume a
+    // fixed id for this row — resolve it by (email, country).
+    db.prepare(
+      `
+      INSERT OR IGNORE INTO users (email, display_name, password_hash, password_salt, role, country)
+      VALUES (@email, @display_name, @password_hash, @password_salt, @role, @country)
+    `,
+    ).run({
+      ...DE_ALICE,
+      password_hash: seededPassword(DE_ALICE.email, DE_ALICE.country, DE_ALICE_PASSWORD),
+      password_salt: '',
+    });
+    const aliceCountryCarts = [
+      { id: '00000000-0000-4000-8000-aa0000000001', country: 'UK' },
+      { id: '00000000-0000-4000-8000-de0000000001', country: 'DE' },
+    ] as const;
+    const insertAliceCart = db.prepare(
+      `
+      INSERT OR IGNORE INTO carts (id, created_at, updated_at, country)
+      VALUES (?, '2026-07-01T09:00:00.000Z', '2026-07-01T09:00:00.000Z', ?)
+    `,
+    );
+    for (const cart of aliceCountryCarts) insertAliceCart.run(cart.id, cart.country);
+
+    seedCompanyAccounts(db);
+
+    const upsertSuspendedUser = db.prepare(`
+      INSERT INTO users
+        (email, country, display_name, password_hash, password_salt, role, suspended_at, suspension_reason, suspended_by_user_id)
+      VALUES
+        (@email, @country, @display_name, @password_hash, @password_salt, @role, @suspended_at, @suspension_reason, @suspended_by_user_id)
+      ON CONFLICT(email, country) DO UPDATE SET
+        display_name = excluded.display_name,
+        password_hash = excluded.password_hash,
+        password_salt = excluded.password_salt,
+        role = excluded.role,
+        suspended_at = excluded.suspended_at,
+        suspension_reason = excluded.suspension_reason,
+        suspended_by_user_id = excluded.suspended_by_user_id
+    `);
+    upsertSuspendedUser.run({
+      ...ADMIN_SUSPENDED_USER,
+      password_hash: seededPassword(ADMIN_SUSPENDED_USER.email, ADMIN_SUSPENDED_USER.country),
+      password_salt: '',
+      suspended_by_user_id: null,
+    });
+
+    const upsertFeatureFlag = db.prepare(`
+      INSERT INTO feature_flags (key, description, enabled, updated_at, updated_by_user_id)
+      VALUES (@key, @description, @enabled, '2026-07-28T12:00:00.000Z', ?)
+      ON CONFLICT(key) DO UPDATE SET
+        description = excluded.description,
+        enabled = excluded.enabled,
+        updated_at = excluded.updated_at,
+        updated_by_user_id = excluded.updated_by_user_id
+    `);
+    upsertFeatureFlag.run(ADMIN_FEATURE_FLAG, null);
 
     // Trade-account records are insert-only on a fixed id, so a buyer who renames, retires, or
     // re-points the default of a seeded row keeps that change across later `npm run seed` calls.
     // `resetDatabase` clears `users`, and both tables cascade from it, so reset restores these rows.
-    const userIdByEmail = db.prepare('SELECT id FROM users WHERE email = ?').pluck();
+    const userIdByEmail = db
+      .prepare('SELECT id FROM users WHERE email = ? AND country = ?')
+      .pluck();
 
     const insertDeliverySite = db.prepare(`
       INSERT OR IGNORE INTO delivery_sites
@@ -611,7 +816,7 @@ export function seedDatabase(db: Database.Database): void {
          @address_country_code, @is_default, 1, @created_at, @updated_at)
     `);
     for (const site of SEED_DELIVERY_SITES) {
-      const userId = userIdByEmail.get(site.user_email) as number | undefined;
+      const userId = userIdByEmail.get(site.user_email, LEGACY_DATA_COUNTRY) as number | undefined;
       if (userId === undefined) continue;
       insertDeliverySite.run({
         id: site.id,
@@ -642,7 +847,8 @@ export function seedDatabase(db: Database.Database): void {
          @address_country_code, @is_default, 1, @created_at, @updated_at)
     `);
     for (const entity of SEED_BILLING_ENTITIES) {
-      const userId = userIdByEmail.get(entity.user_email) as number | undefined;
+      const userId = userIdByEmail.get(entity.user_email, LEGACY_DATA_COUNTRY) as
+        number | undefined;
       if (userId === undefined) continue;
       insertBillingEntity.run({
         id: entity.id,
@@ -660,19 +866,6 @@ export function seedDatabase(db: Database.Database): void {
         created_at: TRADE_ACCOUNT_SEED_INSTANT,
         updated_at: TRADE_ACCOUNT_SEED_INSTANT,
       });
-    }
-
-    const alice = db.prepare('SELECT id FROM users WHERE email = ?').get('alice@example.com') as
-      { id: number } | undefined;
-    if (alice) {
-      const addFavourite = db.prepare(
-        'INSERT OR IGNORE INTO favourites (user_id, product_id) VALUES (?, ?)',
-      );
-      const productIdForSlug = db.prepare('SELECT id FROM products WHERE slug = ?');
-      for (const slug of ALICE_FAVOURITE_SLUGS) {
-        const product = productIdForSlug.get(slug) as { id: number } | undefined;
-        if (product) addFavourite.run(alice.id, product.id);
-      }
     }
 
     const canonicalCount = (
@@ -703,6 +896,9 @@ export function seedDatabase(db: Database.Database): void {
     }
 
     seedOrderScenarios(db);
+    seedSavedLists(db);
+    seedAsyncScenarios(db);
+    seedBackInStock(db);
     seedReviewScenarios(db);
   });
 

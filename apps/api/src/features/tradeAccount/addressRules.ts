@@ -1,4 +1,5 @@
 import type { PostalAddress } from '@shop/contracts/address';
+import type { CountryProfile } from '@shop/contracts/country-profiles';
 
 /**
  * The structured address columns. `delivery_sites` and `billing_entities` declare an identical
@@ -47,6 +48,22 @@ export function normalizePostalAddress(address: PostalAddress): PostalAddress {
     postcode: normalizeText(address.postcode).toUpperCase(),
     countryCode: normalizeText(address.countryCode).toUpperCase(),
   };
+}
+
+/** Checks a normalized postcode against the identity country's checked-in postal rule. */
+export function validatePostcodeForCountry(profile: CountryProfile, postcode: string): boolean {
+  return new RegExp(profile.postcode.pattern).test(postcode);
+}
+
+/**
+ * Whether an ISO postal destination is served by this identity country. The profile allowlist is
+ * deliberately the only bridge between the two country axes.
+ */
+export function isDeliverableCountryCode(
+  profile: CountryProfile,
+  countryCode: PostalAddress['countryCode'],
+): boolean {
+  return profile.deliveryCountryCodes.includes(countryCode);
 }
 
 /** Normalises then flattens a contract address into its persistence columns. */

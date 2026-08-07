@@ -29,7 +29,7 @@ async function signUp(app: App, email: string): Promise<string> {
   const response = await app.inject({
     method: 'POST',
     url: '/signup',
-    payload: { email, password: 'password-one', displayName: 'Trade Buyer' },
+    payload: { email, password: 'password-one', displayName: 'Trade Buyer', country: 'UK' },
   });
   assert.equal(response.statusCode, 201, `signup failed for ${email}`);
   return cookieHeader(response);

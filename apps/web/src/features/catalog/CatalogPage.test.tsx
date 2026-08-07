@@ -25,8 +25,8 @@ vi.mock('@/hooks/CartContext', () => ({
     isActionPending: () => false,
   }),
 }));
-vi.mock('@/components/WishlistButton', () => ({
-  WishlistButton: () => <button type="button" aria-label="Add to wishlist" />,
+vi.mock('@/components/SaveToListButton', () => ({
+  SaveToListButton: () => <button type="button" aria-label="Save to default list" />,
 }));
 
 const defaultFacts: CategoryFacts = {

@@ -9,7 +9,8 @@ import type Database from 'better-sqlite3';
  *
  * Reset order: inventory movements -> receipts -> inventory allocations -> reservations ->
  *   checkout reservations -> payments -> promo redemptions -> review reports -> helpful votes ->
- *   reviews -> rating aggregates -> favourites -> reset tokens -> sessions -> mailbox ->
+ *   reviews -> rating aggregates -> back-in-stock subscriptions ->
+ *   saved-list items -> saved lists -> reset tokens -> sessions -> mailbox ->
  *   order access grants -> lifecycle events ->
  *   shipment allocations -> shipments -> order line items ->
  *   orders -> cart line items -> carts -> promo codes -> bundle components ->
@@ -29,6 +30,8 @@ export function resetDatabase(db: Database.Database): void {
       DROP TRIGGER IF EXISTS return_events_no_delete;
       DROP TRIGGER IF EXISTS inventory_stock_movements_no_delete;
       DROP TRIGGER IF EXISTS inventory_stock_movements_no_update;
+      DROP TRIGGER IF EXISTS job_attempts_no_update;
+      DROP TRIGGER IF EXISTS job_attempts_no_delete;
       DELETE FROM refund_items;
       DELETE FROM refunds;
       DELETE FROM return_events;
@@ -41,14 +44,28 @@ export function resetDatabase(db: Database.Database): void {
       DELETE FROM cart_reservations;
       DELETE FROM promo_reservations;
       DELETE FROM payments;
+      DELETE FROM order_approvals;
+      DELETE FROM company_invites;
+      DELETE FROM company_memberships;
+      DELETE FROM company_accounts;
       DELETE FROM promo_redemptions;
       DELETE FROM review_reports;
       DELETE FROM review_helpful_votes;
       DELETE FROM reviews;
       DELETE FROM review_rating_aggregates;
-      DELETE FROM favourites;
+      DELETE FROM job_attempts;
+      DELETE FROM standing_order_runs;
+      DELETE FROM captured_webhooks;
+      DELETE FROM back_in_stock_subscriptions;
+      DELETE FROM notifications;
+      DELETE FROM standing_orders;
+      DELETE FROM jobs;
+      DELETE FROM saved_list_items;
+      DELETE FROM saved_lists;
       DELETE FROM password_reset_tokens;
       DELETE FROM sessions;
+      DELETE FROM user_preferences;
+      DELETE FROM account_deletion_events;
       DELETE FROM dev_mailbox;
       DELETE FROM order_access_grants;
       DELETE FROM order_lifecycle_events;
@@ -91,6 +108,13 @@ export function resetDatabase(db: Database.Database): void {
       CREATE TRIGGER refund_items_no_delete
       BEFORE DELETE ON refund_items
       BEGIN SELECT RAISE(ABORT, 'refund_items are immutable'); END;
+      CREATE TRIGGER job_attempts_no_update
+      BEFORE UPDATE ON job_attempts
+      BEGIN SELECT RAISE(ABORT, 'job_attempts are immutable'); END;
+      CREATE TRIGGER job_attempts_no_delete
+      BEFORE DELETE ON job_attempts
+      WHEN EXISTS (SELECT 1 FROM jobs WHERE id = OLD.job_id)
+      BEGIN SELECT RAISE(ABORT, 'job_attempts are immutable'); END;
     `);
   });
 

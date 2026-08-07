@@ -80,12 +80,17 @@ void test('app factory injects isolated databases without starting a server', as
   assert.equal(added.statusCode, 200);
   const addedBody: { totalItems: number } = added.json();
   assert.ok(addedBody.totalItems >= 1);
-  assert.equal((await app.inject({ method: 'GET', url: '/api/favourites' })).statusCode, 401);
+  assert.equal((await app.inject({ method: 'GET', url: '/api/saved-lists' })).statusCode, 401);
 
   const signup = await app.inject({
     method: 'POST',
     url: '/signup',
-    payload: { email: 'http@example.test', password: 'password-one', displayName: 'HTTP User' },
+    payload: {
+      email: 'http@example.test',
+      password: 'password-one',
+      displayName: 'HTTP User',
+      country: 'UK',
+    },
   });
   assert.equal(signup.statusCode, 201);
   const cookie = cookieHeader(signup);
@@ -93,16 +98,8 @@ void test('app factory injects isolated databases without starting a server', as
   assert.equal(authenticated.statusCode, 200);
   const authenticatedBody: { email: string } = authenticated.json();
   assert.equal(authenticatedBody.email, 'http@example.test');
-  const favourite = await app.inject({
-    method: 'POST',
-    url: '/api/favourites',
-    headers: { cookie },
-    payload: { productId: '1' },
-  });
-  assert.equal(favourite.statusCode, 200);
-  assert.deepEqual(favourite.json(), { success: true });
   assert.equal(
-    (await app.inject({ method: 'GET', url: '/api/favourites', headers: { cookie } })).statusCode,
+    (await app.inject({ method: 'GET', url: '/api/saved-lists', headers: { cookie } })).statusCode,
     200,
   );
 
@@ -212,7 +209,7 @@ void test('app factory injects isolated databases without starting a server', as
     },
   });
   assert.equal(declined.statusCode, 402);
-  assert.deepEqual(declined.json(), { error: 'Payment failed', failureReason: 'CARD_DECLINED' });
+  assert.deepEqual(declined.json(), { error: 'The card was declined.', code: 'CARD_DECLINED' });
   assert.equal((await app.inject({ method: 'GET', url: '/missing' })).statusCode, 404);
   assert.equal(firstDb.open, true);
   assert.equal(secondDb.open, true);
@@ -291,7 +288,6 @@ void test('promo validation exposes a scoped discount base without discounting o
   assert.equal(mismatch.statusCode, 200);
   assert.deepEqual(mismatch.json(), {
     valid: false,
-    error: 'This promo code applies only to Garden & Outdoors products',
     errorCode: 'CATEGORY_MISMATCH',
   });
 

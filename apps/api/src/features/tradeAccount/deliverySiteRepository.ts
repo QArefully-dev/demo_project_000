@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import type { DeliverySite } from '@shop/contracts/trade-account';
+import type { Country } from '@shop/contracts/country';
 import { toIsoInstant, toPostalAddress, type AddressColumns } from './addressRules.js';
 
 /** Persistence shape of one `delivery_sites` row. Owned here; no other module reads column names. */
@@ -38,6 +39,8 @@ export interface DeliverySiteUpdate extends Partial<AddressColumns> {
 }
 
 export interface DeliverySiteRepository {
+  /** Persisted identity country for the owning account; never inferred from a postal address. */
+  accountCountry(userId: number): Country | undefined;
   listActive(userId: number): DeliverySiteRow[];
   countActive(userId: number): number;
   findActiveById(userId: number, siteId: number): DeliverySiteRow | undefined;
@@ -80,6 +83,10 @@ export function toDeliverySite(row: DeliverySiteRow): DeliverySite {
 
 export function createDeliverySiteRepository(db: Database.Database): DeliverySiteRepository {
   return {
+    accountCountry(userId) {
+      return db.prepare('SELECT country FROM users WHERE id = ?').pluck().get(userId) as
+        Country | undefined;
+    },
     listActive(userId) {
       return db
         .prepare(

@@ -2,7 +2,9 @@ import type { Product, ProductWithVariants } from '@shop/contracts/products';
 
 import { PackagingArtwork } from '@/components/packaging/PackagingArtwork';
 import { resolveCatalogPackagingPalette } from '@/components/packaging/catalogPackagingPalettes';
-import { resolvePackagingSpec, type Vessel } from '@/components/packaging/packagingSpec';
+import { resolvePackagingSpec } from '@/components/packaging/packagingSpec';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { discoveryMessages } from '@shop/localisation/messages/discovery';
 
 interface ProductMediaProps {
   product: Product | ProductWithVariants;
@@ -68,17 +70,11 @@ export function resolveFoodBagArtwork(
   };
 }
 
-const VESSEL_LABEL: Readonly<Record<Vessel, string>> = {
-  'kraft-sack': 'stitched kraft sack',
-  'woven-sack': 'woven sack',
-  keg: 'keg',
-  'food-bag': 'bag',
-};
-
-function genericArtworkDataUri(name: string): string {
+function genericArtworkDataUri(name: string, unavailableLabel: string): string {
   const label = name.replace(/[<&>]/g, '');
+  const safeUnavailableLabel = unavailableLabel.replace(/[<&>]/g, '');
   return `data:image/svg+xml,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 720"><rect width="720" height="720" fill="#f3efe7"/><rect x="150" y="120" width="420" height="500" rx="24" fill="#e7e0d2" stroke="#333530" stroke-width="8"/><text x="360" y="350" text-anchor="middle" font-family="Arial,sans-serif" font-size="34" font-weight="700" fill="#292b29">${label}</text><text x="360" y="398" text-anchor="middle" font-family="Arial,sans-serif" font-size="20" fill="#69665e">PACKAGING UNAVAILABLE</text></svg>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 720"><rect width="720" height="720" fill="#f3efe7"/><rect x="150" y="120" width="420" height="500" rx="24" fill="#e7e0d2" stroke="#333530" stroke-width="8"/><text x="360" y="350" text-anchor="middle" font-family="Arial,sans-serif" font-size="34" font-weight="700" fill="#292b29">${label}</text><text x="360" y="398" text-anchor="middle" font-family="Arial,sans-serif" font-size="20" fill="#69665e">${safeUnavailableLabel}</text></svg>`,
   )}`;
 }
 
@@ -90,6 +86,7 @@ function genericArtworkDataUri(name: string): string {
  * "packaging unavailable" placeholder rather than printing an invented neutral scheme.
  */
 export function ProductMedia({ product, className }: ProductMediaProps) {
+  const { translate } = useLocalisation();
   const defaultVariant =
     'variants' in product
       ? product.variants.find((variant) => variant.variantId === product.defaultVariantId)
@@ -116,7 +113,6 @@ export function ProductMedia({ product, className }: ProductMediaProps) {
         accent={product.packaging.labelColor}
         powderAccent={product.packaging.powderColor}
         consumptionLabel={product.packaging.consumptionLabel}
-        ariaLabel={`${product.name} ${VESSEL_LABEL['food-bag']}`}
         className={className}
       />
     );
@@ -132,7 +128,6 @@ export function ProductMedia({ product, className }: ProductMediaProps) {
         spec={spec}
         mark=""
         consumptionLabel={null}
-        ariaLabel={`${product.name} ${VESSEL_LABEL[spec.vessel]}`}
         className={className}
       />
     );
@@ -154,7 +149,6 @@ export function ProductMedia({ product, className }: ProductMediaProps) {
         powderAccent={spec.pigment}
         schemeKey={spec.schemeKey}
         consumptionLabel={null}
-        ariaLabel={`${product.name} ${VESSEL_LABEL['food-bag']}`}
         className={className}
       />
     );
@@ -162,7 +156,10 @@ export function ProductMedia({ product, className }: ProductMediaProps) {
 
   return (
     <img
-      src={genericArtworkDataUri(product.name)}
+      src={genericArtworkDataUri(
+        product.name,
+        translate(discoveryMessages, 'product.packagingUnavailable'),
+      )}
       alt={product.name}
       width="720"
       height="720"

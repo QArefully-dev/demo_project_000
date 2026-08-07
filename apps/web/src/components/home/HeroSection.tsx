@@ -8,6 +8,8 @@ import {
 import { PACKAGING_BRAND, type PackagingSpec } from '@/components/packaging/packagingSpec';
 import { INKS, titleLines, type InkKey } from '@/components/packaging/svgText';
 import { Button } from '@/components/ui/button';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { discoveryMessages } from '@shop/localisation/messages/discovery';
 
 interface HeroVessel {
   /** Accessible name is suppressed per vessel; kept for the artwork components' internal copy. */
@@ -72,18 +74,19 @@ const heroVessels: readonly HeroVessel[] = [
 ];
 
 export function HeroSection() {
+  const { translate } = useLocalisation();
+  const t = (key: keyof typeof discoveryMessages) => translate(discoveryMessages, key);
   return (
     <section className="powder-hero relative grid min-h-[430px] overflow-hidden rounded-2xl border-2 border-foreground bg-primary text-primary-foreground lg:grid-cols-[1.05fr_0.95fr]">
       <div className="relative z-10 flex flex-col items-start justify-center px-7 py-12 sm:px-12 lg:px-16">
         <p className="powder-stamp mb-4 text-xs font-bold uppercase tracking-[0.18em] text-primary-foreground">
-          QArefully Materials Exchange / Supply desk
+          {t('home.heroLabel')}
         </p>
         <h1 className="max-w-2xl text-4xl font-semibold tracking-[-0.045em] sm:text-5xl lg:text-6xl">
-          Materials supply with operational clarity.
+          {t('home.heroTitle')}
         </h1>
         <p className="mt-5 max-w-xl text-base leading-7 text-primary-foreground/78 sm:text-lg">
-          Source materials across food, performance, home and trade with clear specifications,
-          practical pack formats and dependable availability data.
+          {t('home.heroDescription')}
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Button
@@ -92,12 +95,12 @@ export function HeroSection() {
             nativeButton={false}
             render={<Link to="/catalog" />}
           >
-            Browse materials <ArrowRight />
+            {t('home.browseMaterials')} <ArrowRight />
           </Button>
         </div>
       </div>
       <div
-        aria-label="Materials exchange supply overview"
+        aria-label={t('home.heroOverview')}
         className="powder-hero-art relative min-h-72 overflow-hidden bg-surface-soft p-6 sm:p-10 lg:min-h-full"
       >
         <div aria-hidden="true" className="powder-measurements absolute inset-4" />

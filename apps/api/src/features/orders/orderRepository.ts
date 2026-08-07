@@ -16,10 +16,13 @@ import type {
   OrderSummary,
   ShipmentStatus,
 } from '@shop/contracts/orders';
+import type { Country } from '@shop/contracts/country';
+import { orderLifecycleTitle } from '@shop/localisation/messages/asyncContent';
 import type { CreateOrderParams, LifecycleEventInput, PersistedShipment } from './orderTypes.js';
 
 interface OrderRow {
   id: number;
+  country: Country;
   promo_code_applied: string | null;
   promo_category_scope: string | null;
   subtotal_cents: number;
@@ -96,14 +99,18 @@ export interface OrderAccessRepository {
 
 export interface OrderRepository extends OrderAccessRepository {
   create(params: CreateOrderParams): number;
+  /** Identity country frozen on the order, independent of the current browsing country. */
+  country(orderId: number): Country | undefined;
   findById(orderId: number): Order | undefined;
-  findDetailById(orderId: number): OrderDetailResponse | undefined;
+  findDetailById(orderId: number, country?: Country): OrderDetailResponse | undefined;
   findOwnedDetail(orderId: number, userId: number): OrderDetailResponse | undefined;
   listOwned(
     userId: number,
     page: number,
     pageSize: number,
   ): { items: OrderSummary[]; total: number };
+  /** Full, deterministic export view. Unlike paginated account history, this avoids one query per order. */
+  listExportOwned(userId: number): Order[];
   getOrderState(
     orderId: number,
   ): { id: number; status: OrderStatus; version: number; cancelledAt: string | null } | undefined;
@@ -291,17 +298,17 @@ function mapShipment(
 }
 
 export function createOrderRepository(db: Database.Database): OrderRepository {
-  const loadOrder = (orderId: number): OrderRow | undefined =>
+  const loadOrder = (orderId: number, country?: Country): OrderRow | undefined =>
     db
       .prepare(
-        `SELECT id, promo_code_applied, promo_category_scope, subtotal_cents, discount_base_cents, discount_cents, total_cents, created_at,
+        `SELECT id, country, promo_code_applied, promo_category_scope, subtotal_cents, discount_base_cents, discount_cents, total_cents, created_at,
             lifecycle_status, version, cancelled_at, user_id,
             delivery_mode, delivery_charge_cents, delivery_weight_grams,
             delivery_site_id, delivery_address_json, billing_entity_json,
             delivery_slot_date, delivery_slot_window, purchase_order_reference
-         FROM orders WHERE id = ?`,
+         FROM orders WHERE id = ?${country ? ' AND country = ?' : ''}`,
       )
-      .get(orderId) as OrderRow | undefined;
+      .get(...(country ? [orderId, country] : [orderId])) as OrderRow | undefined;
   const loadLineItems = (orderId: number) =>
     db
       .prepare(
@@ -316,14 +323,49 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
          WHERE line.order_id = ? ORDER BY line.id ASC`,
       )
       .all(orderId) as ProductLineRow[];
+  const loadExportOwned = (userId: number): Order[] => {
+    const rows = db
+      .prepare(
+        `SELECT id, country, promo_code_applied, promo_category_scope, subtotal_cents, discount_base_cents,
+                discount_cents, total_cents, created_at, lifecycle_status, version, cancelled_at,
+                user_id, delivery_mode, delivery_charge_cents, delivery_weight_grams,
+                delivery_site_id, delivery_address_json, billing_entity_json, delivery_slot_date,
+                delivery_slot_window, purchase_order_reference
+         FROM orders WHERE user_id = ? ORDER BY id ASC`,
+      )
+      .all(userId) as OrderRow[];
+    if (rows.length === 0) return [];
+    const lineRows = db
+      .prepare(
+        `SELECT line.id, line.product_id, line.product_name, line.product_price_cents,
+                line.quantity, line.line_total_cents, line.discountable_total_cents,
+                line.blending_fee_cents, line.custom_blend_json, line.variant_id, line.sku,
+                line.variant_label, line.weight_grams, line.consumption_classification,
+                line.delivery_class, allocation.allocated_quantity, allocation.backordered_quantity,
+                allocation.cancelled_quantity, line.order_id
+         FROM order_line_items line
+         JOIN orders owned_order ON owned_order.id = line.order_id
+         LEFT JOIN order_inventory_allocations allocation ON allocation.order_line_item_id = line.id
+         WHERE owned_order.user_id = ?
+         ORDER BY line.order_id ASC, line.id ASC`,
+      )
+      .all(userId) as Array<ProductLineRow & { order_id: number }>;
+    const linesByOrder = new Map<number, ProductLineRow[]>();
+    for (const line of lineRows) {
+      const lines = linesByOrder.get(line.order_id) ?? [];
+      lines.push(line);
+      linesByOrder.set(line.order_id, lines);
+    }
+    return rows.map((row) => mapOrder(row, linesByOrder.get(row.id) ?? []));
+  };
   const loadShipments = (orderId: number): ShipmentRow[] =>
     db
       .prepare(
         'SELECT id, order_id, shipment_number, status, tracking_reference, version, created_at, updated_at FROM order_shipments WHERE order_id = ? ORDER BY shipment_number ASC, id ASC',
       )
       .all(orderId) as ShipmentRow[];
-  const findDetail = (orderId: number): OrderDetailResponse | undefined => {
-    const row = loadOrder(orderId);
+  const findDetail = (orderId: number, country?: Country): OrderDetailResponse | undefined => {
+    const row = loadOrder(orderId, country);
     if (!row) return undefined;
     const items = loadLineItems(orderId);
     const shipments = loadShipments(orderId);
@@ -368,18 +410,23 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
   };
   return {
     create(params) {
+      // Runtime callers compiled against the pre-country shape may still exist in deterministic
+      // seed/export fixtures. The public CreateOrderParams type requires country; this compatibility
+      // default keeps those historical UK rows representable while all checkout paths pass it.
+      const country = params.country ?? 'UK';
       const result = db
         .prepare(
           `INSERT INTO orders
-            (customer_name, customer_email, shipping_address, promo_code_applied, promo_category_scope,
+            (country, customer_name, customer_email, shipping_address, promo_code_applied, promo_category_scope,
              subtotal_cents, discount_base_cents, discount_cents, total_cents,
              delivery_mode, delivery_charge_cents, delivery_weight_grams,
              delivery_site_id, delivery_address_json, billing_entity_json,
              delivery_slot_date, delivery_slot_window, purchase_order_reference,
              user_id, created_at, lifecycle_status, version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0)`,
         )
         .run(
+          country,
           params.customerName,
           params.customerEmail,
           params.shippingAddress,
@@ -428,9 +475,14 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
           item.variantSnapshot?.deliveryClass ?? null,
         );
       db.prepare(
-        `INSERT INTO order_lifecycle_events (order_id, event_type, title, occurred_at) VALUES (?, 'order_created', 'Order created', ?)`,
-      ).run(orderId, params.createdAt);
+        `INSERT INTO order_lifecycle_events (order_id, event_type, title, occurred_at) VALUES (?, 'order_created', ?, ?)`,
+      ).run(orderId, orderLifecycleTitle(country, 'created'), params.createdAt);
       return orderId;
+    },
+    country(orderId) {
+      const row = db.prepare('SELECT country FROM orders WHERE id = ?').get(orderId) as
+        { country?: Country } | undefined;
+      return row?.country;
     },
     findById(orderId) {
       const row = loadOrder(orderId);
@@ -484,6 +536,7 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
         total: count.count,
       };
     },
+    listExportOwned: loadExportOwned,
     getOrderState(orderId) {
       const row = loadOrder(orderId);
       return (

@@ -1,6 +1,8 @@
 import { getCart } from '../cart/cartService.js';
 import type { Cart } from '@shop/contracts/cart';
 import type { PostalAddress } from '@shop/contracts/address';
+import type { Country } from '@shop/contracts/country';
+import { countryProfile } from '@shop/contracts/country-profiles';
 import type { BillingEntitySnapshot } from '@shop/contracts/trade-account';
 import { CUSTOM_BLEND_FEE_CENTS } from '@shop/contracts';
 import { isSlotBookable } from '../delivery/deliverySlotRules.js';
@@ -8,16 +10,24 @@ import {
   normalizeOptionalText,
   normalizePostalAddress,
   normalizeText,
+  isDeliverableCountryCode,
 } from '../tradeAccount/addressRules.js';
 import { toBillingEntitySnapshot } from '../tradeAccount/billingEntityRepository.js';
 import { normalizeCustomBlendSpec } from '../customBlend/customBlendRules.js';
 import { validateCard, type ValidCard } from '../payments/cardValidation.js';
 import { createSafeFingerprint, type PaymentRecord } from '../payments/paymentRepository.js';
-import { validatePromo } from '../promos/promoService.js';
+import { AUTHORITATIVE_CURRENCY } from '../payments/paymentGateway.js';
+import {
+  calculateDiscount,
+  resolvePromoScope,
+  validatePromo,
+  type PromoValidation,
+} from '../promos/promoService.js';
+import { quoteCartDelivery } from '../delivery/deliveryRules.js';
 import { createCheckoutQuote } from './checkoutQuote.js';
 import { finalizeAuthorizedCheckout } from './checkoutFinalizer.js';
 import { InventoryError } from '../inventory/inventoryTypes.js';
-import { validateMoq } from '../pricing/pricingRules.js';
+import { minimumOrderQuantity, validateMoq } from '../pricing/pricingRules.js';
 import type { PreGatewayFailureCode } from '../audit/auditEvent.js';
 import type {
   CheckoutDependencies,
@@ -35,7 +45,10 @@ export type {
   ResolvedCheckoutCommitments,
 } from './checkoutTypes.js';
 
-type Preparation = CheckoutResult | { quoteTotalCents: number; card: ValidCard } | { resume: true };
+type Preparation =
+  | CheckoutResult
+  | { quoteTotalCents: number; card: ValidCard; country: Country }
+  | { resume: true; country: Country };
 const RESERVATION_LEASE_MS = 15 * 60_000;
 
 function preGatewayFailureCode(result: CheckoutResult): PreGatewayFailureCode {
@@ -44,6 +57,7 @@ function preGatewayFailureCode(result: CheckoutResult): PreGatewayFailureCode {
       case 'CART_NOT_FOUND':
       case 'CART_EMPTY':
       case 'PROMO_INVALID':
+      case 'PENDING_APPROVAL':
       case 'CHECKOUT_FAILED':
         return result.error;
     }
@@ -58,7 +72,10 @@ function replay(
 ): Preparation {
   if (payment.fingerprint !== fingerprint) return { success: false, error: 'IDEMPOTENT_CONFLICT' };
   if (payment.status === 'prepared') return { success: false, error: 'IDEMPOTENT_IN_PROGRESS' };
-  if (payment.status === 'authorized_pending_finalize') return { resume: true };
+  if (payment.status === 'authorized_pending_finalize') {
+    const country = payment.cartId ? dependencies.carts.country(payment.cartId) : undefined;
+    return country ? { resume: true, country } : { success: false, error: 'CART_NOT_FOUND' };
+  }
   if (payment.status === 'succeeded' && payment.orderId !== null) {
     const order = dependencies.orders.findById(payment.orderId);
     return order ? { success: true, order } : { success: false, error: 'CHECKOUT_FAILED' };
@@ -76,6 +93,28 @@ function replay(
   return { success: false, error: 'CHECKOUT_FAILED' };
 }
 
+function isPendingApprovalPayment(payment: PaymentRecord): boolean {
+  if (payment.status !== 'failed_pre_gateway' || !payment.responseJson) return false;
+  try {
+    const result = JSON.parse(payment.responseJson) as { success?: unknown; error?: unknown };
+    return result.success === false && result.error === 'PENDING_APPROVAL';
+  } catch {
+    return false;
+  }
+}
+
+function quoteTotalBeforeReservation(cart: Cart, promo: PromoValidation | undefined): number {
+  const validPromo = promo && promo.valid ? promo.promoCode : undefined;
+  const promoScope = validPromo ? resolvePromoScope({ promo: validPromo, cart }) : undefined;
+  const discountCents = validPromo
+    ? calculateDiscount({
+        promo: validPromo,
+        discountableSubtotalCents: promoScope!.discountBaseCents,
+      })
+    : 0;
+  return cart.subtotalCents - discountCents + quoteCartDelivery(cart).chargeCents;
+}
+
 /**
  * Resolves the buyer's delivery and billing commitments server-side and re-validates the submitted
  * slot, inside the preparation transaction and before any reservation is taken.
@@ -90,6 +129,7 @@ function replay(
  */
 function resolveCommitments(
   params: CheckoutParams,
+  cartCountry: Country,
   dependencies: CheckoutDependencies,
 ): { resolved: ResolvedCheckoutCommitments } | { failure: CheckoutResult } {
   const destination = params.deliveryDestination;
@@ -107,6 +147,9 @@ function resolveCommitments(
     // Saved addresses are normalized on the way into storage; an ad-hoc one is normalized here so
     // both destinations produce the same rendering and the same fingerprint for the same place.
     deliveryAddress = normalizePostalAddress(destination.address);
+  }
+  if (!isDeliverableCountryCode(countryProfile(cartCountry), deliveryAddress.countryCode)) {
+    return { failure: { success: false, error: 'DELIVERY_COUNTRY_NOT_ALLOWED' } };
   }
 
   const billing = params.billingSelection;
@@ -131,7 +174,14 @@ function resolveCommitments(
 
   const options = dependencies.deliverySlots.optionsForCart(params.cartId);
   if (options === 'CART_NOT_FOUND') return { failure: { success: false, error: 'CART_NOT_FOUND' } };
-  if (!isSlotBookable(params.deliverySlot, options.leadTime, dependencies.clock.now())) {
+  if (
+    !isSlotBookable(
+      params.deliverySlot,
+      options.leadTime,
+      dependencies.clock.now(),
+      countryProfile(cartCountry),
+    )
+  ) {
     return {
       failure: {
         success: false,
@@ -160,15 +210,22 @@ function prepare(
   const fingerprint = createSafeFingerprint(params, card);
   expirePreparedReservations(dependencies);
   const existing = dependencies.payments.load(params.idempotencyKey);
-  if (existing) return replay(existing, fingerprint, dependencies);
+  const approvalRetry = existing !== undefined && isPendingApprovalPayment(existing);
+  if (existing) {
+    if (existing.fingerprint !== fingerprint)
+      return { success: false, error: 'IDEMPOTENT_CONFLICT' };
+    if (!approvalRetry) return replay(existing, fingerprint, dependencies);
+  }
   return dependencies.unitOfWork.run(() => {
-    const reservation = dependencies.payments.reservePreGateway({
-      idempotencyKey: params.idempotencyKey,
-      fingerprint,
-      card,
-      createdAt: dependencies.clock.now().toISOString(),
-    });
-    if (!reservation.reserved) return replay(reservation.payment, fingerprint, dependencies);
+    if (!approvalRetry) {
+      const reservation = dependencies.payments.reservePreGateway({
+        idempotencyKey: params.idempotencyKey,
+        fingerprint,
+        card,
+        createdAt: dependencies.clock.now().toISOString(),
+      });
+      if (!reservation.reserved) return replay(reservation.payment, fingerprint, dependencies);
+    }
     const cart = getCart(dependencies.carts, params.cartId, {
       inventory: dependencies.inventory,
       clock: dependencies.clock,
@@ -187,6 +244,18 @@ function prepare(
         params.auditContext,
         dependencies,
       );
+    const countryAvailability = cartLinesUnblocked(cart, dependencies);
+    if (!countryAvailability.unblocked)
+      return failPreparation(
+        params.idempotencyKey,
+        {
+          success: false,
+          error: 'BLOCKED_IN_COUNTRY',
+          productIds: countryAvailability.productIds,
+        },
+        params.auditContext,
+        dependencies,
+      );
     if (!customBlendLinesRemainEligible(cart, dependencies))
       return failPreparation(
         params.idempotencyKey,
@@ -201,16 +270,27 @@ function prepare(
         params.auditContext,
         dependencies,
       );
-    if (!cartMeetsVariantMoq(cart, dependencies))
+    const minQuantity = cartMoqMinimumQuantity(cart, dependencies);
+    if (minQuantity !== undefined)
       return failPreparation(
         params.idempotencyKey,
-        { success: false, error: 'BELOW_MOQ' },
+        { success: false, error: 'BELOW_MOQ', minQuantity },
         params.auditContext,
         dependencies,
       );
     // Destination, billing party, and slot are settled here: every branch below this point may take
     // a cart, promo, or inventory reservation, and none of these failures may leave one held.
-    const commitments = resolveCommitments(params, dependencies);
+    // Read the identity country from the persisted cart row. Request headers and postal country
+    // codes are intentionally irrelevant to this lookup.
+    const cartCountry = dependencies.carts.country(params.cartId);
+    if (!cartCountry)
+      return failPreparation(
+        params.idempotencyKey,
+        { success: false, error: 'CART_NOT_FOUND' },
+        params.auditContext,
+        dependencies,
+      );
+    const commitments = resolveCommitments(params, cartCountry, dependencies);
     if ('failure' in commitments)
       return failPreparation(
         params.idempotencyKey,
@@ -224,6 +304,7 @@ function prepare(
             code: params.promoCode,
             cartId: params.cartId,
             userId: params.userId,
+            country: cartCountry,
             now: dependencies.clock.now(),
           },
           dependencies,
@@ -237,11 +318,72 @@ function prepare(
           error: 'PROMO_INVALID',
           promoError: promo.error,
           promoErrorCode: promo.errorCode,
+          ...(promo.minSubtotalCents === undefined
+            ? {}
+            : { minSubtotalCents: promo.minSubtotalCents }),
         },
         params.auditContext,
         dependencies,
       );
     const validPromo = promo?.valid ? promo.promoCode : undefined;
+    const approval = dependencies.approvals?.evaluate({
+      userId: params.userId,
+      cartId: params.cartId,
+      quoteTotalCents: quoteTotalBeforeReservation(cart, promo),
+      resolvedCommitments: commitments.resolved,
+      idempotencyKey: params.idempotencyKey,
+      context: params.auditContext,
+    });
+    if (approval?.gate === 'defer')
+      return failPreparation(
+        params.idempotencyKey,
+        {
+          success: false,
+          error: 'PENDING_APPROVAL',
+          approvalRequestId: approval.approvalRequestId,
+        },
+        params.auditContext,
+        dependencies,
+      );
+    if (approval?.gate === 'rejected')
+      return failPreparation(
+        params.idempotencyKey,
+        { success: false, error: 'APPROVAL_REJECTED' },
+        params.auditContext,
+        dependencies,
+      );
+    if (approval?.gate === 'expired')
+      return failPreparation(
+        params.idempotencyKey,
+        { success: false, error: 'APPROVAL_EXPIRED' },
+        params.auditContext,
+        dependencies,
+      );
+    if (approval?.gate === 'total-drift')
+      return failPreparation(
+        params.idempotencyKey,
+        { success: false, error: 'APPROVAL_TOTAL_DRIFT' },
+        params.auditContext,
+        dependencies,
+      );
+    if (approval?.gate === 'requester-mismatch')
+      return { success: false, error: 'CHECKOUT_FAILED' };
+    if (approvalRetry) {
+      if (approval?.gate !== 'approved-retry') return { success: false, error: 'CHECKOUT_FAILED' };
+      if (
+        !dependencies.payments.transition({
+          idempotencyKey: params.idempotencyKey,
+          expectedStatus: 'failed_pre_gateway',
+          nextStatus: 'prepared',
+          updatedAt: dependencies.clock.now().toISOString(),
+        })
+      ) {
+        const current = dependencies.payments.load(params.idempotencyKey);
+        return current
+          ? replay(current, fingerprint, dependencies)
+          : { success: false, error: 'CHECKOUT_FAILED' };
+      }
+    }
     const createdAt = dependencies.clock.now().toISOString();
     if (!dependencies.carts.reserve(params.cartId, params.idempotencyKey, createdAt)) {
       return failPreparation(
@@ -318,7 +460,7 @@ function prepare(
     ) {
       throw new Error('Checkout intent quote persistence failed');
     }
-    return { quoteTotalCents: quote.totalCents, card };
+    return { quoteTotalCents: quote.totalCents, card, country: cartCountry };
   });
 }
 
@@ -367,17 +509,58 @@ function customBlendLinesRemainEligible(cart: Cart, dependencies: CheckoutDepend
   });
 }
 
-function cartMeetsVariantMoq(cart: Cart, dependencies: CheckoutDependencies): boolean {
-  return cart.items.every((item) => {
+function cartMoqMinimumQuantity(
+  cart: Cart,
+  dependencies: CheckoutDependencies,
+): number | undefined {
+  for (const item of cart.items) {
     const variantId = item.variantSnap?.variantId;
-    if (!variantId) return false;
+    if (!variantId) throw new Error('Cart line is missing its variant identity');
     const variant = dependencies.carts.getVariant(variantId);
-    return (
-      variant !== undefined &&
-      variant.active === 1 &&
-      validateMoq(item.quantity, variant.weight_grams, variant.moq_sacks)
-    );
-  });
+    if (!variant) throw new Error('Cart line variant could not be resolved');
+    if (
+      variant.active !== 1 ||
+      !validateMoq(item.quantity, variant.weight_grams, variant.moq_sacks)
+    ) {
+      const minQuantity = minimumOrderQuantity(variant.weight_grams, variant.moq_sacks);
+      if (minQuantity === undefined) throw new Error('Cart line MOQ could not be resolved');
+      return minQuantity;
+    }
+  }
+  return undefined;
+}
+
+function cartLinesUnblocked(
+  cart: Cart,
+  dependencies: CheckoutDependencies,
+): { unblocked: true } | { unblocked: false; productIds: string[] } {
+  const countryProfiles = dependencies.countryProfiles;
+  if (!countryProfiles) return { unblocked: true };
+
+  const lineVariantIds = cart.items.map((item) => [
+    ...(item.variantSnap ? [item.variantSnap.variantId] : []),
+    ...(item.customBlend?.ingredients.map((ingredient) => ingredient.variantId) ?? []),
+  ]);
+  const facts = dependencies.carts.listCountryVariantFacts(cart.id, lineVariantIds.flat());
+  const blockedVariantIds = new Set(
+    facts
+      .filter(
+        (fact) =>
+          countryProfiles.isCategoryBlocked(fact.country, fact.product_category) ||
+          countryProfiles.isProductBlocked(fact.country, fact.product_slug),
+      )
+      .map((fact) => fact.variant_id),
+  );
+  const productIds = [
+    ...new Set(
+      cart.items
+        .filter((_item, index) =>
+          lineVariantIds[index]!.some((variantId) => blockedVariantIds.has(variantId)),
+        )
+        .map((item) => item.productId),
+    ),
+  ];
+  return productIds.length === 0 ? { unblocked: true } : { unblocked: false, productIds };
 }
 
 function failPreparation(
@@ -454,12 +637,13 @@ export function createCheckoutService(dependencies: CheckoutDependencies): Check
           dependencies,
           params.idempotencyKey,
           params.auditContext,
+          prepared.country,
           selectedDeliverySiteId(params),
         );
       const gatewayResult = await dependencies.gateway.process({
         idempotencyKey: params.idempotencyKey,
         amountCents: prepared.quoteTotalCents,
-        currency: 'USD',
+        currency: AUTHORITATIVE_CURRENCY,
         cardNumber: prepared.card.digits,
       });
       if (gatewayResult.status !== 'success')
@@ -524,6 +708,7 @@ export function createCheckoutService(dependencies: CheckoutDependencies): Check
         dependencies,
         params.idempotencyKey,
         params.auditContext,
+        prepared.country,
         selectedDeliverySiteId(params),
       );
     },
@@ -590,10 +775,17 @@ function resumeFinalization(
   dependencies: CheckoutDependencies,
   idempotencyKey: string,
   auditContext: CheckoutParams['auditContext'],
+  country: Country,
   deliverySiteId: number | null,
 ): CheckoutResult {
   try {
-    return finalizeAuthorizedCheckout(dependencies, idempotencyKey, auditContext, deliverySiteId);
+    return finalizeAuthorizedCheckout(
+      dependencies,
+      idempotencyKey,
+      auditContext,
+      country,
+      deliverySiteId,
+    );
   } catch {
     // Authorization was committed separately; preserve it for same-key retry.
     return { success: false, error: 'IDEMPOTENT_IN_PROGRESS' };

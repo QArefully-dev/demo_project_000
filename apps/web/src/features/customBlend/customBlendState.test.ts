@@ -301,36 +301,48 @@ describe('customBlendValidation', () => {
 
   it('requires a base lot', () => {
     const state = { ...initialCustomBlendState, ingredients: ingredients(10) };
-    expect(customBlendValidation(state).errors).toContain(
-      'Choose a base material to start your blend.',
-    );
+    expect(customBlendValidation(state).errors).toContainEqual({
+      key: 'customBlend.validation.chooseBase',
+    });
   });
 
   it('requires at least one ingredient', () => {
-    expect(customBlendValidation(stateWith()).errors).toContain('Add at least 1 ingredient.');
+    expect(customBlendValidation(stateWith()).errors).toContainEqual({
+      key: 'customBlend.validation.addIngredient',
+      params: { minIngredients: 1 },
+    });
   });
 
   it('rejects an ingredient percentage outside 5% to 50%', () => {
-    const expected = 'Each ingredient must be a whole percentage between 5% and 50%.';
-    expect(customBlendValidation(stateWith({ ingredients: ingredients(4) })).errors).toContain(
+    const expected = {
+      key: 'customBlend.validation.wholePercentage',
+      params: { minPercentage: 5, maxPercentage: 50 },
+    };
+    expect(customBlendValidation(stateWith({ ingredients: ingredients(4) })).errors).toContainEqual(
       expected,
     );
-    expect(customBlendValidation(stateWith({ ingredients: ingredients(51) })).errors).toContain(
-      expected,
-    );
-    expect(customBlendValidation(stateWith({ ingredients: ingredients(12.5) })).errors).toContain(
-      expected,
-    );
+    expect(
+      customBlendValidation(stateWith({ ingredients: ingredients(51) })).errors,
+    ).toContainEqual(expected);
+    expect(
+      customBlendValidation(stateWith({ ingredients: ingredients(12.5) })).errors,
+    ).toContainEqual(expected);
   });
 
   it('rejects an ingredient total above 50%', () => {
-    expect(customBlendValidation(stateWith({ ingredients: ingredients(30, 25) })).errors).toContain(
-      'Ingredients must total 50% or less. They currently total 55%.',
-    );
+    expect(
+      customBlendValidation(stateWith({ ingredients: ingredients(30, 25) })).errors,
+    ).toContainEqual({
+      key: 'customBlend.validation.ingredientTotal',
+      params: { maxTotal: 50, total: 55 },
+    });
   });
 
   it('rejects more than four ingredients', () => {
     const state = stateWith({ ingredients: ingredients(5, 5, 5, 5, 5) });
-    expect(customBlendValidation(state).errors).toContain('Use no more than 4 ingredients.');
+    expect(customBlendValidation(state).errors).toContainEqual({
+      key: 'customBlend.validation.tooManyIngredients',
+      params: { maxIngredients: 4 },
+    });
   });
 });

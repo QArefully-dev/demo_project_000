@@ -40,13 +40,15 @@ describe('AccountMenu', () => {
       email: 'customer@example.test',
       displayName: 'Customer',
       role: 'customer',
+      country: 'UK',
     };
     const user = userEvent.setup();
     renderMenu();
 
     await user.click(screen.getByLabelText('Account'));
 
-    expect(await screen.findByText('My Account')).toBeInTheDocument();
+    expect(await screen.findByText('My account')).toBeInTheDocument();
+    expect(screen.getByText('My lists')).toBeInTheDocument();
     expect(screen.queryByText('Review moderation')).not.toBeInTheDocument();
   });
 
@@ -56,6 +58,7 @@ describe('AccountMenu', () => {
       email: 'admin@example.test',
       displayName: 'Admin',
       role: 'admin',
+      country: 'UK',
     };
     const user = userEvent.setup();
     renderMenu();

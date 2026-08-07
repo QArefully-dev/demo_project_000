@@ -6,6 +6,7 @@ import type { OrderDetailResponse, OrderListResponse } from '@shop/contracts/ord
 import { ApiError } from '@/api/client';
 import { cancelOrder, getOrder, getOrders } from '@/api/orders';
 import { fetchReturnOverview } from '@/api/returns';
+import { useCartContext } from '@/hooks/CartContext';
 import { OrderDetailPage } from './OrderDetailPage';
 import { OrderHistoryPage } from './OrderHistoryPage';
 import { OrderConfirmationPage } from '@/features/checkout/OrderConfirmationPage';
@@ -14,12 +15,26 @@ import {
   formatAddressLine,
   formatBillingIdentifiers,
   formatDeliverySlot,
+  formatOrderTimestamp,
   formatPurchaseOrderReference,
   hasOrderTradeDetails,
+  orderStatusLabel,
 } from './orderPresentation';
+import { formatDualTotal } from '@shop/localisation';
 
 vi.mock('@/api/orders', () => ({ getOrders: vi.fn(), getOrder: vi.fn(), cancelOrder: vi.fn() }));
 vi.mock('@/api/returns', () => ({ fetchReturnOverview: vi.fn(), createReturnRequest: vi.fn() }));
+vi.mock('@/hooks/CartContext', () => ({ useCartContext: vi.fn() }));
+
+/** Minimal cart surface consumed by Buy Again; only the members the reorder UI reads. */
+function cartStub(overrides: Record<string, unknown> = {}) {
+  return {
+    reorder: vi.fn().mockResolvedValue(false),
+    isActionPending: vi.fn().mockReturnValue(false),
+    error: null,
+    ...overrides,
+  } as never;
+}
 
 const detail: OrderDetailResponse = {
   id: '12',
@@ -154,6 +169,8 @@ describe('customer order UI', () => {
     vi.mocked(getOrder).mockReset();
     vi.mocked(cancelOrder).mockReset();
     vi.mocked(fetchReturnOverview).mockReset();
+    vi.mocked(useCartContext).mockReset();
+    vi.mocked(useCartContext).mockReturnValue(cartStub());
     vi.mocked(fetchReturnOverview).mockResolvedValue({
       windowDays: 30,
       eligibleLines: [],
@@ -199,8 +216,10 @@ describe('customer order UI', () => {
         <OrderHistoryPage />
       </MemoryRouter>,
     );
-    expect(await screen.findByText('Network unavailable')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Try Again' }));
+    expect(
+      await screen.findByText('Unable to complete this order request. Try again.'),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByRole('link', { name: 'Order #12' })).toBeInTheDocument();
   });
 
@@ -246,7 +265,7 @@ describe('customer order UI', () => {
         </Routes>
       </MemoryRouter>,
     );
-    expect(await screen.findByText('SIM-ONE')).toBeInTheDocument();
+    expect(await screen.findByText('Tracking reference: SIM-ONE')).toBeInTheDocument();
     expect(screen.getByText('Delivery failed')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Cancel order' }));
     expect(screen.getByRole('dialog', { name: 'Cancel order #12?' })).toBeInTheDocument();
@@ -317,7 +336,7 @@ describe('customer order UI', () => {
     expect(screen.getByTestId('custom-blend-livery')).toBeInTheDocument();
     expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute('data-vessel', 'kraft-sack');
     expect(screen.getByText('Mineral')).toBeInTheDocument();
-    expect(screen.getByText(/Base material: \$10.00 · Blending fee: \$25.00/)).toBeInTheDocument();
+    expect(screen.getByText(/Base material: \$12.50.*Blending fee: \$31.25/)).toBeInTheDocument();
     expect(
       screen.getByText(/Made to order\. Custom blends cannot be returned/),
     ).toBeInTheDocument();
@@ -411,7 +430,11 @@ describe('customer order UI', () => {
     await screen.findByRole('button', { name: 'Cancel order' });
     await user.click(screen.getByRole('button', { name: 'Cancel order' }));
     await user.click(screen.getByRole('button', { name: 'Confirm cancellation' }));
-    expect(await screen.findByRole('status')).toHaveTextContent('latest status has been refreshed');
+    // Name filter disambiguates from the Buy Again region, which is also role=status but is
+    // aria-labelled; the cancel-conflict paragraph has no accessible name.
+    expect(await screen.findByRole('status', { name: '' })).toHaveTextContent(
+      /This order changed before cancellation/,
+    );
     expect(screen.getByLabelText('Order status: Shipped')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancel order' })).not.toBeInTheDocument();
   });
@@ -537,7 +560,7 @@ describe('customer order UI', () => {
     expect(
       screen.getByText('Unit 4 Foundry Park, Kiln Road, Sheffield, South Yorkshire, S9 1TQ, GB'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Friday, August 7, 2026 · Morning')).toBeInTheDocument();
+    expect(screen.getByText(formatDeliverySlot(tradeDetail.deliverySlot)!)).toBeInTheDocument();
     expect(screen.getByText('Northgate Building Supplies Ltd')).toBeInTheDocument();
     expect(screen.getByText('12 Cathedral Street, Sheffield, S1 2LH, GB')).toBeInTheDocument();
     expect(screen.getByText('Reg. 09876543 · VAT GB123456789')).toBeInTheDocument();
@@ -577,10 +600,83 @@ describe('customer order UI', () => {
     );
 
     expect(await screen.findByText('Delivery and billing')).toBeInTheDocument();
-    expect(screen.getByText('Saturday, August 8, 2026 · Afternoon')).toBeInTheDocument();
+    expect(
+      screen.getByText(formatDeliverySlot({ date: '2026-08-08', window: 'pm' })!),
+    ).toBeInTheDocument();
     expect(screen.getByText('PO-77')).toBeInTheDocument();
     expect(screen.queryByText('Delivery address')).not.toBeInTheDocument();
     expect(screen.queryByText('Billing details')).not.toBeInTheDocument();
+  });
+});
+
+describe('Buy Again placement on the order surfaces', () => {
+  beforeEach(() => {
+    vi.mocked(getOrders).mockReset();
+    vi.mocked(getOrder).mockReset();
+    vi.mocked(useCartContext).mockReset();
+    vi.mocked(useCartContext).mockReturnValue(cartStub());
+    vi.mocked(fetchReturnOverview).mockReset();
+    vi.mocked(fetchReturnOverview).mockResolvedValue({
+      windowDays: 30,
+      eligibleLines: [],
+      requests: [],
+    });
+  });
+
+  it('offers Buy again on every order-history row', async () => {
+    vi.mocked(getOrders).mockResolvedValue({
+      ...list,
+      items: [list.items[0]!, { ...list.items[0]!, id: '13' }],
+    });
+    render(
+      <MemoryRouter>
+        <OrderHistoryPage />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Buy again from order #12' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Buy again from order #13' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('status', { name: 'Buy again result for order #12' }),
+    ).toBeEmptyDOMElement();
+  });
+
+  it('runs the reorder for the row that was activated', async () => {
+    const reorder = vi.fn().mockResolvedValue(false);
+    vi.mocked(useCartContext).mockReturnValue(cartStub({ reorder }));
+    vi.mocked(getOrders).mockResolvedValue({
+      ...list,
+      items: [list.items[0]!, { ...list.items[0]!, id: '13' }],
+    });
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <OrderHistoryPage />
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Buy again from order #13' }));
+    await waitFor(() => expect(reorder).toHaveBeenCalledWith('13'));
+    expect(reorder).toHaveBeenCalledOnce();
+  });
+
+  it('offers Buy again on order detail alongside the existing cancel surface', async () => {
+    vi.mocked(getOrder).mockResolvedValue(detail);
+    render(
+      <MemoryRouter initialEntries={['/orders/12']}>
+        <Routes>
+          <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Buy again from order #12' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Buy again' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel order' })).toBeInTheDocument();
   });
 });
 
@@ -595,11 +691,37 @@ describe('order trade detail presentation', () => {
   it('renders a booked slot on its calendar day regardless of host timezone', () => {
     expect(formatDeliverySlot(undefined)).toBeUndefined();
     expect(formatDeliverySlot({ date: '2026-08-07', window: 'am' })).toBe(
-      'Friday, August 7, 2026 · Morning',
+      'August 7, 2026 · Morning',
     );
     expect(formatDeliverySlot({ date: '2026-08-07', window: 'pm' })).toBe(
-      'Friday, August 7, 2026 · Afternoon',
+      'August 7, 2026 · Afternoon',
     );
+  });
+
+  it('keeps civil delivery dates stable across country zones and midnight boundaries', () => {
+    const us = formatDeliverySlot({ date: '2026-03-29', window: 'am' }, 'US');
+    const de = formatDeliverySlot({ date: '2026-03-29', window: 'am' }, 'DE');
+    expect(us).toContain('March 29, 2026');
+    expect(de).toContain('29. März 2026');
+    expect(us).not.toContain('March 28');
+    expect(de).not.toContain('28. März');
+  });
+
+  it('formats instants in country zones through DST transitions', () => {
+    expect(formatOrderTimestamp('2026-03-29T00:30:00.000Z', 'DE')).toMatch(/01:30/);
+    expect(formatOrderTimestamp('2026-03-29T01:30:00.000Z', 'DE')).toMatch(/03:30/);
+  });
+
+  it('uses a translated fallback for invalid timestamps', () => {
+    const value = formatOrderTimestamp('not-a-timestamp', 'DE');
+    expect(value).toBe('Datum nicht verfügbar');
+    expect(value).not.toContain('Invalid Date');
+  });
+
+  it('localizes lifecycle status labels and keeps order totals dual', () => {
+    expect(orderStatusLabel('shipped', 'DE')).toBe('Versandt');
+    expect(formatDualTotal(2200, 'US')).toEqual({ display: '$27.50', settlement: '£22.00' });
+    expect(formatDualTotal(2200, 'UK')).toEqual({ display: '£22.00' });
   });
 
   it('drops billing identifiers that were never recorded', () => {

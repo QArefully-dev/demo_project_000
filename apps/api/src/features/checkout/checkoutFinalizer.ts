@@ -1,4 +1,5 @@
 import { parsePersistedCheckoutQuote } from '../payments/paymentRepository.js';
+import type { Country } from '@shop/contracts/country';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { CreateOrderLineVariantSnapshot } from '../orders/orderTypes.js';
 import type { CheckoutDependencies, CheckoutResult } from './checkoutTypes.js';
@@ -8,6 +9,8 @@ export function finalizeAuthorizedCheckout(
   dependencies: CheckoutDependencies,
   idempotencyKey: string,
   auditContext: AuditContext,
+  /** Identity country captured from the cart during checkout preparation. */
+  country: Country,
   /**
    * Saved site the buyer selected, or `null` for an ad-hoc destination. The quote snapshots the
    * resolved address rather than the record it came from, so the reference is supplied here.
@@ -48,6 +51,7 @@ export function finalizeAuthorizedCheckout(
     });
 
     const orderId = dependencies.orders.create({
+      country,
       customerName: quote.customer.name,
       customerEmail: quote.customer.email,
       shippingAddress: quote.customer.shippingAddress,
@@ -93,21 +97,14 @@ export function finalizeAuthorizedCheckout(
 
     if (quote.promoCode)
       dependencies.promos.commitReservation({ paymentIdempotencyKey: idempotencyKey, orderId });
+    // Order receipts are rendered from the structured order snapshot by the mailbox reader.
+    // Keep legacy identity columns empty so checkout never persists generated prose or a locale.
     dependencies.mailbox.add({
       recipient: quote.customer.email,
-      subject: `QArefully Materials Exchange — order #${orderId} confirmed`,
-      body: `Your QArefully Materials Exchange order #${orderId} has been recorded. ${
-        quote.deliverySummary.mode === 'freight'
-          ? `Freight delivery: $${quote.deliverySummary.chargeCents / 100}. `
-          : ''
-      }Delivery slot: ${quote.deliverySlot.date} ${
-        quote.deliverySlot.window === 'am' ? 'morning' : 'afternoon'
-      }. ${
-        quote.purchaseOrderReference === null
-          ? ''
-          : `Purchase order reference: ${quote.purchaseOrderReference}. `
-      }Total: $${quote.totalCents / 100}. This was a simulated payment; no card was charged.`,
-      kind: 'order_confirmation',
+      subject: '',
+      body: '',
+      kind: 'order_receipt',
+      orderId,
       createdAt,
     });
     dependencies.carts.remove(quote.cartId);

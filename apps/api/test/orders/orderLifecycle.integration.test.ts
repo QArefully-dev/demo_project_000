@@ -67,6 +67,116 @@ void test('order lifecycle repository creates initial immutable event', (t) => {
   );
 });
 
+void test('lifecycle snapshots use frozen order country while tracking text stays raw', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-order-localised-lifecycle-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+  const clock = { now: () => new Date('2026-07-19T12:00:00.000Z') };
+  const repository = createOrderRepository(db);
+  const service = createOrderService({
+    repository,
+    unitOfWork: createUnitOfWork(db),
+    clock,
+    audit: createAuditWriter({ repository: createAuditRepository(db), clock }),
+    inventory: createInventoryService({ repository: createInventoryRepository(db) }),
+  });
+  const create = (country: 'DE' | 'FR') =>
+    repository.create({
+      country,
+      customerName: 'Lifecycle Country Test',
+      customerEmail: 'lifecycle-country@example.test',
+      shippingAddress: '1 Test St',
+      promoApplied: null,
+      subtotalCents: 500,
+      discountCents: 0,
+      totalCents: 500,
+      userId: 1,
+      items: [
+        {
+          productId: '1',
+          productName: 'Snapshot product',
+          unitPriceCents: 500,
+          quantity: 1,
+          discountableTotalCents: 500,
+          blendingFeeCents: 0,
+          lineTotalCents: 500,
+        },
+      ],
+      createdAt: '2026-07-19T00:00:00.000Z',
+    });
+  const context = {
+    actor: { type: 'user' as const, userId: 1 },
+    requestId: 'localised-order-lifecycle',
+  };
+  const frenchOrderId = create('FR');
+  const frenchLineId = repository.findDetailById(frenchOrderId)?.items[0]?.lineId;
+  if (!frenchLineId) throw new Error('Expected French order line');
+  const packed = service.pack({
+    orderId: frenchOrderId,
+    version: 0,
+    idempotencyKey: 'localised-pack-key',
+    context,
+    shipments: [{ lines: [{ lineId: frenchLineId, quantity: 1 }] }],
+  });
+  const shipmentId = Number(packed.shipments[0]?.id);
+  assert.ok(shipmentId > 0);
+  const shipped = service.transitionShipment({
+    shipmentId,
+    version: 0,
+    status: 'shipped',
+    idempotencyKey: 'localised-ship-key',
+    context,
+  });
+  const tracked = service.addTrackingEvent({
+    shipmentId,
+    version: 1,
+    code: 'in_transit',
+    title: 'Carrier checkpoint (operator text)',
+    detail: 'Driver supplied detail remains raw',
+    location: 'Depot 7',
+    idempotencyKey: 'localised-track-key',
+    context,
+  });
+  const frenchEvents = tracked.events.map((event) => ({
+    type: event.type,
+    title: event.title,
+    detail: event.detail,
+  }));
+  assert.deepEqual(frenchEvents, [
+    { type: 'order_created', title: 'Commande cr\u00e9\u00e9e', detail: null },
+    { type: 'shipment_packed', title: 'Envoi emball\u00e9', detail: null },
+    { type: 'shipment_shipped', title: 'Envoi exp\u00e9di\u00e9', detail: null },
+    {
+      type: 'shipment_tracking_updated',
+      title: 'Carrier checkpoint (operator text)',
+      detail: 'Driver supplied detail remains raw',
+    },
+  ]);
+  assert.equal(repository.country(frenchOrderId), 'FR');
+  assert.equal(repository.findDetailById(frenchOrderId, 'DE'), undefined);
+  assert.equal(shipped.status, 'shipped');
+
+  const germanOrderId = create('DE');
+  const cancelled = service.cancel({
+    orderId: germanOrderId,
+    version: 0,
+    idempotencyKey: 'localised-cancel-key',
+    context,
+  });
+  assert.deepEqual(
+    cancelled.events.map((event) => ({ type: event.type, title: event.title })),
+    [
+      { type: 'order_created', title: 'Bestellung erstellt' },
+      { type: 'order_cancelled', title: 'Bestellung storniert' },
+    ],
+  );
+  assert.equal(repository.country(germanOrderId), 'DE');
+});
+
 void test('lifecycle commands are idempotent, versioned, audited, and transactional', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-order-commands-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });

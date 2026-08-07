@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   CreateReviewBody,
   CreateReviewReportBody,
@@ -18,9 +18,57 @@ import {
   withdrawReviewReport,
   updateReview,
 } from '@/api/reviews';
+import { ApiError, type ApiErrorMeta } from '@/api/client';
 import { useAuth } from './AuthContext';
+import type { PublicErrorCode } from '@shop/contracts/public-errors';
+import type { MessageCatalog, MessageParams } from '@shop/localisation';
+import { apiErrors } from '@shop/localisation/messages/apiErrors';
+import { productMessages } from '@shop/localisation/messages/product';
+import { useLocalisation } from '@/i18n/LocaleContext';
 
 const DEFAULT_PAGE_SIZE = 10;
+type ProductMessageKey = keyof typeof productMessages;
+
+/** Stable P17 failure identity. Copy resolves against active country during render. */
+type ProductErrorState = {
+  readonly code: PublicErrorCode | null;
+  readonly meta: ApiErrorMeta | null;
+  readonly key: ProductMessageKey;
+  readonly params?: MessageParams;
+};
+
+function safeMessageParams(meta: ApiErrorMeta | null): MessageParams {
+  if (meta === null || typeof meta !== 'object') return {};
+  const params: Record<string, string | number | bigint> = {};
+  for (const [key, value] of Object.entries(meta)) {
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint')
+      params[key] = value;
+  }
+  return params;
+}
+
+function localizeProductError(
+  state: ProductErrorState | null,
+  translate: (catalog: MessageCatalog, key: string, params?: MessageParams) => string,
+): string | null {
+  if (state === null) return null;
+  if (state.code !== null) {
+    try {
+      return translate(apiErrors, state.code, safeMessageParams(state.meta));
+    } catch {
+      // Malformed/stale descriptor falls through to safe P17 copy.
+    }
+  }
+  return translate(productMessages, state.key, state.params);
+}
+
+function errorState(error: unknown, fallback: ProductMessageKey): ProductErrorState {
+  if (error instanceof ApiError && error.code !== null) {
+    return { code: error.code, meta: error.meta, key: fallback };
+  }
+  // Network, contract, legacy, and unknown failures never expose Error.message.
+  return { code: null, meta: null, key: fallback };
+}
 
 export interface UseProductReviewsResult {
   list: ReviewListResponse | null;
@@ -47,22 +95,19 @@ export interface UseProductReviewsResult {
   isEngagementMutating: (reviewId: string) => boolean;
 }
 
-function messageFor(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
-}
-
 /**
  * Keeps public review data and the optional owner record independent: a failed
  * owner request never hides public reviews, and vice versa.
  */
 export function useProductReviews(productId: string): UseProductReviewsResult {
   const { user } = useAuth();
+  const { translate } = useLocalisation();
   const viewerIdentity = user ? `${user.id}:${user.role}` : 'anonymous';
   const [list, setList] = useState<ReviewListResponse | null>(null);
-  const [listError, setListError] = useState<string | null>(null);
+  const [listErrorState, setListErrorState] = useState<ProductErrorState | null>(null);
   const [isListLoading, setIsListLoading] = useState(true);
   const [ownerReview, setOwnerReview] = useState<OwnedReview | null>(null);
-  const [ownerError, setOwnerError] = useState<string | null>(null);
+  const [ownerErrorState, setOwnerErrorState] = useState<ProductErrorState | null>(null);
   const [isOwnerLoading, setIsOwnerLoading] = useState(Boolean(user));
   const [sort, setSortState] = useState<ReviewSort>('newest');
   const [page, setPageState] = useState(1);
@@ -70,9 +115,13 @@ export function useProductReviews(productId: string): UseProductReviewsResult {
   const [listReloadVersion, setListReloadVersion] = useState(0);
   const [ownerReloadVersion, setOwnerReloadVersion] = useState(0);
   const [isMutating, setIsMutating] = useState(false);
-  const [mutationError, setMutationError] = useState<string | null>(null);
-  const [engagementStatus, setEngagementStatus] = useState<string | null>(null);
-  const [engagementErrors, setEngagementErrors] = useState<Record<string, string | undefined>>({});
+  const [mutationErrorState, setMutationErrorState] = useState<ProductErrorState | null>(null);
+  const [engagementStatusState, setEngagementStatusState] = useState<ProductErrorState | null>(
+    null,
+  );
+  const [engagementErrorStates, setEngagementErrorStates] = useState<
+    Record<string, ProductErrorState | undefined>
+  >({});
   const [engagementMutationIds, setEngagementMutationIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -87,13 +136,13 @@ export function useProductReviews(productId: string): UseProductReviewsResult {
     if (productChanged) {
       previousProductId.current = productId;
       setList(null);
-      setListError(null);
+      setListErrorState(null);
       setOwnerReview(null);
-      setOwnerError(null);
+      setOwnerErrorState(null);
       setPageState(1);
     }
     setIsListLoading(true);
-    setListError(null);
+    setListErrorState(null);
 
     getProductReviews(
       productId,
@@ -112,7 +161,7 @@ export function useProductReviews(productId: string): UseProductReviewsResult {
       })
       .catch((error: unknown) => {
         if (current && !controller.signal.aborted) {
-          setListError(messageFor(error, 'Could not load reviews.'));
+          setListErrorState(errorState(error, 'product.couldNotLoadReviews'));
         }
       })
       .finally(() => {
@@ -129,21 +178,21 @@ export function useProductReviews(productId: string): UseProductReviewsResult {
     const controller = new AbortController();
     let current = true;
     setOwnerReview(null);
-    setOwnerError(null);
+    setOwnerErrorState(null);
     if (!user) {
       setIsOwnerLoading(false);
       return () => controller.abort();
     }
 
     setIsOwnerLoading(true);
-    setOwnerError(null);
+    setOwnerErrorState(null);
     getMyProductReview(productId, controller.signal)
       .then((response) => {
         if (current) setOwnerReview(response);
       })
       .catch((error: unknown) => {
         if (current && !controller.signal.aborted) {
-          setOwnerError(messageFor(error, 'Could not load your review.'));
+          setOwnerErrorState(errorState(error, 'product.couldNotLoadReview'));
         }
       })
       .finally(() => {
@@ -161,8 +210,8 @@ export function useProductReviews(productId: string): UseProductReviewsResult {
     for (const controller of engagementControllers.current.values()) controller.abort();
     engagementControllers.current.clear();
     setEngagementMutationIds(new Set());
-    setEngagementErrors({});
-    setEngagementStatus(null);
+    setEngagementErrorStates({});
+    setEngagementStatusState(null);
   }, [productId, viewerIdentity]);
 
   const retryList = useCallback(() => setListReloadVersion((version) => version + 1), []);
@@ -183,7 +232,7 @@ export function useProductReviews(productId: string): UseProductReviewsResult {
 
   const submitReview = useCallback(
     async (body: CreateReviewBody): Promise<boolean> => {
-      setMutationError(null);
+      setMutationErrorState(null);
       setIsMutating(true);
       try {
         if (ownerReview) {
@@ -194,7 +243,7 @@ export function useProductReviews(productId: string): UseProductReviewsResult {
         refresh();
         return true;
       } catch (error) {
-        setMutationError(messageFor(error, 'Could not save your review.'));
+        setMutationErrorState(errorState(error, 'product.couldNotSaveReview'));
         return false;
       } finally {
         setIsMutating(false);
@@ -205,14 +254,14 @@ export function useProductReviews(productId: string): UseProductReviewsResult {
 
   const removeReview = useCallback(async (): Promise<boolean> => {
     if (!ownerReview) return false;
-    setMutationError(null);
+    setMutationErrorState(null);
     setIsMutating(true);
     try {
       await deleteReview(ownerReview.id);
       refresh();
       return true;
     } catch (error) {
-      setMutationError(messageFor(error, 'Could not delete your review.'));
+      setMutationErrorState(errorState(error, 'product.couldNotDeleteReview'));
       return false;
     } finally {
       setIsMutating(false);
@@ -242,8 +291,8 @@ export function useProductReviews(productId: string): UseProductReviewsResult {
     async (
       reviewId: string,
       action: (signal: AbortSignal) => Promise<ReviewEngagementResponse>,
-      successMessage: string,
-      failureMessage: string,
+      successKey: ProductMessageKey,
+      failureKey: ProductMessageKey,
     ): Promise<boolean> => {
       const priorController = engagementControllers.current.get(reviewId);
       if (priorController) return false;
@@ -252,20 +301,20 @@ export function useProductReviews(productId: string): UseProductReviewsResult {
       const generation = engagementGeneration.current;
       engagementControllers.current.set(reviewId, controller);
       setEngagementMutationIds((current) => new Set(current).add(reviewId));
-      setEngagementErrors((current) => ({ ...current, [reviewId]: undefined }));
-      setEngagementStatus(null);
+      setEngagementErrorStates((current) => ({ ...current, [reviewId]: undefined }));
+      setEngagementStatusState(null);
 
       try {
         const response = await action(controller.signal);
         if (generation !== engagementGeneration.current || controller.signal.aborted) return false;
         updateEngagement(response);
-        setEngagementStatus(successMessage);
+        setEngagementStatusState({ code: null, meta: null, key: successKey });
         return true;
       } catch (error) {
         if (generation !== engagementGeneration.current || controller.signal.aborted) return false;
-        setEngagementErrors((current) => ({
+        setEngagementErrorStates((current) => ({
           ...current,
-          [reviewId]: messageFor(error, failureMessage),
+          [reviewId]: errorState(error, failureKey),
         }));
         return false;
       } finally {
@@ -288,8 +337,8 @@ export function useProductReviews(productId: string): UseProductReviewsResult {
         reviewId,
         (signal) =>
           hasHelpfulVote ? removeHelpfulVote(reviewId, signal) : addHelpfulVote(reviewId, signal),
-        hasHelpfulVote ? 'Removed helpful mark.' : 'Marked this review helpful.',
-        'Could not update the helpful mark.',
+        hasHelpfulVote ? 'product.removedHelpful' : 'product.markedHelpful',
+        'product.couldNotUpdateHelpful',
       ),
     [performEngagementMutation],
   );
@@ -299,8 +348,8 @@ export function useProductReviews(productId: string): UseProductReviewsResult {
       performEngagementMutation(
         reviewId,
         (signal) => createReviewReport(reviewId, body, signal),
-        'Report submitted.',
-        'Could not submit the report.',
+        'product.reportSubmitted',
+        'product.couldNotSubmitReport',
       ),
     [performEngagementMutation],
   );
@@ -310,8 +359,8 @@ export function useProductReviews(productId: string): UseProductReviewsResult {
       performEngagementMutation(
         reviewId,
         (signal) => withdrawReviewReport(reviewId, signal),
-        'Report withdrawn.',
-        'Could not withdraw the report.',
+        'product.reportWithdrawn',
+        'product.couldNotWithdrawReport',
       ),
     [performEngagementMutation],
   );
@@ -319,6 +368,33 @@ export function useProductReviews(productId: string): UseProductReviewsResult {
   const isEngagementMutating = useCallback(
     (reviewId: string) => engagementMutationIds.has(reviewId),
     [engagementMutationIds],
+  );
+
+  const listError = useMemo(
+    () => localizeProductError(listErrorState, translate),
+    [listErrorState, translate],
+  );
+  const ownerError = useMemo(
+    () => localizeProductError(ownerErrorState, translate),
+    [ownerErrorState, translate],
+  );
+  const mutationError = useMemo(
+    () => localizeProductError(mutationErrorState, translate),
+    [mutationErrorState, translate],
+  );
+  const engagementStatus = useMemo(
+    () => localizeProductError(engagementStatusState, translate),
+    [engagementStatusState, translate],
+  );
+  const engagementErrors = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(engagementErrorStates).map(([reviewId, state]) => [
+          reviewId,
+          localizeProductError(state ?? null, translate) ?? undefined,
+        ]),
+      ) as Readonly<Record<string, string | undefined>>,
+    [engagementErrorStates, translate],
   );
 
   return {

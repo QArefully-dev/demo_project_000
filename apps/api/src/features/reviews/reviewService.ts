@@ -7,6 +7,7 @@ import type {
   ReviewListResponse,
   ReviewSummary,
 } from '@shop/contracts/reviews';
+import type { Country } from '@shop/contracts/country';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter, Clock } from '../audit/auditService.js';
@@ -64,8 +65,8 @@ export interface ReviewService {
     context: AuditContext,
   ): OwnedReview;
   delete(userId: number, reviewId: number, context: AuditContext): void;
-  hide(reviewId: number, context: AuditContext): OwnedReview;
-  restore(reviewId: number, context: AuditContext): OwnedReview;
+  hide(reviewId: number, context: AuditContext, country?: Country): OwnedReview;
+  restore(reviewId: number, context: AuditContext, country?: Country): OwnedReview;
   addHelpful(userId: number, reviewId: number, context: AuditContext): ReviewEngagementResponse;
   removeHelpful(userId: number, reviewId: number, context: AuditContext): ReviewEngagementResponse;
   createReport(
@@ -75,12 +76,13 @@ export interface ReviewService {
     context: AuditContext,
   ): ReviewEngagementResponse;
   withdrawReport(userId: number, reviewId: number, context: AuditContext): ReviewEngagementResponse;
-  listModeration(input: AdminReviewQueueQueryInput): AdminReviewQueueResponse;
+  listModeration(input: AdminReviewQueueQueryInput, country?: Country): AdminReviewQueueResponse;
   moderate(
     reviewId: number,
     decision: 'hide_review' | 'dismiss_reports',
     adminUserId: number,
     context: AuditContext,
+    country?: Country,
   ): AdminReviewModerationResponse;
 }
 function asReview(record: ReviewRecord, canEngage = false): Review {
@@ -143,8 +145,12 @@ function requireOwner(
     throw new ReviewServiceError('FORBIDDEN', 'Review is owned by another user');
   return review;
 }
-function requireReview(repository: ReviewRepository, reviewId: number): ReviewRecord {
-  const review = repository.findById(reviewId);
+function requireReview(
+  repository: ReviewRepository,
+  reviewId: number,
+  country?: Country,
+): ReviewRecord {
+  const review = repository.findById(reviewId, country);
   if (!review) throw new ReviewServiceError('NOT_FOUND', 'Review not found');
   return review;
 }
@@ -254,7 +260,7 @@ export function createReviewService(dependencies: ReviewServiceDependencies): Re
         audit.append({ action: 'review.deleted', context, reviewId, productId: review.productId });
       });
     },
-    hide(reviewId, context) {
+    hide(reviewId, context, country) {
       return transition(
         repository,
         unitOfWork,
@@ -265,9 +271,10 @@ export function createReviewService(dependencies: ReviewServiceDependencies): Re
         'hidden',
         'review.hidden',
         context,
+        country,
       );
     },
-    restore(reviewId, context) {
+    restore(reviewId, context, country) {
       return transition(
         repository,
         unitOfWork,
@@ -278,6 +285,7 @@ export function createReviewService(dependencies: ReviewServiceDependencies): Re
         'published',
         'review.restored',
         context,
+        country,
       );
     },
     addHelpful(userId, reviewId, context) {
@@ -348,10 +356,10 @@ export function createReviewService(dependencies: ReviewServiceDependencies): Re
         return engagement(repository, reviewId, userId);
       });
     },
-    listModeration(input) {
+    listModeration(input, country) {
       const query = normalize(() => normalizeAdminReviewQueueQuery(input));
       return unitOfWork.run(() => {
-        const result = repository.listModeration(query);
+        const result = repository.listModeration(query, country);
         return {
           total: result.total,
           items: result.items.map((item) => ({
@@ -374,15 +382,21 @@ export function createReviewService(dependencies: ReviewServiceDependencies): Re
         };
       });
     },
-    moderate(reviewId, decision, adminUserId, context) {
+    moderate(reviewId, decision, adminUserId, context, country) {
       return unitOfWork.run(() => {
         if (decision !== 'hide_review' && decision !== 'dismiss_reports')
           throw new ReviewServiceError(
             'INVALID_INPUT',
             'decision must be hide_review or dismiss_reports',
           );
-        requireReview(repository, reviewId);
-        const result = repository.decideModeration(reviewId, decision, adminUserId, now(clock));
+        requireReview(repository, reviewId, country);
+        const result = repository.decideModeration(
+          reviewId,
+          decision,
+          adminUserId,
+          now(clock),
+          country,
+        );
         if (decision === 'hide_review')
           audit.append({
             action: 'review.hidden',
@@ -418,9 +432,10 @@ function transition(
   to: PersistedReviewStatus,
   action: 'review.hidden' | 'review.restored',
   context: AuditContext,
+  country?: Country,
 ): OwnedReview {
   return unitOfWork.run(() => {
-    const existing = requireReview(repository, reviewId);
+    const existing = requireReview(repository, reviewId, country);
     if (existing.status !== from)
       throw new ReviewServiceError('INVALID_TRANSITION', `Review is already ${existing.status}`);
     const review = repository.transitionStatus(reviewId, from, to, now(clock));

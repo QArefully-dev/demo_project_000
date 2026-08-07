@@ -4,8 +4,13 @@ import { MemoryRouter, useSearchParams } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Cart, CartLine } from '@shop/contracts/cart';
 import type { CustomBlendOption, CustomBlendOptionsResponse } from '@shop/contracts/custom-blends';
+import { translateUnchecked } from '@shop/localisation';
+import { apiErrors } from '@shop/localisation/messages/apiErrors';
+import { customBlendMessages } from '@shop/localisation/messages/customBlend';
+import { ApiError } from '@/api/client';
 import { getCustomBlendOptions } from '@/api/customBlends';
 import { getProduct } from '@/api/products';
+import { LocaleProvider } from '@/i18n/LocaleContext';
 import { useCartContext } from '@/hooks/CartContext';
 import { useProducts } from '@/hooks/useProducts';
 import { useCategories } from '@/hooks/useCategories';
@@ -21,6 +26,11 @@ vi.mock('@/hooks/CartContext', () => ({ useCartContext: vi.fn() }));
 vi.mock('@/api/products', () => ({ getProduct: vi.fn() }));
 vi.mock('@/hooks/useProducts', () => ({ useProducts: vi.fn() }));
 vi.mock('@/hooks/useCategories', () => ({ useCategories: vi.fn() }));
+
+const countryState = vi.hoisted(() => ({ activeCountry: 'US' }));
+vi.mock('@/hooks/CountryContext', () => ({
+  useCountry: () => ({ activeCountry: countryState.activeCountry }),
+}));
 
 const EDIT_CONFIG_KEY = 'a'.repeat(64);
 const CREATED_CONFIG_KEY = 'c'.repeat(64);
@@ -255,8 +265,24 @@ function renderPage(search: string, extra?: React.ReactNode) {
   );
 }
 
+function countryPage(search: string, extra?: React.ReactNode) {
+  return (
+    <MemoryRouter initialEntries={[`/custom-blend${search}`]}>
+      <LocaleProvider>
+        {extra}
+        <CustomBlendPage />
+      </LocaleProvider>
+    </MemoryRouter>
+  );
+}
+
+function renderCountryPage(search: string, extra?: React.ReactNode) {
+  return render(countryPage(search, extra));
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
+  countryState.activeCountry = 'US';
   const cart = {
     id: 'cart',
     items: [],
@@ -438,7 +464,9 @@ describe('CustomBlendPage', () => {
     renderPage('?baseVariantId=999');
 
     expect(
-      await screen.findByText('Selected base lot is not eligible for Custom Blend.'),
+      await screen.findByText(
+        'That base material is not available for Custom Blend. Choose another base below.',
+      ),
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Search materials')).toBeInTheDocument();
   });
@@ -471,6 +499,100 @@ describe('CustomBlendPage', () => {
 
     expect(screen.queryByLabelText('Stale Ingredient')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Fresh Ingredient')).toBeInTheDocument();
+  });
+
+  it('reloads already-loaded options when the active country changes', async () => {
+    vi.mocked(getCustomBlendOptions)
+      .mockResolvedValueOnce(optionsFor('US Base', [option(601, 'US Ingredient')]))
+      .mockResolvedValueOnce(optionsFor('DE Base', [option(701, 'DE Ingredient')]));
+
+    const view = renderCountryPage('?baseVariantId=501');
+    expect(await screen.findByLabelText('US Ingredient')).toBeInTheDocument();
+
+    const oldSignal = vi.mocked(getCustomBlendOptions).mock.calls[0]?.[1];
+    countryState.activeCountry = 'DE';
+    view.rerender(countryPage('?baseVariantId=501'));
+
+    expect(await screen.findByLabelText('DE Ingredient')).toBeInTheDocument();
+    expect(screen.queryByLabelText('US Ingredient')).not.toBeInTheDocument();
+    expect(oldSignal?.aborted).toBe(true);
+    expect(getCustomBlendOptions).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(getCustomBlendOptions).mock.calls.map(([baseId]) => baseId)).toEqual([
+      501, 501,
+    ]);
+  });
+
+  it('clears and aborts in-flight options when the active country changes', async () => {
+    const oldOptions = deferred<CustomBlendOptionsResponse>();
+    const currentOptions = deferred<CustomBlendOptionsResponse>();
+    vi.mocked(getCustomBlendOptions)
+      .mockReturnValueOnce(oldOptions.promise)
+      .mockReturnValueOnce(currentOptions.promise);
+
+    const view = renderCountryPage('?baseVariantId=501');
+    await waitFor(() => expect(getCustomBlendOptions).toHaveBeenCalledTimes(1));
+    const oldSignal = vi.mocked(getCustomBlendOptions).mock.calls[0]?.[1];
+
+    countryState.activeCountry = 'DE';
+    view.rerender(countryPage('?baseVariantId=501'));
+    await waitFor(() => expect(getCustomBlendOptions).toHaveBeenCalledTimes(2));
+    expect(oldSignal?.aborted).toBe(true);
+    expect(
+      screen.getByLabelText(
+        translateUnchecked(customBlendMessages, 'DE', 'customBlend.loadingOptions'),
+      ),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      currentOptions.resolve(optionsFor('DE Base', [option(701, 'DE Ingredient')]));
+      await currentOptions.promise;
+    });
+    expect(await screen.findByLabelText('DE Ingredient')).toBeInTheDocument();
+
+    await act(async () => {
+      oldOptions.resolve(optionsFor('US Base', [option(601, 'US Ingredient')]));
+      await oldOptions.promise;
+    });
+    expect(screen.queryByLabelText('US Ingredient')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('DE Ingredient')).toBeInTheDocument();
+  });
+
+  it('renders coded options failures with active-country API copy and never server prose', async () => {
+    const serverProse = 'internal custom-blend detail must stay private';
+    countryState.activeCountry = 'DE';
+    vi.mocked(getCustomBlendOptions).mockRejectedValue(
+      new ApiError(serverProse, 400, { error: serverProse, code: 'CUSTOM_BLEND_INVALID' }),
+    );
+
+    renderCountryPage('?baseVariantId=501');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(translateUnchecked(apiErrors, 'DE', 'CUSTOM_BLEND_INVALID'));
+    expect(alert).not.toHaveTextContent(serverProse);
+  });
+
+  it('localizes unknown or network options failures after a country switch', async () => {
+    const networkProse = 'Failed to fetch';
+    vi.mocked(getCustomBlendOptions)
+      .mockRejectedValueOnce(new Error(networkProse))
+      .mockRejectedValueOnce(new Error(networkProse));
+
+    const view = renderCountryPage('?baseVariantId=501');
+    const usAlert = await screen.findByRole('alert');
+    expect(usAlert).toHaveTextContent(
+      translateUnchecked(customBlendMessages, 'US', 'customBlend.invalidBase'),
+    );
+    expect(usAlert).not.toHaveTextContent(networkProse);
+
+    countryState.activeCountry = 'DE';
+    view.rerender(countryPage('?baseVariantId=501'));
+    await waitFor(() => {
+      const deAlert = screen.getByRole('alert');
+      expect(deAlert).toHaveTextContent(
+        translateUnchecked(customBlendMessages, 'DE', 'customBlend.invalidBase'),
+      );
+      expect(deAlert).not.toHaveTextContent(networkProse);
+    });
   });
 
   it('locks the base lot and quantity when editing an existing configured line', async () => {

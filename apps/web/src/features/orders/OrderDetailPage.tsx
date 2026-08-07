@@ -6,28 +6,46 @@ import { ErrorMessage } from '@/components/ErrorMessage';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Button } from '@/components/ui/button';
 import type { OrderDetailResponse } from '@shop/contracts/orders';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import {
+  orderLifecycleMessages,
+  type OrderLifecycleMessageKey,
+} from '@shop/localisation/messages/orderLifecycle';
 import { OrderDetailView } from './OrderDetailView';
 import { ReturnPanel } from '@/features/returns/ReturnPanel';
+import { BuyAgainButton, useBuyAgain } from '@/features/reorder/BuyAgainButton';
+import { ReorderOutcomeList } from '@/features/reorder/ReorderOutcomeList';
+import { SaveOrderAsListButton } from '@/features/savedLists/SaveOrderAsListButton';
+import {
+  orderErrorMessage,
+  orderMessage,
+  resolveOrderMessage,
+  type OrderMessageState,
+} from './orderPresentation';
 
 export function OrderDetailPage() {
+  const locale = useLocalisation();
+  const t = (key: OrderLifecycleMessageKey, params?: Record<string, string | number | bigint>) =>
+    locale.translate(orderLifecycleMessages, key, params);
   const { orderId } = useParams<{ orderId: string }>();
   const [order, setOrder] = useState<OrderDetailResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<OrderMessageState | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  const [announcement, setAnnouncement] = useState('');
+  const [announcement, setAnnouncement] = useState<OrderMessageState | null>(null);
   const idempotencyKey = useRef<string | null>(null);
   const requestId = useRef(0);
   const cancelTrigger = useRef<HTMLElement | null>(null);
   const confirmButton = useRef<HTMLElement | null>(null);
   const dialog = useRef<HTMLDivElement | null>(null);
   const wasConfirming = useRef(false);
+  const { buyAgain, stateFor } = useBuyAgain();
 
   const load = useCallback(
     async (clearError = true) => {
       if (!orderId) {
-        setError('Order reference is missing.');
+        setError(orderMessage('order.error.missingId'));
         setLoading(false);
         return;
       }
@@ -40,18 +58,16 @@ export function OrderDetailPage() {
       } catch (err) {
         if (currentRequest === requestId.current) {
           setError(
-            err instanceof ApiError && err.status === 404
-              ? 'Order not found.'
-              : err instanceof Error
-                ? err.message
-                : 'Order not found',
+            err instanceof ApiError && (err.status === 404 || err.code === 'ORDER_NOT_FOUND')
+              ? orderMessage('order.error.notFound')
+              : orderErrorMessage(err, 'order.error.notFound'),
           );
         }
       } finally {
         if (currentRequest === requestId.current) setLoading(false);
       }
     },
-    [orderId],
+    [locale, orderId],
   );
 
   useEffect(() => {
@@ -101,40 +117,47 @@ export function OrderDetailPage() {
           idempotencyKey: idempotencyKey.current,
         }),
       );
-      setAnnouncement(
-        `Order #${orderId} was cancelled. Simulated fulfilment has stopped; unshipped allocated stock was released and no refund was issued.`,
-      );
+      setAnnouncement(orderMessage('order.cancel.success', { orderId }));
       setConfirming(false);
       idempotencyKey.current = null;
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
+      if (
+        err instanceof ApiError &&
+        err.status === 409 &&
+        (err.code === null || err.code === 'STALE_VERSION')
+      ) {
         idempotencyKey.current = null;
         setConfirming(false);
-        setError('This order changed before cancellation. Its latest status has been refreshed.');
+        setError(orderMessage('order.cancel.stale'));
         await load(false);
-      } else setError(err instanceof Error ? err.message : 'Unable to cancel order');
+      } else setError(orderErrorMessage(err));
     } finally {
       setCancelling(false);
     }
   };
 
   if (loading && !order) return <LoadingSpinner />;
-  if (error && !order) return <ErrorMessage message={error} onRetry={() => void load()} />;
-  if (!order) return <ErrorMessage message="Order not found" />;
+  if (error && !order) {
+    return (
+      <ErrorMessage message={resolveOrderMessage(error, locale)} onRetry={() => void load()} />
+    );
+  }
+  if (!order) return <ErrorMessage message={t('order.error.notFound')} />;
+  const buyAgainState = stateFor(order.id);
   return (
     <div className="mx-auto max-w-3xl space-y-5">
       <Button variant="link" nativeButton={false} render={<Link to="/orders" />}>
-        ← My Orders
+        {t('order.backToOrders')}
       </Button>
       <p aria-live="polite" className="sr-only">
-        {announcement}
+        {announcement ? resolveOrderMessage(announcement, locale) : ''}
       </p>
       {error && (
         <p
           role="status"
           className="rounded-md border border-destructive/40 p-3 text-sm text-destructive"
         >
-          {error}
+          {resolveOrderMessage(error, locale)}
         </p>
       )}
       <OrderDetailView
@@ -144,6 +167,19 @@ export function OrderDetailPage() {
         onRequestCancellation={() => setConfirming(true)}
         cancelTriggerRef={cancelTrigger}
       />
+      <section className="space-y-3 rounded-lg border p-4" aria-label={t('order.buyAgainRegion')}>
+        <div>
+          <h2 className="font-medium">{t('order.buyAgainTitle')}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t('order.buyAgainDescription')}</p>
+        </div>
+        <BuyAgainButton
+          orderId={order.id}
+          isPending={buyAgainState.kind === 'pending'}
+          onActivate={() => void buyAgain(order.id)}
+        />
+        <ReorderOutcomeList orderId={order.id} state={buyAgainState} />
+      </section>
+      <SaveOrderAsListButton orderId={order.id} />
       <ReturnErrorBoundary>{orderId && <ReturnPanel orderId={orderId} />}</ReturnErrorBoundary>
       {confirming && (
         <div
@@ -156,15 +192,12 @@ export function OrderDetailPage() {
         >
           <div className="w-full max-w-md rounded-lg bg-background p-5 shadow-lg">
             <h2 id="cancel-title" className="text-lg font-semibold">
-              Cancel order #{order.id}?
+              {t('order.cancel.confirmTitle', { orderId: order.id })}
             </h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              This stops simulated fulfilment. Unshipped allocated stock is released; no refund is
-              issued.
-            </p>
+            <p className="mt-2 text-sm text-muted-foreground">{t('order.cancel.description')}</p>
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="outline" disabled={cancelling} onClick={() => setConfirming(false)}>
-                Keep order
+                {t('order.cancel.keep')}
               </Button>
               <Button
                 ref={confirmButton}
@@ -172,7 +205,7 @@ export function OrderDetailPage() {
                 disabled={cancelling}
                 onClick={() => void submitCancellation()}
               >
-                {cancelling ? 'Cancelling…' : 'Confirm cancellation'}
+                {cancelling ? t('order.cancel.cancelling') : t('order.cancel.confirm')}
               </Button>
             </div>
           </div>

@@ -1,13 +1,15 @@
+import type { Country } from '@shop/contracts/country';
 import { apiFetch } from './client';
 import { Cart, CreateCartResponse } from '@shop/contracts/cart';
 import type { AddToCartBody, RemoveFromCartBody, UpdateCartLineBody } from '@shop/contracts/cart';
 
-/**
- * Cart API module.
- */
-
-export function createCart(): Promise<CreateCartResponse> {
-  return apiFetch(CreateCartResponse, '/api/cart', { method: 'POST' });
+export function createCart(country?: Country): Promise<CreateCartResponse> {
+  const body: { country?: Country } = {};
+  if (country) body.country = country;
+  return apiFetch(CreateCartResponse, '/api/cart', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
 }
 
 export function getCart(cartId: string): Promise<Cart> {

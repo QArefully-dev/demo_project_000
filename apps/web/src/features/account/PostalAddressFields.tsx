@@ -1,5 +1,14 @@
+import { useEffect } from 'react';
+import { translateUnchecked, type MessageCatalog, type MessageParams } from '@shop/localisation';
+import { countryMessages } from '@shop/localisation/messages/country';
+import { identityAccountMessages } from '@shop/localisation/messages/identityAccount';
 import type { PostalAddress } from '@shop/contracts/address';
+import { LEGACY_DATA_COUNTRY, type Country } from '@shop/contracts/country';
+import { countryProfile } from '@shop/contracts/country-profiles';
 import { Input } from '@/components/ui/input';
+import { useOptionalCountry } from '@/hooks/CountryContext';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { localizeValidationMessage } from './accountError';
 
 /**
  * Shared postal address sub-form.
@@ -20,23 +29,40 @@ export interface PostalAddressDraft {
   region: string;
   postcode: string;
   countryCode: string;
+  /** Identity-country snapshot used by advisory validation outside React render paths. */
+  profileCountry: Country;
 }
 
-export type PostalAddressFieldName = keyof PostalAddressDraft;
+export type PostalAddressFieldName = Exclude<keyof PostalAddressDraft, 'profileCountry'>;
 
 export type PostalAddressFieldErrors = Partial<Record<PostalAddressFieldName, string>>;
 
-export const EMPTY_POSTAL_ADDRESS_DRAFT: PostalAddressDraft = {
-  line1: '',
-  line2: '',
-  city: '',
-  region: '',
-  postcode: '',
-  countryCode: 'GB',
-};
+function firstDeliveryCountryCode(country: Country): string {
+  const countryCode = countryProfile(country).deliveryCountryCodes[0];
+  if (!countryCode) throw new Error(`Country profile ${country} has no delivery country code`);
+  return countryCode;
+}
+
+export function emptyPostalAddressDraft(country: Country): PostalAddressDraft {
+  return {
+    line1: '',
+    line2: '',
+    city: '',
+    region: '',
+    postcode: '',
+    countryCode: firstDeliveryCountryCode(country),
+    profileCountry: country,
+  };
+}
+
+/** Compatibility seed for callers that have not yet rendered inside the active country context. */
+export const EMPTY_POSTAL_ADDRESS_DRAFT = emptyPostalAddressDraft(LEGACY_DATA_COUNTRY);
 
 /** Turns a stored address back into an editable draft. */
-export function toPostalAddressDraft(address: PostalAddress): PostalAddressDraft {
+export function toPostalAddressDraft(
+  address: PostalAddress,
+  profileCountry: Country = LEGACY_DATA_COUNTRY,
+): PostalAddressDraft {
   return {
     line1: address.line1,
     line2: address.line2 ?? '',
@@ -44,6 +70,7 @@ export function toPostalAddressDraft(address: PostalAddress): PostalAddressDraft
     region: address.region ?? '',
     postcode: address.postcode,
     countryCode: address.countryCode,
+    profileCountry,
   };
 }
 
@@ -51,7 +78,6 @@ export function toPostalAddressDraft(address: PostalAddress): PostalAddressDraft
 const MAX_LINE_LENGTH = 120;
 const MAX_LOCALITY_LENGTH = 80;
 const MAX_POSTCODE_LENGTH = 16;
-const POSTCODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9 -]*$/;
 const COUNTRY_CODE_PATTERN = /^[A-Z]{2}$/;
 const MARKUP_PATTERN = /[<>]/;
 
@@ -74,6 +100,13 @@ export type PostalAddressValidation =
  * Blank optional fields are omitted rather than sent as empty strings, which the contract rejects.
  */
 export function validatePostalAddressDraft(draft: PostalAddressDraft): PostalAddressValidation {
+  const profile = countryProfile(draft.profileCountry);
+  const postcodeRule = profile.postcode;
+  const postcodeLabel = translateUnchecked(
+    countryMessages,
+    draft.profileCountry,
+    postcodeRule.labelMessageKey,
+  );
   const line1 = draft.line1.trim();
   const line2 = draft.line2.trim();
   const city = draft.city.trim();
@@ -94,15 +127,19 @@ export function validatePostalAddressDraft(draft: PostalAddressDraft): PostalAdd
   if (regionError) errors.region = regionError;
 
   if (postcode.length === 0) {
-    errors.postcode = 'Postcode is required';
+    errors.postcode = `${postcodeLabel} is required`;
   } else if (postcode.length > MAX_POSTCODE_LENGTH) {
-    errors.postcode = `Postcode must be ${MAX_POSTCODE_LENGTH} characters or fewer`;
-  } else if (!POSTCODE_PATTERN.test(postcode)) {
-    errors.postcode = 'Postcode may use letters, numbers, spaces, and hyphens only';
+    errors.postcode = `${postcodeLabel} must be ${MAX_POSTCODE_LENGTH} characters or fewer`;
+  } else if (MARKUP_PATTERN.test(postcode)) {
+    errors.postcode = `${postcodeLabel} cannot contain < or >`;
+  } else if (!new RegExp(postcodeRule.pattern).test(postcode.toUpperCase())) {
+    errors.postcode = `Enter a valid ${postcodeLabel}, for example ${postcodeRule.example}`;
   }
 
   if (!COUNTRY_CODE_PATTERN.test(countryCode)) {
-    errors.countryCode = 'Country code must be two letters, for example GB';
+    errors.countryCode = `Country code must be two letters, for example ${firstDeliveryCountryCode(draft.profileCountry)}`;
+  } else if (!profile.deliveryCountryCodes.includes(countryCode)) {
+    errors.countryCode = `Delivery is not available to ${countryCode} for this account`;
   }
 
   if (Object.keys(errors).length > 0) return { ok: false, errors };
@@ -134,7 +171,9 @@ interface FieldProps {
   autoComplete?: string;
   maxLength: number;
   optional?: boolean;
+  optionalLabel?: string;
   className?: string;
+  placeholder?: string;
 }
 
 function AddressField({
@@ -147,14 +186,18 @@ function AddressField({
   autoComplete,
   maxLength,
   optional,
+  optionalLabel,
   className,
+  placeholder,
 }: FieldProps) {
   const errorId = `${id}-error`;
   return (
     <div className={className}>
       <label htmlFor={id} className="block text-sm font-medium">
         {label}
-        {optional && <span className="ml-1 font-normal text-muted-foreground">(optional)</span>}
+        {optional && optionalLabel && (
+          <span className="ml-1 font-normal text-muted-foreground">{optionalLabel}</span>
+        )}
       </label>
       <Input
         id={id}
@@ -162,6 +205,7 @@ function AddressField({
         maxLength={maxLength}
         disabled={disabled}
         autoComplete={autoComplete}
+        placeholder={placeholder}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}
         onChange={(event) => onChange(event.target.value)}
@@ -182,69 +226,107 @@ export function PostalAddressFields({
   onChange,
   errors = {},
   disabled,
-  legend = 'Address',
+  legend,
 }: PostalAddressFieldsProps) {
+  const countryContext = useOptionalCountry();
+  const locale = useLocalisation();
+  // Provider-free legacy tests and fixtures retain their draft profile; real app surfaces always
+  // resolve the active account/guest country from CountryProvider.
+  const activeCountry =
+    countryContext.countryStorage === null && !countryContext.isAccountBound
+      ? value.profileCountry
+      : countryContext.activeCountry;
+  const profile = countryProfile(activeCountry);
+  const translateActive = (
+    catalog: MessageCatalog,
+    key: string,
+    params: MessageParams = {},
+  ): string =>
+    locale.country === activeCountry
+      ? locale.translate(catalog, key, params)
+      : translateUnchecked(catalog, activeCountry, key, params);
+  // In the mounted app LocaleProvider follows CountryProvider. Provider-free tests/fixtures use
+  // the draft country directly so postcode labels remain deterministic without a second locale.
+  const postcodeLabel = translateActive(countryMessages, 'postcode.label');
+  const optionalLabel = translateActive(identityAccountMessages, 'account.address.optional');
+  const resolvedLegend =
+    legend ?? translateActive(identityAccountMessages, 'account.address.legend');
+  const errorFor = (field: PostalAddressFieldName): string | undefined =>
+    localizeValidationMessage(errors[field], translateActive, translateActive);
+
+  useEffect(() => {
+    if (value.profileCountry === activeCountry) return;
+    onChange({
+      ...value,
+      profileCountry: activeCountry,
+      countryCode: firstDeliveryCountryCode(activeCountry),
+    });
+  }, [activeCountry, onChange, value]);
+
   function setField(field: PostalAddressFieldName, next: string) {
     onChange({ ...value, [field]: next });
   }
 
   return (
     <fieldset disabled={disabled} className="space-y-3 border-0 p-0">
-      <legend className="text-sm font-medium text-muted-foreground">{legend}</legend>
+      <legend className="text-sm font-medium text-muted-foreground">{resolvedLegend}</legend>
       <AddressField
         id={`${idPrefix}-line1`}
-        label="Address line 1"
+        label={translateActive(identityAccountMessages, 'account.address.line1')}
         value={value.line1}
         onChange={(next) => setField('line1', next)}
-        error={errors.line1}
+        error={errorFor('line1')}
         autoComplete="address-line1"
         maxLength={MAX_LINE_LENGTH}
       />
       <AddressField
         id={`${idPrefix}-line2`}
-        label="Address line 2"
+        label={translateActive(identityAccountMessages, 'account.address.line2')}
         value={value.line2}
         onChange={(next) => setField('line2', next)}
-        error={errors.line2}
+        error={errorFor('line2')}
         autoComplete="address-line2"
         maxLength={MAX_LINE_LENGTH}
         optional
+        optionalLabel={optionalLabel}
       />
       <div className="grid gap-3 sm:grid-cols-2">
         <AddressField
           id={`${idPrefix}-city`}
-          label="City"
+          label={translateActive(identityAccountMessages, 'account.address.city')}
           value={value.city}
           onChange={(next) => setField('city', next)}
-          error={errors.city}
+          error={errorFor('city')}
           autoComplete="address-level2"
           maxLength={MAX_LOCALITY_LENGTH}
         />
         <AddressField
           id={`${idPrefix}-region`}
-          label="County or region"
+          label={translateActive(identityAccountMessages, 'account.address.region')}
           value={value.region}
           onChange={(next) => setField('region', next)}
-          error={errors.region}
+          error={errorFor('region')}
           autoComplete="address-level1"
           maxLength={MAX_LOCALITY_LENGTH}
           optional
+          optionalLabel={optionalLabel}
         />
         <AddressField
           id={`${idPrefix}-postcode`}
-          label="Postcode"
+          label={postcodeLabel}
           value={value.postcode}
           onChange={(next) => setField('postcode', next)}
-          error={errors.postcode}
+          error={errorFor('postcode')}
           autoComplete="postal-code"
           maxLength={MAX_POSTCODE_LENGTH}
+          placeholder={profile.postcode.example}
         />
         <AddressField
           id={`${idPrefix}-countryCode`}
-          label="Country code"
+          label={translateActive(identityAccountMessages, 'account.address.countryCode')}
           value={value.countryCode}
           onChange={(next) => setField('countryCode', next.toUpperCase())}
-          error={errors.countryCode}
+          error={errorFor('countryCode')}
           autoComplete="country"
           maxLength={2}
         />

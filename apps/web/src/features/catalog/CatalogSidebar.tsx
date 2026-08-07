@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { discoveryMessages } from '@shop/localisation/messages/discovery';
 import { CatalogActiveFilters } from './CatalogActiveFilters';
 import { CatalogSidebarControls } from './CatalogSidebarControls';
 import type { CatalogSidebarProps } from './catalogSidebarTypes';
@@ -29,6 +31,8 @@ export function CatalogSidebar({
   onSpecChange,
   onClearFilters,
 }: CatalogSidebarProps) {
+  const { translate } = useLocalisation();
+  const t = (key: keyof typeof discoveryMessages) => translate(discoveryMessages, key);
   const [minPriceDraft, setMinPriceDraft] = useState(minPriceCents?.toString() ?? '');
   const [maxPriceDraft, setMaxPriceDraft] = useState(maxPriceCents?.toString() ?? '');
   const [addedFromDraft, setAddedFromDraft] = useState(addedFrom ?? '');
@@ -62,18 +66,18 @@ export function CatalogSidebar({
 
   return (
     <aside
-      aria-label="Catalog filters"
+      aria-label={t('catalog.filtersAria')}
       className="space-y-5 rounded-2xl border border-border/80 bg-surface-raised p-4 lg:sticky lg:top-32 lg:self-start"
     >
       <div className="flex items-center justify-between gap-3">
-        <h2 className="font-semibold">Filters</h2>
+        <h2 className="font-semibold">{t('catalog.filters')}</h2>
         {hasFilters && (
           <button
             type="button"
             onClick={onClearFilters}
             className="rounded-sm text-xs font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            Clear all
+            {t('catalog.clearAll')}
           </button>
         )}
       </div>

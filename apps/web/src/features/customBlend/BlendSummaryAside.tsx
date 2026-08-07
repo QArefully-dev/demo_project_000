@@ -6,6 +6,9 @@ import type { CustomBlendOption } from '@shop/contracts/custom-blends';
 import { MixVisualization } from './MixVisualization';
 import { RatioGauge } from './RatioGauge';
 import type { MixPart } from './MixVisualization';
+import type { CustomBlendMessage } from './customBlendState';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { customBlendMessages } from '@shop/localisation/messages/customBlend';
 
 export function BlendSummaryAside({
   base,
@@ -26,7 +29,7 @@ export function BlendSummaryAside({
   basePercentage: number;
   totalPercentage: number;
   ingredientCount: number;
-  errors: readonly string[];
+  errors: readonly CustomBlendMessage[];
   isEditing: boolean;
   isValid: boolean;
   isCartAvailable: boolean;
@@ -36,12 +39,22 @@ export function BlendSummaryAside({
   previewIngredients: readonly PreviewIngredient[];
   configKey?: string;
 }) {
+  const { translate, formatNumber } = useLocalisation();
+  const renderValidationError = (error: CustomBlendMessage) => {
+    const params = { ...(error.params ?? {}) } as Record<string, string | number | bigint>;
+    for (const [name, value] of Object.entries(error.params ?? {})) {
+      if (typeof value === 'number') params[`${name}Label`] = formatNumber(value);
+    }
+    return translate(customBlendMessages, error.key, params);
+  };
   return (
     <aside className="lg:sticky lg:top-6 lg:self-start">
       <Card className="custom-blend-surface">
         <CardHeader>
-          <p className="text-sm font-medium text-muted-foreground">4. Review</p>
-          <CardTitle>Review your blend</CardTitle>
+          <p className="text-sm font-medium text-muted-foreground">
+            {translate(customBlendMessages, 'customBlend.reviewStep')}
+          </p>
+          <CardTitle>{translate(customBlendMessages, 'customBlend.reviewTitle')}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4">
           <CustomBlendPreview
@@ -61,14 +74,20 @@ export function BlendSummaryAside({
           {errors.length > 0 && (
             <ul className="grid gap-1" role="alert">
               {errors.map((error) => (
-                <li key={error} className="text-sm text-destructive">
-                  {error}
+                <li
+                  key={`${error.key}:${JSON.stringify(error.params ?? {})}`}
+                  className="text-sm text-destructive"
+                >
+                  {renderValidationError(error)}
                 </li>
               ))}
             </ul>
           )}
           <Button type="submit" disabled={!isValid || !isCartAvailable || isSubmitting}>
-            {isEditing ? 'Update blend' : 'Add blend to cart'}
+            {translate(
+              customBlendMessages,
+              isEditing ? 'customBlend.update' : 'customBlend.addToCart',
+            )}
           </Button>
         </CardContent>
       </Card>

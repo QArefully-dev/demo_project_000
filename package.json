@@ -6,7 +6,7 @@
     "packages/*"
   ],
   "scripts": {
-    "postinstall": "npm run build -w @shop/contracts && npm run build -w @shop/catalog",
+    "postinstall": "npm run build -w @shop/contracts && npm run build -w @shop/catalog && npm run build -w @shop/localisation",
     "dev": "npm run seed && concurrently -n api,web -c blue,green --kill-others \"npm run dev -w @shop/api\" \"npm run dev -w @shop/web\"",
     "seed": "npm run seed -w @shop/api",
     "reset": "npm run reset -w @shop/api",
@@ -18,7 +18,8 @@
     "lint": "eslint .",
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
-    "verify": "npm run format && npm run typecheck && npm run lint && npm test && npm run build --workspaces --if-present"
+    "check:localisation": "node scripts/check-localisation.mjs",
+    "verify": "npm run format && npm run check:localisation && npm run typecheck && npm run lint && npm test && npm run build --workspaces --if-present"
   },
   "engines": {
     "node": ">=22.0.0 <23.0.0"

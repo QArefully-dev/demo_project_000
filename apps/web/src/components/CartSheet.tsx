@@ -5,17 +5,15 @@ import { Separator } from '@/components/ui/separator';
 import { LoadingSpinner } from './LoadingSpinner';
 import { ErrorMessage } from './ErrorMessage';
 import { CartLineItem } from './CartLineItem';
-import { formatMoney } from '@/lib/formatMoney';
 import { useCartContext } from '@/hooks/CartContext';
 import { cartItemKey, pendingConfigKey } from '@/lib/cartLineIdentity';
 import { Link } from 'react-router-dom';
-
-function deliveryLabel(mode: string): string {
-  return mode === 'freight' ? 'Freight' : 'Parcel';
-}
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { cartMessages } from '@shop/localisation/messages/cart';
 
 export function CartSheet() {
   const [open, setOpen] = useState(false);
+  const { translate, formatMoney, number } = useLocalisation();
   const {
     cart,
     isLoading,
@@ -27,29 +25,45 @@ export function CartSheet() {
     isActionPending,
   } = useCartContext();
   const itemCount = cart?.totalItems ?? 0;
+  const weightLabel = number.weightGrams;
+  const triggerLabel =
+    itemCount > 0
+      ? translate(cartMessages, 'cart.openCart', {
+          count: itemCount,
+          formattedCount: number.count(itemCount),
+        })
+      : translate(cartMessages, 'cart.openCartEmpty');
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger
         render={<Button variant="outline" size="sm" className="relative" />}
-        aria-label={`Open cart${itemCount > 0 ? `, ${itemCount} items` : ''}`}
+        aria-label={triggerLabel}
       >
-        Cart
+        {translate(cartMessages, 'cart.openCartEmpty')}
         {isInitializing && (
           <span className="ml-1.5 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         )}
         {!isInitializing && itemCount > 0 && (
           <span
-            aria-label={`${itemCount} items in cart`}
+            aria-label={translate(cartMessages, 'cart.openCart', {
+              count: itemCount,
+              formattedCount: number.count(itemCount),
+            })}
             className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground"
           >
-            {itemCount}
+            {number.count(itemCount)}
           </span>
         )}
       </SheetTrigger>
       <SheetContent className="flex flex-col w-full sm:w-auto">
         <SheetHeader>
-          <SheetTitle>Order ({itemCount} units)</SheetTitle>
+          <SheetTitle>
+            {translate(cartMessages, 'cart.orderTitle', {
+              count: itemCount,
+              formattedCount: number.count(itemCount),
+            })}
+          </SheetTitle>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto py-4">
           {isInitializing && <LoadingSpinner />}
@@ -64,12 +78,14 @@ export function CartSheet() {
             >
               <p className="text-xs text-destructive">{error}</p>
               <Button variant="outline" size="sm" onClick={() => void retryCart()}>
-                Retry
+                {translate(cartMessages, 'cart.retry')}
               </Button>
             </div>
           )}
           {!isInitializing && !isLoading && cart && cart.totalItems === 0 && (
-            <p className="py-8 text-center text-muted-foreground">Your order is empty</p>
+            <p className="py-8 text-center text-muted-foreground">
+              {translate(cartMessages, 'cart.empty')}
+            </p>
           )}
           {!isInitializing &&
             !isLoading &&
@@ -95,26 +111,38 @@ export function CartSheet() {
                 />
                 {item.variantSnap && (
                   <p className="-mt-1 pb-3 text-xs text-muted-foreground">
-                    {formatMoney(item.perTonneCents)} / tonne · {item.variantSnap.weightGrams}g pack
+                    {translate(cartMessages, 'cart.perTonne', {
+                      money: formatMoney(item.perTonneCents),
+                    })}{' '}
+                    <span className="mx-1.5" aria-hidden="true">
+                      &middot;
+                    </span>{' '}
+                    {translate(cartMessages, 'cart.packWeight', {
+                      weight: weightLabel(item.variantSnap.weightGrams),
+                    })}
                   </p>
                 )}
                 {item.clearance && (
                   <p
                     className="-mt-2 pb-3 text-xs font-medium text-sale"
-                    aria-label="Clearance price applied"
+                    aria-label={translate(cartMessages, 'cart.clearanceAria')}
                   >
-                    Clearance price applied: {formatMoney(item.clearance.priceCents)} per pack
+                    {translate(cartMessages, 'cart.clearancePrice', {
+                      money: formatMoney(item.clearance.priceCents),
+                    })}
                   </p>
                 )}
                 {item.nextTierProgress && (
                   <p
                     className="-mt-2 pb-3 text-xs text-muted-foreground"
-                    aria-label="Next volume tier progress"
+                    aria-label={translate(cartMessages, 'cart.nextTierProgressAria')}
                   >
-                    {item.nextTierProgress.sacksToNextTier} sack
-                    {item.nextTierProgress.sacksToNextTier === 1 ? '' : 's'} to{' '}
-                    {item.nextTierProgress.minTonnes}-tonne tier (
-                    {item.nextTierProgress.discountPct}% off)
+                    {translate(cartMessages, 'cart.nextTierProgress', {
+                      count: item.nextTierProgress.sacksToNextTier,
+                      formattedCount: number.count(item.nextTierProgress.sacksToNextTier),
+                      formattedMinTonnes: number.decimal(item.nextTierProgress.minTonnes),
+                      formattedDiscountPct: number.decimal(item.nextTierProgress.discountPct),
+                    })}
                   </p>
                 )}
               </div>
@@ -125,35 +153,37 @@ export function CartSheet() {
             {cart.blendingFeeTotalCents > 0 && (
               <>
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>Material subtotal</span>
+                  <span>{translate(cartMessages, 'cart.materialSubtotal')}</span>
                   <span>{formatMoney(cart.discountableSubtotalCents)}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>Blending fees</span>
+                  <span>{translate(cartMessages, 'cart.blendingFees')}</span>
                   <span>{formatMoney(cart.blendingFeeTotalCents)}</span>
                 </div>
               </>
             )}
             <div className="flex items-center justify-between text-sm">
-              <span>Resolved order subtotal</span>
+              <span>{translate(cartMessages, 'cart.resolvedOrderSubtotalShort')}</span>
               <span className="font-semibold">{formatMoney(cart.subtotalCents)}</span>
             </div>
             {cart.deliveryPreview && (
               <>
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
                   <span>
-                    {deliveryLabel(cart.deliveryPreview.mode) === 'Freight'
-                      ? 'Pallet freight'
-                      : 'Parcel delivery'}
+                    {cart.deliveryPreview.mode === 'freight'
+                      ? translate(cartMessages, 'cart.deliveryFreight')
+                      : translate(cartMessages, 'cart.deliveryParcel')}
                   </span>
                   <span>
                     {cart.deliveryPreview.chargeCents === 0
-                      ? 'Free'
+                      ? translate(cartMessages, 'cart.free')
                       : formatMoney(cart.deliveryPreview.chargeCents)}
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Total order weight: {cart.deliveryPreview.weightGrams.toLocaleString()}g
+                  {translate(cartMessages, 'cart.totalWeight', {
+                    weight: weightLabel(cart.deliveryPreview.weightGrams),
+                  })}
                 </p>
               </>
             )}
@@ -164,7 +194,7 @@ export function CartSheet() {
               nativeButton={false}
               render={<Link to="/cart" onClick={() => setOpen(false)} />}
             >
-              Review order
+              {translate(cartMessages, 'cart.reviewOrder')}
             </Button>
           </div>
         )}

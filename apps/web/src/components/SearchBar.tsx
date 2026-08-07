@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { webMessages } from '@shop/localisation/messages/webShell';
 
 /** Functional catalog search with 300ms debounce and explicit submit support. */
 export function SearchBar({ className = '' }: { className?: string }) {
@@ -9,6 +11,9 @@ export function SearchBar({ className = '' }: { className?: string }) {
   const currentQ = searchParams.get('q') ?? '';
   const [localValue, setLocalValue] = useState(currentQ);
   const navigate = useNavigate();
+  const { translate } = useLocalisation();
+  const searchLabel = translate(webMessages, 'shell.searchProducts');
+  const searchPlaceholder = translate(webMessages, 'shell.searchPlaceholder');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(false);
 
@@ -65,15 +70,15 @@ export function SearchBar({ className = '' }: { className?: string }) {
       <Search className="pointer-events-none absolute top-1/2 left-4 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         type="search"
-        aria-label="Search products"
-        placeholder="Search protein, campfire, water..."
+        aria-label={searchLabel}
+        placeholder={searchPlaceholder}
         className="h-11 rounded-full border-border bg-surface-raised pl-11 pr-12 text-base shadow-sm transition-[border-color,box-shadow] placeholder:text-muted-foreground/80 hover:border-primary/40 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring"
         value={localValue}
         onChange={handleChange}
       />
       <button
         type="submit"
-        aria-label="Search products"
+        aria-label={searchLabel}
         className="absolute top-1/2 right-1.5 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         <Search aria-hidden="true" className="size-4" />

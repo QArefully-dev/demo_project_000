@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { buildApp } from '../../src/app.js';
 import {
   createCheckoutService,
   type CheckoutParams,
@@ -24,12 +25,16 @@ import {
 import { createOrderRepository } from '../../src/features/orders/orderRepository.js';
 import { createMailboxRepository } from '../../src/features/mailbox/mailboxRepository.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
-import { simulatedPaymentGateway } from '../../src/features/payments/paymentGateway.js';
+import {
+  AUTHORITATIVE_CURRENCY,
+  simulatedPaymentGateway,
+} from '../../src/features/payments/paymentGateway.js';
 import { createProductRepository } from '../../src/features/catalog/productRepository.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
+import { minimumOrderQuantity } from '../../src/features/pricing/pricingRules.js';
 import {
   adhocBilling,
   adhocDestination,
@@ -99,6 +104,113 @@ function spyGateway(result: GatewayResult = { status: 'success' }): {
     requests: () => requests,
   };
 }
+
+void test('payment route emits stable localized code for invalid card details', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-payment-route-errors-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
+  t.after(async () => {
+    await app.close();
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/payments/pay',
+    headers: { 'x-shop-country': 'DE' },
+    payload: {
+      cartId: '00000000-0000-4000-8000-000000000000',
+      customerName: 'Checkout Test',
+      customerEmail: 'checkout@example.test',
+      deliveryDestination: adhocDestination,
+      billingSelection: adhocBilling,
+      deliverySlot: bookableSlot(),
+      cardNumber: '4242 4242 4242 4242',
+      cardExpiry: '01/20',
+      cardCvc: '123',
+      idempotencyKey: '00000000-0000-4000-8000-000000000001',
+    },
+  });
+  assert.equal(response.statusCode, 400, response.body);
+  const body = response.json<{ code: string; error: string }>();
+  assert.equal(body.code, 'CARD_INVALID');
+  assert.notEqual(body.error, 'Invalid card details');
+
+  const carts = createCartRepository(db);
+  const cartId = createCart(carts).cartId;
+  const variant = db
+    .prepare(
+      'SELECT id, weight_grams, moq_sacks FROM product_variants WHERE active = 1 ORDER BY id LIMIT 1',
+    )
+    .get() as { id: number; weight_grams: number; moq_sacks: number };
+  carts.addLineQuantity(cartId, String(variant.id), 1);
+  const belowMoq = await app.inject({
+    method: 'POST',
+    url: '/api/payments/pay',
+    headers: { 'x-shop-country': 'DE' },
+    payload: {
+      cartId,
+      customerName: 'Checkout Test',
+      customerEmail: 'checkout@example.test',
+      deliveryDestination: adhocDestination,
+      billingSelection: adhocBilling,
+      deliverySlot: bookableSlot(),
+      cardNumber: '4242 4242 4242 4242',
+      cardExpiry: '12/99',
+      cardCvc: '123',
+      idempotencyKey: '00000000-0000-4000-8000-000000000002',
+    },
+  });
+  assert.equal(belowMoq.statusCode, 400);
+  const belowMoqBody = belowMoq.json<{
+    error: string;
+    code: string;
+    meta?: { minQuantity?: number };
+  }>();
+  assert.equal(belowMoqBody.code, 'BELOW_MOQ');
+  assert.deepEqual(belowMoqBody.meta, {
+    minQuantity: minimumOrderQuantity(variant.weight_grams, variant.moq_sacks),
+  });
+  assert.notEqual(
+    belowMoqBody.error,
+    'Cart quantity does not meet a variant minimum order quantity',
+  );
+
+  const promoCartId = createCart(carts).cartId;
+  const minimumQuantity = minimumOrderQuantity(variant.weight_grams, variant.moq_sacks);
+  if (minimumQuantity === undefined) throw new Error('Expected a valid seeded MOQ');
+  carts.addLineQuantity(promoCartId, String(variant.id), minimumQuantity);
+  db.prepare('UPDATE product_variants SET price_cents = 1 WHERE id = ?').run(variant.id);
+  const promoThreshold = await app.inject({
+    method: 'POST',
+    url: '/api/payments/pay',
+    headers: { 'x-shop-country': 'DE' },
+    payload: {
+      cartId: promoCartId,
+      customerName: 'Checkout Test',
+      customerEmail: 'checkout@example.test',
+      promoCode: 'SAVE20',
+      deliveryDestination: adhocDestination,
+      billingSelection: adhocBilling,
+      deliverySlot: bookableSlot(),
+      cardNumber: '4242 4242 4242 4242',
+      cardExpiry: '12/99',
+      cardCvc: '123',
+      idempotencyKey: '00000000-0000-4000-8000-000000000003',
+    },
+  });
+  assert.equal(promoThreshold.statusCode, 400);
+  const promoBody = promoThreshold.json<{
+    error: string;
+    code: string;
+    meta?: { minSubtotalCents?: number };
+  }>();
+  assert.equal(promoBody.code, 'PROMO_MIN_SUBTOTAL');
+  assert.deepEqual(promoBody.meta, { minSubtotalCents: 10_000 });
+  assert.notEqual(promoBody.error, 'Minimum qualifying subtotal required');
+});
 
 void test('atomic checkout orchestration', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'shop-checkout-'));
@@ -344,7 +456,14 @@ void test('atomic checkout orchestration', async (t) => {
       gateway: gateway.gateway,
     });
 
-    assert.deepEqual(result, { success: false, error: 'BELOW_MOQ' });
+    const facts = db
+      .prepare('SELECT weight_grams, moq_sacks FROM product_variants WHERE id = ?')
+      .get(variant.id) as { weight_grams: number; moq_sacks: number };
+    assert.deepEqual(result, {
+      success: false,
+      error: 'BELOW_MOQ',
+      minQuantity: minimumOrderQuantity(facts.weight_grams, facts.moq_sacks),
+    });
     assert.equal(gateway.calls(), 0);
   });
 
@@ -366,6 +485,26 @@ void test('atomic checkout orchestration', async (t) => {
     assert.equal(ineligible.error, 'PROMO_INVALID');
     assert.equal(invalidGateway.calls(), 0);
     assert.equal(ineligibleGateway.calls(), 0);
+
+    const thresholdCartId = freshCart();
+    const thresholdVariant = db
+      .prepare('SELECT variant_id FROM cart_line_items WHERE cart_id = ? LIMIT 1')
+      .get(thresholdCartId) as { variant_id: number };
+    db.prepare('UPDATE product_variants SET price_cents = 1 WHERE id = ?').run(
+      thresholdVariant.variant_id,
+    );
+    const thresholdGateway = spyGateway();
+    const threshold = await checkout(
+      { ...payment(thresholdCartId, 'min-subtotal-promo'), promoCode: 'SAVE20' },
+      { db, gateway: thresholdGateway.gateway },
+    );
+    assert.equal(threshold.success, false);
+    if (!threshold.success) {
+      assert.equal(threshold.error, 'PROMO_INVALID');
+      assert.equal(threshold.promoErrorCode, 'MIN_SUBTOTAL');
+      assert.equal(threshold.minSubtotalCents, 10_000);
+    }
+    assert.equal(thresholdGateway.calls(), 0);
   });
 
   await t.test('uses checkout clock at promo expiry boundary', async () => {
@@ -398,7 +537,19 @@ void test('atomic checkout orchestration', async (t) => {
 
     assert.equal(result.success, true);
     assert.equal(gateway.requests()[0]?.amountCents, expectedTotal);
+    assert.equal(AUTHORITATIVE_CURRENCY, 'GBP');
+    assert.equal(gateway.requests()[0]?.currency, AUTHORITATIVE_CURRENCY);
     if (result.success) assert.equal(result.order.totalCents, expectedTotal);
+    const receiptRow = db
+      .prepare(
+        `SELECT kind, order_id, body FROM dev_mailbox
+         WHERE recipient = ? ORDER BY id DESC LIMIT 1`,
+      )
+      .get('checkout@example.test') as { kind: string; order_id: number; body: string };
+    assert.equal(receiptRow.kind, 'order_receipt');
+    assert.equal(result.success, true);
+    if (result.success) assert.equal(receiptRow.order_id, Number(result.order.id));
+    assert.doesNotMatch(receiptRow.body, /[$£€]|converted|total:/i);
   });
 
   await t.test(
@@ -703,10 +854,8 @@ void test('atomic checkout orchestration', async (t) => {
     const params = payment(cartId, 'safe-data');
     await checkout(params, { db });
     const stored = db
-      .prepare(
-        'SELECT request_fingerprint, card_last4, card_brand FROM payments WHERE idempotency_key = ?',
-      )
-      .get(params.idempotencyKey) as {
+      .prepare('SELECT * FROM payments WHERE idempotency_key = ?')
+      .get(params.idempotencyKey) as Record<string, unknown> & {
       request_fingerprint: string;
       card_last4: string;
       card_brand: string;
@@ -742,7 +891,63 @@ void test('atomic checkout orchestration', async (t) => {
       { card_last4: stored.card_last4, card_brand: stored.card_brand },
       { card_last4: '4242', card_brand: 'Visa' },
     );
-    assert.equal(JSON.stringify(stored).includes(params.cardNumber.replaceAll(' ', '')), false);
-    assert.equal(JSON.stringify(stored).includes(params.cardCvc), false);
+    // The persisted row is inspected structurally rather than by substring-matching its JSON
+    // dump: `request_fingerprint` is a sha256 digest, and a hex digest can incidentally contain
+    // any short decimal run (the fixture CVC `123` among them), so a substring check against it
+    // is noise, not a signal. The digest gets a shape check; every other value is scanned.
+    assert.match(stored.request_fingerprint, /^[0-9a-f]{64}$/);
+
+    // Card-derived columns are limited to the display-safe pair. A newly persisted `card_cvc`
+    // (or any other `card_*` column) fails here whatever value it carries.
+    assert.deepEqual(
+      Object.keys(stored)
+        .filter((column) => column.startsWith('card_'))
+        .sort(),
+      ['card_brand', 'card_last4'],
+    );
+
+    // Collect every persisted leaf value and key name, descending into JSON-valued columns so a
+    // secret hidden inside `response_json`/`quote_json` is caught as well.
+    const persistedValues: string[] = [];
+    const persistedKeys: string[] = [];
+    const collect = (value: unknown): void => {
+      if (typeof value === 'string') {
+        persistedValues.push(value);
+        try {
+          const parsed: unknown = JSON.parse(value);
+          if (parsed !== null && typeof parsed === 'object') collect(parsed);
+        } catch {
+          // not a JSON-valued column; the raw string is already recorded
+        }
+        return;
+      }
+      if (Array.isArray(value)) {
+        for (const entry of value) collect(entry);
+        return;
+      }
+      if (value !== null && typeof value === 'object') {
+        for (const [key, entry] of Object.entries(value)) {
+          persistedKeys.push(key);
+          collect(entry);
+        }
+      }
+    };
+    for (const [column, value] of Object.entries(stored)) {
+      persistedKeys.push(column);
+      if (column === 'request_fingerprint') continue;
+      collect(value);
+    }
+
+    const secretKeyPattern = /cvc|cvv|securitycode|cardnumber|^pan$/i;
+    assert.deepEqual(
+      persistedKeys.filter((key) => secretKeyPattern.test(key.replaceAll('_', ''))),
+      [],
+      'payments row exposes a field named after card secret material',
+    );
+    const pan = params.cardNumber.replaceAll(' ', '');
+    for (const value of persistedValues) {
+      assert.equal(value.includes(pan), false, `raw card number persisted in: ${value}`);
+      assert.notEqual(value, params.cardCvc, 'raw card CVC persisted');
+    }
   });
 });

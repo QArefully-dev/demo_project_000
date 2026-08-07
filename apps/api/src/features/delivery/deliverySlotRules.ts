@@ -12,10 +12,19 @@ import {
   FREIGHT_HEAVY_WEIGHT_THRESHOLD_GRAMS,
   PARCEL_LEAD_TIME_BUSINESS_DAYS,
 } from '@shop/contracts/delivery';
+import type { CountryProfile } from '@shop/contracts/country-profiles';
 
 /**
- * Pure delivery scheduling rules. Every date is derived in UTC from an injected
- * instant; nothing here reads an ambient clock, locale, or timezone profile.
+ * Pure delivery scheduling rules. Every date is derived from an injected instant
+ * and an explicit country profile; nothing here reads an ambient clock, locale,
+ * or time zone.
+ *
+ * The scheduling anchor is the profile's local civil day. At or after the
+ * profile's local `deliveryCutoffHour`, the anchor advances by one civil calendar
+ * day before business-day arithmetic begins. The exact cut-off is inclusive
+ * (`localHour >= deliveryCutoffHour`). Civil date and hour are resolved with an
+ * explicit locale and the profile's IANA time zone, so daylight-saving changes
+ * cannot skip or duplicate a scheduling day.
  *
  * Lead-time ladder (chosen for this repository, derived from the contract constants):
  *
@@ -43,9 +52,27 @@ const MS_PER_DAY = 86_400_000;
 const SLOT_WINDOWS: readonly DeliverySlotWindow[] = ['am', 'pm'];
 const DELIVERY_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Midnight-UTC epoch millis for the calendar day containing `instant`. */
-function toUtcDayStart(instant: Date): number {
-  return Date.UTC(instant.getUTCFullYear(), instant.getUTCMonth(), instant.getUTCDate());
+/** UTC-backed calendar representation of the profile's cut-off-adjusted local civil day. */
+function deliveryAnchorDay(instant: Date, profile: CountryProfile): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: profile.timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(instant);
+  const value = (type: Intl.DateTimeFormatPartTypes): number => {
+    const part = parts.find((candidate) => candidate.type === type);
+    if (!part) throw new Error(`Missing ${type} in local delivery date`);
+    return Number(part.value);
+  };
+  const localYear = value('year');
+  const localMonth = value('month');
+  const localDay = value('day');
+  const localHour = value('hour');
+  const localDayStart = Date.UTC(localYear, localMonth - 1, localDay);
+  return localHour >= profile.deliveryCutoffHour ? localDayStart + MS_PER_DAY : localDayStart;
 }
 
 /** `YYYY-MM-DD` render of a midnight-UTC day, locale-independent. */
@@ -99,6 +126,7 @@ function addBusinessDays(from: number, businessDays: number): number {
 export interface CalculateLeadTimeInput {
   deliverySummary: Pick<DeliverySummary, 'mode' | 'weightGrams'>;
   now: Date;
+  profile: CountryProfile;
 }
 
 export interface ListBookableSlotsInput {
@@ -109,19 +137,21 @@ export interface ListBookableSlotsInput {
    */
   leadTime: DeliveryLeadTime;
   now: Date;
+  profile: CountryProfile;
 }
 
 /**
  * Derives the bookable date range for a quoted consignment.
  *
  * `businessDays` is the ladder step used; `earliestDate` is that many business
- * days after the day of `now`; `latestDate` closes an inclusive
+ * days after the cut-off-adjusted local civil day; `latestDate` closes an inclusive
  * `DELIVERY_SLOT_HORIZON_BUSINESS_DAYS`-business-day window. `reason` is plain
  * buyer-facing text with no jargon and no markup characters.
  */
 export function calculateLeadTime({
   deliverySummary,
   now,
+  profile,
 }: CalculateLeadTimeInput): DeliveryLeadTime {
   const heavy =
     deliverySummary.mode === 'freight' &&
@@ -133,7 +163,7 @@ export function calculateLeadTime({
         (heavy ? FREIGHT_HEAVY_LEAD_TIME_EXTRA_BUSINESS_DAYS : 0)
       : PARCEL_LEAD_TIME_BUSINESS_DAYS;
 
-  const today = toUtcDayStart(now);
+  const today = deliveryAnchorDay(now, profile);
   const earliest = addBusinessDays(today, businessDays);
   const latest = addBusinessDays(earliest, DELIVERY_SLOT_HORIZON_BUSINESS_DAYS - 1);
 
@@ -163,7 +193,11 @@ export function calculateLeadTime({
  * Generation delegates admissibility to {@link isSlotBookable}, so a slot can
  * never be offered that re-validation would later reject.
  */
-export function listBookableSlots({ leadTime, now }: ListBookableSlotsInput): DeliverySlot[] {
+export function listBookableSlots({
+  leadTime,
+  now,
+  profile,
+}: ListBookableSlotsInput): DeliverySlot[] {
   const earliest = parseDeliveryDate(leadTime.earliestDate);
   const latest = parseDeliveryDate(leadTime.latestDate);
   if (earliest === undefined || latest === undefined || latest < earliest) return [];
@@ -174,7 +208,7 @@ export function listBookableSlots({ leadTime, now }: ListBookableSlotsInput): De
     const date = toDeliveryDate(cursor);
     for (const window of SLOT_WINDOWS) {
       const slot: DeliverySlot = { date, window };
-      if (isSlotBookable(slot, leadTime, now)) slots.push(slot);
+      if (isSlotBookable(slot, leadTime, now, profile)) slots.push(slot);
     }
   }
   return slots;
@@ -185,10 +219,15 @@ export function listBookableSlots({ leadTime, now }: ListBookableSlotsInput): De
  * checkout re-validation so the two can never drift.
  *
  * Rejects unknown windows, malformed or impossible dates, weekends, dates before
- * the calendar day of `now`, dates before `earliestDate`, and dates after
- * `latestDate`.
+ * the cut-off-adjusted local civil day, dates before `earliestDate`, and dates
+ * after `latestDate`.
  */
-export function isSlotBookable(slot: DeliverySlot, leadTime: DeliveryLeadTime, now: Date): boolean {
+export function isSlotBookable(
+  slot: DeliverySlot,
+  leadTime: DeliveryLeadTime,
+  now: Date,
+  profile: CountryProfile,
+): boolean {
   if (!SLOT_WINDOWS.includes(slot.window)) return false;
 
   const day = parseDeliveryDate(slot.date);
@@ -199,7 +238,7 @@ export function isSlotBookable(slot: DeliverySlot, leadTime: DeliveryLeadTime, n
   const latest = parseDeliveryDate(leadTime.latestDate);
   if (earliest === undefined || latest === undefined) return false;
 
-  if (day < toUtcDayStart(now)) return false;
+  if (day < deliveryAnchorDay(now, profile)) return false;
   if (day < earliest) return false;
   if (day > latest) return false;
 

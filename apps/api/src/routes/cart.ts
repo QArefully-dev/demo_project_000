@@ -1,13 +1,14 @@
 import { FastifyInstance } from 'fastify';
 import { Type } from '@sinclair/typebox';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
-import { sendNotFound } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 import {
   Cart,
   type Cart as CartResponse,
   AddToCartBody,
   UpdateCartLineBody,
   CreateCartResponse,
+  CreateCartBody,
   CartIdParam,
   CartIdAndProductIdParam,
   BelowMoqError,
@@ -15,6 +16,7 @@ import {
 } from '@shop/contracts/cart';
 import { ErrorResponse } from '@shop/contracts/common';
 import { SACK_WEIGHT_GRAMS } from '@shop/contracts/pricing';
+import { LEGACY_DATA_COUNTRY, SUPPORTED_COUNTRIES, type Country } from '@shop/contracts/country';
 import type { AppContext } from '../app.js';
 import type { AuditContext } from '../features/audit/auditEvent.js';
 
@@ -39,13 +41,17 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
     '/api/cart',
     {
       schema: {
+        // Cart creation predates country selection: a bodyless POST stays valid and
+        // falls back to the legacy country.
+        body: Type.Union([CreateCartBody, Type.Null()]),
         response: {
           201: CreateCartResponse,
         },
       },
     },
     async (request, reply) => {
-      const { cartId } = carts.create(auditContext(request));
+      const country = request.body?.country ?? LEGACY_DATA_COUNTRY;
+      const { cartId } = carts.create(auditContext(request), country);
       reply.code(201);
       return { cartId };
     },
@@ -63,7 +69,7 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
     async (request, reply) => {
       const cart = carts.get(request.params.cartId);
       if (!cart) {
-        sendNotFound(reply, 'Cart');
+        sendPublicError(request, reply, 404, 'CART_NOT_FOUND');
         return;
       }
       return cart;
@@ -87,12 +93,17 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
     },
     async (request, reply) => {
       const { productId, variantId, quantity } = request.body;
+      const cartCountry = carts.country(request.params.cartId);
+      if (!cartCountry) {
+        sendPublicError(request, reply, 404, 'CART_NOT_FOUND');
+        return;
+      }
       let resolvedVariantId: string | null | undefined;
       if (variantId !== undefined) {
         resolvedVariantId = String(variantId);
       } else {
         const active = services.products
-          .listVariants(Number(productId))
+          .listVariants(Number(productId), cartCountry)
           .filter((v) => v.active === 1);
         if (active.length === 1) {
           resolvedVariantId = String(active[0]!.id);
@@ -104,18 +115,16 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
       }
 
       if (resolvedVariantId === null) {
-        return reply.code(400).send({
-          error: `Product ${productId} has multiple active variants. Specify a variantId.`,
-        });
+        sendPublicError(request, reply, 400, 'REQUEST_INVALID');
+        return;
       }
       if (resolvedVariantId === undefined) {
-        return reply.code(400).send({
-          error: `Product ${productId} has no active variants.`,
-        });
+        sendPublicError(request, reply, 400, 'VARIANT_NOT_FOUND');
+        return;
       }
 
       const selectedVariant = services.products
-        .listVariants(Number(productId))
+        .listVariants(Number(productId), cartCountry)
         .find((variant) => variant.id === Number(resolvedVariantId));
       const requestedQuantity =
         quantity ??
@@ -130,23 +139,39 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
         auditContext(request),
       );
       if (cart === 'CART_NOT_FOUND') {
-        sendNotFound(reply, 'Cart');
+        sendPublicError(request, reply, 404, 'CART_NOT_FOUND');
         return;
       }
-      if (cart === 'VARIANT_NOT_FOUND') {
-        sendNotFound(reply, 'Variant');
+      if (cart === 'VARIANT_NOT_FOUND' || cart === 'BLOCKED_IN_COUNTRY') {
+        sendPublicError(request, reply, 404, 'VARIANT_NOT_FOUND');
         return;
       }
-      if (cart === 'CART_RESERVED')
-        return reply.code(409).send({ error: 'Cart is reserved for checkout' });
+      if (cart === 'CART_RESERVED') {
+        sendPublicError(request, reply, 409, 'CART_RESERVED');
+        return;
+      }
       if (cart === 'BELOW_MOQ') {
-        return reply.code(400).send({
-          code: 'BELOW_MOQ',
-          error: 'Quantity does not meet this variant minimum order quantity.',
-        });
+        const minQuantity = selectedVariant
+          ? minimumMoqQuantity(selectedVariant.weight_grams, selectedVariant.moq_sacks)
+          : undefined;
+        sendPublicError(
+          request,
+          reply,
+          400,
+          'BELOW_MOQ',
+          minQuantity === undefined ? undefined : { minQuantity },
+        );
+        return;
       }
       if (cart === 'INVALID_QUANTITY') {
-        return reply.code(400).send({ error: 'Quantity exceeds supported cart limits.' });
+        sendPublicError(
+          request,
+          reply,
+          400,
+          'INVALID_QUANTITY',
+          requestedQuantity === undefined ? undefined : { quantity: requestedQuantity },
+        );
+        return;
       }
       return cart;
     },
@@ -173,12 +198,11 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
       const resolvedVariantId = resolveCartLineVariant(cartData, productId, variantId, configKey);
 
       if (resolvedVariantId === 'AMBIGUOUS') {
-        return reply.code(400).send({
-          error: `Product ${productId} has multiple cart lines. Specify a variantId.`,
-        });
+        sendPublicError(request, reply, 400, 'REQUEST_INVALID');
+        return;
       }
       if (resolvedVariantId === undefined) {
-        sendNotFound(reply, 'Variant in cart');
+        sendPublicError(request, reply, 404, 'VARIANT_NOT_IN_CART');
         return;
       }
 
@@ -190,23 +214,30 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
         configKey,
       );
       if (result === 'CART_NOT_FOUND') {
-        sendNotFound(reply, 'Cart');
+        sendPublicError(request, reply, 404, 'CART_NOT_FOUND');
         return;
       }
       if (result === 'VARIANT_NOT_IN_CART') {
-        sendNotFound(reply, 'Variant in cart');
+        sendPublicError(request, reply, 404, 'VARIANT_NOT_IN_CART');
         return;
       }
-      if (result === 'CART_RESERVED')
-        return reply.code(409).send({ error: 'Cart is reserved for checkout' });
+      if (result === 'CART_RESERVED') {
+        sendPublicError(request, reply, 409, 'CART_RESERVED');
+        return;
+      }
       if (result === 'BELOW_MOQ') {
-        return reply.code(400).send({
-          code: 'BELOW_MOQ',
-          error: 'Quantity does not meet this variant minimum order quantity.',
-        });
+        const minQuantity = minimumMoqQuantityForVariant(
+          services.products,
+          productId,
+          resolvedVariantId,
+          carts.country(request.params.cartId),
+        );
+        sendPublicError(request, reply, 400, 'BELOW_MOQ', { minQuantity });
+        return;
       }
       if (result === 'INVALID_QUANTITY') {
-        return reply.code(400).send({ error: 'Quantity exceeds supported cart limits.' });
+        sendPublicError(request, reply, 400, 'INVALID_QUANTITY', { quantity });
+        return;
       }
       return result;
     },
@@ -225,7 +256,8 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
     async (request, reply) => {
       const productId = request.body?.productId ?? request.params.productId;
       if (request.body && request.body.productId !== request.params.productId) {
-        return reply.code(400).send({ error: 'Body productId must match the cart line path.' });
+        sendPublicError(request, reply, 400, 'REQUEST_INVALID');
+        return;
       }
       const cartData = carts.get(request.params.cartId);
       const resolvedVariantId = resolveCartLineVariant(
@@ -236,12 +268,11 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
       );
 
       if (resolvedVariantId === 'AMBIGUOUS') {
-        return reply.code(400).send({
-          error: `Product ${productId} has multiple cart lines. Specify a variantId.`,
-        });
+        sendPublicError(request, reply, 400, 'REQUEST_INVALID');
+        return;
       }
       if (resolvedVariantId === undefined) {
-        sendNotFound(reply, 'Variant in cart');
+        sendPublicError(request, reply, 404, 'VARIANT_NOT_IN_CART');
         return;
       }
 
@@ -252,15 +283,17 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
         request.body?.configKey,
       );
       if (result === 'CART_NOT_FOUND') {
-        sendNotFound(reply, 'Cart');
+        sendPublicError(request, reply, 404, 'CART_NOT_FOUND');
         return;
       }
       if (result === 'VARIANT_NOT_IN_CART') {
-        sendNotFound(reply, 'Variant in cart');
+        sendPublicError(request, reply, 404, 'VARIANT_NOT_IN_CART');
         return;
       }
-      if (result === 'CART_RESERVED')
-        return reply.code(409).send({ error: 'Cart is reserved for checkout' });
+      if (result === 'CART_RESERVED') {
+        sendPublicError(request, reply, 409, 'CART_RESERVED');
+        return;
+      }
       return result;
     },
   );
@@ -292,4 +325,26 @@ function minimumMoqQuantity(weightGrams: number, moqSacks: number): number {
     throw new RangeError('MOQ quantity is outside the safe integer range.');
   }
   return quantity;
+}
+
+/**
+ * Resolve MOQ facts from the persisted cart line's variant. Prefer cart country; fall back to
+ * another supported catalog country when that country intentionally hides the variant.
+ */
+function minimumMoqQuantityForVariant(
+  products: AppContext['services']['products'],
+  productId: string,
+  variantId: string,
+  preferredCountry: Country | undefined,
+): number {
+  const countries = preferredCountry
+    ? [preferredCountry, ...SUPPORTED_COUNTRIES.filter((country) => country !== preferredCountry)]
+    : [...SUPPORTED_COUNTRIES];
+  for (const country of countries) {
+    const variant = products
+      .listVariants(Number(productId), country)
+      .find((candidate) => candidate.id === Number(variantId));
+    if (variant) return minimumMoqQuantity(variant.weight_grams, variant.moq_sacks);
+  }
+  throw new Error('Unable to resolve MOQ facts for cart line.');
 }

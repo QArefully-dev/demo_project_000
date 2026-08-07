@@ -1,5 +1,25 @@
 export { CONTRACTS_VERSION } from './version.js';
 export * from './common.js';
+// `common` owns the historical ErrorResponse export; expose the new public-error symbols without
+// re-exporting its compatibility alias twice.
+export {
+  PUBLIC_ERROR_CODES,
+  PublicErrorCode,
+  PublicErrorId,
+  PublicErrorMeta,
+  PublicErrorMetaByCodeSchema,
+  PublicErrorMetaSchema,
+  PublicErrorResponse,
+  PublicErrorResponseSchema,
+} from './publicErrors.js';
+export type {
+  ParameterizedPublicErrorCode,
+  PublicErrorArgs,
+  PublicErrorMetaByCode,
+  PublicErrorMetaFor,
+  PublicErrorResponseFor,
+  UnparameterizedPublicErrorCode,
+} from './publicErrors.js';
 export * from './address.js';
 export * from './tradeAccount.js';
 export * from './products.js';
@@ -7,7 +27,6 @@ export * from './pricing.js';
 export * from './customBlends.js';
 export * from './cart.js';
 export * from './auth.js';
-export * from './favourites.js';
 export * from './promos.js';
 export * from './orders.js';
 export * from './payments.js';
@@ -18,3 +37,23 @@ export * from './reviews.js';
 export * from './inventory.js';
 export * from './returns.js';
 export * from './delivery.js';
+export * from './accountDepth.js';
+export * from './companyAccounts.js';
+export * from './orderApprovals.js';
+export * from './adminProducts.js';
+export * from './adminVariants.js';
+export * from './adminPromos.js';
+export * from './adminUsers.js';
+export * from './adminOrdersList.js';
+export * from './adminRefunds.js';
+export * from './featureFlags.js';
+export * from './reorder.js';
+export * from './quickOrder.js';
+export * from './savedLists.js';
+export * from './jobs.js';
+export * from './notifications.js';
+export * from './webhooks.js';
+export * from './standingOrders.js';
+export * from './backInStock.js';
+export * from './country.js';
+export * from './countryProfiles/index.js';

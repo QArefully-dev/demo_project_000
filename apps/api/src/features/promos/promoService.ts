@@ -1,4 +1,5 @@
 import type { Cart } from '@shop/contracts/cart';
+import type { Country } from '@shop/contracts/country';
 import type { CartRepository } from '../cart/cartRepository.js';
 import { getCart } from '../cart/cartService.js';
 import type { Clock } from '../auth/authService.js';
@@ -26,10 +27,21 @@ export interface ValidPromo {
 
 export type PromoValidation =
   | { valid: true; promoCode: ValidPromo }
-  | { valid: false; error: string; errorCode: PromoValidationError };
+  | {
+      valid: false;
+      error: string;
+      errorCode: PromoValidationError;
+      /** Canonical GBP pence threshold for the MIN_SUBTOTAL gate. */
+      minSubtotalCents?: number;
+    };
 
 export interface PromoService {
-  validate(params: { code: string; cartId: string; userId: number | null }): PromoValidation;
+  validate(params: {
+    code: string;
+    cartId: string;
+    userId: number | null;
+    country?: Country;
+  }): PromoValidation;
 }
 
 export function createPromoService(dependencies: {
@@ -42,8 +54,12 @@ export function createPromoService(dependencies: {
   };
 }
 
-function invalid(error: string, errorCode: PromoValidationError): PromoValidation {
-  return { valid: false, error, errorCode };
+function invalid(
+  error: string,
+  errorCode: PromoValidationError,
+  metadata?: Pick<Extract<PromoValidation, { valid: false }>, 'minSubtotalCents'>,
+): PromoValidation {
+  return { valid: false, error, errorCode, ...metadata };
 }
 
 function asValidPromo(promo: PromoRecord): ValidPromo {
@@ -94,7 +110,13 @@ export function resolvePromoScope(params: {
 }
 
 export function validatePromo(
-  params: { code: string; cartId: string; userId: number | null; now: Date },
+  params: {
+    code: string;
+    cartId: string;
+    userId: number | null;
+    country?: Country;
+    now: Date;
+  },
   dependencies: {
     promos: PromoRepository;
     carts: CartRepository;
@@ -102,6 +124,10 @@ export function validatePromo(
 ): PromoValidation {
   const promo = dependencies.promos.findByCode(params.code);
   if (!promo || !promo.active) return invalid('Promo code not found or inactive', 'INVALID');
+  const cartCountry = dependencies.carts.country(params.cartId);
+  const targetedCountries = dependencies.promos.targetedCountries(promo.code);
+  if (targetedCountries.length > 0 && (!cartCountry || !targetedCountries.includes(cartCountry)))
+    return invalid('Promo code not found or inactive', 'INVALID');
   const { now } = params;
   if (promo.startAt && now < new Date(promo.startAt))
     return invalid('This promo code is not yet active', 'NOT_STARTED');
@@ -141,10 +167,9 @@ export function validatePromo(
   // Eligibility and discount both read the discountable subtotal: Custom Blend blending fees are
   // a service charge, never merchandise, so they can neither unlock nor be reduced by a promotion.
   if (promo.minSubtotalCents !== null && scope.discountBaseCents < promo.minSubtotalCents)
-    return invalid(
-      `Minimum subtotal of $${(promo.minSubtotalCents / 100).toFixed(2)} required`,
-      'MIN_SUBTOTAL',
-    );
+    return invalid('Minimum qualifying subtotal required', 'MIN_SUBTOTAL', {
+      minSubtotalCents: promo.minSubtotalCents,
+    });
   return { valid: true, promoCode: validPromo };
 }
 

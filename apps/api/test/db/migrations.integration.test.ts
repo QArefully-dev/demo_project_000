@@ -44,6 +44,16 @@ const expectedVersions = [
   '022',
   '023',
   '024',
+  '025',
+  '026',
+  '027',
+  '028',
+  '029',
+  '030',
+  '031',
+  '032',
+  '033',
+  '034',
 ];
 
 /** Every migration up to but excluding `021`, i.e. the schema powderizer still existed in. */
@@ -1282,9 +1292,12 @@ void test('seed and reset operate on a migrated database', (t) => {
       .count > 0,
     true,
   );
-  assert.equal(
-    (db.prepare('SELECT COUNT(*) AS count FROM carts').get() as { count: number }).count,
-    0,
+  // Reset clears every cart; the canonical seed then re-creates its UK and DE Alice fixtures, so
+  // the post-seed table holds seeded carts only and never the row this test inserted before reset.
+  assert.equal(db.prepare("SELECT 1 FROM carts WHERE id = 'migration-test-cart'").get(), undefined);
+  assert.deepEqual(
+    db.prepare('SELECT DISTINCT country FROM carts ORDER BY country').pluck().all(),
+    ['DE', 'UK'],
   );
   assert.deepEqual(migrationVersions(db), expectedVersions);
 });
@@ -1966,7 +1979,6 @@ void test('v21 migration removes powderizer persistence and rebuilds the tables 
   for (const [table, expected] of [
     ['reviews', 1],
     ['review_rating_aggregates', 1],
-    ['favourites', 1],
     ['product_tags', 1],
     ['product_specifications', 1],
   ] as const) {
@@ -1980,6 +1992,10 @@ void test('v21 migration removes powderizer persistence and rebuilds the tables 
       `${table} rows for product 901 must survive the products rebuild`,
     );
   }
+  assert.deepEqual(
+    db.prepare('SELECT COUNT(*) AS count FROM saved_list_items WHERE variant_id = 901').get(),
+    { count: 1 },
+  );
   assert.deepEqual(
     db
       .prepare('SELECT product_id, published_count, rating_sum FROM review_rating_aggregates')

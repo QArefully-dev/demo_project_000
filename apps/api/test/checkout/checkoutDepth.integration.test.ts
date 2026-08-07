@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import type Database from 'better-sqlite3';
 import { formatPostalAddress } from '@shop/contracts/address';
+import { countryProfile } from '@shop/contracts/country-profiles';
 import { MOQ_DEFAULT_SACKS, SACK_WEIGHT_GRAMS } from '@shop/contracts/pricing';
 import { calculateLeadTime } from '../../src/features/delivery/deliverySlotRules.js';
 import {
@@ -349,6 +350,7 @@ void test('checkout depth: destination, billing, slot, and buyer reference', asy
       calculateLeadTime({
         deliverySummary: { mode: 'freight', weightGrams: SACK_WEIGHT_GRAMS * MOQ_DEFAULT_SACKS },
         now: NOW,
+        profile: countryProfile('UK'),
       }).earliestDate,
     );
     assert.equal(gateway.calls(), 0);
@@ -490,13 +492,32 @@ void test('checkout depth: destination, billing, slot, and buyer reference', asy
       assert.deepEqual(quote.customer.deliveryAddress, testPostalAddress);
       assert.equal(quote.purchaseOrderReference, 'PO-4417');
 
-      const mail = db
-        .prepare('SELECT subject, body FROM dev_mailbox ORDER BY id DESC LIMIT 1')
-        .get() as { subject: string; body: string };
-      assert.match(mail.subject, /QArefully Materials Exchange/);
-      assert.doesNotMatch(mail.body, /Powder Co\./);
-      assert.match(mail.body, new RegExp(bookableSlot(NOW).date));
-      assert.match(mail.body, /PO-4417/);
+      const legacyReceipt = db
+        .prepare('SELECT subject, body FROM dev_mailbox WHERE kind = ? AND order_id = ? LIMIT 1')
+        .get('order_receipt', Number(result.order.id)) as
+        { subject: string; body: string } | undefined;
+      assert.deepEqual(legacyReceipt, { subject: '', body: '' });
+
+      const receipt = createMailboxRepository(db)
+        .list()
+        .find((message) => message.kind === 'order_receipt' && message.orderId === result.order.id);
+      assert.ok(receipt);
+      assert.deepEqual(receipt, {
+        id: receipt.id,
+        recipient: 'depth-buyer@example.test',
+        subject: '',
+        body: '',
+        created: result.order.createdAt,
+        kind: 'order_receipt',
+        orderId: result.order.id,
+        country: 'UK',
+        subtotalCents: result.order.subtotalCents,
+        discountCents: result.order.discountCents,
+        totalCents: result.order.totalCents,
+        deliveryChargeCents: result.order.deliveryChargeCents ?? 0,
+        deliverySlot: bookableSlot(NOW),
+        purchaseOrderReference: 'PO-4417',
+      });
     },
   );
 

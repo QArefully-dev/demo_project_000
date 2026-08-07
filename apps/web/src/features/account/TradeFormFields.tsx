@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { identityAccountMessages } from '@shop/localisation/messages/identityAccount';
 
 /**
  * Small presentational parts shared by the trade profile sections.
@@ -30,12 +32,17 @@ export function TradeTextField({
   autoComplete,
   inputMode,
 }: TradeTextFieldProps) {
+  const { translate } = useLocalisation();
   const errorId = `${id}-error`;
   return (
     <div>
       <label htmlFor={id} className="block text-sm font-medium">
         {label}
-        {optional && <span className="ml-1 font-normal text-muted-foreground">(optional)</span>}
+        {optional && (
+          <span className="ml-1 font-normal text-muted-foreground">
+            {translate(identityAccountMessages, 'account.address.optional')}
+          </span>
+        )}
       </label>
       <Input
         id={id}
@@ -99,6 +106,7 @@ export function TradeListStatus({
   loadingLabel,
   emptyLabel,
 }: TradeListStatusProps): ReactNode {
+  const { translate } = useLocalisation();
   if (loading) {
     return (
       <p role="status" className="py-4 text-sm text-muted-foreground">
@@ -113,7 +121,7 @@ export function TradeListStatus({
           {error}
         </p>
         <Button type="button" variant="outline" size="sm" onClick={onRetry}>
-          Try again
+          {translate(identityAccountMessages, 'account.common.tryAgain')}
         </Button>
       </div>
     );

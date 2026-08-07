@@ -9,6 +9,8 @@ export type TradeAccountErrorCode =
   | 'SITE_NOT_FOUND'
   | 'SITE_LIMIT_REACHED'
   | 'DUPLICATE_LABEL'
+  | 'INVALID_POSTCODE'
+  | 'DELIVERY_COUNTRY_NOT_ALLOWED'
   | 'BILLING_ENTITY_NOT_FOUND'
   | 'BILLING_ENTITY_LIMIT_REACHED'
   | 'DUPLICATE_LEGAL_NAME';
@@ -19,12 +21,15 @@ export type TradeAccountErrorCode =
  */
 export type TradeAccountResult<T> =
   | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly code: TradeAccountErrorCode };
+  | { readonly ok: false; readonly code: TradeAccountErrorCode; readonly message?: string };
 
 export function tradeAccountOk<T>(value: T): TradeAccountResult<T> {
   return { ok: true, value };
 }
 
-export function tradeAccountError<T>(code: TradeAccountErrorCode): TradeAccountResult<T> {
-  return { ok: false, code };
+export function tradeAccountError<T>(
+  code: TradeAccountErrorCode,
+  message?: string,
+): TradeAccountResult<T> {
+  return { ok: false, code, ...(message === undefined ? {} : { message }) };
 }

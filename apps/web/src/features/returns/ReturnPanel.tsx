@@ -1,10 +1,30 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { formatMoney } from '@/lib/formatMoney';
 import { ApiError } from '@/api/client';
 import { fetchReturnOverview, createReturnRequest } from '@/api/returns';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import {
+  formatOrderTimestamp,
+  orderErrorMessage,
+  orderMessage,
+  returnReasonLabel,
+  returnStatusLabel,
+  resolveOrderMessage,
+  type OrderMessageState,
+} from '@/features/orders/orderPresentation';
+import {
+  orderLifecycleMessages,
+  type OrderLifecycleMessageKey,
+} from '@shop/localisation/messages/orderLifecycle';
 import type {
   ReturnOverviewResponse,
   ReturnEligibilityLine,
@@ -12,27 +32,12 @@ import type {
   ReturnReasonCode,
 } from '@shop/contracts/returns';
 
-const REASON_OPTIONS: Array<{ value: ReturnReasonCode; label: string }> = [
-  { value: 'damaged', label: 'Damaged' },
-  { value: 'wrong_item', label: 'Wrong item' },
-  { value: 'not_as_expected', label: 'Not as expected' },
-  { value: 'other', label: 'Other' },
+const REASON_OPTIONS: readonly ReturnReasonCode[] = [
+  'damaged',
+  'wrong_item',
+  'not_as_expected',
+  'other',
 ];
-
-function statusLabel(status: ReturnRequest['status']): string {
-  switch (status) {
-    case 'requested':
-      return 'Requested';
-    case 'approved':
-      return 'Approved';
-    case 'rejected':
-      return 'Rejected';
-    case 'received':
-      return 'Received';
-    case 'refunded':
-      return 'Refunded';
-  }
-}
 
 function statusVariant(
   status: ReturnRequest['status'],
@@ -49,8 +54,11 @@ interface ReturnPanelProps {
 }
 
 export function ReturnPanel({ orderId }: ReturnPanelProps) {
+  const locale = useLocalisation();
+  const t = (key: OrderLifecycleMessageKey, params?: Record<string, string | number | bigint>) =>
+    locale.translate(orderLifecycleMessages, key, params);
   const [overview, setOverview] = useState<ReturnOverviewResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<OrderMessageState | null>(null);
   const [loading, setLoading] = useState(true);
 
   // form state
@@ -58,14 +66,43 @@ export function ReturnPanel({ orderId }: ReturnPanelProps) {
   const [note, setNote] = useState('');
   const [selections, setSelections] = useState<Map<string, number>>(new Map());
   const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [announcement, setAnnouncement] = useState('');
+  const [formError, setFormError] = useState<OrderMessageState | null>(null);
+  const [announcement, setAnnouncement] = useState<OrderMessageState | null>(null);
 
   const idempotencyKey = useRef<string | null>(null);
   const requestId = useRef(0);
+  const overviewOrderId = useRef<string | null>(null);
+  const committedOrderId = useRef(orderId);
+  const activeOrderId = useRef(orderId);
+  activeOrderId.current = orderId;
   const formRef = useRef<HTMLFormElement | null>(null);
   const noteErrorId = 'return-note-error';
   const selectionErrorId = 'return-selection-error';
+
+  // Invalidate all prior order state before the next order's overview can render. The request
+  // sequence guard below still rejects a late response from the previous order.
+  useLayoutEffect(() => {
+    const orderChanged = committedOrderId.current !== orderId;
+    committedOrderId.current = orderId;
+    if (orderChanged) {
+      overviewOrderId.current = null;
+      setOverview(null);
+      setError(null);
+      setLoading(true);
+      setSelections(new Map());
+      setReason('damaged');
+      setNote('');
+      setFormError(null);
+      setAnnouncement(null);
+      setSubmitting(false);
+      idempotencyKey.current = null;
+      ++requestId.current;
+    }
+
+    return () => {
+      ++requestId.current;
+    };
+  }, [orderId]);
 
   const load = useCallback(
     async (clearError = true) => {
@@ -74,27 +111,26 @@ export function ReturnPanel({ orderId }: ReturnPanelProps) {
       if (clearError) setError(null);
       try {
         const response = await fetchReturnOverview(orderId);
-        if (currentRequest === requestId.current) setOverview(response);
+        if (currentRequest === requestId.current && activeOrderId.current === orderId) {
+          overviewOrderId.current = orderId;
+          setOverview(response);
+        }
       } catch (err) {
-        if (currentRequest === requestId.current) {
-          setError(err instanceof Error ? err.message : 'Unable to load return information');
+        if (currentRequest === requestId.current && activeOrderId.current === orderId) {
+          setError(orderErrorMessage(err, 'return.loadError'));
         }
       } finally {
-        if (currentRequest === requestId.current) setLoading(false);
+        if (currentRequest === requestId.current && activeOrderId.current === orderId) {
+          setLoading(false);
+        }
       }
     },
-    [orderId],
+    [locale, orderId],
   );
 
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    return () => {
-      ++requestId.current;
-    };
-  }, [orderId]);
 
   const selectionKey = (line: ReturnEligibilityLine) =>
     `${line.shipmentId}:${line.orderLineItemId}`;
@@ -115,17 +151,21 @@ export function ReturnPanel({ orderId }: ReturnPanelProps) {
   const anySelection = selections.size > 0;
 
   const validateForm = (): string | null => {
-    if (!anySelection) return 'Select at least one item to return.';
-    if (note && MARKUP_PATTERN.test(note)) return 'Angle brackets (< >) are not allowed.';
+    if (!anySelection) return t('return.selectOne');
+    if (note && MARKUP_PATTERN.test(note)) return t('return.angleBrackets');
     return null;
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    const submitOrderId = orderId;
+    if (submitOrderId !== activeOrderId.current) return;
     const validationError = validateForm();
     if (validationError) {
-      setFormError(validationError);
-      const firstInvalid = validationError.includes('Select')
+      setFormError(
+        !anySelection ? orderMessage('return.selectOne') : orderMessage('return.angleBrackets'),
+      );
+      const firstInvalid = !anySelection
         ? document.querySelector<HTMLElement>('[data-selection-quantity]')
         : document.getElementById('return-note');
       firstInvalid?.focus();
@@ -149,35 +189,40 @@ export function ReturnPanel({ orderId }: ReturnPanelProps) {
         ...(note.trim() ? { note: note.trim() } : {}),
         selections: selectedEntries,
       });
-      setAnnouncement('Return request submitted successfully.');
+      if (submitOrderId !== activeOrderId.current) return;
+      setAnnouncement(orderMessage('return.success'));
       setSelections(new Map());
       setNote('');
       setReason('damaged');
       idempotencyKey.current = null;
       await load(false);
     } catch (err) {
+      if (submitOrderId !== activeOrderId.current) return;
       if (err instanceof ApiError) {
-        if (err.status === 409) {
-          // IDEMPOTENCY_CONFLICT — definitive payload conflict, clear key
+        if (err.code === 'IDEMPOTENCY_CONFLICT') {
+          // A coded conflict is definitive; status alone is not a safe discriminator.
+          idempotencyKey.current = null;
+          setFormError(orderMessage('return.conflict'));
+          setSelections(new Map());
+          await load(false);
+        } else if (err.code === 'QUANTITY_UNAVAILABLE' || err.code === 'RETURN_NOT_ELIGIBLE') {
+          // Only eligibility changes invalidate the selected quantities and require a refresh.
           idempotencyKey.current = null;
           setFormError(
-            'This request conflicts with a previous return. Eligibility has been refreshed.',
+            err.code === 'QUANTITY_UNAVAILABLE'
+              ? orderMessage('return.quantityChanged')
+              : orderErrorMessage(err, 'return.error.generic'),
           );
-          await load(false);
           setSelections(new Map());
-        } else if (err.status === 422) {
-          idempotencyKey.current = null;
-          setFormError('Available quantities changed. Eligibility has been refreshed.');
           await load(false);
-          setSelections(new Map());
         } else {
-          setFormError(err.message);
+          setFormError(orderErrorMessage(err, 'return.error.generic'));
         }
       } else {
-        setFormError(err instanceof Error ? err.message : 'Unable to submit return request');
+        setFormError(orderErrorMessage(err, 'return.error.generic'));
       }
     } finally {
-      setSubmitting(false);
+      if (submitOrderId === activeOrderId.current) setSubmitting(false);
     }
   };
 
@@ -187,34 +232,35 @@ export function ReturnPanel({ orderId }: ReturnPanelProps) {
     }
   };
 
-  // --- Render: loading ---
-  if (loading && !overview) {
+  const currentOverview =
+    overview !== null && overviewOrderId.current === orderId ? overview : null;
+
+  if (loading && !currentOverview) {
     return (
-      <section aria-label="Returns" className="mt-6 rounded-lg border p-4">
+      <section aria-label={t('return.title')} className="mt-6 rounded-lg border p-4">
         <p className="text-sm text-muted-foreground" aria-busy="true">
-          Loading return information…
+          {t('return.loading')}
         </p>
       </section>
     );
   }
 
-  // --- Render: error ---
-  if (error && !overview) {
+  if (error && !currentOverview && (overview === null || overviewOrderId.current === orderId)) {
     return (
-      <section aria-label="Returns" className="mt-6 rounded-lg border p-4">
+      <section aria-label={t('return.title')} className="mt-6 rounded-lg border p-4">
         <p role="alert" className="text-sm text-destructive">
-          Could not load return information.
+          {resolveOrderMessage(error, locale)}
         </p>
         <Button type="button" variant="link" className="mt-1 px-0" onClick={() => void load()}>
-          Try again
+          {t('return.tryAgain')}
         </Button>
       </section>
     );
   }
 
-  if (!overview) return null;
+  if (!currentOverview) return null;
 
-  const { eligibleLines, requests } = overview;
+  const { eligibleLines, requests } = currentOverview;
 
   // Group eligible lines by shipment
   const linesByShipment = new Map<number, ReturnEligibilityLine[]>();
@@ -227,19 +273,15 @@ export function ReturnPanel({ orderId }: ReturnPanelProps) {
   const hasEligible = eligibleLines.length > 0;
   const hasHistory = requests.length > 0;
 
-  // --- Render: empty state ---
   if (!hasEligible && !hasHistory) {
     return (
-      <section aria-label="Returns" className="mt-6">
+      <section aria-label={t('return.title')} className="mt-6">
         <Card>
           <CardHeader>
-            <CardTitle>Returns</CardTitle>
+            <CardTitle>{t('return.title')}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">
-              No items are eligible for return. Delivered ordinary products within the 30-day window
-              appear here.
-            </p>
+            <p className="text-sm text-muted-foreground">{t('return.emptyDescription')}</p>
           </CardContent>
         </Card>
       </section>
@@ -247,16 +289,16 @@ export function ReturnPanel({ orderId }: ReturnPanelProps) {
   }
 
   return (
-    <section aria-label="Returns" className="mt-6 space-y-6">
+    <section aria-label={t('return.title')} className="mt-6 space-y-6">
       <p aria-live="polite" className="sr-only">
-        {announcement}
+        {announcement ? resolveOrderMessage(announcement, locale) : ''}
       </p>
 
       {/* Eligibility & Request Form */}
       {hasEligible && (
         <Card>
           <CardHeader>
-            <CardTitle>Return items</CardTitle>
+            <CardTitle>{t('return.itemsHeading')}</CardTitle>
           </CardHeader>
           <CardContent>
             <form
@@ -271,14 +313,16 @@ export function ReturnPanel({ orderId }: ReturnPanelProps) {
                   role="alert"
                   className="rounded-md border border-destructive/40 p-3 text-sm text-destructive"
                 >
-                  {formError}
+                  {resolveOrderMessage(formError, locale)}
                 </p>
               )}
 
               {/* Eligible lines grouped by shipment */}
               {Array.from(linesByShipment.entries()).map(([shipmentNumber, lines]) => (
                 <div key={shipmentNumber} className="rounded-lg border p-3">
-                  <h3 className="text-sm font-medium">Shipment {shipmentNumber}</h3>
+                  <h3 className="text-sm font-medium">
+                    {t('return.shipment', { number: shipmentNumber })}
+                  </h3>
                   <div className="mt-2 space-y-2">
                     {lines.map((line) => {
                       const key = selectionKey(line);
@@ -299,7 +343,10 @@ export function ReturnPanel({ orderId }: ReturnPanelProps) {
                             )}
                             <span className="text-muted-foreground">
                               {' '}
-                              ({line.availableQuantity} of {line.deliveredQuantity} available)
+                              {t('return.availableQuantity', {
+                                available: line.availableQuantity,
+                                delivered: line.deliveredQuantity,
+                              })}
                             </span>
                           </label>
                           <input
@@ -316,7 +363,7 @@ export function ReturnPanel({ orderId }: ReturnPanelProps) {
                                 Math.max(0, parseInt(e.target.value, 10) || 0),
                               )
                             }
-                            aria-label={`Quantity to return for ${line.productName}`}
+                            aria-label={t('return.quantityAria', { productName: line.productName })}
                           />
                         </div>
                       );
@@ -328,7 +375,7 @@ export function ReturnPanel({ orderId }: ReturnPanelProps) {
               {/* Reason */}
               <div>
                 <label htmlFor="return-reason" className="text-sm font-medium">
-                  Reason
+                  {t('return.reason')}
                 </label>
                 <select
                   id="return-reason"
@@ -336,9 +383,9 @@ export function ReturnPanel({ orderId }: ReturnPanelProps) {
                   value={reason}
                   onChange={(e) => setReason(e.target.value as ReturnReasonCode)}
                 >
-                  {REASON_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
+                  {REASON_OPTIONS.map((value) => (
+                    <option key={value} value={value}>
+                      {returnReasonLabel(value, locale)}
                     </option>
                   ))}
                 </select>
@@ -347,7 +394,8 @@ export function ReturnPanel({ orderId }: ReturnPanelProps) {
               {/* Note */}
               <div>
                 <label htmlFor="return-note" className="text-sm font-medium">
-                  Note <span className="font-normal text-muted-foreground">(optional)</span>
+                  {t('return.note')}{' '}
+                  <span className="font-normal text-muted-foreground">{t('return.optional')}</span>
                 </label>
                 <textarea
                   id="return-note"
@@ -361,17 +409,17 @@ export function ReturnPanel({ orderId }: ReturnPanelProps) {
                 />
                 {note && MARKUP_PATTERN.test(note) && (
                   <p id={noteErrorId} className="mt-1 text-xs text-destructive">
-                    Angle brackets ({'< >'}) are not allowed.
+                    {t('return.angleBrackets')}
                   </p>
                 )}
               </div>
 
               <div id={selectionErrorId} className="sr-only" role="alert">
-                {!anySelection ? 'Select at least one item to return.' : ''}
+                {!anySelection ? t('return.selectOne') : ''}
               </div>
 
               <Button type="submit" disabled={submitting || !anySelection}>
-                {submitting ? 'Submitting…' : 'Submit return request'}
+                {submitting ? t('return.submitting') : t('return.submit')}
               </Button>
             </form>
           </CardContent>
@@ -382,24 +430,30 @@ export function ReturnPanel({ orderId }: ReturnPanelProps) {
       {hasHistory && (
         <Card>
           <CardHeader>
-            <CardTitle>Return history</CardTitle>
+            <CardTitle>{t('return.history')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {requests.map((req) => (
               <article
                 key={req.id}
                 className="rounded-lg border p-4"
-                aria-label={`Return request ${req.id}`}
+                aria-label={t('return.requestAria', { requestId: req.id })}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="font-medium">Request #{req.id}</h3>
-                  <Badge variant={statusVariant(req.status)}>{statusLabel(req.status)}</Badge>
+                  <h3 className="font-medium">{t('return.request', { requestId: req.id })}</h3>
+                  <Badge variant={statusVariant(req.status)}>
+                    {returnStatusLabel(req.status, locale)}
+                  </Badge>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {req.reason.replace(/_/g, ' ')}
-                  {req.note ? ` — ${req.note}` : ''}
+                  {req.note
+                    ? t('return.reasonNote', {
+                        reason: returnReasonLabel(req.reason, locale),
+                        note: req.note,
+                      })
+                    : returnReasonLabel(req.reason, locale)}
                 </p>
-                <ul className="mt-2 space-y-1 text-sm" aria-label="Requested items">
+                <ul className="mt-2 space-y-1 text-sm" aria-label={t('return.requestedItems')}>
                   {req.items.map((item) => (
                     <li key={`${item.shipmentId}-${item.orderLineItemId}`}>
                       {item.productName}
@@ -411,40 +465,76 @@ export function ReturnPanel({ orderId }: ReturnPanelProps) {
                   ))}
                 </ul>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Requested on{' '}
-                  {new Date(req.requestedAt).toLocaleDateString(undefined, {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric',
+                  {t('return.requestedOn', {
+                    date: formatOrderTimestamp(
+                      req.requestedAt,
+                      locale,
+                      'date',
+                      'return.invalidTimestamp',
+                    ),
                   })}
                   {req.status === 'approved' && req.approvedAt
-                    ? ` · Approved ${new Date(req.approvedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+                    ? ` · ${t('return.approvedOn', {
+                        date: formatOrderTimestamp(
+                          req.approvedAt,
+                          locale,
+                          'date',
+                          'return.invalidTimestamp',
+                        ),
+                      })}`
                     : ''}
                   {req.status === 'rejected' && req.rejectedAt
-                    ? ` · Rejected ${new Date(req.rejectedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+                    ? ` · ${t('return.rejectedOn', {
+                        date: formatOrderTimestamp(
+                          req.rejectedAt,
+                          locale,
+                          'date',
+                          'return.invalidTimestamp',
+                        ),
+                      })}`
                     : ''}
                   {req.status === 'received' && req.receivedAt
-                    ? ` · Received ${new Date(req.receivedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+                    ? ` · ${t('return.receivedOn', {
+                        date: formatOrderTimestamp(
+                          req.receivedAt,
+                          locale,
+                          'date',
+                          'return.invalidTimestamp',
+                        ),
+                      })}`
                     : ''}
                 </p>
                 {req.refund && (
                   <div className="mt-2 rounded-md bg-muted p-2 text-sm">
-                    <p>
-                      Refund:{' '}
-                      <span className="font-medium">{formatMoney(req.refund.amountCents)}</span>
+                    {(() => {
+                      const refund = locale.formatDualTotal(req.refund.amountCents);
+                      return (
+                        <>
+                          <p>
+                            {t('return.refund', { money: refund.display })}
+                            {refund.settlement && (
+                              <span className="ml-2 text-xs text-muted-foreground">
+                                {t('return.settlementRefund', { money: refund.settlement })}
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {t('return.deliveryNotRefundable')}
+                          </p>
+                        </>
+                      );
+                    })()}
+                    <p className="text-xs text-muted-foreground">
+                      {t('return.reference', { reference: req.refund.simulatedReference })}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Delivery charges are not refundable.
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Reference: {req.refund.simulatedReference}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Refunded on{' '}
-                      {new Date(req.refund.refundedAt).toLocaleDateString(undefined, {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
+                      {t('return.refundedOn', {
+                        date: formatOrderTimestamp(
+                          req.refund.refundedAt,
+                          locale,
+                          'date',
+                          'return.invalidTimestamp',
+                        ),
                       })}
                     </p>
                   </div>

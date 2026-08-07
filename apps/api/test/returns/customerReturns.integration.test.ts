@@ -17,7 +17,7 @@ async function login(app: Awaited<ReturnType<typeof buildApp>>, email: string): 
   const r = await app.inject({
     method: 'POST',
     url: '/login',
-    payload: { email, password: 'Password123!' },
+    payload: { email, password: 'Password123!', country: 'UK' },
   });
   assert.equal(r.statusCode, 200);
   return cookie(r);
@@ -72,6 +72,7 @@ void test('customer return routes enforce ownership and auth', async (t) => {
       headers: { cookie: bobCookie },
     });
     assert.equal(r.statusCode, 404);
+    assert.equal(r.json<{ code: string }>().code, 'RETURN_NOT_FOUND');
   }
 
   // ── Alice can see her overview (delivered order) ──────────────

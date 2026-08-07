@@ -6,7 +6,7 @@ import { type AuditReadService } from '../features/audit/auditService.js';
 import { AuditQueryError } from '../features/audit/auditQuery.js';
 import { requireAdmin } from '../plugins/auth.js';
 import type { SessionService } from '../features/auth/sessionService.js';
-import { sendBadRequest } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 
 export interface AuditRouteServices {
   sessions: SessionService;
@@ -33,8 +33,17 @@ export default function auditRoutes(
           403: ErrorResponse,
         },
       },
+      // This route is also mounted by focused test harnesses without the application-wide error
+      // handler. Keep validation failures on the same public contract in both compositions.
+      errorHandler(error, request, reply) {
+        if (error.validation) {
+          sendPublicError(request, reply, 400, 'REQUEST_INVALID');
+          return;
+        }
+        throw error;
+      },
     },
-    async (request, reply) => {
+    (request, reply) => {
       try {
         const page = services.audit.list(request.query);
         return reply.code(200).send({
@@ -46,7 +55,7 @@ export default function auditRoutes(
         });
       } catch (error) {
         if (error instanceof AuditQueryError) {
-          sendBadRequest(reply, error.message);
+          sendPublicError(request, reply, 400, 'INVALID_QUERY');
           return;
         }
         throw error;

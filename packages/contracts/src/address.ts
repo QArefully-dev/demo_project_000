@@ -26,7 +26,11 @@ export const Postcode = Type.String({
 });
 export type Postcode = Static<typeof Postcode>;
 
-/** ISO-3166-1 alpha-2, upper case. No localisation profile exists; one generic postal shape. */
+/**
+ * ISO-3166-1 alpha-2, upper case. Postal routing only — this is the physical destination
+ * country for a delivery. The buyer's identity/locale country lives on the `Country` axis
+ * and is never derived from the postal address.
+ */
 export const CountryCode = Type.String({ pattern: '^[A-Z]{2}$' });
 export type CountryCode = Static<typeof CountryCode>;
 
