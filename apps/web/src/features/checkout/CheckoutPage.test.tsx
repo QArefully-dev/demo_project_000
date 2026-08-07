@@ -222,10 +222,6 @@ async function completeDeliveryStep(user: ReturnType<typeof userEvent.setup>) {
 
 async function completeScheduleStep(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByLabelText(/August 3, 2026 · Morning/));
-  await user.type(screen.getByLabelText('Legal entity name'), 'Test Trading Ltd');
-  await user.type(screen.getByLabelText('Address line 1'), '2 Billing Road');
-  await user.type(screen.getByLabelText('City'), 'Testville');
-  await user.type(screen.getByLabelText('Postcode'), 'TE1 1ST');
   await user.click(screen.getByRole('button', { name: 'Continue to payment' }));
   await screen.findByRole('heading', { name: 'Test card details' });
 }
@@ -508,10 +504,13 @@ describe('CheckoutPage', { timeout: 20_000 }, () => {
 
     await completeDeliveryStep(user);
     expect(screen.getByTestId('location')).toHaveTextContent('/checkout?step=schedule');
+    expect(screen.getByLabelText('Legal entity name')).toHaveValue('Checkout Test');
+    expect(screen.getByLabelText('Address line 1')).toHaveValue('1 Test Street');
+    expect(screen.getByLabelText('City')).toHaveValue('Testville');
+    expect(screen.getByLabelText('Postcode')).toHaveValue('TE1 1ST');
 
     await user.click(screen.getByRole('button', { name: 'Continue to payment' }));
     expect(screen.getByText('Choose a delivery slot')).toBeInTheDocument();
-    expect(screen.getByText('Legal entity name is required')).toBeInTheDocument();
     expect(screen.getByTestId('location')).toHaveTextContent('/checkout?step=schedule');
 
     await completeScheduleStep(user);
@@ -628,9 +627,9 @@ describe('CheckoutPage', { timeout: 20_000 }, () => {
     expect(body.billingSelection).toEqual({
       kind: 'adhoc',
       billingEntity: {
-        legalName: 'Test Trading Ltd',
+        legalName: 'Checkout Test',
         address: {
-          line1: '2 Billing Road',
+          line1: '1 Test Street',
           city: 'Testville',
           postcode: 'TE1 1ST',
           countryCode: 'GB',

@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/AuthContext';
 import { useLocalisation } from '@/i18n/LocaleContext';
 import { checkoutMessages } from '@shop/localisation/messages/checkout';
 import { useTradeProfile } from '@/features/account/useTradeProfile';
+import { toPostalAddressDraft } from '@/features/account/PostalAddressFields';
 import { isEligibleForPromo } from './cartValidation';
 import {
   cardFields,
@@ -160,8 +161,32 @@ export function useCheckoutFlow() {
   const touchField = useCallback((field: Field) => dispatch({ type: 'field-touched', field }), []);
   const goToSchedule = useCallback(() => {
     dispatch({ type: 'fields-touched', fields: deliveryStepFields });
-    if (deliveryIsValid) navigation.goToSchedule();
-  }, [deliveryIsValid, navigation]);
+    if (!deliveryIsValid) return;
+
+    const selectedDeliverySite = savedSites.find(
+      (site) => site.id === state.delivery.deliverySiteId,
+    );
+    const deliveryAddress =
+      state.delivery.destinationKind === 'saved'
+        ? selectedDeliverySite
+          ? toPostalAddressDraft(
+              selectedDeliverySite.address,
+              state.delivery.address.profileCountry,
+            )
+          : undefined
+        : state.delivery.address;
+    if (deliveryAddress) {
+      dispatch({
+        type: 'billing-prefilled',
+        patch: {
+          legalName: state.contact.customerName,
+          address: deliveryAddress,
+        },
+        idempotencyKey: createIdempotencyKey(),
+      });
+    }
+    navigation.goToSchedule();
+  }, [deliveryIsValid, navigation, savedSites, state.contact.customerName, state.delivery]);
   const goToPayment = useCallback(() => {
     dispatch({ type: 'fields-touched', fields: scheduleStepFields });
     if (scheduleIsValid) navigation.goToPayment();

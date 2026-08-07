@@ -113,6 +113,11 @@ export type CheckoutEvent =
   | { type: 'delivery-changed'; patch: Partial<CheckoutDelivery>; idempotencyKey: string }
   | { type: 'schedule-changed'; slot: DeliverySlot | null; idempotencyKey: string }
   | { type: 'billing-changed'; patch: Partial<CheckoutBilling>; idempotencyKey: string }
+  | {
+      type: 'billing-prefilled';
+      patch: Pick<CheckoutBilling, 'legalName' | 'address'>;
+      idempotencyKey: string;
+    }
   | { type: 'delivery-sites-loaded'; defaultSiteId: string | null; idempotencyKey: string }
   | { type: 'billing-entities-loaded'; defaultEntityId: string | null; idempotencyKey: string }
   | { type: 'card-changed'; field: CardField; value: string; idempotencyKey: string }
@@ -208,6 +213,22 @@ export function initialCheckoutState(): CheckoutState {
   };
 }
 
+function billingDraftIsEmpty(billing: CheckoutBilling): boolean {
+  return (
+    billing.selectionKind === 'adhoc' &&
+    billing.billingEntityId === '' &&
+    billing.legalName === '' &&
+    billing.registrationNumber === '' &&
+    billing.vatNumber === '' &&
+    billing.purchaseOrderReference === '' &&
+    billing.address.line1 === '' &&
+    billing.address.line2 === '' &&
+    billing.address.city === '' &&
+    billing.address.region === '' &&
+    billing.address.postcode === ''
+  );
+}
+
 /**
  * Reducer for the three-step checkout.
  *
@@ -248,6 +269,16 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
       return {
         ...state,
         billing: { ...state.billing, ...event.patch, initialized: true },
+        paymentError: null,
+        paymentErrorState: null,
+        idempotencyKey: event.idempotencyKey,
+      };
+    case 'billing-prefilled':
+      // Do not replace an entered draft; retaining `initialized` lets a later saved default win.
+      if (!billingDraftIsEmpty(state.billing)) return state;
+      return {
+        ...state,
+        billing: { ...state.billing, ...event.patch },
         paymentError: null,
         paymentErrorState: null,
         idempotencyKey: event.idempotencyKey,
