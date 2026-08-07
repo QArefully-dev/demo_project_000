@@ -4,7 +4,7 @@ import { PaymentWebhookAck } from '@shop/contracts/webhooks';
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../app.js';
 import { WebhookError } from '../features/webhooks/webhookService.js';
-import { sendBadRequest, sendUnauthorized } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 
 /** Payment processors sign exact JSON bytes, so this plugin preserves its JSON text route-locally. */
 export default function webhookRoutes(app: FastifyInstance, { services }: AppContext): void {
@@ -22,7 +22,7 @@ export default function webhookRoutes(app: FastifyInstance, { services }: AppCon
     (request, reply) => {
       const signature = request.headers['x-webhook-signature'];
       if (typeof signature !== 'string')
-        return sendUnauthorized(reply, 'Invalid webhook signature');
+        return sendPublicError(request, reply, 401, 'INVALID_SIGNATURE');
       try {
         const captured = services.webhooks.capture({
           rawPayload: request.body as string,
@@ -33,8 +33,8 @@ export default function webhookRoutes(app: FastifyInstance, { services }: AppCon
       } catch (error) {
         if (error instanceof WebhookError) {
           if (error.code === 'INVALID_SIGNATURE')
-            return sendUnauthorized(reply, 'Invalid webhook signature');
-          return sendBadRequest(reply, 'Invalid webhook payload');
+            return sendPublicError(request, reply, 401, 'INVALID_SIGNATURE');
+          return sendPublicError(request, reply, 400, 'INVALID_PAYLOAD');
         }
         throw error;
       }

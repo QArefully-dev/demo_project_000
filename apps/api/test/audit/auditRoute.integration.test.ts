@@ -14,6 +14,7 @@ import {
 import { createSessionRepository } from '../../src/features/auth/sessionRepository.js';
 import { createSessionService } from '../../src/features/auth/sessionService.js';
 import { authPlugin } from '../../src/plugins/auth.js';
+import { countryContextPlugin } from '../../src/plugins/countryContext.js';
 import auditRoutes from '../../src/routes/audit.js';
 
 function hasAuditItem(value: unknown): value is { id: string } {
@@ -86,6 +87,7 @@ void test('admin audit endpoint is read-only, filtered, paginated, and access-co
   const app = Fastify({ ajv: { customOptions: { removeAdditional: false } } });
   await app.register(fastifyCookie);
   authPlugin(sessions)(app, {}, () => undefined);
+  countryContextPlugin(sessions)(app, {}, () => undefined);
   await app.register(auditRoutes, {
     services: { sessions, audit: createAuditReadService(repository) },
   });
@@ -95,8 +97,13 @@ void test('admin audit endpoint is read-only, filtered, paginated, and access-co
     rmSync(directory, { recursive: true, force: true });
   });
 
-  const asAdmin = (url: string, method = 'GET') =>
-    app.inject({ method, url, cookies: { sid: adminToken } });
+  const asAdmin = (url: string, method: 'GET' | 'POST' = 'GET', country?: 'DE' | 'UK') =>
+    app.inject({
+      method,
+      url,
+      cookies: { sid: adminToken },
+      ...(country === undefined ? {} : { headers: { 'x-shop-country': country } }),
+    });
 
   assert.equal((await app.inject('/api/admin/audit-events')).statusCode, 401);
   assert.equal(
@@ -148,11 +155,40 @@ void test('admin audit endpoint is read-only, filtered, paginated, and access-co
     ['2'],
   );
 
-  assert.equal(
-    (await asAdmin('/api/admin/audit-events?occurredFrom=2026-04-02&occurredTo=2026-04-01'))
-      .statusCode,
-    400,
+  const invalidService = await asAdmin(
+    '/api/admin/audit-events?occurredFrom=2026-04-02&occurredTo=2026-04-01',
+    'GET',
+    'DE',
   );
-  assert.equal((await asAdmin('/api/admin/audit-events?page=0')).statusCode, 400);
+  assert.equal(invalidService.statusCode, 400);
+  const invalidServiceBody = invalidService.json<{
+    error: string;
+    code: string;
+    meta?: unknown;
+    details?: unknown;
+  }>();
+  assert.deepEqual(invalidServiceBody, {
+    error: 'Die Anfrage konnte nicht verarbeitet werden. Bitte versuchen Sie es erneut.',
+    code: 'INVALID_QUERY',
+  });
+  assert.equal('meta' in invalidServiceBody, false);
+  assert.equal('details' in invalidServiceBody, false);
+  assert.equal(invalidServiceBody.error.includes('occurred'), false);
+
+  const invalidValidation = await asAdmin('/api/admin/audit-events?page=0', 'GET', 'DE');
+  assert.equal(invalidValidation.statusCode, 400);
+  const invalidValidationBody = invalidValidation.json<{
+    error: string;
+    code: string;
+    meta?: unknown;
+    details?: unknown;
+  }>();
+  assert.deepEqual(invalidValidationBody, {
+    error: 'Die Anfrage ist ungültig.',
+    code: 'REQUEST_INVALID',
+  });
+  assert.equal('meta' in invalidValidationBody, false);
+  assert.equal('details' in invalidValidationBody, false);
+  assert.equal(JSON.stringify(invalidValidationBody).includes('page'), false);
   assert.equal((await asAdmin('/api/admin/audit-events', 'POST')).statusCode, 404);
 });

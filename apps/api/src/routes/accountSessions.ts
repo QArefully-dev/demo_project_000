@@ -1,10 +1,10 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { ErrorResponse, SuccessResponse } from '@shop/contracts/common';
 import { RevokeSessionParams, SessionListResponse } from '@shop/contracts/account-depth';
 import { requireAuth } from '../plugins/auth.js';
 import type { SessionService } from '../features/auth/sessionService.js';
-import { sendBadRequest, sendError } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 
 export interface AccountSessionRouteServices {
   sessions: SessionService;
@@ -15,14 +15,15 @@ function auditContext(userId: number, requestId: string) {
 }
 
 function sendSessionError(
+  request: FastifyRequest,
   reply: FastifyReply,
   code: 'CANNOT_REVOKE_CURRENT' | 'SESSION_NOT_FOUND',
 ): void {
   if (code === 'CANNOT_REVOKE_CURRENT') {
-    sendBadRequest(reply, code);
+    sendPublicError(request, reply, 400, code);
     return;
   }
-  sendError(reply, 404, code);
+  sendPublicError(request, reply, 404, code);
 }
 
 /** Authenticated buyer endpoints for inspecting and selectively revoking their own sessions. */
@@ -68,7 +69,7 @@ export default function accountSessionRoutes(
         auditContext(user.id, request.id),
       );
       if (!result.ok) {
-        sendSessionError(reply, result.code);
+        sendSessionError(request, reply, result.code);
         return;
       }
       reply.code(200).send({ success: true as const });

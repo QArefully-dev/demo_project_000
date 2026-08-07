@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { AddToListMenu } from '@/features/savedLists/AddToListMenu';
 import { CompareProductButton } from '@/features/comparison/CompareProductButton';
 import { NotifyWhenAvailableButton } from '@/components/NotifyWhenAvailableButton';
-import { formatMoney } from '@/lib/formatMoney';
+import { productMessages } from '@shop/localisation/messages/product';
+import { useLocalisation } from '@/i18n/LocaleContext';
 
 interface ProductPurchasePanelProps {
   product: ProductWithVariants;
@@ -20,6 +21,15 @@ interface ProductPurchasePanelProps {
   belowMoqError?: string | null;
 }
 
+type PurchaseValidationError =
+  | { readonly key: 'product.pleaseSelectBagOption' }
+  | { readonly key: 'product.selectedUnavailable' }
+  | { readonly key: 'product.enterWholeNumberSacks' }
+  | {
+      readonly key: 'product.minimumOrder';
+      readonly params: { readonly count: number; readonly label: string };
+    };
+
 function variantIsPurchasable(v: CatalogVariant): boolean {
   return v.active && (v.stockCount > 0 || v.backorderable);
 }
@@ -29,23 +39,8 @@ function variantIsSoldOut(v: CatalogVariant): boolean {
   return v.active && v.stockCount === 0 && !v.backorderable;
 }
 
-function formatWeightGrams(weightGrams: number): string {
-  if (weightGrams >= 1_000_000) return `${(weightGrams / 1_000_000).toLocaleString()} tonnes`;
-  if (weightGrams >= 1_000) return `${(weightGrams / 1_000).toLocaleString()} kg`;
-  return `${weightGrams.toLocaleString()} g`;
-}
-
 function minimumOrderUnits(variant: CatalogVariant): number {
   return Math.ceil((variant.moqSacks * SACK_WEIGHT_GRAMS) / variant.weightGrams);
-}
-
-function clearanceEndLabel(endsAt: string): string {
-  return new Intl.DateTimeFormat('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  }).format(new Date(endsAt));
 }
 
 function VariantSelector({
@@ -58,10 +53,16 @@ function VariantSelector({
   onSelect: (variantId: number) => void;
 }) {
   const sorted = [...variants].sort((a, b) => a.sortOrder - b.sortOrder);
+  const { translate, formatDisplayMoney, formatWeightGrams, formatInstant, formatCount } =
+    useLocalisation();
+  const t = <K extends keyof typeof productMessages>(
+    key: K,
+    params?: Record<string, string | number>,
+  ) => translate(productMessages, key, params);
 
   return (
     <fieldset className="mt-6">
-      <legend className="font-semibold text-foreground">Pack &amp; pallet options</legend>
+      <legend className="font-semibold text-foreground">{t('product.packPalletOptions')}</legend>
       <div className="mt-3 grid gap-3">
         {sorted.map((v) => {
           const isSelected = selectedVariantId === v.variantId;
@@ -99,7 +100,7 @@ function VariantSelector({
                   {isFreight && (
                     <Badge variant="secondary" className="gap-1 px-2">
                       <Truck className="size-3" />
-                      Freight
+                      {t('product.freight')}
                     </Badge>
                   )}
                 </div>
@@ -108,70 +109,81 @@ function VariantSelector({
                     {clearance ? (
                       <>
                         <span className="text-sale">
-                          Clearance price {formatMoney(clearance.priceCents)}
+                          {t('product.clearancePrice', {
+                            amount: formatDisplayMoney(clearance.priceCents),
+                          })}
                         </span>{' '}
                         <span className="text-xs font-normal text-muted-foreground line-through">
-                          {formatMoney(v.priceCents)}
+                          {formatDisplayMoney(v.priceCents)}
                         </span>
                       </>
                     ) : hasSale ? (
                       <>
-                        <span className="text-sale">Pack price {formatMoney(v.priceCents)}</span>{' '}
+                        <span className="text-sale">
+                          {t('product.packPrice', { amount: formatDisplayMoney(v.priceCents) })}
+                        </span>{' '}
                         <span className="text-xs font-normal text-muted-foreground line-through">
-                          {formatMoney(v.compareAtPriceCents!)}
+                          {formatDisplayMoney(v.compareAtPriceCents!)}
                         </span>
                       </>
                     ) : (
-                      <>Pack price {formatMoney(v.priceCents)}</>
+                      <>{t('product.packPrice', { amount: formatDisplayMoney(v.priceCents) })}</>
                     )}
                   </span>
-                  <span>{formatMoney(clearance?.perTonneCents ?? v.perTonneCents)} / tonne</span>
+                  <span>
+                    {t('product.perTonne', {
+                      amount: formatDisplayMoney(clearance?.perTonneCents ?? v.perTonneCents),
+                    })}
+                  </span>
                   <span className="inline-flex items-center gap-1">
                     <Package className="size-3.5" />
-                    SKU: {v.sku}
+                    {t('product.sku', { sku: v.sku })}
                   </span>
                   <span className="inline-flex items-center gap-1">
                     <Scale className="size-3.5" />
-                    {v.weightGrams >= 1000
-                      ? `${(v.weightGrams / 1000).toFixed(1)} kg`
-                      : `${v.weightGrams} g`}
+                    {t('product.weight', { weight: formatWeightGrams(v.weightGrams) })}
                   </span>
                 </div>
                 {clearance && (
                   <p
                     className="text-xs font-medium text-sale"
-                    aria-label={`Clearance ends ${clearanceEndLabel(clearance.endsAt)}`}
+                    aria-label={t('product.clearanceEnds', {
+                      date: formatInstant(clearance.endsAt, 'date'),
+                    })}
                   >
-                    Clearance ends {clearanceEndLabel(clearance.endsAt)}
+                    {t('product.clearanceEnds', {
+                      date: formatInstant(clearance.endsAt, 'date'),
+                    })}
                   </p>
                 )}
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                   {isOutOfStock ? (
                     <span className="inline-flex items-center gap-1 font-medium text-destructive">
                       <AlertTriangle className="size-3.5" />
-                      Sold out
+                      {t('product.soldOut')}
                     </span>
                   ) : isBackorder ? (
                     <span className="inline-flex items-center gap-1 font-medium text-amber-700">
-                      Backorder
-                      {v.backorderLeadDays != null && ` (${v.backorderLeadDays} days lead)`}
+                      {t('product.backorder')}
+                      {v.backorderLeadDays != null &&
+                        ` ${t('product.daysLead', { days: formatCount(v.backorderLeadDays) })}`}
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 font-medium text-success">
                       <Check className="size-3.5" />
                       {v.stockCount === 1
-                        ? '1 pallet available'
+                        ? t('product.palletAvailable', { count: 1 })
                         : v.stockCount <= 5
-                          ? `Only ${v.stockCount} pallets available`
-                          : `${v.stockCount} pallets available`}
+                          ? t('product.onlyPalletsAvailable', { count: formatCount(v.stockCount) })
+                          : t('product.palletAvailable', { count: v.stockCount })}
                     </span>
                   )}
                 </div>
                 {isFreight && (
                   <p className="text-sm text-muted-foreground">
-                    Pallet freight is arranged after order confirmation
+                    {t('product.palletFreightArranged')}
                     {isBackorder && v.backorderLeadDays != null
-                      ? ` · lead time ${v.backorderLeadDays} days`
+                      ? ` · ${t('product.leadTime', { days: formatCount(v.backorderLeadDays) })}`
                       : '.'}
                   </p>
                 )}
@@ -196,7 +208,13 @@ export function ProductPurchasePanel({
 }: ProductPurchasePanelProps) {
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
   const [quantity, setQuantity] = useState('');
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<PurchaseValidationError | null>(null);
+  const { translate, formatDisplayMoney, formatWeightGrams, formatCount, formatInstant } =
+    useLocalisation();
+  const t = <K extends keyof typeof productMessages>(
+    key: K,
+    params?: Record<string, string | number>,
+  ) => translate(productMessages, key, params);
 
   const baseAvail = product.baseAvailability;
   const hasPriceRange = product.priceRange.min !== product.priceRange.max;
@@ -220,25 +238,28 @@ export function ProductPurchasePanel({
     !selectedVariantId || !variantIsPurchasable(selectedVariant!) || !hasValidQuantity;
 
   const priceLabel = hasPriceRange
-    ? `From ${formatMoney(product.priceRange.min)}`
-    : formatMoney(product.priceRange.min);
+    ? t('product.from', { amount: formatDisplayMoney(product.priceRange.min) })
+    : formatDisplayMoney(product.priceRange.min);
 
   const handleAddToCart = async () => {
     if (!selectedVariantId) {
-      setLocalError('Please select a bag option.');
+      setLocalError({ key: 'product.pleaseSelectBagOption' });
       return;
     }
     if (!selectedVariant || !variantIsPurchasable(selectedVariant)) {
-      setLocalError('The selected option is not available.');
+      setLocalError({ key: 'product.selectedUnavailable' });
       return;
     }
     setLocalError(null);
     if (!hasValidQuantity) {
-      setLocalError('Enter a whole number of sacks.');
+      setLocalError({ key: 'product.enterWholeNumberSacks' });
       return;
     }
     if (minimumUnits != null && parsedQuantity < minimumUnits) {
-      setLocalError(`Minimum order is ${minimumUnits} × ${selectedVariant.label}.`);
+      setLocalError({
+        key: 'product.minimumOrder',
+        params: { count: minimumUnits, label: selectedVariant.label },
+      });
       return;
     }
     await onAddToCart(selectedVariantId, parsedQuantity);
@@ -248,15 +269,17 @@ export function ProductPurchasePanel({
 
   return (
     <aside className="product-purchase-panel self-start rounded-2xl border bg-surface-raised p-6 shadow-sm xl:p-8">
-      <p className="section-eyebrow">Material · {product.category}</p>
+      <p className="section-eyebrow">
+        {t('product.material')} · {product.category}
+      </p>
       <div className="mt-3 flex flex-wrap items-start gap-2">
         <h1 className="min-w-0 flex-1 text-3xl font-semibold tracking-tight sm:text-4xl">
           {product.name}
         </h1>
-        {isOnSale && <Badge className="bg-sale text-sale-foreground">Sale</Badge>}
-        {isFood && <Badge className="bg-emerald-600 text-white">Food</Badge>}
-        {isNonFood && <Badge variant="secondary">Not for consumption</Badge>}
-        {isCaution && <Badge className="bg-amber-500 text-white">Caution</Badge>}
+        {isOnSale && <Badge className="bg-sale text-sale-foreground">{t('product.sale')}</Badge>}
+        {isFood && <Badge className="bg-emerald-600 text-white">{t('product.food')}</Badge>}
+        {isNonFood && <Badge variant="secondary">{t('product.notForConsumption')}</Badge>}
+        {isCaution && <Badge className="bg-amber-500 text-white">{t('product.caution')}</Badge>}
       </div>
 
       <div className="mt-6 flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -267,17 +290,17 @@ export function ProductPurchasePanel({
               : 'text-3xl font-bold tracking-tight text-foreground'
           }
         >
-          {selectedClearance ? formatMoney(selectedClearance.priceCents) : priceLabel}
+          {selectedClearance ? formatDisplayMoney(selectedClearance.priceCents) : priceLabel}
         </span>
         {selectedClearance ? (
           <span className="text-lg text-muted-foreground line-through">
-            {formatMoney(selectedVariant.priceCents)}
+            {formatDisplayMoney(selectedVariant.priceCents)}
           </span>
         ) : (
           isOnSale && (
             <>
               <span className="text-lg text-muted-foreground line-through">
-                {formatMoney(product.compareAtPriceCents!)}
+                {formatDisplayMoney(product.compareAtPriceCents!)}
               </span>
             </>
           )
@@ -286,9 +309,13 @@ export function ProductPurchasePanel({
       {selectedClearance && (
         <p
           className="mt-1 text-sm font-medium text-sale"
-          aria-label={`Clearance ends ${clearanceEndLabel(selectedClearance.endsAt)}`}
+          aria-label={t('product.clearanceEnds', {
+            date: formatInstant(selectedClearance.endsAt, 'date'),
+          })}
         >
-          Clearance ends {clearanceEndLabel(selectedClearance.endsAt)}
+          {t('product.clearanceEnds', {
+            date: formatInstant(selectedClearance.endsAt, 'date'),
+          })}
         </p>
       )}
 
@@ -308,17 +335,17 @@ export function ProductPurchasePanel({
       {selectedVariant && (
         <div className="mt-4 space-y-4 rounded-xl bg-surface-soft p-4 text-sm">
           <p>
-            <span className="font-semibold">Selected:</span> {selectedVariant.label} (SKU:{' '}
-            {selectedVariant.sku})
+            <span className="font-semibold">{t('product.selected')}</span> {selectedVariant.label} (
+            {t('product.skuLabel')}: {selectedVariant.sku})
           </p>
           <p>
-            <span className="font-semibold">Price:</span>{' '}
-            {formatMoney(selectedClearance?.priceCents ?? selectedVariant.priceCents)}
+            <span className="font-semibold">{t('product.price')}</span>{' '}
+            {formatDisplayMoney(selectedClearance?.priceCents ?? selectedVariant.priceCents)}
             {selectedClearance ? (
               <>
                 {' '}
                 <span className="text-muted-foreground line-through">
-                  {formatMoney(selectedVariant.priceCents)}
+                  {formatDisplayMoney(selectedVariant.priceCents)}
                 </span>
               </>
             ) : (
@@ -327,7 +354,7 @@ export function ProductPurchasePanel({
                 <>
                   {' '}
                   <span className="text-muted-foreground line-through">
-                    {formatMoney(selectedVariant.compareAtPriceCents)}
+                    {formatDisplayMoney(selectedVariant.compareAtPriceCents)}
                   </span>
                 </>
               )
@@ -336,7 +363,7 @@ export function ProductPurchasePanel({
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label htmlFor="order-quantity" className="font-semibold">
-                Order quantity ({selectedVariant.label})
+                {t('product.orderQuantity', { label: selectedVariant.label })}
               </label>
               <input
                 id="order-quantity"
@@ -356,37 +383,43 @@ export function ProductPurchasePanel({
                 className="mt-2 h-10 w-full rounded-md border bg-background px-3 text-foreground"
               />
               <p id="order-quantity-hint" className="mt-1 text-muted-foreground">
-                Minimum order: {minimumUnits} × {selectedVariant.label}.
+                {t('product.minimumOrderHint', {
+                  count: formatCount(minimumUnits ?? 0),
+                  label: selectedVariant.label,
+                })}
               </p>
             </div>
             <div className="rounded-lg border border-border/70 bg-background p-3">
-              <p className="font-semibold">Total weight</p>
+              <p className="font-semibold">{t('product.totalWeight')}</p>
               <p className="mt-1 text-muted-foreground">
                 {hasValidQuantity
-                  ? `${formatWeightGrams(selectedVariant.weightGrams * parsedQuantity)}`
-                  : 'Enter a quantity'}
+                  ? formatWeightGrams(selectedVariant.weightGrams * parsedQuantity)
+                  : t('product.enterQuantity')}
               </p>
             </div>
           </div>
           <div>
-            <p className="font-semibold">Volume pricing</p>
+            <p className="font-semibold">{t('product.volumePricing')}</p>
             <ul
-              aria-label="Volume pricing tiers"
+              aria-label={t('product.volumePricing')}
               className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground"
             >
               {selectedVariant.priceTiers.map((tier) => (
                 <li key={`${tier.minTonnes}-${tier.discountPct}`}>
-                  {tier.minTonnes} {tier.minTonnes === 1 ? 'tonne' : 'tonnes'}: {tier.discountPct}%
-                  off
+                  {formatCount(tier.minTonnes)}{' '}
+                  {translate(productMessages, 'product.tonne', { count: tier.minTonnes })}:{' '}
+                  {t('product.percentOff', { percent: formatCount(tier.discountPct) })}
                 </li>
               ))}
             </ul>
           </div>
           {selectedVariant.deliveryClass === 'freight' && (
             <p className="rounded-lg border border-border/70 bg-background p-3 text-muted-foreground">
-              Pallet freight applies. Lead time is confirmed with your order
+              {t('product.palletFreightApplies')}
               {selectedVariant.backorderLeadDays != null
-                ? `; current backorder lead time ${selectedVariant.backorderLeadDays} days.`
+                ? t('product.currentBackorderLead', {
+                    days: formatCount(selectedVariant.backorderLeadDays),
+                  })
                 : '.'}
             </p>
           )}
@@ -395,12 +428,12 @@ export function ProductPurchasePanel({
 
       <div className="mt-5 grid gap-3 rounded-xl border border-border/80 bg-surface-soft p-4 text-sm sm:grid-cols-2">
         <div>
-          <p className="font-semibold">Bag format</p>
-          <p className="mt-1 text-muted-foreground">{packSize ?? 'Sack'}</p>
+          <p className="font-semibold">{t('product.bagFormat')}</p>
+          <p className="mt-1 text-muted-foreground">{packSize ?? t('product.sack')}</p>
         </div>
         <div>
-          <p className="font-semibold">Handling</p>
-          <p className="mt-1 text-muted-foreground">Palletised, shrink-wrapped, batch-labelled.</p>
+          <p className="font-semibold">{t('product.handling')}</p>
+          <p className="mt-1 text-muted-foreground">{t('product.handlingDetail')}</p>
         </div>
       </div>
       {consumptionLabel && (
@@ -413,20 +446,20 @@ export function ProductPurchasePanel({
       )}
 
       <ul
-        aria-label="Shopping details"
+        aria-label={t('product.shoppingDetails')}
         className="mt-5 grid gap-2 text-sm font-medium text-muted-foreground"
       >
         <li className="flex items-center gap-2">
           <Check className="size-4 shrink-0 text-success" aria-hidden="true" />
-          Lines held in your order for this session
+          {t('product.linesHeld')}
         </li>
         <li className="flex items-center gap-2">
           <Check className="size-4 shrink-0 text-success" aria-hidden="true" />
-          Adjust pallet quantities before checkout
+          {t('product.adjustPallet')}
         </li>
         <li className="flex items-center gap-2">
           <Check className="size-4 shrink-0 text-success" aria-hidden="true" />
-          Simulated payment, no charge
+          {t('product.simulatedPaymentNoCharge')}
         </li>
       </ul>
 
@@ -441,18 +474,20 @@ export function ProductPurchasePanel({
           }
         >
           {baseAvail === 'in_stock'
-            ? 'In stock'
+            ? t('product.inStock')
             : baseAvail === 'low_stock'
-              ? 'Low stock'
+              ? t('product.lowStock')
               : baseAvail === 'backorder'
-                ? 'Available to backorder'
-                : 'Out of stock'}
+                ? t('product.availableBackorder')
+                : t('product.outOfStock')}
         </p>
         {selectedVariant && variantIsPurchasable(selectedVariant) && (
           <p className="mt-1 text-sm text-muted-foreground">
             {selectedVariant.stockCount > 0
-              ? `${selectedVariant.stockCount} items available`
-              : `Backorder (${selectedVariant.backorderLeadDays ?? '?'} days lead)`}
+              ? t('product.itemsAvailable', { count: selectedVariant.stockCount })
+              : t('product.backorderLead', {
+                  days: selectedVariant.backorderLeadDays ?? '?',
+                })}
           </p>
         )}
       </div>
@@ -465,16 +500,16 @@ export function ProductPurchasePanel({
           onClick={() => void handleAddToCart()}
         >
           {!isCartAvailable
-            ? 'Cart unavailable'
+            ? t('product.cartUnavailable')
             : isAdding
-              ? 'Adding\u2026'
+              ? t('product.adding')
               : allUnavailable
-                ? 'Unavailable'
+                ? t('product.unavailable')
                 : !selectedVariantId
-                  ? 'Choose a bag option'
+                  ? t('product.chooseBagOption')
                   : variantAddDisabled
-                    ? 'Unavailable'
-                    : 'Add to order'}
+                    ? t('product.unavailable')
+                    : t('product.addToOrder')}
         </Button>
         <AddToListMenu
           variantId={selectedVariantId}
@@ -490,7 +525,14 @@ export function ProductPurchasePanel({
 
       {(actionError || localError) && (
         <p role="alert" className="mt-3 text-sm text-destructive">
-          {localError ?? actionError}
+          {localError
+            ? localError.key === 'product.minimumOrder'
+              ? t(localError.key, {
+                  count: formatCount(localError.params.count),
+                  label: localError.params.label,
+                })
+              : t(localError.key)
+            : actionError}
         </p>
       )}
       {belowMoqError && (
@@ -502,19 +544,19 @@ export function ProductPurchasePanel({
         <div role="alert" className="mt-3 flex flex-wrap items-center gap-2">
           <p className="text-sm text-destructive">{cartError}</p>
           <Button variant="outline" size="sm" onClick={onRetryCart}>
-            Retry cart
+            {t('product.retryCart')}
           </Button>
         </div>
       )}
 
       <dl className="mt-8 grid gap-4 border-t pt-6 text-sm sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
         <div>
-          <dt className="font-semibold">Payment simulation</dt>
-          <dd className="mt-1 text-muted-foreground">No card is charged or stored.</dd>
+          <dt className="font-semibold">{t('product.paymentSimulation')}</dt>
+          <dd className="mt-1 text-muted-foreground">{t('product.noCardCharged')}</dd>
         </div>
         <div>
-          <dt className="font-semibold">Delivery &amp; returns</dt>
-          <dd className="mt-1 text-muted-foreground">No real fulfilment or returns in this demo</dd>
+          <dt className="font-semibold">{t('product.deliveryReturns')}</dt>
+          <dd className="mt-1 text-muted-foreground">{t('product.noRealFulfilment')}</dd>
         </div>
       </dl>
     </aside>

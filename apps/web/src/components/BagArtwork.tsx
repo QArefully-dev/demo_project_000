@@ -1,4 +1,6 @@
 import { useId, type CSSProperties } from 'react';
+import { productMessages } from '@shop/localisation/messages/product';
+import { useLocalisation } from '@/i18n/LocaleContext';
 
 export type BagArtworkPaint = {
   kind: 'linear-gradient';
@@ -34,7 +36,12 @@ function ProductLabel({
   mark,
   accent = '#9fb3aa',
   consumptionLabel,
-}: Omit<BagArtworkProps, 'ariaLabel' | 'className' | 'style' | 'powderAccent' | 'schemeKey'>) {
+  netQuantityLabel,
+  batchLabel,
+}: Omit<BagArtworkProps, 'ariaLabel' | 'className' | 'style' | 'powderAccent' | 'schemeKey'> & {
+  netQuantityLabel: string;
+  batchLabel: string;
+}) {
   const normalizedName = name.trim().toUpperCase() || 'MATERIAL';
   const titleWords = normalizedName.split(/\s+/);
   const splitIndex =
@@ -131,7 +138,7 @@ function ProductLabel({
         fontSize="9"
         fontWeight="800"
       >
-        NET QUANTITY
+        {netQuantityLabel}
       </text>
       <text
         x="19"
@@ -151,7 +158,7 @@ function ProductLabel({
         fontSize="9"
         fontWeight="800"
       >
-        BATCH
+        {batchLabel}
       </text>
       <text
         x="183"
@@ -201,6 +208,7 @@ export function BagArtwork({
   style,
 }: BagArtworkProps) {
   const paintId = `bag-art-paint-${useId().replace(/:/g, '')}`;
+  const { translate } = useLocalisation();
   const labelPaint = paint ? `url(#${paintId})` : accent;
 
   return (
@@ -208,7 +216,11 @@ export function BagArtwork({
       viewBox="0 0 720 720"
       role={ariaLabel === '' ? undefined : 'img'}
       aria-hidden={ariaLabel === '' ? true : undefined}
-      aria-label={ariaLabel === '' ? undefined : (ariaLabel ?? `${name} bag`)}
+      aria-label={
+        ariaLabel === ''
+          ? undefined
+          : (ariaLabel ?? translate(productMessages, 'product.bagAria', { name }))
+      }
       className={className}
       style={style}
       data-colour-scheme={schemeKey}
@@ -239,7 +251,17 @@ export function BagArtwork({
         <ellipse cx="399" cy="548" rx="88" ry="28" opacity="0.9" />
       </g>
       <ProductLabel
-        {...{ name, category, quantity, batchCode, mark, accent: labelPaint, consumptionLabel }}
+        {...{
+          name,
+          category,
+          quantity,
+          batchCode,
+          mark,
+          accent: labelPaint,
+          consumptionLabel,
+          netQuantityLabel: translate(productMessages, 'product.netQuantity'),
+          batchLabel: translate(productMessages, 'product.batch'),
+        }}
       />
     </svg>
   );

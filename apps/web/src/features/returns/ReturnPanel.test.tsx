@@ -36,6 +36,20 @@ const eligibleOverview: ReturnOverviewResponse = {
   requests: [],
 };
 
+const secondOrderOverview: ReturnOverviewResponse = {
+  windowDays: 30,
+  eligibleLines: [
+    {
+      ...eligibleLine,
+      shipmentId: '81',
+      shipmentNumber: 4,
+      orderLineItemId: '41',
+      productName: 'Barley powder',
+    },
+  ],
+  requests: [],
+};
+
 const requestedReturn: ReturnRequest = {
   id: '101',
   orderId: '12',
@@ -140,6 +154,7 @@ describe('ReturnPanel', () => {
     vi.mocked(createReturnRequest).mockRejectedValue(
       new ApiError('Idempotency conflict', 409, {
         error: 'Idempotency conflict',
+        code: 'IDEMPOTENCY_CONFLICT',
       }),
     );
     const user = userEvent.setup();
@@ -152,6 +167,8 @@ describe('ReturnPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Submit return request' }));
 
     expect(await screen.findByText(/conflicts with a previous return/)).toBeInTheDocument();
+    expect(fetchReturnOverview).toHaveBeenCalledTimes(2);
+    expect(screen.getByLabelText('Quantity to return for Oat powder')).toHaveValue(null);
   });
 
   it('handles 422 quantity unavailable by refreshing', async () => {
@@ -164,6 +181,7 @@ describe('ReturnPanel', () => {
     vi.mocked(createReturnRequest).mockRejectedValue(
       new ApiError('Quantity unavailable', 422, {
         error: 'Quantity unavailable',
+        code: 'QUANTITY_UNAVAILABLE',
       }),
     );
     const user = userEvent.setup();
@@ -176,6 +194,79 @@ describe('ReturnPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Submit return request' }));
 
     expect(await screen.findByText(/Available quantities changed/)).toBeInTheDocument();
+    expect(fetchReturnOverview).toHaveBeenCalledTimes(2);
+    expect(screen.getByLabelText('Quantity to return for Oat powder')).toHaveValue(null);
+  });
+
+  it('uses RETURN_WINDOW_EXPIRED code without status-driven refresh or reset', async () => {
+    vi.mocked(fetchReturnOverview).mockResolvedValue(eligibleOverview);
+    vi.mocked(createReturnRequest).mockRejectedValue(
+      new ApiError('Return window expired', 409, {
+        error: 'Return window expired',
+        code: 'RETURN_WINDOW_EXPIRED',
+      }),
+    );
+    const user = userEvent.setup();
+    render(<ReturnPanel orderId="12" />);
+
+    await screen.findByText('Oat powder');
+    const qtyInput = screen.getByLabelText('Quantity to return for Oat powder');
+    await user.clear(qtyInput);
+    await user.type(qtyInput, '1');
+    await user.click(screen.getByRole('button', { name: 'Submit return request' }));
+
+    expect(await screen.findByText('The return window has expired.')).toBeInTheDocument();
+    expect(fetchReturnOverview).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText('Quantity to return for Oat powder')).toHaveValue(1);
+  });
+
+  it('uses RETURN_NOT_ELIGIBLE code to refresh and clear stale selections', async () => {
+    vi.mocked(fetchReturnOverview)
+      .mockResolvedValueOnce(eligibleOverview)
+      .mockResolvedValueOnce({
+        ...eligibleOverview,
+        eligibleLines: [{ ...eligibleLine, availableQuantity: 0, reservedQuantity: 3 }],
+      });
+    vi.mocked(createReturnRequest).mockRejectedValue(
+      new ApiError('Return not eligible', 409, {
+        error: 'Return not eligible',
+        code: 'RETURN_NOT_ELIGIBLE',
+      }),
+    );
+    const user = userEvent.setup();
+    render(<ReturnPanel orderId="12" />);
+
+    await screen.findByText('Oat powder');
+    const qtyInput = screen.getByLabelText('Quantity to return for Oat powder');
+    await user.clear(qtyInput);
+    await user.type(qtyInput, '1');
+    await user.click(screen.getByRole('button', { name: 'Submit return request' }));
+
+    expect(await screen.findByText('This order is not eligible for a return.')).toBeInTheDocument();
+    expect(fetchReturnOverview).toHaveBeenCalledTimes(2);
+    expect(screen.getByLabelText('Quantity to return for Oat powder')).toHaveValue(null);
+  });
+
+  it('uses RETURN_DATA_CORRUPT code and keeps form state without refresh', async () => {
+    vi.mocked(fetchReturnOverview).mockResolvedValue(eligibleOverview);
+    vi.mocked(createReturnRequest).mockRejectedValue(
+      new ApiError('Return data corrupt', 422, {
+        error: 'Return data corrupt',
+        code: 'RETURN_DATA_CORRUPT',
+      }),
+    );
+    const user = userEvent.setup();
+    render(<ReturnPanel orderId="12" />);
+
+    await screen.findByText('Oat powder');
+    const qtyInput = screen.getByLabelText('Quantity to return for Oat powder');
+    await user.clear(qtyInput);
+    await user.type(qtyInput, '1');
+    await user.click(screen.getByRole('button', { name: 'Submit return request' }));
+
+    expect(await screen.findByText('The return request could not be read.')).toBeInTheDocument();
+    expect(fetchReturnOverview).toHaveBeenCalledOnce();
+    expect(qtyInput).toHaveValue(1);
   });
 
   it('disables submit when no quantity selected', async () => {
@@ -196,8 +287,26 @@ describe('ReturnPanel', () => {
     expect(screen.getByText('Requested')).toBeInTheDocument();
     expect(screen.getByText('Request #102')).toBeInTheDocument();
     expect(screen.getByText('Refunded')).toBeInTheDocument();
-    expect(screen.getByText('$10.00')).toBeInTheDocument();
+    expect(screen.getByText(/Refund: \$12\.50/)).toBeInTheDocument();
     expect(screen.getByText('Reference: sim_refund_key-abc')).toBeInTheDocument();
+  });
+
+  it('uses a safe localized fallback when a return timestamp is invalid', async () => {
+    vi.mocked(fetchReturnOverview).mockResolvedValue({
+      windowDays: 30,
+      eligibleLines: [],
+      requests: [
+        {
+          ...requestedReturn,
+          requestedAt: 'not-a-timestamp',
+          approvedAt: null,
+          status: 'approved',
+        },
+      ],
+    });
+    render(<ReturnPanel orderId="12" />);
+    expect(await screen.findByText(/Date unavailable/)).toBeInTheDocument();
+    expect(screen.queryByText(/Invalid Date/)).not.toBeInTheDocument();
   });
 
   it('renders shipments grouped correctly', async () => {
@@ -271,6 +380,65 @@ describe('ReturnPanel', () => {
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
   });
 
+  it('clears prior order form state before a new overview resolves', async () => {
+    let resolveFirst!: (value: ReturnOverviewResponse) => void;
+    let resolveSecond!: (value: ReturnOverviewResponse) => void;
+    vi.mocked(fetchReturnOverview).mockImplementation((requestedOrderId) => {
+      return new Promise<ReturnOverviewResponse>((resolve) => {
+        if (requestedOrderId === '12') resolveFirst = resolve;
+        else resolveSecond = resolve;
+      });
+    });
+    const user = userEvent.setup();
+    const { rerender } = render(<ReturnPanel orderId="12" />);
+
+    await act(async () => {
+      resolveFirst(eligibleOverview);
+      await Promise.resolve();
+    });
+    const oldQuantity = await screen.findByLabelText('Quantity to return for Oat powder');
+    await user.clear(oldQuantity);
+    await user.type(oldQuantity, '1');
+
+    rerender(<ReturnPanel orderId="13" />);
+    expect(screen.queryByText('Oat powder')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Submit return request' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Loading return information/)).toBeInTheDocument();
+
+    await act(async () => {
+      resolveSecond(secondOrderOverview);
+      await Promise.resolve();
+    });
+    expect(await screen.findByText('Barley powder')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Quantity to return for Oat powder')).not.toBeInTheDocument();
+    expect(createReturnRequest).not.toHaveBeenCalled();
+  });
+
+  it('ignores a late overview response from the previous order', async () => {
+    let resolveFirst!: (value: ReturnOverviewResponse) => void;
+    let resolveSecond!: (value: ReturnOverviewResponse) => void;
+    vi.mocked(fetchReturnOverview).mockImplementation((requestedOrderId) => {
+      return new Promise<ReturnOverviewResponse>((resolve) => {
+        if (requestedOrderId === '12') resolveFirst = resolve;
+        else resolveSecond = resolve;
+      });
+    });
+    const { rerender } = render(<ReturnPanel orderId="12" />);
+    rerender(<ReturnPanel orderId="13" />);
+
+    await act(async () => {
+      resolveFirst(eligibleOverview);
+      await Promise.resolve();
+    });
+    expect(screen.queryByText('Oat powder')).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveSecond(secondOrderOverview);
+      await Promise.resolve();
+    });
+    expect(await screen.findByText('Barley powder')).toBeInTheDocument();
+  });
+
   it('retains idempotency key across non-conflict errors and reuses on retry', async () => {
     vi.mocked(fetchReturnOverview).mockResolvedValue(eligibleOverview);
     // First call fails with network error, second succeeds
@@ -293,7 +461,9 @@ describe('ReturnPanel', () => {
 
     // First submission fails
     await user.click(screen.getByRole('button', { name: 'Submit return request' }));
-    expect(await screen.findByText('Network failure')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Unable to complete this return request. Try again.'),
+    ).toBeInTheDocument();
 
     // Retry submission reuses the same key
     await user.click(screen.getByRole('button', { name: 'Submit return request' }));

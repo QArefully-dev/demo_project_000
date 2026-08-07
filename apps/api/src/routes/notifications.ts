@@ -9,28 +9,13 @@ import {
 } from '@shop/contracts/notifications';
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../app.js';
-import type { NotificationErrorCode } from '../features/notifications/notificationErrors.js';
 import { requireAuth } from '../plugins/auth.js';
+import { sendPublicError } from '../utils/errors.js';
 
 const NotificationIdParam = Type.Object(
   { notificationId: Type.String({ pattern: '^[1-9][0-9]*$' }) },
   { additionalProperties: false },
 );
-const NotificationErrorResponse = Type.Object(
-  {
-    code: Type.Union([Type.Literal('NOT_FOUND'), Type.Literal('FORBIDDEN')]),
-    error: Type.String({ minLength: 1, maxLength: 500 }),
-  },
-  { additionalProperties: false },
-);
-const errorStatus: Readonly<Record<NotificationErrorCode, 403 | 404>> = {
-  NOT_FOUND: 404,
-  FORBIDDEN: 403,
-};
-const errorMessage: Readonly<Record<NotificationErrorCode, string>> = {
-  NOT_FOUND: 'Notification not found',
-  FORBIDDEN: 'Notification is not available to this user',
-};
 const context = (userId: number, requestId: string) => ({
   actor: { type: 'user' as const, userId },
   requestId,
@@ -65,8 +50,8 @@ export default function notificationRoutes(app: FastifyInstance, { services }: A
           200: Notification,
           400: ErrorResponse,
           401: ErrorResponse,
-          403: NotificationErrorResponse,
-          404: NotificationErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
         },
       },
     },
@@ -78,9 +63,11 @@ export default function notificationRoutes(app: FastifyInstance, { services }: A
         context(userId, request.id),
       );
       if (!result.ok) {
-        reply
-          .code(errorStatus[result.code])
-          .send({ code: result.code, error: errorMessage[result.code] });
+        if (result.code === 'NOT_FOUND') {
+          sendPublicError(request, reply, 404, 'NOTIFICATION_NOT_FOUND');
+        } else {
+          sendPublicError(request, reply, 403, 'FORBIDDEN');
+        }
         return;
       }
       return transport(result.value);

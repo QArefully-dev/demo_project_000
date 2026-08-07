@@ -38,9 +38,12 @@ vi.mock('@/components/SaveToListButton', () => ({
 const cartContext = {
   cart: null as Cart | null,
   cartId: null as string | null,
+  cartGeneration: 0,
   isInitializing: false,
   isLoading: false,
   error: null,
+  errorCode: null,
+  errorState: null,
   isCartAvailable: true,
   pendingActions: {},
   isActionPending: () => false,
@@ -420,7 +423,7 @@ describe('catalog to product journey', () => {
 
     expect(screen.getByText('Clearance')).toBeVisible();
     await user.click(within(screen.getByRole('heading', { name: 'Lawn Feed' })).getByRole('link'));
-    expect(await screen.findByText('Clearance price $24.00')).toBeVisible();
+    expect(await screen.findByText('Clearance price $30.00')).toBeVisible();
 
     await user.click(screen.getByRole('radio', { name: /10 kg Bag/ }));
     await user.clear(screen.getByLabelText('Order quantity (10 kg Bag)'));
@@ -428,9 +431,9 @@ describe('catalog to product journey', () => {
     await user.click(screen.getByRole('button', { name: 'Add to order' }));
 
     await user.click(screen.getByRole('link', { name: 'Review order' }));
-    expect(await screen.findByText('Clearance price applied: $24.00 per pack')).toBeVisible();
+    expect(await screen.findByText('Clearance price applied: $30.00 per pack')).toBeVisible();
     expect(screen.getByText('Resolved order subtotal (5 units)')).toBeVisible();
-    expect(screen.getAllByText('$120.00')).toHaveLength(2);
+    expect(screen.getAllByText('$150.00')).toHaveLength(2);
 
     await user.click(screen.getByRole('button', { name: 'Continue to checkout' }));
     await user.type(await screen.findByLabelText('Order promotion'), 'GARDEN10');
@@ -441,7 +444,7 @@ describe('catalog to product journey', () => {
     );
     expect(await screen.findByText('Eligible subtotal (Garden & Outdoors)')).toBeVisible();
     expect(screen.getByText(/Discount \(GARDEN10.*Garden & Outdoors\)/)).toBeVisible();
-    expect(screen.getByText('−$12.00')).toBeVisible();
-    expect(screen.getByText('$117.99')).toBeVisible();
+    expect(screen.getByText('−$15.00')).toBeVisible();
+    expect(screen.getByText('$147.49')).toBeVisible();
   });
 });

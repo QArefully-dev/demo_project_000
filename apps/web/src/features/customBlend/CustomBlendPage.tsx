@@ -2,11 +2,18 @@ import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { CartLine } from '@shop/contracts/cart';
 import type { CustomBlendOption, CustomBlendOptionsResponse } from '@shop/contracts/custom-blends';
+import type { PublicErrorCode } from '@shop/contracts/public-errors';
+import type { MessageParams } from '@shop/localisation';
 import type { PreviewIngredient } from './CustomBlendPreview';
 
 import { getCustomBlendOptions } from '@/api/customBlends';
+import { ApiError, type ApiErrorMeta } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { useCartContext } from '@/hooks/CartContext';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { apiErrors } from '@shop/localisation/messages/apiErrors';
+import { customBlendMessages } from '@shop/localisation/messages/customBlend';
+import type { CustomBlendMessageKey } from '@shop/localisation/messages/customBlend';
 import { BasePicker, SelectedBaseChip } from './BasePicker';
 import { BlendSummaryAside } from './BlendSummaryAside';
 import { IngredientPicker } from './IngredientPicker';
@@ -27,18 +34,44 @@ import {
   toIngredientInputs,
 } from './customBlendState';
 
-const INVALID_BASE_MESSAGE =
-  'That base material is not available for Custom Blend. Choose another base below.';
-const MISSING_LINE_MESSAGE =
-  'That custom blend is no longer in your cart. Start a new blend to continue.';
-
 function parsePositiveInteger(value: string | null): number | null {
   if (value === null || !/^\d+$/.test(value)) return null;
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+/** Stable options failure identity; copy is resolved during render for the active country. */
+type OptionsErrorState = {
+  readonly code: PublicErrorCode | null;
+  readonly meta: ApiErrorMeta | null;
+  readonly fallbackKey: CustomBlendMessageKey;
+};
+
+function safeErrorParams(meta: ApiErrorMeta | null): MessageParams {
+  if (!meta || typeof meta !== 'object') return {};
+  const params: Record<string, string | number | bigint> = {};
+  for (const [key, value] of Object.entries(meta)) {
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint')
+      params[key] = value;
+  }
+  return params;
+}
+
+function optionsErrorState(error: unknown): OptionsErrorState {
+  if (error instanceof ApiError && error.code !== null) {
+    return {
+      code: error.code,
+      meta: error.meta,
+      fallbackKey: 'customBlend.invalidBase',
+    };
+  }
+  // API prose, network messages, contract failures, and unknown exceptions are deliberately
+  // discarded. The fallback key is rendered against the current country on every render.
+  return { code: null, meta: null, fallbackKey: 'customBlend.invalidBase' };
+}
+
 export function CustomBlendPage() {
+  const { activeCountry, translate, formatCount } = useLocalisation();
   const [searchParams, setSearchParams] = useSearchParams();
   const baseVariantParam = searchParams.get('baseVariantId');
   const editConfigKey = searchParams.get('editConfigKey');
@@ -54,7 +87,7 @@ export function CustomBlendPage() {
   } = useCartContext();
   const [state, dispatch] = useReducer(customBlendReducer, initialCustomBlendState);
   const [options, setOptions] = useState<CustomBlendOptionsResponse | null>(null);
-  const [optionsError, setOptionsError] = useState<string | null>(null);
+  const [optionsError, setOptionsError] = useState<OptionsErrorState | null>(null);
   const [isOptionsLoading, setIsOptionsLoading] = useState(false);
   const [lineError, setLineError] = useState<string | null>(null);
   const [result, setResult] = useState<{
@@ -83,8 +116,8 @@ export function CustomBlendPage() {
     dispatch({ type: 'target-changed', baseVariantId, editConfigKey });
   }, [baseVariantId, editConfigKey, targetKey]);
 
-  // Each base change starts a new options query. A superseded response is dropped rather
-  // than allowed to repopulate the picker behind the customer's current choice.
+  // Each base or country change starts a new options query. A superseded response is dropped
+  // rather than allowed to repopulate the picker behind the customer's current choice.
   useEffect(() => {
     if (baseVariantId === null) {
       setOptions(null);
@@ -105,7 +138,7 @@ export function CustomBlendPage() {
         setOptions(data);
       } catch (error) {
         if (!isCurrent()) return;
-        setOptionsError(error instanceof Error ? error.message : INVALID_BASE_MESSAGE);
+        setOptionsError(optionsErrorState(error));
       } finally {
         if (isCurrent()) setIsOptionsLoading(false);
       }
@@ -114,7 +147,7 @@ export function CustomBlendPage() {
       ++optionsRequestIdRef.current;
       controller.abort();
     };
-  }, [baseVariantId]);
+  }, [activeCountry, baseVariantId]);
 
   const editLine: CartLine | null = useMemo(() => {
     if (!editConfigKey || baseVariantId === null || !cart) return null;
@@ -133,7 +166,7 @@ export function CustomBlendPage() {
     if (hydratedTargetRef.current === target) return;
     if (!cart) return;
     if (!editLine?.customBlend) {
-      setLineError(MISSING_LINE_MESSAGE);
+      setLineError(translate(customBlendMessages, 'customBlend.missingLine'));
       return;
     }
     hydratedTargetRef.current = target;
@@ -151,6 +184,18 @@ export function CustomBlendPage() {
   const basePercentage = derivedBasePercentage(state);
   const totalPercentage = ingredientTotalPercentage(state);
   const isEditing = state.editConfigKey !== null;
+  const renderedOptionsError =
+    optionsError === null
+      ? null
+      : optionsError.code !== null
+        ? (() => {
+            try {
+              return translate(apiErrors, optionsError.code, safeErrorParams(optionsError.meta));
+            } catch {
+              return translate(customBlendMessages, optionsError.fallbackKey);
+            }
+          })()
+        : translate(customBlendMessages, optionsError.fallbackKey);
   const selectBase = (variantId: number) => {
     const next = new URLSearchParams(searchParams);
     next.set('baseVariantId', String(variantId));
@@ -234,22 +279,32 @@ export function CustomBlendPage() {
   return (
     <div className="pb-12">
       <header className="mb-7 max-w-3xl">
-        <p className="custom-blend-eyebrow-rule section-eyebrow">Custom Blend</p>
+        <p className="custom-blend-eyebrow-rule section-eyebrow">
+          {translate(customBlendMessages, 'customBlend.name')}
+        </p>
         <h1 className="section-heading mt-2">
-          {isEditing ? 'Edit your custom blend' : 'Build a custom blend'}
+          {translate(
+            customBlendMessages,
+            isEditing ? 'customBlend.title.edit' : 'customBlend.title.new',
+          )}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Pick one base material, then add 1 to {MAX_INGREDIENTS} ingredients at{' '}
-          {MIN_INGREDIENT_PERCENTAGE}% to {MAX_INGREDIENT_PERCENTAGE}% each.
+          {translate(customBlendMessages, 'customBlend.description', {
+            maxIngredients: MAX_INGREDIENTS,
+            minPercentage: MIN_INGREDIENT_PERCENTAGE,
+            maxPercentage: MAX_INGREDIENT_PERCENTAGE,
+          })}
         </p>
       </header>
       {(hasUnparseableBaseParam || optionsError) && (
         <div role="alert" className="mb-6 rounded-xl border border-destructive/40 px-4 py-3">
           <p className="text-sm text-destructive">
-            {hasUnparseableBaseParam ? INVALID_BASE_MESSAGE : optionsError}
+            {hasUnparseableBaseParam
+              ? translate(customBlendMessages, 'customBlend.invalidBase')
+              : renderedOptionsError}
           </p>
           <Button className="mt-3" variant="outline" size="sm" onClick={clearBase}>
-            Choose another base
+            {translate(customBlendMessages, 'customBlend.chooseAnotherBase')}
           </Button>
         </div>
       )}
@@ -257,7 +312,7 @@ export function CustomBlendPage() {
         <div role="alert" className="mb-6 rounded-xl border border-destructive/40 px-4 py-3">
           <p className="text-sm text-destructive">{lineError}</p>
           <Button className="mt-3" variant="outline" size="sm" onClick={clearBase}>
-            Start a new blend
+            {translate(customBlendMessages, 'customBlend.startNewBlend')}
           </Button>
         </div>
       )}
@@ -268,14 +323,18 @@ export function CustomBlendPage() {
         >
           <p className="text-sm text-destructive">{cartError}</p>
           <Button variant="outline" size="sm" onClick={() => void retryCart()}>
-            Retry cart
+            {translate(customBlendMessages, 'customBlend.retryCart')}
           </Button>
         </div>
       )}
       {baseVariantId === null || optionsError ? (
         <BasePicker onSelectBase={selectBase} />
       ) : isOptionsLoading || !options ? (
-        <div aria-live="polite" aria-label="Loading blend options" className="grid gap-3">
+        <div
+          aria-live="polite"
+          aria-label={translate(customBlendMessages, 'customBlend.loadingOptions')}
+          className="grid gap-3"
+        >
           <div className="h-32 animate-pulse rounded-xl bg-muted" />
           <div className="h-32 animate-pulse rounded-xl bg-muted" />
         </div>
@@ -289,15 +348,19 @@ export function CustomBlendPage() {
               aria-labelledby="custom-blend-base-heading"
               className="custom-blend-surface rounded-xl p-5"
             >
-              <p className="text-sm font-medium text-muted-foreground">1. Base</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                {translate(customBlendMessages, 'customBlend.baseStep')}
+              </p>
               <h2 id="custom-blend-base-heading" className="text-xl font-semibold">
-                Base material
+                {translate(customBlendMessages, 'customBlend.baseMaterial')}
               </h2>
               {!isEditing && <SelectedBaseChip base={options.base} onChange={clearBase} />}
               {state.lockedQuantity !== null && (
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Quantity: {state.lockedQuantity} sack{state.lockedQuantity === 1 ? '' : 's'}. Base
-                  material and quantity stay fixed while editing a blend.
+                  {translate(customBlendMessages, 'customBlend.quantity', {
+                    count: state.lockedQuantity,
+                    countLabel: formatCount(state.lockedQuantity),
+                  })}
                 </p>
               )}
             </section>

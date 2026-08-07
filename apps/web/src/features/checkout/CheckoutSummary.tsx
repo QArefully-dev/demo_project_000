@@ -2,16 +2,16 @@ import type { Cart } from '@shop/contracts/cart';
 import type { DeliverySlot } from '@shop/contracts/delivery';
 import type { PromoValidationErrorCode } from '@shop/contracts/promos';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatDeliverySlot } from '@/features/orders/orderPresentation';
 import { Separator } from '@/components/ui/separator';
-import { formatMoney } from '@/lib/formatMoney';
 import { cartItemKey } from '@/lib/cartLineIdentity';
 import {
-  CUSTOM_BLEND_MADE_TO_ORDER_NOTE,
+  customBlendMadeToOrderNote,
   CustomBlendPackaging,
   customBlendCompositionLabel,
 } from '@/features/customBlend/CustomBlendPackaging';
 import { Badge } from '@/components/ui/badge';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { checkoutMessages } from '@shop/localisation/messages/checkout';
 import { PromoCodeForm } from './PromoCodeForm';
 
 interface CheckoutSummaryProps {
@@ -24,6 +24,7 @@ interface CheckoutSummaryProps {
   totalCents: number;
   promoError: string | null;
   promoErrorCode: PromoValidationErrorCode | null;
+  promoMinSubtotalCents: number | null;
   promoValidating: boolean;
   isPromoEligible: boolean;
   /** Chosen saved site label, or the head of the ad-hoc address. `null` until step 1 completes. */
@@ -36,10 +37,6 @@ interface CheckoutSummaryProps {
   onRemovePromo: () => void;
 }
 
-function deliveryModeLabel(mode: string): string {
-  return mode === 'freight' ? 'Freight' : 'Parcel';
-}
-
 export function CheckoutSummary({
   cart,
   promoCode,
@@ -50,6 +47,7 @@ export function CheckoutSummary({
   totalCents,
   promoError,
   promoErrorCode,
+  promoMinSubtotalCents,
   promoValidating,
   isPromoEligible,
   destinationSummary,
@@ -60,22 +58,39 @@ export function CheckoutSummary({
   onApplyPromo,
   onRemovePromo,
 }: CheckoutSummaryProps) {
+  const {
+    country,
+    translate,
+    formatDisplayMoney,
+    formatDualTotal,
+    formatCivilDate,
+    formatWeightGrams,
+  } = useLocalisation();
+  const t = (key: keyof typeof checkoutMessages, params?: Record<string, string | number>) =>
+    translate(checkoutMessages, key, params);
   const deliveryPreview = cart.deliveryPreview;
-  const slotSummary = deliverySlot ? formatDeliverySlot(deliverySlot) : null;
+  const slotSummary = deliverySlot
+    ? `${formatCivilDate(deliverySlot.date, 'long')} · ${t(
+        deliverySlot.window === 'am' ? 'checkout.slotMorning' : 'checkout.slotAfternoon',
+      )}`
+    : null;
   const tradeRows: Array<{ label: string; value: string }> = [
-    ...(destinationSummary ? [{ label: 'Delivery site', value: destinationSummary }] : []),
-    ...(slotSummary ? [{ label: 'Delivery slot', value: slotSummary }] : []),
-    ...(billingSummary ? [{ label: 'Billed to', value: billingSummary }] : []),
+    ...(destinationSummary
+      ? [{ label: t('checkout.deliverySiteSummary'), value: destinationSummary }]
+      : []),
+    ...(slotSummary ? [{ label: t('checkout.deliverySlotSummary'), value: slotSummary }] : []),
+    ...(billingSummary ? [{ label: t('checkout.billedTo'), value: billingSummary }] : []),
     ...(purchaseOrderReference
-      ? [{ label: 'Purchase order reference', value: purchaseOrderReference }]
+      ? [{ label: t('checkout.purchaseOrderReference'), value: purchaseOrderReference }]
       : []),
   ];
   const hasCustomBlend = cart.items.some((item) => item.customBlend !== undefined);
+  const total = formatDualTotal(totalCents);
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Order summary</CardTitle>
+        <CardTitle>{t('checkout.summary')}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
@@ -102,13 +117,19 @@ export function CheckoutSummary({
                 <span className="text-muted-foreground">× {item.quantity}</span>
                 {item.variantSnap && (
                   <span className="block text-xs text-muted-foreground">
-                    SKU: {item.variantSnap.sku} · {item.variantSnap.weightGrams}g
+                    {t('checkout.sku')}: {item.variantSnap.sku} ·{' '}
+                    {formatWeightGrams(item.variantSnap.weightGrams)}
                   </span>
                 )}
                 {item.variantSnap && (
                   <span className="block text-xs text-muted-foreground">
-                    Resolved pack price: {formatMoney(item.resolvedUnitPriceCents)} ·{' '}
-                    {formatMoney(item.perTonneCents)} / tonne · {item.variantSnap.weightGrams}g pack
+                    {t('checkout.packPrice', {
+                      money: formatDisplayMoney(item.resolvedUnitPriceCents),
+                    })}{' '}
+                    · {t('checkout.perTonne', { money: formatDisplayMoney(item.perTonneCents) })} ·{' '}
+                    {t('checkout.packWeight', {
+                      weight: formatWeightGrams(item.variantSnap.weightGrams),
+                    })}
                   </span>
                 )}
                 {item.customBlend && (
@@ -117,49 +138,55 @@ export function CheckoutSummary({
                     data-testid="checkout-blend"
                   >
                     <Badge variant="outline" className="mb-0.5 w-fit text-[10px]">
-                      Custom blend
+                      {t('checkout.customBlend')}
                     </Badge>
                     <span className="block">
-                      {customBlendCompositionLabel(item.product.name, item.customBlend)}
+                      {customBlendCompositionLabel(item.product.name, item.customBlend, country)}
                     </span>
                     <span className="block">
-                      Base material: {formatMoney(item.materialSubtotalCents)} · Blending fee:{' '}
-                      {formatMoney(item.blendingFeeCents)}
+                      {t('checkout.baseMaterial', {
+                        money: formatDisplayMoney(item.materialSubtotalCents),
+                      })}{' '}
+                      ·{' '}
+                      {t('checkout.blendingFee', {
+                        money: formatDisplayMoney(item.blendingFeeCents),
+                      })}
                     </span>
                   </span>
                 )}
               </span>
-              <span className="shrink-0">{formatMoney(item.lineTotalCents)}</span>
+              <span className="shrink-0">{formatDisplayMoney(item.lineTotalCents)}</span>
             </div>
           ))}
         </div>
         {hasCustomBlend && (
           <p className="custom-blend-notice rounded-md px-3 py-2 text-xs">
-            {CUSTOM_BLEND_MADE_TO_ORDER_NOTE}
+            {customBlendMadeToOrderNote(country)}
           </p>
         )}
         <Separator />
         {cart.blendingFeeTotalCents > 0 && (
           <>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Material subtotal</span>
-              <span>{formatMoney(cart.discountableSubtotalCents)}</span>
+              <span className="text-muted-foreground">{t('checkout.materialSubtotal')}</span>
+              <span>{formatDisplayMoney(cart.discountableSubtotalCents)}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Blending fees</span>
-              <span>{formatMoney(cart.blendingFeeTotalCents)}</span>
+              <span className="text-muted-foreground">{t('checkout.blendingFees')}</span>
+              <span>{formatDisplayMoney(cart.blendingFeeTotalCents)}</span>
             </div>
           </>
         )}
         <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">Resolved merchandise subtotal</span>
-          <span>{formatMoney(cart.subtotalCents)}</span>
+          <span className="text-muted-foreground">{t('checkout.merchandiseSubtotal')}</span>
+          <span>{formatDisplayMoney(cart.subtotalCents)}</span>
         </div>
         <PromoCodeForm
           promoCode={promoCode}
           appliedPromo={appliedPromo}
           error={promoError}
           errorCode={promoErrorCode}
+          minSubtotalCents={promoMinSubtotalCents}
           validating={promoValidating}
           eligible={isPromoEligible}
           onChange={onPromoChange}
@@ -171,19 +198,20 @@ export function CheckoutSummary({
             {promoCategoryScope && discountBaseCents !== null && (
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">
-                  Eligible subtotal ({promoCategoryScope})
+                  {t('checkout.eligibleSubtotal', { scope: promoCategoryScope })}
                 </span>
-                <span>{formatMoney(discountBaseCents)}</span>
+                <span>{formatDisplayMoney(discountBaseCents)}</span>
               </div>
             )}
             <div className="flex items-center justify-between text-sm text-green-700">
               <span>
-                Discount
                 {appliedPromo
-                  ? ` (${appliedPromo}${promoCategoryScope ? ` · ${promoCategoryScope}` : ''})`
-                  : ''}
+                  ? t('checkout.discount', {
+                      promo: `${appliedPromo}${promoCategoryScope ? ` · ${promoCategoryScope}` : ''}`,
+                    })
+                  : t('checkout.discountPlain')}
               </span>
-              <span>−{formatMoney(discountCents)}</span>
+              <span>−{formatDisplayMoney(discountCents)}</span>
             </div>
           </>
         )}
@@ -191,18 +219,16 @@ export function CheckoutSummary({
           <>
             <div className="flex items-center justify-between text-sm text-muted-foreground">
               <span>
-                {deliveryModeLabel(deliveryPreview.mode) === 'Freight'
-                  ? 'Pallet freight scheduled after order confirmation'
-                  : 'Parcel delivery · Free'}
+                {deliveryPreview.mode === 'freight'
+                  ? t('checkout.freightScheduled')
+                  : `${t('checkout.parcelDelivery')} · ${t('checkout.free')}`}
               </span>
-              <span>
-                {deliveryPreview.chargeCents === 0
-                  ? '$0.00'
-                  : formatMoney(deliveryPreview.chargeCents)}
-              </span>
+              <span>{formatDisplayMoney(deliveryPreview.chargeCents)}</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Total order weight: {deliveryPreview.weightGrams.toLocaleString()}g
+              {t('checkout.totalWeight', {
+                weight: formatWeightGrams(deliveryPreview.weightGrams),
+              })}
             </p>
           </>
         )}
@@ -221,8 +247,15 @@ export function CheckoutSummary({
         )}
         <Separator />
         <div className="flex items-center justify-between text-lg font-bold">
-          <span>Total</span>
-          <span>{formatMoney(totalCents)}</span>
+          <span>{t('checkout.total')}</span>
+          <span className="text-right">
+            <span className="block">{total.display}</span>
+            {total.settlement && (
+              <span className="block text-sm font-normal text-muted-foreground">
+                {t('checkout.settlementTotal', { money: total.settlement })}
+              </span>
+            )}
+          </span>
         </div>
       </CardContent>
     </Card>

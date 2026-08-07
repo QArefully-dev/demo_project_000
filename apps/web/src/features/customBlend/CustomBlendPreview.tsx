@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { CustomBlendOption, CustomBlendSnapshot } from '@shop/contracts/custom-blends';
 import { CustomBlendPackaging, customBlendCompositionLabel } from './CustomBlendPackaging';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { customBlendMessages } from '@shop/localisation/messages/customBlend';
 
 export type PreviewIngredient = {
   option: CustomBlendOption;
@@ -65,6 +67,7 @@ export function toPreviewBlend({
 }
 
 export function CustomBlendPreview(props: CustomBlendPreviewProps) {
+  const { country, translate } = useLocalisation();
   const blend = toPreviewBlend(props);
   const isDraft = !props.authoritativeConfigKey;
   const [zoomed, setZoomed] = useState(false);
@@ -93,16 +96,22 @@ export function CustomBlendPreview(props: CustomBlendPreviewProps) {
     >
       <div className="flex items-baseline justify-between gap-2">
         <h2 id="custom-blend-preview-heading" className="text-sm font-semibold">
-          Live packaging preview
+          {translate(customBlendMessages, 'customBlend.livePreview')}
         </h2>
         <span className="text-xs text-muted-foreground">
-          {isDraft ? 'Draft mark' : 'Confirmed batch mark'}
+          {translate(
+            customBlendMessages,
+            isDraft ? 'customBlend.draftMark' : 'customBlend.confirmedBatchMark',
+          )}
         </span>
       </div>
       <button
         type="button"
         className="relative cursor-zoom-in overflow-hidden rounded-lg"
-        aria-label={zoomed ? 'Reset packaging preview zoom' : 'Zoom packaging preview'}
+        aria-label={translate(
+          customBlendMessages,
+          zoomed ? 'customBlend.resetPreviewZoom' : 'customBlend.zoomPreview',
+        )}
         aria-pressed={zoomed}
         onClick={() => setZoomed((value) => !value)}
         onPointerMove={(event) => {
@@ -146,7 +155,7 @@ export function CustomBlendPreview(props: CustomBlendPreviewProps) {
         </div>
       </button>
       <p className="text-xs text-muted-foreground">
-        {customBlendCompositionLabel(props.base.productName, blend)}
+        {customBlendCompositionLabel(props.base.productName, blend, country)}
       </p>
     </section>
   );

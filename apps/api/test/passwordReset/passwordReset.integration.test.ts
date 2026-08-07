@@ -64,3 +64,67 @@ void test('password reset never restores tombstoned account credentials', async 
     },
   );
 });
+
+void test('password reset persists translated DE and FR template snapshots', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-reset-localised-mail-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  const now = new Date('2026-08-03T12:00:00.000Z');
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const addUser = (email: string, country: 'DE' | 'FR') =>
+    db
+      .prepare(
+        `INSERT INTO users (email, display_name, password_hash, password_salt, role, country)
+         VALUES (?, 'Buyer', 'hash', 'salt', 'customer', ?)
+         RETURNING id`,
+      )
+      .get(email, country) as { id: number };
+  addUser('reset-de@example.test', 'DE');
+  addUser('reset-fr@example.test', 'FR');
+
+  const tokens = ['de-reset-token', 'fr-reset-token'];
+  const mailbox = createMailboxRepository(db);
+  const resets = createPasswordResetService({
+    repository: createPasswordResetRepository(db),
+    mailbox,
+    clock: { now: () => now },
+    baseUrl: 'https://web.example.test',
+    tokenSource: () => tokens.shift() ?? 'unexpected-token',
+  });
+  resets.request('reset-de@example.test', 'DE');
+  resets.request('reset-fr@example.test', 'FR');
+
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT recipient, subject, body, template_key, template_country, template_params_json
+         FROM dev_mailbox WHERE template_key = 'password_reset' ORDER BY recipient`,
+      )
+      .all(),
+    [
+      {
+        recipient: 'reset-de@example.test',
+        subject: 'Anfrage zum Zur\u00fccksetzen des Passworts',
+        body: 'Verwenden Sie diesen Link, um Ihr Passwort zur\u00fcckzusetzen: https://web.example.test/reset-password?token=de-reset-token',
+        template_key: 'password_reset',
+        template_country: 'DE',
+        template_params_json: JSON.stringify({
+          resetUrl: 'https://web.example.test/reset-password?token=de-reset-token',
+        }),
+      },
+      {
+        recipient: 'reset-fr@example.test',
+        subject: 'Demande de r\u00e9initialisation du mot de passe',
+        body: 'Utilisez ce lien pour r\u00e9initialiser votre mot de passe : https://web.example.test/reset-password?token=fr-reset-token',
+        template_key: 'password_reset',
+        template_country: 'FR',
+        template_params_json: JSON.stringify({
+          resetUrl: 'https://web.example.test/reset-password?token=fr-reset-token',
+        }),
+      },
+    ],
+  );
+});

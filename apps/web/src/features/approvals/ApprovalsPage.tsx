@@ -4,15 +4,37 @@ import { getCompany } from '@/api/companyAccounts';
 import { ApiError } from '@/api/client';
 import { decideApproval, listApprovals, listMyApprovalRequests } from '@/api/orderApprovals';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { apiErrors } from '@shop/localisation/messages/apiErrors';
+import {
+  tradeAsyncMessages,
+  type TradeAsyncMessageKey,
+} from '@shop/localisation/messages/tradeAsync';
 import { ApproverInbox } from './ApproverInbox';
 import { BuyerRequestsList } from './BuyerRequestsList';
 
-function errorText(error: unknown) {
-  return error instanceof ApiError
-    ? (error.response?.error ?? error.message)
-    : 'Unable to load approvals.';
-}
 export function ApprovalsPage() {
+  const { translate } = useLocalisation();
+  const t = <K extends TradeAsyncMessageKey>(
+    key: K,
+    params?: Record<string, string | number | bigint>,
+  ) => translate(tradeAsyncMessages, key, params);
+  const errorText = (error: unknown) => {
+    if (error instanceof ApiError && error.code !== null) {
+      const params = Object.fromEntries(
+        Object.entries(error.meta ?? {}).filter(
+          ([, value]) =>
+            typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint',
+        ),
+      ) as Record<string, string | number | bigint>;
+      try {
+        return translate(apiErrors, error.code, params);
+      } catch {
+        // Safe feature fallback for malformed/legacy metadata.
+      }
+    }
+    return t('approvals.error.load');
+  };
   const [mine, setMine] = useState<OrderApproval[]>([]);
   const [inbox, setInbox] = useState<OrderApproval[]>([]);
   const [canApprove, setCanApprove] = useState(false);
@@ -59,7 +81,7 @@ export function ApprovalsPage() {
   if (loading) return <LoadingSpinner />;
   return (
     <main className="mx-auto max-w-3xl py-12">
-      <h1 className="text-2xl font-bold">Order approvals</h1>
+      <h1 className="text-2xl font-bold">{t('approvals.title')}</h1>
       {error && (
         <p role="alert" className="mt-4 text-sm text-destructive">
           {error}

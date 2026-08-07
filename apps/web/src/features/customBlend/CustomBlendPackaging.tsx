@@ -1,7 +1,11 @@
 import type { CatalogVariant } from '@shop/contracts/products';
 import type { CustomBlendSnapshot } from '@shop/contracts/custom-blends';
+import type { Country } from '@shop/contracts/country';
+import { formatNumber, translate } from '@shop/localisation';
+import { customBlendMessages } from '@shop/localisation/messages/customBlend';
 
 import { PackagingArtwork } from '@/components/packaging/PackagingArtwork';
+import { useLocalisation } from '@/i18n/LocaleContext';
 import {
   resolvePackagingSpec,
   type PackagingProductInput,
@@ -22,8 +26,6 @@ export const CUSTOM_BLEND_PIGMENT = '#3a3d39';
 export const CUSTOM_BLEND_INK = '#1e211d';
 
 /** Printed spec band. Identifies the line as configured without naming its composition. */
-const CUSTOM_BLEND_SPEC_BAND = 'CUSTOM BLEND';
-
 /**
  * Shared disclosure copy, so cart, checkout and order detail cannot drift apart.
  *
@@ -32,14 +34,18 @@ const CUSTOM_BLEND_SPEC_BAND = 'CUSTOM BLEND';
  * but applies no blend-specific cancellation rule, so an order holding a blend cancels on the
  * ordinary schedule.
  */
-export const CUSTOM_BLEND_MADE_TO_ORDER_NOTE =
-  'Made to order. Custom blends cannot be returned, but you can still cancel the order until it is dispatched.';
+export function customBlendMadeToOrderNote(country: Country = 'US'): string {
+  return translate(customBlendMessages, country, 'customBlend.madeToOrder');
+}
 
-const VESSEL_LABEL: Readonly<Record<Vessel, string>> = {
-  'kraft-sack': 'stitched kraft sack',
-  'woven-sack': 'woven sack',
-  keg: 'keg',
-  'food-bag': 'bag',
+/** Compatibility snapshot for legacy cart/order consumers; new UI resolves by active country. */
+export const CUSTOM_BLEND_MADE_TO_ORDER_NOTE = customBlendMadeToOrderNote();
+
+const VESSEL_MESSAGE_KEY: Readonly<Record<Vessel, keyof typeof customBlendMessages>> = {
+  'kraft-sack': 'customBlend.vessel.kraftSack',
+  'woven-sack': 'customBlend.vessel.wovenSack',
+  keg: 'customBlend.vessel.keg',
+  'food-bag': 'customBlend.vessel.foodBag',
 };
 
 /**
@@ -58,11 +64,21 @@ export function customBlendBatchMark(configKey: string): string {
 export function customBlendCompositionLabel(
   baseProductName: string,
   blend: CustomBlendSnapshot,
+  country: Country = 'US',
 ): string {
   const ingredients = blend.ingredients
-    .map((ingredient) => `${ingredient.percentage}% ${ingredient.productName}`)
+    .map((ingredient) =>
+      translate(customBlendMessages, country, 'customBlend.recipeIngredient', {
+        percentageLabel: formatNumber(ingredient.percentage, country, 'count'),
+        name: ingredient.productName,
+      }),
+    )
     .join(', ');
-  return `${blend.basePercentage}% ${baseProductName} — ${ingredients}`;
+  return translate(customBlendMessages, country, 'customBlend.recipe', {
+    basePercentageLabel: formatNumber(blend.basePercentage, country, 'count'),
+    baseName: baseProductName,
+    ingredients,
+  });
 }
 
 interface CustomBlendPackagingProps {
@@ -91,6 +107,9 @@ export function CustomBlendPackaging({
   previewBatchMark,
   className,
 }: CustomBlendPackagingProps) {
+  const { translate: t } = useLocalisation();
+  const specBand = t(customBlendMessages, 'customBlend.specBand');
+  const vesselLabel = (vessel: Vessel) => t(customBlendMessages, VESSEL_MESSAGE_KEY[vessel]);
   // Orders written before base presentation was frozen cannot safely infer a vessel. In
   // particular, the shared resolver's unknown-category fallback is a food bag, which would make
   // an historic non-food blend misleading. Show a neutral, explicit placeholder instead.
@@ -98,13 +117,13 @@ export function CustomBlendPackaging({
     return (
       <span
         role="img"
-        aria-label={`${product.name} custom blend packaging unavailable`}
+        aria-label={`${product.name} ${t(customBlendMessages, 'customBlend.neutralPackaging')} ${t(customBlendMessages, 'customBlend.packagingUnavailableAria')}`}
         className={className}
         data-testid="custom-blend-livery"
         data-vessel="neutral"
         data-colour-scheme="neutral"
       >
-        Custom blend
+        {t(customBlendMessages, 'customBlend.neutralPackaging')}
       </span>
     );
   }
@@ -115,7 +134,7 @@ export function CustomBlendPackaging({
     schemeKey: CUSTOM_BLEND_SCHEME_KEY,
     pigment: CUSTOM_BLEND_PIGMENT,
     ink: { ink: CUSTOM_BLEND_INK, alert: baseSpec.ink.alert },
-    grade: baseSpec.grade ?? CUSTOM_BLEND_SPEC_BAND,
+    grade: baseSpec.grade ?? specBand,
     lot: mark,
   };
 
@@ -143,7 +162,7 @@ export function CustomBlendPackaging({
         batchCode={mark}
         schemeKey={CUSTOM_BLEND_SCHEME_KEY}
         consumptionLabel={null}
-        ariaLabel={`${product.name} custom blend ${VESSEL_LABEL[spec.vessel]}`}
+        ariaLabel={`${product.name} ${t(customBlendMessages, 'customBlend.neutralPackaging')} ${vesselLabel(spec.vessel)}`}
         className={className}
       />
     </span>

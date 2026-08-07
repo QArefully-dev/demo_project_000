@@ -104,8 +104,8 @@ void test('data export is caller-scoped, allowlisted, mailed, and audited', asyn
     (
       db
         .prepare(
-          `INSERT INTO users (email, display_name, password_hash, password_salt, role)
-           VALUES ('buyer@example.test', 'Buyer Name', 'super-secret-hash', 'secret-salt', 'customer')
+          `INSERT INTO users (email, display_name, password_hash, password_salt, role, country)
+           VALUES ('buyer@example.test', 'Buyer Name', 'super-secret-hash', 'secret-salt', 'customer', 'DE')
            RETURNING id`,
         )
         .get() as { id: number }
@@ -115,8 +115,8 @@ void test('data export is caller-scoped, allowlisted, mailed, and audited', asyn
     (
       db
         .prepare(
-          `INSERT INTO users (email, display_name, password_hash, password_salt, role)
-           VALUES ('other@example.test', 'Other Buyer', 'other-hash', 'other-salt', 'customer')
+          `INSERT INTO users (email, display_name, password_hash, password_salt, role, country)
+           VALUES ('other@example.test', 'Other Buyer', 'other-hash', 'other-salt', 'customer', 'FR')
            RETURNING id`,
         )
         .get() as { id: number }
@@ -260,7 +260,7 @@ void test('data export is caller-scoped, allowlisted, mailed, and audited', asyn
   );
   assert.equal(addedItem.ok, true);
   const callerSession = sessions.create(callerId);
-  sessions.create(foreignId);
+  const foreignSession = sessions.create(foreignId);
 
   const unauthenticated = await app.inject({ method: 'GET', url: '/api/account/export' });
   assert.equal(unauthenticated.statusCode, 401);
@@ -279,7 +279,7 @@ void test('data export is caller-scoped, allowlisted, mailed, and audited', asyn
     email: 'buyer@example.test',
     displayName: 'Buyer Name',
     role: 'customer',
-    country: 'UK',
+    country: 'DE',
   });
   assert.equal((snapshot.deliverySites as Array<{ label: string }>).length, 1);
   assert.equal((snapshot.deliverySites as Array<{ label: string }>)[0]!.label, 'Main Yard');
@@ -304,20 +304,50 @@ void test('data export is caller-scoped, allowlisted, mailed, and audited', asyn
   assert.equal((snapshot.sessions as Array<{ sessionId: string }>).length, 1);
   assert.deepEqual(snapshot.companyMemberships, []);
 
+  const foreignResponse = await app.inject({
+    method: 'GET',
+    url: '/api/account/export',
+    headers: { cookie: `sid=${foreignSession.token}` },
+  });
+  assert.equal(foreignResponse.statusCode, 200, foreignResponse.body);
+  assert.equal(
+    (JSON.parse(foreignResponse.body) as { profile: { country: string } }).profile.country,
+    'FR',
+  );
+
   assert.deepEqual(
-    db.prepare(`SELECT recipient, subject, kind FROM dev_mailbox WHERE kind = 'data_export'`).all(),
+    db
+      .prepare(
+        `SELECT recipient, subject, body, kind, template_key, template_country, template_params_json
+           FROM dev_mailbox WHERE template_key = 'data_export_ready' ORDER BY recipient`,
+      )
+      .all(),
     [
       {
         recipient: 'buyer@example.test',
-        subject: 'QArefully Materials Exchange — data export',
-        kind: 'data_export',
+        subject: 'QArefully Materials Exchange \u2014 Datenexport',
+        body: 'Ihr Datenexport ist in Ihrem QArefully-Materials-Exchange-Konto verf\u00fcgbar.',
+        kind: 'template',
+        template_key: 'data_export_ready',
+        template_country: 'DE',
+        template_params_json: '{}',
+      },
+      {
+        recipient: 'other@example.test',
+        subject: 'QArefully Materials Exchange \u2014 export de donn\u00e9es',
+        body: 'Votre export de donn\u00e9es est disponible dans votre compte QArefully Materials Exchange.',
+        kind: 'template',
+        template_key: 'data_export_ready',
+        template_country: 'FR',
+        template_params_json: '{}',
       },
     ],
   );
   assert.deepEqual(
     db
       .prepare(
-        `SELECT action, actor_user_id, entity_type, entity_id FROM audit_events WHERE action = 'auth.data_exported'`,
+        `SELECT action, actor_user_id, entity_type, entity_id
+         FROM audit_events WHERE action = 'auth.data_exported' ORDER BY actor_user_id`,
       )
       .all(),
     [
@@ -326,6 +356,12 @@ void test('data export is caller-scoped, allowlisted, mailed, and audited', asyn
         actor_user_id: callerId,
         entity_type: 'user',
         entity_id: String(callerId),
+      },
+      {
+        action: 'auth.data_exported',
+        actor_user_id: foreignId,
+        entity_type: 'user',
+        entity_id: String(foreignId),
       },
     ],
   );

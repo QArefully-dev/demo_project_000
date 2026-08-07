@@ -209,7 +209,7 @@ void test('saved-list routes expose caps, default protection, and cart/order sou
     headers: { cookie: alice },
     payload: { name: 'Empty cart', cartId: emptyCart },
   });
-  assert.deepEqual(empty.json(), { code: 'CART_EMPTY', error: 'Cart is empty' });
+  assert.equal(empty.json<{ code: string }>().code, 'CART_EMPTY');
   assert.equal(
     (
       await app.inject({
@@ -259,15 +259,11 @@ void test('saved-list routes expose caps, default protection, and cart/order sou
       201,
     );
   }
-  assert.deepEqual(
-    (
-      await app.inject({
-        method: 'POST',
-        url: '/api/saved-lists',
-        headers: { cookie: capped },
-        payload: { name: 'One too many' },
-      })
-    ).json(),
-    { code: 'LIST_LIMIT_REACHED', error: 'Saved list limit reached' },
-  );
+  const listLimit = await app.inject({
+    method: 'POST',
+    url: '/api/saved-lists',
+    headers: { cookie: capped },
+    payload: { name: 'One too many' },
+  });
+  assert.equal(listLimit.json<{ code: string }>().code, 'LIST_LIMIT_REACHED');
 });

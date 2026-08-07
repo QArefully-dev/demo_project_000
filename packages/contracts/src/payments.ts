@@ -298,6 +298,7 @@ export const CheckoutResult = Type.Union([
       error: CheckoutGenericErrorCode,
       promoError: Type.Optional(Type.String({ minLength: 1, maxLength: 500 })),
       promoErrorCode: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
+      minSubtotalCents: Type.Optional(MoneyCents),
     },
     { additionalProperties: false },
   ),

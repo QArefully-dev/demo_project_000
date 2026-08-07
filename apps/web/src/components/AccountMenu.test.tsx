@@ -47,8 +47,8 @@ describe('AccountMenu', () => {
 
     await user.click(screen.getByLabelText('Account'));
 
-    expect(await screen.findByText('My Account')).toBeInTheDocument();
-    expect(screen.getByText('My Lists')).toBeInTheDocument();
+    expect(await screen.findByText('My account')).toBeInTheDocument();
+    expect(screen.getByText('My lists')).toBeInTheDocument();
     expect(screen.queryByText('Review moderation')).not.toBeInTheDocument();
   });
 

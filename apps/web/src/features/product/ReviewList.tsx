@@ -1,6 +1,8 @@
 import { useRef, useState, type FormEvent } from 'react';
 import type { CreateReviewReportBody, Review } from '@shop/contracts/reviews';
 import { Button } from '@/components/ui/button';
+import { productMessages } from '@shop/localisation/messages/product';
+import { useLocalisation } from '@/i18n/LocaleContext';
 
 interface ReviewListProps {
   reviews: Review[];
@@ -10,11 +12,6 @@ interface ReviewListProps {
   onSubmitReport: (reviewId: string, body: CreateReviewReportBody) => Promise<boolean>;
   onWithdrawReport: (reviewId: string) => Promise<boolean>;
   isEngagementMutating: (reviewId: string) => boolean;
-}
-
-function formatDate(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? value : date.toLocaleDateString();
 }
 
 interface ReviewRowProps extends Omit<ReviewListProps, 'reviews' | 'engagementStatus'> {
@@ -32,7 +29,12 @@ function ReviewRow({
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [reason, setReason] = useState<CreateReviewReportBody['reason']>('spam');
   const [detail, setDetail] = useState('');
-  const [validationError, setValidationError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<'product.provideDetail' | null>(null);
+  const { translate, formatInstant, formatCount } = useLocalisation();
+  const t = <K extends keyof typeof productMessages>(
+    key: K,
+    params?: Record<string, string | number>,
+  ) => translate(productMessages, key, params);
   const reportActionRef = useRef<HTMLElement>(null);
   const isMutating = isEngagementMutating(review.id);
   const reportFormId = `review-report-${review.id}`;
@@ -48,7 +50,7 @@ function ReviewRow({
     event.preventDefault();
     const normalizedDetail = detail.trim();
     if (reason === 'other' && !normalizedDetail) {
-      setValidationError('Provide a short detail when selecting Other.');
+      setValidationError('product.provideDetail');
       return;
     }
     setValidationError(null);
@@ -66,22 +68,30 @@ function ReviewRow({
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <p className="font-medium">{review.author.displayName}</p>
         <time className="text-sm text-muted-foreground" dateTime={review.createdAt}>
-          {formatDate(review.createdAt)}
+          {formatInstant(review.createdAt, 'date')}
         </time>
       </div>
-      <p className="mt-1" aria-label={`${review.rating} out of 5 stars`}>
+      <p
+        className="mt-1"
+        aria-label={t('product.ratingOutOf', { rating: formatCount(review.rating) })}
+      >
         <span aria-hidden="true">
           {'★'.repeat(review.rating)}
           {'☆'.repeat(5 - review.rating)}
         </span>
       </p>
       {review.verifiedPurchase && (
-        <p className="mt-1 text-sm font-medium text-primary" aria-label="Verified purchase">
-          Verified purchase
+        <p
+          className="mt-1 text-sm font-medium text-primary"
+          aria-label={t('product.verifiedPurchase')}
+        >
+          {t('product.verifiedPurchase')}
         </p>
       )}
       <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{review.body}</p>
-      <p className="mt-3 text-sm text-muted-foreground">{review.helpfulCount} found this helpful</p>
+      <p className="mt-3 text-sm text-muted-foreground">
+        {t('product.foundHelpful', { count: review.helpfulCount })}
+      </p>
       {review.viewerCanEngage && (
         <div className="mt-2 space-y-3">
           <div className="flex flex-wrap gap-2">
@@ -93,7 +103,7 @@ function ReviewRow({
               disabled={isMutating}
               onClick={() => void onToggleHelpful(review.id, review.viewerHasHelpfulVote)}
             >
-              Helpful
+              {t('product.helpful')}
             </Button>
             {review.viewerHasOpenReport ? (
               <Button
@@ -104,7 +114,7 @@ function ReviewRow({
                 disabled={isMutating}
                 onClick={() => void onWithdrawReport(review.id)}
               >
-                Withdraw report
+                {t('product.withdrawReport')}
               </Button>
             ) : (
               <Button
@@ -120,7 +130,7 @@ function ReviewRow({
                   setIsReportOpen(true);
                 }}
               >
-                Report review
+                {t('product.reportReview')}
               </Button>
             )}
           </div>
@@ -128,12 +138,12 @@ function ReviewRow({
             <form
               id={reportFormId}
               className="space-y-3 rounded-md border border-border p-3"
-              aria-label={`Report review by ${review.author.displayName}`}
+              aria-label={t('product.reviewBy', { name: review.author.displayName })}
               onSubmit={(event) => void submitReport(event)}
             >
               <div>
                 <label htmlFor={`${reportFormId}-reason`} className="text-sm font-medium">
-                  Reason
+                  {t('product.reason')}
                 </label>
                 <select
                   id={`${reportFormId}-reason`}
@@ -144,16 +154,18 @@ function ReviewRow({
                     setReason(event.target.value as CreateReviewReportBody['reason'])
                   }
                 >
-                  <option value="spam">Spam</option>
-                  <option value="harassment">Harassment</option>
-                  <option value="unsafe">Unsafe content</option>
-                  <option value="off_topic">Off topic</option>
-                  <option value="other">Other</option>
+                  <option value="spam">{t('product.spam')}</option>
+                  <option value="harassment">{t('product.harassment')}</option>
+                  <option value="unsafe">{t('product.unsafeContent')}</option>
+                  <option value="off_topic">{t('product.offTopic')}</option>
+                  <option value="other">{t('product.other')}</option>
                 </select>
               </div>
               <div>
                 <label htmlFor={`${reportFormId}-detail`} className="text-sm font-medium">
-                  Detail {reason === 'other' ? '(required)' : '(optional)'}
+                  {t('product.detail', {
+                    required: reason === 'other' ? t('product.required') : t('product.optional'),
+                  })}
                 </label>
                 <textarea
                   id={`${reportFormId}-detail`}
@@ -167,12 +179,12 @@ function ReviewRow({
               </div>
               {(validationError || engagementErrors[review.id]) && (
                 <p role="alert" className="text-sm text-destructive">
-                  {validationError ?? engagementErrors[review.id]}
+                  {validationError ? t(validationError) : engagementErrors[review.id]}
                 </p>
               )}
               <div className="flex flex-wrap gap-2">
                 <Button type="submit" size="sm" disabled={isMutating}>
-                  {isMutating ? 'Submitting…' : 'Submit report'}
+                  {isMutating ? t('product.submitting') : t('product.submitReport')}
                 </Button>
                 <Button
                   type="button"
@@ -181,7 +193,7 @@ function ReviewRow({
                   disabled={isMutating}
                   onClick={closeReport}
                 >
-                  Cancel
+                  {t('product.cancel')}
                 </Button>
               </div>
             </form>
@@ -206,8 +218,13 @@ export function ReviewList({
   onWithdrawReport,
   isEngagementMutating,
 }: ReviewListProps) {
+  const { translate } = useLocalisation();
   if (reviews.length === 0) {
-    return <p className="text-sm text-muted-foreground">No published reviews yet.</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        {translate(productMessages, 'product.noPublishedReviews')}
+      </p>
+    );
   }
 
   return (
@@ -215,7 +232,10 @@ export function ReviewList({
       <p role="status" aria-live="polite" className="sr-only">
         {engagementStatus}
       </p>
-      <ol className="divide-y divide-border" aria-label="Customer reviews">
+      <ol
+        className="divide-y divide-border"
+        aria-label={translate(productMessages, 'product.customerReviews')}
+      >
         {reviews.map((review) => (
           <ReviewRow
             key={review.id}

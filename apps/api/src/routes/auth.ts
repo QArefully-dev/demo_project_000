@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
-import { sendBadRequest, sendUnauthorized, sendConflict } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 import { createSession, destroySession, requireAuth } from '../plugins/auth.js';
 import {
   SignupBody,
@@ -55,10 +55,10 @@ export default function authRoutes(app: FastifyInstance, { services }: AppContex
 
       if (!result.ok) {
         if (result.error === 'EMAIL_EXISTS') {
-          sendConflict(reply, 'A user with this email already exists');
+          sendPublicError(request, reply, 409, 'EMAIL_EXISTS');
           return;
         }
-        sendBadRequest(reply, result.error);
+        sendPublicError(request, reply, 400, result.error);
         return;
       }
 
@@ -67,7 +67,7 @@ export default function authRoutes(app: FastifyInstance, { services }: AppContex
         source: 'signup',
       });
       if (!session) {
-        sendUnauthorized(reply, 'Invalid email or password');
+        sendPublicError(request, reply, 401, 'UNAUTHORIZED');
         return;
       }
       reply.code(201).send(result.user);
@@ -93,7 +93,7 @@ export default function authRoutes(app: FastifyInstance, { services }: AppContex
       const result = await services.auth.login({ email, password, country });
 
       if (!result.ok) {
-        sendUnauthorized(reply, 'Invalid email or password');
+        sendPublicError(request, reply, 401, result.error ?? 'UNAUTHORIZED');
         return;
       }
 
@@ -102,7 +102,7 @@ export default function authRoutes(app: FastifyInstance, { services }: AppContex
         source: 'login',
       });
       if (!session) {
-        sendUnauthorized(reply, 'Invalid email or password');
+        sendPublicError(request, reply, 401, 'UNAUTHORIZED');
         return;
       }
       reply.code(200).send(result.user);
@@ -173,19 +173,19 @@ export default function authRoutes(app: FastifyInstance, { services }: AppContex
       });
 
       if (result === 'INVALID_TOKEN') {
-        sendBadRequest(reply, 'Invalid or missing reset token');
+        sendPublicError(request, reply, 400, 'INVALID_TOKEN');
         return;
       }
       if (result === 'EXPIRED') {
-        sendBadRequest(reply, 'Reset token has expired');
+        sendPublicError(request, reply, 400, 'EXPIRED');
         return;
       }
       if (result === 'ALREADY_USED') {
-        sendBadRequest(reply, 'Reset token has already been used');
+        sendPublicError(request, reply, 400, 'ALREADY_USED');
         return;
       }
       if (result === 'WEAK_PASSWORD') {
-        sendBadRequest(reply, 'Password must be 8-128 characters');
+        sendPublicError(request, reply, 400, 'WEAK_PASSWORD');
         return;
       }
 
@@ -243,15 +243,15 @@ export default function authRoutes(app: FastifyInstance, { services }: AppContex
       });
 
       if (result === 'INVALID_CURRENT') {
-        sendBadRequest(reply, 'Current password is incorrect');
+        sendPublicError(request, reply, 400, 'INVALID_CURRENT');
         return;
       }
       if (result === 'SAME_PASSWORD') {
-        sendBadRequest(reply, 'New password must be different from current password');
+        sendPublicError(request, reply, 400, 'SAME_PASSWORD');
         return;
       }
       if (result === 'WEAK_PASSWORD') {
-        sendBadRequest(reply, 'Password must be 8-128 characters');
+        sendPublicError(request, reply, 400, 'WEAK_PASSWORD');
         return;
       }
 

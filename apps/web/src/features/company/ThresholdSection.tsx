@@ -1,5 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import {
+  tradeAsyncMessages,
+  type TradeAsyncMessageKey,
+} from '@shop/localisation/messages/tradeAsync';
 
 type Props = {
   thresholdCents: number | null;
@@ -21,6 +26,11 @@ function parseThresholdCents(value: string): number | null | undefined {
 }
 
 export function ThresholdSection({ thresholdCents, isOwner, onSave }: Props) {
+  const { translate, formatSettlementMoney } = useLocalisation();
+  const t = <K extends TradeAsyncMessageKey>(
+    key: K,
+    params?: Record<string, string | number | bigint>,
+  ) => translate(tradeAsyncMessages, key, params);
   const [value, setValue] = useState(
     thresholdCents === null ? '' : (thresholdCents / 100).toFixed(2),
   );
@@ -42,27 +52,27 @@ export function ThresholdSection({ thresholdCents, isOwner, onSave }: Props) {
   }
   return (
     <section className="mt-6 rounded-lg border p-5">
-      <h2 className="font-semibold">Order approval threshold</h2>
+      <h2 className="font-semibold">{t('company.threshold.heading')}</h2>
       <p className="mt-1 text-sm text-muted-foreground">
         {thresholdCents === null
-          ? 'Orders never need approval.'
-          : `Orders of £${(thresholdCents / 100).toFixed(2)} or more need approval.`}
+          ? t('company.threshold.none')
+          : t('company.threshold.requires', { amount: formatSettlementMoney(thresholdCents) })}
       </p>
       {isOwner && (
         <form onSubmit={(event) => void submit(event)} className="mt-3 flex items-center gap-2">
           <label htmlFor="approval-threshold" className="text-sm">
-            Threshold (£)
+            {t('company.threshold.label')}
           </label>
           <input
             id="approval-threshold"
             inputMode="decimal"
             value={value}
             onChange={(event) => setValue(event.target.value)}
-            placeholder="No approval"
+            placeholder={t('company.threshold.placeholder')}
             className="w-32 rounded-md border px-3 py-2 text-sm"
           />
           <Button type="submit" disabled={busy}>
-            {busy ? 'Saving…' : 'Save threshold'}
+            {busy ? t('company.threshold.saving') : t('company.threshold.save')}
           </Button>
         </form>
       )}

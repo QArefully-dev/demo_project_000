@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { Country } from '@shop/contracts/country';
+import { passwordResetCopy } from '@shop/localisation/messages/asyncContent';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
@@ -68,11 +69,17 @@ export function createPasswordResetService(dependencies: {
           expiresAt,
           createdAt,
         });
+        const copy = passwordResetCopy(country, createResetLink(dependencies.baseUrl, token));
         dependencies.mailbox.add({
           recipient: user.email,
-          subject: 'Password Reset Request',
-          body: `Click the link to reset your password: ${createResetLink(dependencies.baseUrl, token)}`,
-          kind: 'reset',
+          subject: copy.subject,
+          body: copy.body,
+          kind: 'template',
+          templateKey: 'password_reset',
+          templateParams: {
+            resetUrl: createResetLink(dependencies.baseUrl, token),
+          },
+          country,
           createdAt,
         });
         if (context) {

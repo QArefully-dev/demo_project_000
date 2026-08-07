@@ -9,6 +9,8 @@ import {
 } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { webMessages } from '@shop/localisation/messages/webShell';
 
 export interface Toast {
   id: string;
@@ -33,6 +35,7 @@ let toastId = 0;
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const { translate } = useLocalisation();
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -91,7 +94,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               type="button"
               onClick={() => removeToast(t.id)}
               className="ml-2 rounded-full p-0.5 opacity-70 hover:opacity-100"
-              aria-label="Dismiss"
+              aria-label={translate(webMessages, 'shell.dismiss')}
             >
               <X className="size-3.5" />
             </button>

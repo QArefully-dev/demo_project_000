@@ -32,6 +32,7 @@ import { asyncBehaviorMigration } from './030_async_behavior.js';
 import { backInStockMigration } from './031_back_in_stock.js';
 import { countryLocalisationMigration } from './032_country_localisation.js';
 import { promoCountryTargetingMigration } from './033_promo_country_targeting.js';
+import { mailboxOrderReceiptMigration } from './034_mailbox_order_receipt.js';
 
 export const migrations: readonly Migration[] = [
   initialMigration,
@@ -67,4 +68,5 @@ export const migrations: readonly Migration[] = [
   backInStockMigration,
   countryLocalisationMigration,
   promoCountryTargetingMigration,
+  mailboxOrderReceiptMigration,
 ];

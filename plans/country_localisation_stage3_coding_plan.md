@@ -1,6 +1,7 @@
 # Country Localisation Stage 3 Coding Plan
 
-Status: proposed
+Status: complete — S1 convergence and E30AA full pass 2026-08-07.
+E30AA evidence: Node v22.23.1/npm 10.9.8; format, lint, all-workspace typecheck, and localisation guard pass (879 source files, 0 findings); reset pass; integration pass (web 18 files/54 tests, API 293 subtests/434 tests); verify pass in 322s (format, guard, typecheck, lint, all-workspace tests/builds). R30 High closed; follow-up format and stale postcode consumer fixes have focused evidence; no re-review per rule. Final completion.
 Source: `plans/country_localisation_handoff.md` -> `Delivery Stages` item 3, plus `Money`, `Language`, `Configuration Location`
 Repository baseline: branch `expansion_002`, `HEAD` `9f4df4e419ac8c8e19454a09bc3ee6e14fcde572`; inspected 2026-08-06
 
@@ -684,10 +685,10 @@ Complete item 10 Stage 3: seven-country translation lookup, locale-owned number/
 - changes: resolve fan-in imports/test fixtures, run static audit, update repository map/migration head/package, document display-only rates/GBP receipt and country-aware demo behavior, mark item 10 complete
 - invariants: no converted persistence; no catalog translation; no course spoiler or new runtime requirement
 - relevant evidence: `E1`-`E29`, invalidated entries rerun only as needed
-- test duty: `npm run reset && npm run test:integration && npm run verify` -> `E30`
-- verification: `E30` pass once after fixes; `git status --short` contains only planned implementation changes
+- test duty: `npm run reset` -> pass; `npm run test:integration` -> pass; `npm run verify` -> pass -> `E30AA`
+- verification: `E30AA` pass 2026-08-07; web integration 18 files/54 tests; API integration 293 subtests/434 tests; verify 322s; `git status --short` contains only planned implementation changes
 - handoff: retained implementation worktree + completion evidence + user-owned merge instructions
-- review: `R30` -> `GR30` blocks `G6`
+- review: `R30` -> `GR30` closed; R30 High follow-up fixes verified; no re-review per rule; `G6` complete
 
 ## Review Assignments
 
@@ -1139,7 +1140,7 @@ Every assignment carries: `review_skill=code-reviewer`; reviewer invokes `.claud
 - invariants: no converted persistence/catalog translation/runtime dependency
 - risk focus: cross-lane key/import collision, incomplete status sync, stale evidence
 - non-goals: merge/worktree cleanup
-- relevant evidence: `E29`, `E30`, affected packet evidence
+- relevant evidence: `E29`, `E30AA`, affected packet evidence
 - write policy: inspect-only
 - return: `reviewer_report_v1`
 

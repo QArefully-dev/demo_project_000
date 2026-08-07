@@ -124,7 +124,7 @@ describe('ProductBundlesSection', () => {
       refetch: vi.fn(),
     });
     renderSection();
-    expect(screen.getByText('\u00a350.00')).toBeInTheDocument();
+    expect(screen.getByText('$62.50')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Protein Powder' })).toHaveAttribute(
       'href',
       '/products/1',

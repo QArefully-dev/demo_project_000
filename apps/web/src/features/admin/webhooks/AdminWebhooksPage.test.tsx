@@ -32,7 +32,7 @@ describe('AdminWebhooksPage', () => {
         <AdminWebhooksPage />
       </MemoryRouter>,
     );
-    await user.selectOptions(await screen.findByLabelText('Webhook status'), 'processed');
+    await user.selectOptions(await screen.findByLabelText('Status'), 'processed');
     expect(api.getAdminWebhooks).toHaveBeenLastCalledWith(
       { status: 'processed', page: 1, pageSize: 10 },
       expect.any(AbortSignal),

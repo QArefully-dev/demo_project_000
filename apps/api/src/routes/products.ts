@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
-import { sendNotFound, sendBadRequest } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 import { toProductContract, toProductWithVariantsContract } from '../mappers/product.js';
 import {
   ProductComparisonQuery,
@@ -71,6 +71,7 @@ export default function productsRoutes(app: FastifyInstance, { services }: AppCo
         querystring: ProductQuery,
         response: {
           200: ProductListPaginatedResponse,
+          400: ErrorResponse,
         },
       },
     },
@@ -85,7 +86,7 @@ export default function productsRoutes(app: FastifyInstance, { services }: AppCo
         };
       } catch (error) {
         if (error instanceof CatalogQueryError) {
-          sendBadRequest(reply, error.message);
+          sendPublicError(request, reply, 400, 'INVALID_QUERY');
           return;
         }
         throw error;
@@ -109,7 +110,7 @@ export default function productsRoutes(app: FastifyInstance, { services }: AppCo
         return products.compare(request.query.ids, request.resolvedCountry);
       } catch (error) {
         if (error instanceof ComparisonSelectionError) {
-          sendBadRequest(reply, error.message);
+          sendPublicError(request, reply, 400, 'INVALID_QUERY');
           return;
         }
         throw error;
@@ -134,13 +135,13 @@ export default function productsRoutes(app: FastifyInstance, { services }: AppCo
       const productId = Number(rawId);
 
       if (!Number.isFinite(productId) || productId <= 0 || !Number.isInteger(productId)) {
-        sendBadRequest(reply, 'Invalid product ID');
+        sendPublicError(request, reply, 400, 'REQUEST_INVALID');
         return;
       }
 
       const product = products.findCustomerProductById(productId, request.resolvedCountry);
       if (!product) {
-        sendNotFound(reply, 'Product');
+        sendPublicError(request, reply, 404, 'PRODUCT_NOT_FOUND');
         return;
       }
       const variants = products.listVariants(productId, request.resolvedCountry);
@@ -163,13 +164,13 @@ export default function productsRoutes(app: FastifyInstance, { services }: AppCo
     async (request, reply) => {
       const productId = Number(request.params.id);
       if (!Number.isFinite(productId) || productId <= 0 || !Number.isInteger(productId)) {
-        sendBadRequest(reply, 'Invalid product ID');
+        sendPublicError(request, reply, 400, 'REQUEST_INVALID');
         return;
       }
 
       const similar = products.listSimilar(productId, request.resolvedCountry);
       if (!similar) {
-        sendNotFound(reply, 'Product');
+        sendPublicError(request, reply, 404, 'PRODUCT_NOT_FOUND');
         return;
       }
       return similar.map(toProductContract);
@@ -193,13 +194,13 @@ export default function productsRoutes(app: FastifyInstance, { services }: AppCo
       const productId = Number(rawId);
 
       if (!Number.isFinite(productId) || productId <= 0 || !Number.isInteger(productId)) {
-        sendBadRequest(reply, 'Invalid product ID');
+        sendPublicError(request, reply, 400, 'REQUEST_INVALID');
         return;
       }
 
       const similar = products.listRelated(productId, request.resolvedCountry);
       if (!similar) {
-        sendNotFound(reply, 'Product');
+        sendPublicError(request, reply, 404, 'PRODUCT_NOT_FOUND');
         return;
       }
       return similar.map(toProductContract);

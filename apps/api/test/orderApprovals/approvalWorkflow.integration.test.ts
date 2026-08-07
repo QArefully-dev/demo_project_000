@@ -36,6 +36,7 @@ void test('approval decisions enforce approver role and company non-disclosure',
     audit,
     clock,
     baseUrl: 'http://example.test/',
+    tokenSource: () => 'approval-invite-token',
   });
   const approvals = createApprovalService({
     approvals: createApprovalRepository(db),
@@ -45,27 +46,28 @@ void test('approval decisions enforce approver role and company non-disclosure',
     audit,
     clock,
   });
-  const addUser = (email: string) =>
+  const addUser = (email: string, country: 'DE' | 'FR' = 'DE') =>
     Number(
       (
         db
           .prepare(
-            `INSERT INTO users (email, display_name, password_hash, password_salt, role)
-           VALUES (?, 'User', 'hash', 'salt', 'customer') RETURNING id`,
+            `INSERT INTO users (email, display_name, password_hash, password_salt, role, country)
+           VALUES (?, 'User', 'hash', 'salt', 'customer', ?) RETURNING id`,
           )
-          .get(email) as { id: number }
+          .get(email, country) as { id: number }
       ).id,
     );
-  const owner = addUser('owner@example.test');
-  const buyer = addUser('buyer@example.test');
-  const approver = addUser('approver@example.test');
-  const ordinaryMember = addUser('ordinary@example.test');
-  const outsider = addUser('outsider@example.test');
+  const owner = addUser('owner@example.test', 'DE');
+  const buyer = addUser('buyer@example.test', 'DE');
+  const approver = addUser('approver@example.test', 'FR');
+  const ordinaryMember = addUser('ordinary@example.test', 'DE');
+  const outsider = addUser('outsider@example.test', 'FR');
   const company = Number(
     db
       .prepare(
-        `INSERT INTO company_accounts (name, created_by_user_id, approval_threshold_cents, created_at, updated_at)
-         VALUES ('Co', ?, 0, ?, ?) RETURNING id`,
+        `INSERT INTO company_accounts
+           (country, name, created_by_user_id, approval_threshold_cents, created_at, updated_at)
+         VALUES ('DE', 'Co', ?, 0, ?, ?) RETURNING id`,
       )
       .get(owner, now.toISOString(), now.toISOString()).id,
   );
@@ -80,6 +82,32 @@ void test('approval decisions enforce approver role and company non-disclosure',
        VALUES (?, ?, ?, 1, ?)`,
     ).run(company, userId, role, now.toISOString());
   }
+  const invite = companies.inviteMember(owner, 'new-buyer@example.test', 'buyer', {
+    actor: { type: 'user', userId: owner },
+    requestId: 'invite-request',
+  });
+  assert.equal(invite.ok, true);
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT recipient, subject, body, template_key, template_country, template_params_json
+         FROM dev_mailbox WHERE template_key = 'company_invite'`,
+      )
+      .get(),
+    {
+      recipient: 'new-buyer@example.test',
+      subject: 'Einladung zu Co',
+      body: 'Nehmen Sie Ihre buyer-Einladung an: http://example.test/invites/accept?token=approval-invite-token. Die Einladung l\u00e4uft am 2026-08-05T12:00:00.000Z ab.',
+      template_key: 'company_invite',
+      template_country: 'DE',
+      template_params_json: JSON.stringify({
+        companyName: 'Co',
+        inviteUrl: 'http://example.test/invites/accept?token=approval-invite-token',
+        role: 'buyer',
+        expiresAt: '2026-08-05T12:00:00.000Z',
+      }),
+    },
+  );
   const evaluated = approvals.evaluate({
     userId: buyer,
     cartId: '1c0a91c8-20b8-4e9c-8c57-96d6b8a4999d',
@@ -102,6 +130,42 @@ void test('approval decisions enforce approver role and company non-disclosure',
   assert.equal(evaluated.gate, 'defer');
   if (evaluated.gate !== 'defer') throw new Error('Expected deferral');
   const approvalId = Number(evaluated.approvalRequestId);
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT recipient, subject, body, kind, template_key, template_country, template_params_json
+         FROM dev_mailbox WHERE template_key = 'order_approval_request' ORDER BY recipient`,
+      )
+      .all(),
+    [
+      {
+        recipient: 'approver@example.test',
+        kind: 'template',
+        template_key: 'order_approval_request',
+        template_country: 'FR',
+        subject: 'Approbation de commande requise pour Co',
+        body: `La demande d\u2019approbation n\u00b0 ${approvalId} attend votre examen. Total : 100000 pence.`,
+        template_params_json: JSON.stringify({
+          companyName: 'Co',
+          approvalRequestId: String(approvalId),
+          totalCents: 100_000,
+        }),
+      },
+      {
+        recipient: 'owner@example.test',
+        kind: 'template',
+        template_key: 'order_approval_request',
+        template_country: 'DE',
+        subject: 'Bestellfreigabe f\u00fcr Co erforderlich',
+        body: `Freigabeanfrage Nr. ${approvalId} wartet auf Pr\u00fcfung. Gesamt: 100000 Pence.`,
+        template_params_json: JSON.stringify({
+          companyName: 'Co',
+          approvalRequestId: String(approvalId),
+          totalCents: 100_000,
+        }),
+      },
+    ],
+  );
   assert.equal(
     approvals.decide(ordinaryMember, approvalId, 'approve', undefined, {
       actor: { type: 'user', userId: ordinaryMember },

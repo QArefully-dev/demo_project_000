@@ -89,7 +89,7 @@ describe('BundlesPage', () => {
       </MemoryRouter>,
     );
     expect(screen.getByText('Bundles unavailable')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Try Again' }));
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(refetch).toHaveBeenCalledOnce();
   });
 

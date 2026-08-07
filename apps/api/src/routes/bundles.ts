@@ -10,7 +10,7 @@ import { CartIdParam, Cart } from '@shop/contracts/cart';
 import { ErrorResponse } from '@shop/contracts/common';
 import type { AppContext } from '../app.js';
 import type { AuditContext } from '../features/audit/auditEvent.js';
-import { sendNotFound } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 
 function auditContext(request: {
   id: string;
@@ -61,27 +61,37 @@ export default function bundleRoutes(app: FastifyInstance, { services }: AppCont
         auditContext(request),
       );
       if (result === 'CART_NOT_FOUND') {
-        sendNotFound(reply, 'Cart');
+        sendPublicError(request, reply, 404, 'CART_NOT_FOUND');
         return;
       }
       if (result === 'BUNDLE_NOT_FOUND') {
-        sendNotFound(reply, 'Bundle');
+        sendPublicError(request, reply, 404, 'BUNDLE_NOT_FOUND');
         return;
       }
       if (result === 'CART_RESERVED') {
-        return reply.code(409).send({ error: 'Cart is reserved for checkout' });
+        sendPublicError(request, reply, 409, 'CART_RESERVED');
+        return;
       }
       if (
         typeof result === 'object' &&
         'error' in result &&
         result.error === 'BUNDLE_UNAVAILABLE'
       ) {
-        const body = {
-          code: 'BUNDLE_UNAVAILABLE',
-          error: 'One or more bundle components are unavailable',
-          productIds: result.variantIds,
-        };
-        return reply.code(409).send(body);
+        // A country-blocked component must stay opaque. Keep stock/retirement diagnostics for
+        // ordinary unavailable bundles, but strip every component identifier when the failure
+        // could disclose a lot hidden by the cart's persisted country.
+        const blockedInCountry = services.carts.blockedInCountry(
+          request.params.cartId,
+          result.variantIds.map((variantId) => Number(variantId)),
+        );
+        sendPublicError(
+          request,
+          reply,
+          409,
+          'BUNDLE_UNAVAILABLE',
+          blockedInCountry ? undefined : { variantIds: result.variantIds },
+        );
+        return;
       }
       return result;
     },

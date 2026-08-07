@@ -1,16 +1,72 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AdminOrderDetailResponse } from '@shop/contracts/admin-orders-list';
-import type { AdminOrderListQuery } from '@shop/contracts/orders';
+import type { AdminOrderListQuery, OrderStatus } from '@shop/contracts/orders';
+import type { MessageParams } from '@shop/localisation';
+import { apiErrors } from '@shop/localisation/messages/apiErrors';
+import {
+  adminCommerceMessages,
+  type AdminCommerceMessageKey,
+} from '@shop/localisation/messages/adminCommerce';
 import { getAdminOrder, getAdminOrders } from '@/api/adminOrders';
 import { createAdminRefund } from '@/api/adminRefunds';
+import { ApiError } from '@/api/client';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-const errorMessage = (e: unknown, f: string) => (e instanceof Error && e.message ? e.message : f);
-const money = (c: number) =>
-  new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(c / 100);
+import { useLocalisation } from '@/i18n/LocaleContext';
+
+type Translate = (key: AdminCommerceMessageKey, params?: MessageParams) => string;
+type TranslateApiError = (key: string, params?: MessageParams) => string;
+
+const statusMessageKeys: Record<OrderStatus, AdminCommerceMessageKey> = {
+  processing: 'adminCommerce.orders.status.processing',
+  packed: 'adminCommerce.orders.status.packed',
+  shipped: 'adminCommerce.orders.status.shipped',
+  delivered: 'adminCommerce.orders.status.delivered',
+  delivery_failed: 'adminCommerce.orders.status.delivery_failed',
+  cancelled: 'adminCommerce.orders.status.cancelled',
+};
+
+function errorParams(error: ApiError): MessageParams {
+  if (!error.meta || typeof error.meta !== 'object') return {};
+  const params: Record<string, string | number | bigint> = {};
+  for (const [key, value] of Object.entries(error.meta)) {
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint')
+      params[key] = value;
+  }
+  return params;
+}
+
+function errorMessage(
+  error: unknown,
+  fallback: AdminCommerceMessageKey,
+  t: Translate,
+  translateApiError: TranslateApiError,
+): string {
+  if (error instanceof ApiError) {
+    if (error.code && error.code in apiErrors)
+      return translateApiError(error.code, errorParams(error));
+    return t(fallback);
+  }
+  return t(fallback);
+}
+
+function statusLabel(status: OrderStatus, t: Translate): string {
+  return t(statusMessageKeys[status]);
+}
+
 export function AdminOrdersPage() {
+  const { translate, formatDisplayMoney, formatSettlementMoney, formatDualTotal, formatCount } =
+    useLocalisation();
+  const t = useCallback<Translate>(
+    (key, params = {}) => translate(adminCommerceMessages, key, params),
+    [translate],
+  );
+  const translateApiError = useCallback<TranslateApiError>(
+    (key, params = {}) => translate(apiErrors, key, params),
+    [translate],
+  );
   const [filters, setFilters] = useState({
     status: '',
     userEmail: '',
@@ -43,11 +99,12 @@ export function AdminOrdersPage() {
       const response = await getAdminOrders(query);
       if (version === requestVersion.current) setItems(response);
     } catch (e) {
-      if (version === requestVersion.current) setError(errorMessage(e, 'Unable to load orders.'));
+      if (version === requestVersion.current)
+        setError(errorMessage(e, 'adminCommerce.orders.error.load', t, translateApiError));
     } finally {
       if (version === requestVersion.current) setLoading(false);
     }
-  }, [filters]);
+  }, [filters, t, translateApiError]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -59,7 +116,7 @@ export function AdminOrdersPage() {
       if (version === detailRequestVersion.current) setSelected(response);
     } catch (e) {
       if (version === detailRequestVersion.current) {
-        setError(errorMessage(e, 'Unable to load order detail.'));
+        setError(errorMessage(e, 'adminCommerce.orders.error.detail', t, translateApiError));
       }
     }
   };
@@ -68,8 +125,8 @@ export function AdminOrdersPage() {
   return (
     <section className="mx-auto max-w-5xl space-y-6">
       <div>
-        <p className="section-eyebrow">Administration</p>
-        <h1 className="section-heading mt-2">Orders and refunds</h1>
+        <p className="section-eyebrow">{t('adminCommerce.administration')}</p>
+        <h1 className="section-heading mt-2">{t('adminCommerce.orders.heading')}</h1>
       </div>
       <form
         className="flex flex-wrap gap-2"
@@ -79,18 +136,18 @@ export function AdminOrdersPage() {
         }}
       >
         <label className="text-sm">
-          Status
+          {t('adminCommerce.orders.status')}
           <select
-            aria-label="status"
+            aria-label={t('adminCommerce.orders.status')}
             className="ml-1 rounded-md border border-input px-2 py-1"
             value={filters.status}
             onChange={(event) => setFilters({ ...filters, status: event.target.value })}
           >
-            <option value="">All</option>
+            <option value="">{t('adminCommerce.orders.status.all')}</option>
             {['processing', 'packed', 'shipped', 'delivered', 'delivery_failed', 'cancelled'].map(
               (status) => (
                 <option key={status} value={status}>
-                  {status}
+                  {statusLabel(status as OrderStatus, t)}
                 </option>
               ),
             )}
@@ -98,9 +155,23 @@ export function AdminOrdersPage() {
         </label>
         {(['userEmail', 'promoCode', 'occurredFrom', 'occurredTo'] as const).map((key) => (
           <label key={key} className="text-sm">
-            {key === 'userEmail' ? 'Buyer email' : key === 'promoCode' ? 'Promo' : key}
+            {key === 'userEmail'
+              ? t('adminCommerce.orders.buyerEmail')
+              : key === 'promoCode'
+                ? t('adminCommerce.orders.promo')
+                : key === 'occurredFrom'
+                  ? t('adminCommerce.orders.occurredFrom')
+                  : t('adminCommerce.orders.occurredTo')}
             <input
-              aria-label={key === 'userEmail' ? 'Buyer email' : key}
+              aria-label={
+                key === 'userEmail'
+                  ? t('adminCommerce.orders.buyerEmail')
+                  : key === 'promoCode'
+                    ? t('adminCommerce.orders.promo')
+                    : key === 'occurredFrom'
+                      ? t('adminCommerce.orders.occurredFrom')
+                      : t('adminCommerce.orders.occurredTo')
+              }
               type={key.startsWith('occurred') ? 'date' : 'text'}
               className="ml-1 rounded-md border border-input px-2 py-1"
               value={filters[key]}
@@ -108,7 +179,7 @@ export function AdminOrdersPage() {
             />
           </label>
         ))}
-        <Button type="submit">Filter</Button>
+        <Button type="submit">{t('adminCommerce.orders.filter')}</Button>
       </form>
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -117,7 +188,9 @@ export function AdminOrdersPage() {
       )}
       {items?.items.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center">No orders match these filters.</CardContent>
+          <CardContent className="py-12 text-center">
+            {t('adminCommerce.orders.noMatch')}
+          </CardContent>
         </Card>
       ) : (
         <div className="space-y-2">
@@ -125,13 +198,17 @@ export function AdminOrdersPage() {
             <Card key={order.id}>
               <CardContent className="flex items-center justify-between gap-4 py-4">
                 <div>
-                  <strong>Order #{order.id}</strong>
+                  <strong>{t('adminCommerce.orders.order', { orderId: order.id })}</strong>
                   <p className="text-sm text-muted-foreground">
-                    {order.buyer.email} · {order.status} · {money(order.totalCents)}
+                    {t('adminCommerce.orders.summary', {
+                      email: order.buyer.email,
+                      status: statusLabel(order.status, t),
+                      total: formatDisplayMoney(order.totalCents),
+                    })}
                   </p>
                 </div>
                 <Button type="button" variant="outline" onClick={() => void detail(order.id)}>
-                  View detail
+                  {t('adminCommerce.orders.viewDetail')}
                 </Button>
               </CardContent>
             </Card>
@@ -146,6 +223,12 @@ export function AdminOrdersPage() {
             setSelected(null);
           }}
           onError={setError}
+          t={t}
+          translateApiError={translateApiError}
+          formatDisplayMoney={formatDisplayMoney}
+          formatSettlementMoney={formatSettlementMoney}
+          formatDualTotal={formatDualTotal}
+          formatCount={formatCount}
         />
       )}
     </section>
@@ -155,10 +238,22 @@ function OrderDetail({
   detail,
   onClose,
   onError,
+  t,
+  translateApiError,
+  formatDisplayMoney,
+  formatSettlementMoney,
+  formatDualTotal,
+  formatCount,
 }: {
   detail: AdminOrderDetailResponse;
   onClose: () => void;
   onError: (m: string) => void;
+  t: Translate;
+  translateApiError: TranslateApiError;
+  formatDisplayMoney: (pence: number) => string;
+  formatSettlementMoney: (pence: number) => string;
+  formatDualTotal: (pence: number) => { display: string; settlement?: string };
+  formatCount: (value: number) => string;
 }) {
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
@@ -174,16 +269,18 @@ function OrderDetail({
     if (submitting) return;
     const amountCents = Math.round(Number(amount) * 100);
     if (!Number.isInteger(amountCents) || amountCents < 1) {
-      onError(`Refund amount must be at least £0.01.`);
+      onError(t('adminCommerce.orders.refund.invalidMinimum'));
       return;
     }
     if (!detail.refundPayment) {
-      onError('No captured payment is available for refund.');
+      onError(t('adminCommerce.orders.refund.noPayment'));
       return;
     }
     if (amountCents > detail.refundPayment.remainingRefundableCents) {
       onError(
-        `Refund amount exceeds the remaining refundable balance of ${money(detail.refundPayment.remainingRefundableCents)}.`,
+        t('adminCommerce.orders.refund.exceedsBalance', {
+          amount: formatSettlementMoney(detail.refundPayment.remainingRefundableCents),
+        }),
       );
       return;
     }
@@ -198,9 +295,13 @@ function OrderDetail({
         reason,
         idempotencyKey: key,
       });
-      setNotice('Refund recorded.');
+      setNotice(
+        t('adminCommerce.orders.refund.success', {
+          amount: formatSettlementMoney(amountCents),
+        }),
+      );
     } catch (error) {
-      onError(errorMessage(error, 'Unable to create refund.'));
+      onError(errorMessage(error, 'adminCommerce.orders.error.refund', t, translateApiError));
     } finally {
       setSubmitting(false);
     }
@@ -209,27 +310,47 @@ function OrderDetail({
     <Card>
       <CardContent className="space-y-4 py-5">
         <div className="flex justify-between">
-          <h2 className="font-semibold">Order #{detail.id}</h2>
+          <h2 className="font-semibold">
+            {t('adminCommerce.orders.order', { orderId: detail.id })}
+          </h2>
           <Button type="button" variant="outline" onClick={onClose}>
-            Close detail
+            {t('adminCommerce.orders.closeDetail')}
           </Button>
         </div>
         <p>
-          {detail.items.length} line(s), total {money(detail.totalCents)}
+          {t('adminCommerce.orders.total', {
+            lineCount: t('adminCommerce.orders.lineCount', {
+              count: detail.items.length,
+              displayCount: formatCount(detail.items.length),
+            }),
+            total: formatDisplayMoney(detail.totalCents),
+          })}
         </p>
         <form className="space-y-2" onSubmit={(e) => void submit(e)}>
-          <h3 className="font-medium">Create refund</h3>
+          <h3 className="font-medium">{t('adminCommerce.orders.refund.heading')}</h3>
           {detail.refundPayment ? (
-            <p className="text-sm text-muted-foreground">
-              Remaining refundable balance: {money(detail.refundPayment.remainingRefundableCents)}
-            </p>
+            <div className="text-sm text-muted-foreground">
+              {(() => {
+                const dual = formatDualTotal(detail.refundPayment.remainingRefundableCents);
+                return (
+                  <>
+                    <p>{t('adminCommerce.orders.refund.balance', { amount: dual.display })}</p>
+                    {dual.settlement && (
+                      <p>
+                        {t('adminCommerce.orders.refund.balanceGbp', { amount: dual.settlement })}
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
           ) : (
-            <p className="text-sm text-destructive">No captured payment is available for refund.</p>
+            <p className="text-sm text-destructive">{t('adminCommerce.orders.refund.noPayment')}</p>
           )}
           <label className="block text-sm">
-            Amount (£)
+            {t('adminCommerce.orders.refund.amount')}
             <input
-              aria-label="Amount (£)"
+              aria-label={t('adminCommerce.orders.refund.amount')}
               required
               type="number"
               min="0.01"
@@ -242,10 +363,13 @@ function OrderDetail({
               }}
             />
           </label>
+          <p className="text-xs text-muted-foreground">
+            {t('adminCommerce.orders.refund.amountHint')}
+          </p>
           <label className="block text-sm">
-            Reason
+            {t('adminCommerce.orders.refund.reason')}
             <input
-              aria-label="Reason"
+              aria-label={t('adminCommerce.orders.refund.reason')}
               required
               className="ml-2 rounded-md border border-input px-2 py-1"
               value={reason}
@@ -256,7 +380,9 @@ function OrderDetail({
             />
           </label>
           <Button type="submit" disabled={submitting || !detail.refundPayment}>
-            {submitting ? 'Creating refund…' : 'Create refund'}
+            {submitting
+              ? t('adminCommerce.orders.refund.submitting')
+              : t('adminCommerce.orders.refund.submit')}
           </Button>
           {notice && <p aria-live="polite">{notice}</p>}
         </form>

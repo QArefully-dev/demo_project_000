@@ -20,7 +20,7 @@ import {
 } from '../features/catalog/variantAdminService.js';
 import type { VariantRow } from '../features/catalog/productRepository.js';
 import { requireAdmin } from '../plugins/auth.js';
-import { sendBadRequest, sendConflict, sendNotFound } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 export interface AdminVariantsRouteServices {
   sessions: SessionService;
   variantAdmin: VariantAdminService;
@@ -72,17 +72,25 @@ const AdminVariantWithCountryListResponse = Type.Object(
   { items: Type.Array(AdminVariantWithCountry) },
   { additionalProperties: false },
 );
-function sendError(reply: Parameters<typeof sendBadRequest>[0], e: VariantAdminError) {
-  if (e.code === 'VARIANT_NOT_FOUND') return sendNotFound(reply, 'Variant');
-  if (e.code === 'VARIANT_RETIRED' || e.code === 'VARIANT_NO_ACTIVE_REPLACEMENT')
-    return sendConflict(reply, e.message);
-  sendBadRequest(reply, e.message);
+function sendError(
+  request: Parameters<typeof sendPublicError>[0],
+  reply: Parameters<typeof sendPublicError>[1],
+  e: VariantAdminError,
+) {
+  if (e.code === 'VARIANT_NOT_FOUND')
+    return sendPublicError(request, reply, 404, 'VARIANT_NOT_FOUND');
+  if (e.code === 'VARIANT_RETIRED') return sendPublicError(request, reply, 409, 'VARIANT_RETIRED');
+  if (e.code === 'VARIANT_NO_ACTIVE_REPLACEMENT')
+    return sendPublicError(request, reply, 409, 'VARIANT_NO_ACTIVE_REPLACEMENT');
+  if (e.code === 'INVALID_CLEARANCE')
+    return sendPublicError(request, reply, 400, 'INVALID_CLEARANCE');
+  return sendPublicError(request, reply, 400, 'INVALID_VARIANT');
 }
 export default function adminVariantsRoutes(
   app: FastifyInstance,
   { services }: { services: AdminVariantsRouteServices },
 ): void {
-  app.addHook('onRequest', requireAdmin(services.sessions));
+  app.addHook('preValidation', requireAdmin(services.sessions));
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
   typed.get(
     '/api/admin/products/:productId/variants',
@@ -106,7 +114,7 @@ export default function adminVariantsRoutes(
             .map(mapWithCountry),
         };
       } catch (e) {
-        if (e instanceof VariantAdminError) return sendError(reply, e);
+        if (e instanceof VariantAdminError) return sendError(r, reply, e);
         throw e;
       }
     },
@@ -130,7 +138,7 @@ export default function adminVariantsRoutes(
           ),
         );
       } catch (e) {
-        if (e instanceof VariantAdminError) return sendError(reply, e);
+        if (e instanceof VariantAdminError) return sendError(r, reply, e);
         throw e;
       }
     },
@@ -162,7 +170,7 @@ export default function adminVariantsRoutes(
           ),
         );
       } catch (e) {
-        if (e instanceof VariantAdminError) return sendError(reply, e);
+        if (e instanceof VariantAdminError) return sendError(r, reply, e);
         throw e;
       }
     },
@@ -192,7 +200,7 @@ export default function adminVariantsRoutes(
           ),
         );
       } catch (e) {
-        if (e instanceof VariantAdminError) return sendError(reply, e);
+        if (e instanceof VariantAdminError) return sendError(r, reply, e);
         throw e;
       }
     },
@@ -224,7 +232,7 @@ export default function adminVariantsRoutes(
           ),
         );
       } catch (e) {
-        if (e instanceof VariantAdminError) return sendError(reply, e);
+        if (e instanceof VariantAdminError) return sendError(r, reply, e);
         throw e;
       }
     },

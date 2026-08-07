@@ -1,5 +1,25 @@
 export { CONTRACTS_VERSION } from './version.js';
 export * from './common.js';
+// `common` owns the historical ErrorResponse export; expose the new public-error symbols without
+// re-exporting its compatibility alias twice.
+export {
+  PUBLIC_ERROR_CODES,
+  PublicErrorCode,
+  PublicErrorId,
+  PublicErrorMeta,
+  PublicErrorMetaByCodeSchema,
+  PublicErrorMetaSchema,
+  PublicErrorResponse,
+  PublicErrorResponseSchema,
+} from './publicErrors.js';
+export type {
+  ParameterizedPublicErrorCode,
+  PublicErrorArgs,
+  PublicErrorMetaByCode,
+  PublicErrorMetaFor,
+  PublicErrorResponseFor,
+  UnparameterizedPublicErrorCode,
+} from './publicErrors.js';
 export * from './address.js';
 export * from './tradeAccount.js';
 export * from './products.js';

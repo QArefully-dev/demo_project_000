@@ -1,9 +1,18 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
+import type { Country } from '@shop/contracts/country';
 import type { AdminReviewQueueResponse } from '@shop/contracts/reviews';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@/api/client';
+import { LocaleProvider } from '@/i18n/LocaleContext';
 import { AdminReviewModerationPage } from './AdminReviewModerationPage';
+
+const countryState: { activeCountry: Country } = vi.hoisted(() => ({ activeCountry: 'US' }));
+
+vi.mock('@/hooks/CountryContext', () => ({
+  useCountry: () => ({ activeCountry: countryState.activeCountry }),
+}));
 
 const api = vi.hoisted(() => ({
   getAdminReviewQueue: vi.fn(),
@@ -54,7 +63,9 @@ function Location() {
 function renderPage(initialEntry = '/admin/reviews?queue=reported&sort=oldest') {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <AdminReviewModerationPage />
+      <LocaleProvider>
+        <AdminReviewModerationPage />
+      </LocaleProvider>
       <Location />
     </MemoryRouter>,
   );
@@ -69,7 +80,10 @@ function deferred<T>() {
 }
 
 describe('AdminReviewModerationPage', () => {
-  afterEach(() => vi.resetAllMocks());
+  afterEach(() => {
+    countryState.activeCountry = 'US';
+    vi.resetAllMocks();
+  });
 
   it('uses URL-backed queue state and renders report detail as text', async () => {
     api.getAdminReviewQueue.mockResolvedValue(response());
@@ -102,8 +116,10 @@ describe('AdminReviewModerationPage', () => {
     const user = userEvent.setup();
     renderPage();
 
-    expect(await screen.findByText('offline')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Try Again' }));
+    const errorMessage = await screen.findByText('Unable to load moderation queue.');
+    expect(errorMessage).toBeInTheDocument();
+    expect(errorMessage).not.toHaveTextContent('offline');
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByText('No reported reviews')).toBeInTheDocument();
   });
 
@@ -154,7 +170,9 @@ describe('AdminReviewModerationPage', () => {
 
     api.moderateAdminReview.mockRejectedValueOnce(new Error('Unable to save decision'));
     await user.click(screen.getByRole('button', { name: 'Dismiss reports' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to save decision');
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Unable to moderate this review.');
+    expect(alert).not.toHaveTextContent('Unable to save decision');
     expect(screen.getByRole('button', { name: 'Dismiss reports' })).toBeEnabled();
   });
 
@@ -176,5 +194,40 @@ describe('AdminReviewModerationPage', () => {
 
     expect(await screen.findByText('No reported reviews')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Review moderation' })).toHaveFocus();
+  });
+
+  it('translates review status, report reason, and moderation controls', async () => {
+    countryState.activeCountry = 'DE';
+    api.getAdminReviewQueue.mockResolvedValue(response());
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText(/Veröffentlicht/, { selector: 'p' })).toBeInTheDocument();
+    expect(screen.getByText('Unsicher')).toBeInTheDocument();
+    expect(screen.getByText(/gemeldet von/, { selector: 'p' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Ausblenden und Meldungen bearbeiten' }),
+    ).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Warteschlange'), 'hidden');
+    expect(screen.getByRole('option', { name: 'Ausgeblendet' })).toBeInTheDocument();
+  });
+
+  it('renders coded queue errors in the selected locale without backend prose', async () => {
+    countryState.activeCountry = 'DE';
+    api.getAdminReviewQueue.mockRejectedValue(
+      new ApiError('backend review detail', 400, {
+        error: 'backend review detail',
+        code: 'INVALID_INPUT',
+      }),
+    );
+    renderPage();
+
+    const errorMessage = await screen.findByText(
+      'Die Anfrage konnte nicht verarbeitet werden. Bitte versuchen Sie es erneut.',
+    );
+    expect(errorMessage).not.toHaveTextContent('backend review detail');
+    expect(errorMessage).toHaveTextContent(
+      'Die Anfrage konnte nicht verarbeitet werden. Bitte versuchen Sie es erneut.',
+    );
   });
 });

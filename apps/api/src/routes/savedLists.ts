@@ -23,6 +23,7 @@ import type { AppContext } from '../app.js';
 import type { AuditContext } from '../features/audit/auditEvent.js';
 import type { SavedListErrorCode } from '../features/savedLists/savedListErrors.js';
 import { requireAuth, requireCustomer } from '../plugins/auth.js';
+import { sendPublicError } from '../utils/errors.js';
 
 const SavedListErrorResponse = Type.Object(
   {
@@ -44,21 +45,6 @@ const SavedListErrorResponse = Type.Object(
   },
   { additionalProperties: false },
 );
-
-const SAVED_LIST_ERROR_MESSAGES: Readonly<Record<SavedListErrorCode, string>> = {
-  LIST_NOT_FOUND: 'Saved list not found',
-  ITEM_NOT_FOUND: 'Saved list item not found',
-  NAME_INVALID: 'Saved list name is invalid',
-  NAME_TAKEN: 'A saved list with this name already exists',
-  LIST_LIMIT_REACHED: 'Saved list limit reached',
-  ITEM_LIMIT_REACHED: 'Saved list item limit reached',
-  VARIANT_NOT_FOUND: 'Variant not found',
-  DEFAULT_LIST_IMMUTABLE: 'The default saved list cannot be deleted',
-  CART_NOT_FOUND: 'Cart not found',
-  CART_RESERVED: 'Cart is reserved for checkout',
-  CART_EMPTY: 'Cart is empty',
-  ORDER_NOT_FOUND: 'Order not found',
-};
 
 const SAVED_LIST_ERROR_STATUS: Readonly<Record<SavedListErrorCode, 400 | 404 | 409>> = {
   LIST_NOT_FOUND: 404,
@@ -90,12 +76,11 @@ function toTransportOutcome(value: SavedListLineOutcome): SavedListLineOutcome {
   return { ...value };
 }
 function sendSavedListError(
-  reply: { code(status: never): { send(body: unknown): void } },
+  request: Parameters<typeof sendPublicError>[0],
+  reply: Parameters<typeof sendPublicError>[1],
   code: SavedListErrorCode,
 ): void {
-  reply
-    .code(SAVED_LIST_ERROR_STATUS[code] as never)
-    .send({ code, error: SAVED_LIST_ERROR_MESSAGES[code] });
+  sendPublicError(request, reply, SAVED_LIST_ERROR_STATUS[code], code);
 }
 
 /** Authenticated buyer routes for named, variant-scoped saved lists. */
@@ -131,7 +116,7 @@ export default function savedListRoutes(app: FastifyInstance, { services }: AppC
         auditContext(userId, request.id),
       );
       if (!result.ok) {
-        sendSavedListError(reply, result.code);
+        sendSavedListError(request, reply, result.code);
         return;
       }
       return reply.code(201).send(toTransportDetail(result.value));
@@ -158,7 +143,7 @@ export default function savedListRoutes(app: FastifyInstance, { services }: AppC
         Number(request.params.listId),
       );
       if (!result.ok) {
-        sendSavedListError(reply, result.code);
+        sendSavedListError(request, reply, result.code);
         return;
       }
       return toTransportDetail(result.value);
@@ -190,7 +175,7 @@ export default function savedListRoutes(app: FastifyInstance, { services }: AppC
         auditContext(userId, request.id),
       );
       if (!result.ok) {
-        sendSavedListError(reply, result.code);
+        sendSavedListError(request, reply, result.code);
         return;
       }
       return toTransportDetail(result.value);
@@ -220,7 +205,7 @@ export default function savedListRoutes(app: FastifyInstance, { services }: AppC
         auditContext(userId, request.id),
       );
       if (!result.ok) {
-        sendSavedListError(reply, result.code);
+        sendSavedListError(request, reply, result.code);
         return;
       }
       return { success: true as const };
@@ -253,7 +238,7 @@ export default function savedListRoutes(app: FastifyInstance, { services }: AppC
         auditContext(userId, request.id),
       );
       if (!result.ok) {
-        sendSavedListError(reply, result.code);
+        sendSavedListError(request, reply, result.code);
         return;
       }
       return toTransportDetail(result.value);
@@ -285,7 +270,7 @@ export default function savedListRoutes(app: FastifyInstance, { services }: AppC
         auditContext(userId, request.id),
       );
       if (!result.ok) {
-        sendSavedListError(reply, result.code);
+        sendSavedListError(request, reply, result.code);
         return;
       }
       return toTransportDetail(result.value);
@@ -315,7 +300,7 @@ export default function savedListRoutes(app: FastifyInstance, { services }: AppC
         auditContext(userId, request.id),
       );
       if (!result.ok) {
-        sendSavedListError(reply, result.code);
+        sendSavedListError(request, reply, result.code);
         return;
       }
       return { success: true as const };
@@ -348,7 +333,7 @@ export default function savedListRoutes(app: FastifyInstance, { services }: AppC
         auditContext(userId, request.id),
       );
       if (!result.ok) {
-        sendSavedListError(reply, result.code);
+        sendSavedListError(request, reply, result.code);
         return;
       }
       return { ...result.value, outcomes: result.value.outcomes.map(toTransportOutcome) };
@@ -379,7 +364,7 @@ export default function savedListRoutes(app: FastifyInstance, { services }: AppC
         auditContext(userId, request.id),
       );
       if (!result.ok) {
-        sendSavedListError(reply, result.code);
+        sendSavedListError(request, reply, result.code);
         return;
       }
       return reply.code(201).send(toTransportDetail(result.value));
@@ -414,7 +399,7 @@ export default function savedListRoutes(app: FastifyInstance, { services }: AppC
         auditContext(userId, request.id),
       );
       if (!result.ok) {
-        sendSavedListError(reply, result.code);
+        sendSavedListError(request, reply, result.code);
         return;
       }
       return reply.code(201).send(toTransportDetail(result.value));

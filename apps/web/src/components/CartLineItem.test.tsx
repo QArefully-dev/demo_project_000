@@ -1,10 +1,14 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
 import type { CartLine } from '@shop/contracts/cart';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { CartLineItem } from './CartLineItem';
 import { CUSTOM_BLEND_MADE_TO_ORDER_NOTE } from '@/features/customBlend/CustomBlendPackaging';
+import { CountryProvider } from '@/hooks/CountryContext';
+import { LocaleProvider } from '@/i18n/LocaleContext';
+import type { CountryStorage } from '@/lib/countryStorage';
 
 const item: CartLine = {
   productId: '1',
@@ -93,6 +97,19 @@ function renderBlendLine(overrides?: Partial<CartLineItemCallbacks>) {
   );
 }
 
+function renderGerman(ui: ReactNode) {
+  const storage: CountryStorage = {
+    getItem: () => 'DE',
+    setItem: () => undefined,
+    removeItem: () => undefined,
+  };
+  return render(
+    <CountryProvider storage={storage}>
+      <LocaleProvider>{ui}</LocaleProvider>
+    </CountryProvider>,
+  );
+}
+
 interface CartLineItemCallbacks {
   onUpdateQuantity: ReturnType<typeof vi.fn>;
   onRemove: ReturnType<typeof vi.fn>;
@@ -108,7 +125,7 @@ describe('CartLineItem', () => {
       />,
     );
 
-    expect(screen.getByText('Resolved pack price: $10.00')).toBeInTheDocument();
+    expect(screen.getByText('Resolved pack price: $12.50')).toBeInTheDocument();
   });
 
   it('passes the line variant identity to quantity and remove callbacks', async () => {
@@ -122,6 +139,23 @@ describe('CartLineItem', () => {
 
     expect(onUpdateQuantity).toHaveBeenCalledWith('1', 2, 102, undefined);
     expect(onRemove).toHaveBeenCalledWith('1', 102, undefined);
+  });
+
+  it('formats quantity grouping and semantic weight for the active country', () => {
+    renderGerman(
+      <CartLineItem
+        item={{
+          ...item,
+          quantity: 1_234,
+          variantSnap: { ...item.variantSnap!, weightGrams: 1_250_000 },
+        }}
+        onUpdateQuantity={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('1.234')).toBeInTheDocument();
+    expect(screen.getByText(/1,25 tonnes/)).toBeInTheDocument();
   });
 
   it('leaves a plain line free of blend disclosures and the edit action', () => {
@@ -148,8 +182,8 @@ describe('CartLineItem', () => {
     expect(
       screen.getByText('80% Pallet material — 15% Chalk Filler, 5% Silica Flour'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Base material: $20.00')).toBeInTheDocument();
-    expect(screen.getByText('Blending fee: $25.00')).toBeInTheDocument();
+    expect(screen.getByText('Base material: $25.00')).toBeInTheDocument();
+    expect(screen.getByText('Blending fee: $31.25')).toBeInTheDocument();
   });
 
   it('prints the fixed charcoal livery on the base category vessel with a config-key batch mark', () => {

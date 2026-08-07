@@ -1,28 +1,51 @@
-import { Type, type Static } from '@sinclair/typebox';
 import type { CountryCode } from '../address.js';
 
-/** Stage-2 country banner copy exposed to the buyer UI. */
-export const CountryBanner = Type.String({ minLength: 1, maxLength: 240 });
-export type CountryBanner = Static<typeof CountryBanner>;
+/** Language tags used by the checked-in country display profiles. */
+export type CountryLanguage = 'en' | 'zh' | 'pl' | 'es' | 'de' | 'fr';
+
+/** BCP-47 number/date locales used by the checked-in country display profiles. */
+export type CountryLocale = 'en-GB' | 'en-US' | 'zh-CN' | 'pl-PL' | 'es-ES' | 'de-DE' | 'fr-FR';
+
+/** ISO-4217 currencies used for display-only conversion. */
+export type CountryDisplayCurrency = 'GBP' | 'USD' | 'CNY' | 'PLN' | 'EUR';
+
+/** Display-only rate: target minor units per GBP penny. */
+export interface CountryExchangeRate {
+  readonly numerator: number;
+  readonly denominator: number;
+}
+
+/** Stable lookup key for country-owned translated copy. */
+export type CountryMessageKey = string;
 
 /** A country-specific postcode rule shared without losing its transport-safe representation. */
 export interface CountryPostcodeRule {
   /** Anchored string pattern used to validate postcodes for the identity country. */
   readonly pattern: string;
-  /** Stage-2 field label shown beside the postcode input. */
-  readonly label: string;
+  /** Stable lookup key for the translated postcode field label. */
+  readonly labelMessageKey: CountryMessageKey;
   /** Valid country-specific example used as the postcode input hint. */
   readonly example: string;
 }
 
-/** Checked-in stage-2 business and delivery settings for one identity country. */
+/** Checked-in display, business, and delivery settings for one identity country. */
 export interface CountryProfile {
+  /** Language used for translated shop-authored copy. */
+  readonly language: CountryLanguage;
+  /** BCP-47 locale used for locale-aware number presentation. */
+  readonly numberLocale: CountryLocale;
+  /** BCP-47 locale used for locale-aware date presentation. */
+  readonly dateLocale: CountryLocale;
+  /** Currency used only for buyer-facing display conversion. */
+  readonly displayCurrency: CountryDisplayCurrency;
+  /** Positive integer ratio of target minor units per GBP penny. */
+  readonly exchangeRate: CountryExchangeRate;
   /** Live catalogue categories unavailable to buyers in this identity country. */
   readonly blockedCategories: readonly string[];
   /** Individual live product slugs unavailable to buyers in this identity country. */
   readonly blockedProductSlugs: readonly string[];
-  /** Optional English buyer-facing country notice; translation is deferred beyond stage 2. */
-  readonly banner?: CountryBanner;
+  /** Stable lookup key for the translated country notice, when a banner is present. */
+  readonly bannerMessageKey?: CountryMessageKey;
   /** Country-specific postcode validation and field presentation. */
   readonly postcode: CountryPostcodeRule;
   /**

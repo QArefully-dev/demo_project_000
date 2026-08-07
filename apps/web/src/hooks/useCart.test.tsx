@@ -309,9 +309,8 @@ describe('useCart', () => {
 
     await act(async () => expect(await result.current.updateQuantity('powder', 1)).toBe(false));
 
-    expect(result.current.error).toBe(
-      'Minimum order quantity not met. Adjust pallet quantity and try again.',
-    );
+    expect(result.current.errorCode).toBe('BELOW_MOQ');
+    expect(result.current.errorState?.key).toBe('cart.errorBelowMoq');
   });
 
   it('updates same-product sack and pallet lines by their variant identity', async () => {
@@ -453,9 +452,8 @@ describe('useCart', () => {
     );
 
     expect(customBlendsApi.replaceCustomBlend).toHaveBeenCalledTimes(1);
-    expect(result.current.error).toBe(
-      'Your previous cart was no longer available. A new cart is ready.',
-    );
+    expect(result.current.errorCode).toBeNull();
+    expect(result.current.errorState?.key).toBe('cart.errorCartNotFound');
   });
 
   it('tracks a quick order while pending and replaces the cart from its authoritative response', async () => {
@@ -508,7 +506,10 @@ describe('useCart', () => {
 
     await act(async () => expect(await result.current.quickOrder('CEM-0001-001, 4')).toBe(false));
 
-    expect(result.current.error).toBe(message);
+    expect(result.current.errorCode).toBe(code);
+    expect(result.current.errorState?.key).toBe(
+      code === 'NO_INPUT_LINES' ? 'cart.errorNoInputLines' : 'cart.errorTooManyLines',
+    );
     expect(result.current.cart?.items.map((item) => item.productId)).toEqual(['existing']);
     expect(result.current.isActionPending('quick-order')).toBe(false);
   });
@@ -626,7 +627,8 @@ describe('useCart', () => {
     await act(async () => expect(await result.current.addBundle('starter')).toBe(false));
 
     expect(result.current.cart?.items.map((item) => item.productId)).toEqual(['existing']);
-    expect(result.current.error).toBe('Bundle unavailable');
+    expect(result.current.errorCode).toBeNull();
+    expect(result.current.errorState?.key).toBe('cart.errorAction');
   });
 
   it('does not let an older bundle response overwrite a newer cart response', async () => {
@@ -730,9 +732,8 @@ describe('useCart', () => {
 
     await act(async () => expect(await result.current.reorder('42')).toBe(false));
 
-    expect(result.current.error).toBe(
-      'Your cart is reserved for checkout and cannot be changed. Finish or cancel that checkout, then try again.',
-    );
+    expect(result.current.errorCode).toBe('CART_RESERVED');
+    expect(result.current.errorState?.key).toBe('cart.errorCartReserved');
     expect(result.current.cart?.items.map((item) => item.productId)).toEqual(['existing']);
   });
 
@@ -750,9 +751,8 @@ describe('useCart', () => {
 
     await act(async () => expect(await result.current.reorder('42')).toBe(false));
 
-    expect(result.current.error).toBe(
-      'That order is no longer available. Refresh your order history and try again.',
-    );
+    expect(result.current.errorCode).toBe('ORDER_NOT_FOUND');
+    expect(result.current.errorState?.key).toBe('cart.errorOrderNotFound');
   });
 
   it('replays a reorder exactly once against a recovered replacement cart', async () => {

@@ -1,10 +1,10 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
-import { sendConflict, sendNotFound } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
+import { ErrorResponse } from '@shop/contracts/common';
 import { OrderIdParam } from '@shop/contracts/orders';
 import {
   CreateReturnRequestBody,
-  ReturnErrorResponse,
   ReturnOverviewResponse,
   ReturnRequest,
 } from '@shop/contracts/returns';
@@ -13,24 +13,39 @@ import { ReturnDomainError } from '../features/returns/returnErrors.js';
 import { requireCustomer } from '../plugins/auth.js';
 
 function sendReturnError(
-  reply: Parameters<typeof sendConflict>[0],
+  request: FastifyRequest,
+  reply: FastifyReply,
   error: ReturnDomainError,
 ): void {
   switch (error.code) {
     case 'RETURN_NOT_FOUND':
-      sendNotFound(reply, 'Return');
+      sendPublicError(request, reply, 404, 'RETURN_NOT_FOUND');
       return;
     case 'RETURN_NOT_ELIGIBLE':
+      sendPublicError(request, reply, 422, 'RETURN_NOT_ELIGIBLE');
+      return;
     case 'RETURN_WINDOW_EXPIRED':
+      sendPublicError(request, reply, 422, 'RETURN_WINDOW_EXPIRED');
+      return;
     case 'QUANTITY_UNAVAILABLE':
-      reply.code(422).send({ error: error.message, code: error.code });
+      // ReturnDomainError currently carries no available-quantity snapshot. Keep the 422 result
+      // without fabricating metadata at this boundary.
+      sendPublicError(request, reply, 422, 'RETURN_NOT_ELIGIBLE');
       return;
     case 'INVALID_TRANSITION':
+      sendPublicError(request, reply, 409, 'INVALID_TRANSITION');
+      return;
     case 'STALE_VERSION':
+      sendPublicError(request, reply, 409, 'STALE_VERSION');
+      return;
     case 'IDEMPOTENCY_CONFLICT':
+      sendPublicError(request, reply, 409, 'IDEMPOTENCY_CONFLICT');
+      return;
     case 'PAYMENT_NOT_REFUNDABLE':
+      sendPublicError(request, reply, 409, 'PAYMENT_NOT_REFUNDABLE');
+      return;
     case 'RETURN_DATA_CORRUPT':
-      sendConflict(reply, error.message);
+      sendPublicError(request, reply, 409, 'RETURN_DATA_CORRUPT');
       return;
   }
 }
@@ -50,9 +65,9 @@ export default function returnsRoutes(app: FastifyInstance, { services }: AppCon
         params: OrderIdParam,
         response: {
           200: ReturnOverviewResponse,
-          401: ReturnErrorResponse,
-          403: ReturnErrorResponse,
-          404: ReturnErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
         },
       },
     },
@@ -63,7 +78,7 @@ export default function returnsRoutes(app: FastifyInstance, { services }: AppCon
         return services.returns.getOverview(orderId, userId);
       } catch (error) {
         if (error instanceof ReturnDomainError) {
-          sendReturnError(reply, error);
+          sendReturnError(request, reply, error);
           return;
         }
         throw error;
@@ -80,11 +95,11 @@ export default function returnsRoutes(app: FastifyInstance, { services }: AppCon
         body: CreateReturnRequestBody,
         response: {
           200: ReturnRequest,
-          401: ReturnErrorResponse,
-          403: ReturnErrorResponse,
-          404: ReturnErrorResponse,
-          409: ReturnErrorResponse,
-          422: ReturnErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+          422: ErrorResponse,
         },
       },
     },
@@ -103,7 +118,7 @@ export default function returnsRoutes(app: FastifyInstance, { services }: AppCon
         });
       } catch (error) {
         if (error instanceof ReturnDomainError) {
-          sendReturnError(reply, error);
+          sendReturnError(request, reply, error);
           return;
         }
         throw error;

@@ -18,7 +18,7 @@ import {
 } from '../features/featureFlags/featureFlagService.js';
 import type { FeatureFlagRecord } from '../features/featureFlags/featureFlagRepository.js';
 import { requireAdmin } from '../plugins/auth.js';
-import { sendBadRequest, sendConflict, sendNotFound } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 export interface AdminFeatureFlagsRouteServices {
   sessions: SessionService;
   featureFlags: FeatureFlagService;
@@ -28,10 +28,14 @@ const context = (userId: number, requestId: string, standingCountry: Country): A
   requestId,
   standingCountry,
 });
-function sendError(reply: Parameters<typeof sendBadRequest>[0], e: FeatureFlagServiceError) {
-  if (e.code === 'NOT_FOUND') return sendNotFound(reply, 'Feature flag');
-  if (e.code === 'DUPLICATE') return sendConflict(reply, e.message);
-  sendBadRequest(reply, e.message);
+function sendError(
+  request: Parameters<typeof sendPublicError>[0],
+  reply: Parameters<typeof sendPublicError>[1],
+  e: FeatureFlagServiceError,
+) {
+  if (e.code === 'NOT_FOUND') return sendPublicError(request, reply, 404, 'NOT_FOUND');
+  if (e.code === 'DUPLICATE') return sendPublicError(request, reply, 409, 'DUPLICATE');
+  return sendPublicError(request, reply, 400, 'INVALID_INPUT');
 }
 const map = (flag: FeatureFlagRecord): AdminFeatureFlagResponse => ({
   ...flag,
@@ -41,7 +45,7 @@ export default function adminFeatureFlagsRoutes(
   app: FastifyInstance,
   { services }: { services: AdminFeatureFlagsRouteServices },
 ): void {
-  app.addHook('onRequest', requireAdmin(services.sessions));
+  app.addHook('preValidation', requireAdmin(services.sessions));
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
   typed.get(
     '/api/admin/feature-flags',
@@ -72,7 +76,7 @@ export default function adminFeatureFlagsRoutes(
       try {
         return map(services.featureFlags.get(r.params.key));
       } catch (e) {
-        if (e instanceof FeatureFlagServiceError) return sendError(reply, e);
+        if (e instanceof FeatureFlagServiceError) return sendError(r, reply, e);
         throw e;
       }
     },
@@ -102,7 +106,7 @@ export default function adminFeatureFlagsRoutes(
           ),
         );
       } catch (e) {
-        if (e instanceof FeatureFlagServiceError) return sendError(reply, e);
+        if (e instanceof FeatureFlagServiceError) return sendError(r, reply, e);
         throw e;
       }
     },
@@ -133,7 +137,7 @@ export default function adminFeatureFlagsRoutes(
           ),
         );
       } catch (e) {
-        if (e instanceof FeatureFlagServiceError) return sendError(reply, e);
+        if (e instanceof FeatureFlagServiceError) return sendError(r, reply, e);
         throw e;
       }
     },
@@ -161,7 +165,7 @@ export default function adminFeatureFlagsRoutes(
         );
         return { success: true as const };
       } catch (e) {
-        if (e instanceof FeatureFlagServiceError) return sendError(reply, e);
+        if (e instanceof FeatureFlagServiceError) return sendError(r, reply, e);
         throw e;
       }
     },

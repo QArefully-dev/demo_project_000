@@ -10,8 +10,15 @@ import { ErrorMessage } from '@/components/ErrorMessage';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-const message = (e: unknown, f: string) => (e instanceof Error && e.message ? e.message : f);
+import { useLocalisation, useMessages } from '@/i18n/LocaleContext';
+import {
+  adminDiagnosticsMessages,
+  localizeAdminDiagnosticsError,
+} from '@shop/localisation/messages/adminDiagnostics';
+
 export function AdminFeatureFlagsPage() {
+  const { country } = useLocalisation();
+  const t = useMessages(adminDiagnosticsMessages);
   const [flags, setFlags] = useState<AdminFeatureFlag[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -26,11 +33,12 @@ export function AdminFeatureFlagsPage() {
       const response = await getAdminFeatureFlags();
       if (version === requestVersion.current) setFlags(response.items);
     } catch (e) {
-      if (version === requestVersion.current) setError(message(e, 'Unable to load feature flags.'));
+      if (version === requestVersion.current)
+        setError(localizeAdminDiagnosticsError(e, country, 'admin.flags.loadError'));
     } finally {
       if (version === requestVersion.current) setLoading(false);
     }
-  }, []);
+  }, [country]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -42,7 +50,7 @@ export function AdminFeatureFlagsPage() {
       setDescription('');
       await load();
     } catch (error) {
-      setError(message(error, 'Unable to create feature flag.'));
+      setError(localizeAdminDiagnosticsError(error, country, 'admin.flags.createError'));
     }
   };
   const update = async (
@@ -53,16 +61,18 @@ export function AdminFeatureFlagsPage() {
       await updateAdminFeatureFlag(flag.key, body);
       await load();
     } catch (e) {
-      setError(message(e, 'Unable to update feature flag.'));
+      setError(localizeAdminDiagnosticsError(e, country, 'admin.flags.updateError'));
     }
   };
   if (loading && !flags) return <LoadingSpinner />;
   if (error && !flags) return <ErrorMessage message={error} onRetry={() => void load()} />;
   return (
-    <section className="mx-auto max-w-4xl space-y-6">
+    <section className="mx-auto max-w-4xl space-y-6" aria-labelledby="admin-feature-flags-heading">
       <div>
-        <p className="section-eyebrow">Administration</p>
-        <h1 className="section-heading mt-2">Feature flags</h1>
+        <p className="section-eyebrow">{t('admin.common.administration')}</p>
+        <h1 id="admin-feature-flags-heading" className="section-heading mt-2">
+          {t('admin.flags.heading')}
+        </h1>
       </div>
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -71,26 +81,26 @@ export function AdminFeatureFlagsPage() {
       )}
       <form className="flex flex-wrap gap-2" onSubmit={(e) => void create(e)}>
         <input
-          aria-label="Flag key"
+          aria-label={t('admin.flags.flagKey')}
           required
           pattern="[a-z][a-z0-9_.]{1,63}"
           className="rounded-md border border-input px-2 py-1"
-          placeholder="Flag key"
+          placeholder={t('admin.flags.keyPlaceholder')}
           value={key}
           onChange={(e) => setKey(e.target.value)}
         />
         <input
-          aria-label="Flag description"
+          aria-label={t('admin.flags.description')}
           className="rounded-md border border-input px-2 py-1"
-          placeholder="Description"
+          placeholder={t('admin.flags.descriptionPlaceholder')}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
-        <Button type="submit">Create flag</Button>
+        <Button type="submit">{t('admin.flags.create')}</Button>
       </form>
       {flags?.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center">No feature flags configured.</CardContent>
+          <CardContent className="py-12 text-center">{t('admin.flags.empty')}</CardContent>
         </Card>
       ) : (
         <div className="space-y-3">
@@ -105,7 +115,7 @@ export function AdminFeatureFlagsPage() {
                     await deleteAdminFeatureFlag(flag.key);
                     await load();
                   } catch (e) {
-                    setError(message(e, 'Unable to delete feature flag.'));
+                    setError(localizeAdminDiagnosticsError(e, country, 'admin.flags.deleteError'));
                   }
                 })();
               }}
@@ -125,6 +135,7 @@ function FlagCard({
   onUpdate: (flag: AdminFeatureFlag, body: { enabled?: boolean; description?: string }) => void;
   onDelete: () => void;
 }) {
+  const t = useMessages(adminDiagnosticsMessages);
   const [description, setDescription] = useState(flag.description);
   return (
     <Card>
@@ -132,24 +143,24 @@ function FlagCard({
         <strong>{flag.key}</strong>
         <label className="text-sm">
           <input
-            aria-label={`Enable ${flag.key}`}
+            aria-label={t('admin.flags.enable', { key: flag.key })}
             type="checkbox"
             checked={flag.enabled}
             onChange={(e) => onUpdate(flag, { enabled: e.target.checked })}
           />{' '}
-          Enabled
+          {t('admin.flags.enabled')}
         </label>
         <input
-          aria-label={`Description for ${flag.key}`}
+          aria-label={t('admin.flags.descriptionFor', { key: flag.key })}
           className="rounded-md border border-input px-2 py-1"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
         <Button type="button" variant="outline" onClick={() => onUpdate(flag, { description })}>
-          Save
+          {t('admin.flags.save')}
         </Button>
         <Button type="button" variant="destructive" onClick={onDelete}>
-          Delete
+          {t('admin.flags.delete')}
         </Button>
       </CardContent>
     </Card>

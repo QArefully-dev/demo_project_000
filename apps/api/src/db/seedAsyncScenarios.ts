@@ -1,4 +1,5 @@
 import { LEGACY_DATA_COUNTRY } from '@shop/contracts';
+import { standingOrderDueCopy } from '@shop/localisation/messages/asyncContent';
 import type Database from 'better-sqlite3';
 
 export const ASYNC_SEED_INSTANT = '2026-08-02T09:00:00.000Z';
@@ -75,14 +76,15 @@ export function seedAsyncScenarios(db: Database.Database): void {
     aliceId,
     ASYNC_SEED_INSTANT,
   );
+  const dueCopy = standingOrderDueCopy(LEGACY_DATA_COUNTRY, 'Weekly Monthly restock');
 
   db.prepare(
     `
     INSERT INTO notifications (user_id,kind,title,body,entity_type,entity_id,dedupe_key,created_at,read_at)
-    VALUES (?, 'standing_order.run_completed', 'Standing order ready', 'Weekly Monthly restock is due to run.', 'standing_order', ?, 'seed:async:alice:standing-order-due', ?, NULL)
+    VALUES (?, 'standing_order.run_completed', ?, ?, 'standing_order', ?, 'seed:async:alice:standing-order-due', ?, NULL)
     ON CONFLICT(dedupe_key) DO NOTHING
   `,
-  ).run(aliceId, String(standingOrderId), ASYNC_SEED_INSTANT);
+  ).run(aliceId, dueCopy.title, dueCopy.body, String(standingOrderId), ASYNC_SEED_INSTANT);
   const notificationId = requiredId(
     db,
     "SELECT id FROM notifications WHERE dedupe_key = 'seed:async:alice:standing-order-due'",

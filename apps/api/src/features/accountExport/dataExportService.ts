@@ -1,4 +1,6 @@
 import type { DataExportResponse } from '@shop/contracts/account-depth';
+import type { Country } from '@shop/contracts/country';
+import { dataExportCopy } from '@shop/localisation/messages/asyncContent';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter, Clock } from '../audit/auditService.js';
@@ -17,8 +19,6 @@ import {
   toDeliverySite,
   type DeliverySiteRepository,
 } from '../tradeAccount/deliverySiteRepository.js';
-
-const EXPORT_SUBJECT = 'QArefully Materials Exchange — data export';
 
 export interface DataExportService {
   /** Builds the caller-owned snapshot and atomically records its local delivery/audit side effects. */
@@ -87,11 +87,16 @@ export function createDataExportService({
           // avoiding a second, unauthorized company-membership read path here.
           companyMemberships: [],
         };
+        const country = user.country as Country;
+        const copy = dataExportCopy(country);
         mailbox.add({
           recipient: user.email,
-          subject: EXPORT_SUBJECT,
-          body: 'Your data export is available in your QArefully Materials Exchange account.',
-          kind: 'data_export',
+          subject: copy.subject,
+          body: copy.body,
+          kind: 'template',
+          templateKey: 'data_export_ready',
+          templateParams: {},
+          country,
           createdAt: exportedAt,
         });
         audit.append({ action: 'auth.data_exported', userId: user.id, context });

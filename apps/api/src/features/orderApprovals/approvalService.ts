@@ -5,6 +5,7 @@ import type {
   PostalAddress,
 } from '@shop/contracts';
 import type { CompanyMembership } from '@shop/contracts/company-accounts';
+import { orderApprovalCopy } from '@shop/localisation/messages/asyncContent';
 import type { ApprovalRow, ApprovalRepository } from './approvalRepository.js';
 import { approvalError, approvalOk, type ApprovalResult } from './approvalErrors.js';
 import type { AuditContext } from '../audit/auditEvent.js';
@@ -168,11 +169,26 @@ export function createApprovalService(dependencies: ApprovalServiceDependencies)
         if (members.ok) {
           for (const member of members.value) {
             if (!isApprover(member) || !member.user) continue;
+            const country = member.user.country;
+            const copy = orderApprovalCopy(country, {
+              companyName: company.company.name,
+              approvalRequestId: String(row.id),
+              // Approval totals are canonical GBP pence. Display conversion belongs to the
+              // eventual mailbox renderer, never this persisted producer snapshot.
+              totalCents: row.quote_total_cents,
+            });
             dependencies.mailbox.add({
               recipient: member.user.email,
-              subject: `Order approval requested for ${company.company.name}`,
-              body: `Approval request #${row.id} awaits review. Total: ${row.quote_total_cents} cents.`,
-              kind: 'order-approval-request',
+              subject: copy.subject,
+              body: copy.body,
+              kind: 'template',
+              templateKey: 'order_approval_request',
+              templateParams: {
+                companyName: company.company.name,
+                approvalRequestId: String(row.id),
+                totalCents: row.quote_total_cents,
+              },
+              country,
               createdAt: requestedAt,
             });
           }

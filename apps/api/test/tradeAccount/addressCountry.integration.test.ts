@@ -68,7 +68,8 @@ void test('delivery-site country rules and unrestricted billing addresses', asyn
     });
     assert.equal(badCreate.statusCode, 400, badCreate.body);
     assert.deepEqual(badCreate.json(), {
-      error: 'Enter a valid Postleitzahl, for example 10115.',
+      error: 'Die Anfrage konnte nicht verarbeitet werden. Bitte versuchen Sie es erneut.',
+      code: 'INVALID_POSTCODE',
     });
 
     const created = await app.inject({
@@ -90,7 +91,8 @@ void test('delivery-site country rules and unrestricted billing addresses', asyn
     });
     assert.equal(badUpdate.statusCode, 400, badUpdate.body);
     assert.deepEqual(badUpdate.json(), {
-      error: 'Enter a valid Postleitzahl, for example 10115.',
+      error: 'Die Anfrage konnte nicht verarbeitet werden. Bitte versuchen Sie es erneut.',
+      code: 'INVALID_POSTCODE',
     });
   });
 
@@ -109,7 +111,8 @@ void test('delivery-site country rules and unrestricted billing addresses', asyn
       });
       assert.equal(badCreate.statusCode, 400, badCreate.body);
       assert.deepEqual(badCreate.json(), {
-        error: 'This delivery country is not available for your account.',
+        error: 'Die Anfrage konnte nicht verarbeitet werden. Bitte versuchen Sie es erneut.',
+        code: 'DELIVERY_COUNTRY_NOT_ALLOWED',
       });
 
       const [site] = (
@@ -130,7 +133,8 @@ void test('delivery-site country rules and unrestricted billing addresses', asyn
       });
       assert.equal(badUpdate.statusCode, 400, badUpdate.body);
       assert.deepEqual(badUpdate.json(), {
-        error: 'This delivery country is not available for your account.',
+        error: 'Die Anfrage konnte nicht verarbeitet werden. Bitte versuchen Sie es erneut.',
+        code: 'DELIVERY_COUNTRY_NOT_ALLOWED',
       });
     },
   );

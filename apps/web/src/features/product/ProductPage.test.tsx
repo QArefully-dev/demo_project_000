@@ -186,7 +186,7 @@ describe('ProductPage', () => {
   it('renders API and not-found failures distinctly', async () => {
     productApi.getProduct.mockRejectedValueOnce(new Error('Product service unavailable'));
     const { unmount } = renderPage();
-    expect(await screen.findByText('Product service unavailable')).toBeInTheDocument();
+    expect(await screen.findByText('Failed to load product')).toBeInTheDocument();
     unmount();
 
     productApi.getProduct.mockRejectedValueOnce(new ApiError('Missing', 404));

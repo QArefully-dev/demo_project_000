@@ -1,11 +1,17 @@
 import type { CountryProfile } from './types.js';
 
 export const PL_COUNTRY_PROFILE = {
+  language: 'pl',
+  numberLocale: 'pl-PL',
+  dateLocale: 'pl-PL',
+  displayCurrency: 'PLN',
+  exchangeRate: { numerator: 5, denominator: 1 },
   blockedCategories: [],
   blockedProductSlugs: [],
+  bannerMessageKey: undefined,
   postcode: {
     pattern: '^[0-9]{2}-[0-9]{3}$',
-    label: 'Kod pocztowy',
+    labelMessageKey: 'postcode.label',
     example: '00-001',
   },
   deliveryCountryCodes: ['PL'],

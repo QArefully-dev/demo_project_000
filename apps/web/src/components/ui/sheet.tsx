@@ -6,6 +6,8 @@ import { Dialog as SheetPrimitive } from '@base-ui/react/dialog';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { XIcon } from 'lucide-react';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { commonMessages } from '@shop/localisation/messages/common';
 
 function Sheet({ ...props }: SheetPrimitive.Root.Props) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />;
@@ -46,6 +48,7 @@ function SheetContent({
   side?: 'top' | 'right' | 'bottom' | 'left';
   showCloseButton?: boolean;
 }) {
+  const { translate } = useLocalisation();
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -65,7 +68,7 @@ function SheetContent({
             render={<Button variant="ghost" className="absolute top-3 right-3" size="icon-sm" />}
           >
             <XIcon />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{translate(commonMessages, 'common.close')}</span>
           </SheetPrimitive.Close>
         )}
       </SheetPrimitive.Popup>

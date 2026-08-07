@@ -15,6 +15,12 @@ import { ErrorMessage } from '@/components/ErrorMessage';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { useLocalisation, useMessages } from '@/i18n/LocaleContext';
+import {
+  adminCatalogMessages,
+  adminDateTimeInputValue,
+  localizeAdminError,
+} from '@shop/localisation/messages/adminCatalog';
 const empty: CreateAdminVariantBody = {
   productId: '1',
   sku: '',
@@ -28,12 +34,6 @@ const empty: CreateAdminVariantBody = {
   sortOrder: 1,
   moqSacks: 1,
 };
-function message(e: unknown) {
-  return e instanceof Error ? e.message : 'Request failed.';
-}
-function datetime(value: string | undefined) {
-  return value ? value.slice(0, 16) : '';
-}
 function updateBody(form: CreateAdminVariantBody) {
   const { productId, ...body } = form;
   void productId;
@@ -42,6 +42,8 @@ function updateBody(form: CreateAdminVariantBody) {
 type ClearanceForm = { clearance: { priceCents: number; startsAt: string; endsAt: string } | null };
 /** Variant (lot) administration; clearance pricing is always submitted to the API. */
 export function AdminVariantsPage() {
+  const { country } = useLocalisation();
+  const t = useMessages(adminCatalogMessages);
   const [productId, setProductId] = useState('1');
   const [items, setItems] = useState<AdminVariant[] | null>(null);
   const [selected, setSelected] = useState<AdminVariant | null>(null);
@@ -61,11 +63,11 @@ export function AdminVariantsPage() {
       const response = await getAdminProductVariants(productId);
       if (version === loadVersion.current) setItems(response.items);
     } catch (e) {
-      if (version === loadVersion.current) setError(message(e));
+      if (version === loadVersion.current) setError(localizeAdminError(e, country));
     } finally {
       if (version === loadVersion.current) setLoading(false);
     }
-  }, [productId]);
+  }, [country, productId]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -102,7 +104,7 @@ export function AdminVariantsPage() {
       choose(saved);
       await load();
     } catch (e) {
-      setError(message(e));
+      setError(localizeAdminError(e, country));
     } finally {
       setSaving(false);
     }
@@ -110,7 +112,7 @@ export function AdminVariantsPage() {
   const saveClearance = async () => {
     if (!selected) return;
     if (clearance.clearance && (!clearance.clearance.startsAt || !clearance.clearance.endsAt)) {
-      setError('Clearance start and end dates are required.');
+      setError(t('adminCatalog.clearanceDatesRequired'));
       return;
     }
     setSaving(true);
@@ -129,7 +131,7 @@ export function AdminVariantsPage() {
       choose(saved);
       await load();
     } catch (e) {
-      setError(message(e));
+      setError(localizeAdminError(e, country));
     } finally {
       setSaving(false);
     }
@@ -143,7 +145,7 @@ export function AdminVariantsPage() {
       choose(null);
       await load();
     } catch (e) {
-      setError(message(e));
+      setError(localizeAdminError(e, country));
     } finally {
       setSaving(false);
       setConfirming(false);
@@ -153,11 +155,9 @@ export function AdminVariantsPage() {
     <section className="space-y-6" aria-labelledby="admin-variants-heading">
       <div>
         <h1 id="admin-variants-heading" className="section-heading">
-          Variants and lots
+          {t('adminCatalog.lots.heading')}
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Manage purchasable lots and their clearance schedules.
-        </p>
+        <p className="mt-2 text-sm text-muted-foreground">{t('adminCatalog.lots.description')}</p>
       </div>
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -165,9 +165,9 @@ export function AdminVariantsPage() {
         </p>
       )}
       <label className="text-sm">
-        Product ID{' '}
+        {t('adminCatalog.lots.productId')}{' '}
         <input
-          aria-label="Product ID"
+          aria-label={t('adminCatalog.lots.productId')}
           value={productId}
           onChange={(e) => setProductId(e.target.value)}
           className="ml-2 rounded border p-2"
@@ -182,7 +182,7 @@ export function AdminVariantsPage() {
           <Card>
             <CardContent className="space-y-3 py-5">
               <Button type="button" onClick={() => choose(null)}>
-                New lot
+                {t('adminCatalog.lots.new')}
               </Button>
               {items?.length ? (
                 items.map((variant) => (
@@ -197,18 +197,22 @@ export function AdminVariantsPage() {
                   </button>
                 ))
               ) : (
-                <p className="text-sm text-muted-foreground">No lots found.</p>
+                <p className="text-sm text-muted-foreground">{t('adminCatalog.lots.empty')}</p>
               )}
             </CardContent>
           </Card>
           <Card>
             <CardContent className="py-5">
               <form className="space-y-3" onSubmit={(e) => void save(e)}>
-                <h2 className="font-semibold">{selected ? `Edit ${selected.label}` : 'New lot'}</h2>
+                <h2 className="font-semibold">
+                  {selected
+                    ? t('adminCatalog.lots.edit', { name: selected.label })
+                    : t('adminCatalog.lots.new')}
+                </h2>
                 <label className="block text-sm">
-                  SKU
+                  {t('adminCatalog.lots.sku')}
                   <input
-                    aria-label="SKU"
+                    aria-label={t('adminCatalog.lots.sku')}
                     required
                     value={form.sku}
                     onChange={(e) => set('sku', e.target.value)}
@@ -216,9 +220,9 @@ export function AdminVariantsPage() {
                   />
                 </label>
                 <label className="block text-sm">
-                  Label
+                  {t('adminCatalog.lots.label')}
                   <input
-                    aria-label="Lot label"
+                    aria-label={t('adminCatalog.lots.lotLabelAria')}
                     required
                     value={form.label}
                     onChange={(e) => set('label', e.target.value)}
@@ -228,11 +232,11 @@ export function AdminVariantsPage() {
                 <div className="grid grid-cols-2 gap-2">
                   {(
                     [
-                      ['weightGrams', 'Weight (g)'],
-                      ['priceCents', 'Price (pence)'],
-                      ['stockCount', 'Stock'],
-                      ['moqSacks', 'MOQ sacks'],
-                      ['sortOrder', 'Sort order'],
+                      ['weightGrams', t('adminCatalog.lots.weightGrams')],
+                      ['priceCents', t('adminCatalog.lots.pricePence')],
+                      ['stockCount', t('adminCatalog.lots.stock')],
+                      ['moqSacks', t('adminCatalog.lots.moqSacks')],
+                      ['sortOrder', t('adminCatalog.lots.sortOrder')],
                     ] as const
                   ).map(([key, label]) => (
                     <label key={key} className="text-sm">
@@ -250,17 +254,17 @@ export function AdminVariantsPage() {
                 </div>
                 <label className="flex gap-2 text-sm">
                   <input
-                    aria-label="Backorderable"
+                    aria-label={t('adminCatalog.lots.backorderable')}
                     type="checkbox"
                     checked={form.backorderable}
                     onChange={(e) => set('backorderable', e.target.checked)}
                   />{' '}
-                  Backorderable
+                  {t('adminCatalog.lots.backorderable')}
                 </label>
                 <label className="block text-sm">
-                  Backorder lead days
+                  {t('adminCatalog.lots.backorderLeadDays')}
                   <input
-                    aria-label="Backorder lead days"
+                    aria-label={t('adminCatalog.lots.backorderLeadDays')}
                     type="number"
                     min="1"
                     value={form.backorderLeadDays ?? ''}
@@ -274,9 +278,9 @@ export function AdminVariantsPage() {
                   />
                 </label>
                 <label className="block text-sm">
-                  Delivery class
+                  {t('adminCatalog.lots.deliveryClass')}
                   <select
-                    aria-label="Delivery class"
+                    aria-label={t('adminCatalog.lots.deliveryClass')}
                     value={form.deliveryClass}
                     onChange={(e) =>
                       set(
@@ -286,20 +290,20 @@ export function AdminVariantsPage() {
                     }
                     className="mt-1 w-full rounded border p-2"
                   >
-                    <option value="freight">Freight</option>
-                    <option value="parcel">Parcel</option>
+                    <option value="freight">{t('adminCatalog.lots.freight')}</option>
+                    <option value="parcel">{t('adminCatalog.lots.parcel')}</option>
                   </select>
                 </label>
                 <Button disabled={saving} type="submit">
-                  {saving ? 'Saving…' : 'Save lot'}
+                  {saving ? t('adminCatalog.saving') : t('adminCatalog.lots.save')}
                 </Button>
               </form>
               {selected && (
                 <div className="mt-6 space-y-3 border-t pt-4">
-                  <h3 className="font-semibold">Clearance</h3>
+                  <h3 className="font-semibold">{t('adminCatalog.lots.clearance')}</h3>
                   <label className="flex gap-2 text-sm">
                     <input
-                      aria-label="Enable clearance"
+                      aria-label={t('adminCatalog.lots.enableClearance')}
                       type="checkbox"
                       checked={clearance.clearance !== null}
                       onChange={(e) => {
@@ -317,14 +321,14 @@ export function AdminVariantsPage() {
                         });
                       }}
                     />{' '}
-                    Enable clearance
+                    {t('adminCatalog.lots.enableClearance')}
                   </label>
                   {clearance.clearance && (
                     <>
                       <label className="block text-sm">
-                        Clearance price (pence)
+                        {t('adminCatalog.lots.clearancePricePence')}
                         <input
-                          aria-label="Clearance price (pence)"
+                          aria-label={t('adminCatalog.lots.clearancePricePence')}
                           type="number"
                           value={clearance.clearance.priceCents}
                           onChange={(e) =>
@@ -339,11 +343,11 @@ export function AdminVariantsPage() {
                         />
                       </label>
                       <label className="block text-sm">
-                        Starts at
+                        {t('adminCatalog.lots.startsAt')}
                         <input
-                          aria-label="Clearance starts at"
+                          aria-label={t('adminCatalog.lots.startsAt')}
                           type="datetime-local"
-                          value={datetime(clearance.clearance.startsAt)}
+                          value={adminDateTimeInputValue(clearance.clearance.startsAt)}
                           onChange={(e) =>
                             setClearance({
                               clearance: {
@@ -356,11 +360,11 @@ export function AdminVariantsPage() {
                         />
                       </label>
                       <label className="block text-sm">
-                        Ends at
+                        {t('adminCatalog.lots.endsAt')}
                         <input
-                          aria-label="Clearance ends at"
+                          aria-label={t('adminCatalog.lots.endsAt')}
                           type="datetime-local"
-                          value={datetime(clearance.clearance.endsAt)}
+                          value={adminDateTimeInputValue(clearance.clearance.endsAt)}
                           onChange={(e) =>
                             setClearance({
                               clearance: {
@@ -375,23 +379,23 @@ export function AdminVariantsPage() {
                     </>
                   )}
                   <Button type="button" disabled={saving} onClick={() => void saveClearance()}>
-                    Save clearance
+                    {t('adminCatalog.lots.saveClearance')}
                   </Button>
                   {confirming ? (
                     <>
                       <Button type="button" variant="destructive" onClick={() => void retire()}>
-                        Confirm retire
+                        {t('adminCatalog.confirmRetire')}
                       </Button>
                       <Button type="button" variant="outline" onClick={() => setConfirming(false)}>
-                        Cancel
+                        {t('adminCatalog.cancel')}
                       </Button>
                     </>
                   ) : (
                     <Button type="button" variant="outline" onClick={() => setConfirming(true)}>
-                      Retire lot
+                      {t('adminCatalog.lots.retire')}
                     </Button>
                   )}
-                  {confirming && <p className="text-sm">Confirm retirement of this lot.</p>}
+                  {confirming && <p className="text-sm">{t('adminCatalog.confirmRetirement')}</p>}
                 </div>
               )}
             </CardContent>

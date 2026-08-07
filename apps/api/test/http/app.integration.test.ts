@@ -209,7 +209,7 @@ void test('app factory injects isolated databases without starting a server', as
     },
   });
   assert.equal(declined.statusCode, 402);
-  assert.deepEqual(declined.json(), { error: 'Payment failed', failureReason: 'CARD_DECLINED' });
+  assert.deepEqual(declined.json(), { error: 'The card was declined.', code: 'CARD_DECLINED' });
   assert.equal((await app.inject({ method: 'GET', url: '/missing' })).statusCode, 404);
   assert.equal(firstDb.open, true);
   assert.equal(secondDb.open, true);
@@ -288,7 +288,6 @@ void test('promo validation exposes a scoped discount base without discounting o
   assert.equal(mismatch.statusCode, 200);
   assert.deepEqual(mismatch.json(), {
     valid: false,
-    error: 'This promo code applies only to Garden & Outdoors products',
     errorCode: 'CATEGORY_MISMATCH',
   });
 

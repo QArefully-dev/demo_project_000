@@ -3,6 +3,10 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import type { SavedListAddToCartResponse } from '@shop/contracts/saved-lists';
 import { SavedListOutcomeList } from './SavedListOutcomeList';
+import {
+  SAVED_LIST_ADD_FAILURE_KEY,
+  SAVED_LIST_ADD_FAILURE_MESSAGE,
+} from './savedListsPresentation';
 
 const response: SavedListAddToCartResponse = {
   cart: {
@@ -74,7 +78,7 @@ describe('SavedListOutcomeList', () => {
   });
   it('reports pending and does not link an all-skipped result', () => {
     const { rerender } = renderList({ kind: 'pending' });
-    expect(screen.getByRole('status')).toHaveTextContent('Adding this list');
+    expect(screen.getByRole('status')).toHaveTextContent(/Adding to cart/);
     rerender(
       <MemoryRouter>
         <SavedListOutcomeList
@@ -91,5 +95,17 @@ describe('SavedListOutcomeList', () => {
       </MemoryRouter>,
     );
     expect(screen.queryByRole('link', { name: 'View cart' })).not.toBeInTheDocument();
+  });
+
+  it('renders a stable error key instead of a stale server message', () => {
+    renderList({
+      kind: 'error',
+      message: 'legacy unlocalised error',
+      messageKey: SAVED_LIST_ADD_FAILURE_KEY,
+    });
+
+    const region = screen.getByRole('status', { name: 'Saved list cart result' });
+    expect(region).toHaveTextContent(SAVED_LIST_ADD_FAILURE_MESSAGE);
+    expect(region).not.toHaveTextContent('legacy unlocalised error');
   });
 });

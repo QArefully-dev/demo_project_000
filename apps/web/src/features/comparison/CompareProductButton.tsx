@@ -1,5 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { useComparisonSelection } from './ComparisonSelectionContext';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { discoveryMessages } from '@shop/localisation/messages/discovery';
 
 interface CompareProductButtonProps {
   productId: string;
@@ -7,9 +9,12 @@ interface CompareProductButtonProps {
 }
 
 export function CompareProductButton({ productId, productName }: CompareProductButtonProps) {
+  const { translate } = useLocalisation();
   const { isSelected, toggle } = useComparisonSelection();
   const selected = isSelected(productId);
-  const label = productName ? `Compare ${productName}` : 'Compare product';
+  const label = productName
+    ? translate(discoveryMessages, 'product.compareNamed', { name: productName })
+    : translate(discoveryMessages, 'product.compareProduct');
 
   return (
     <Button
@@ -23,7 +28,9 @@ export function CompareProductButton({ productId, productName }: CompareProductB
         toggle(productId);
       }}
     >
-      {selected ? 'Selected for comparison' : 'Compare'}
+      {selected
+        ? translate(discoveryMessages, 'product.selectedForComparison')
+        : translate(discoveryMessages, 'product.compare')}
     </Button>
   );
 }

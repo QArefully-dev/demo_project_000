@@ -2,6 +2,8 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import type { PublicUser } from '@shop/contracts/auth';
+import { translateUnchecked } from '@shop/localisation';
+import { apiErrors } from '@shop/localisation/messages/apiErrors';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
@@ -81,13 +83,20 @@ describe('login return navigation', () => {
     authState.login
       .mockReset()
       .mockRejectedValue(
-        new ApiError('Invalid credentials', 401, { error: 'Invalid credentials' }),
+        new ApiError(
+          'Invalid credentials',
+          401,
+          { error: 'Invalid credentials', code: 'UNAUTHORIZED' },
+          'DE',
+        ),
       );
     renderLogin({ pathname: '/login', state: { from: '/products/powdered-water' } });
 
     await submitLogin();
 
-    expect(screen.getByText('Invalid credentials')).toBeInTheDocument();
+    expect(
+      screen.getByText(translateUnchecked(apiErrors, 'DE', 'UNAUTHORIZED')),
+    ).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Sign In' })).toBeInTheDocument();
   });
 

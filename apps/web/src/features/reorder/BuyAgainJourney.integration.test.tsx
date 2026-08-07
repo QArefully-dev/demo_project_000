@@ -164,7 +164,7 @@ describe('Buy Again journey from order history', () => {
     );
     expect(
       within(region).getByRole('list', { name: 'Price changes on order #12' }),
-    ).toHaveTextContent('Portland cement × 4 Price changed from $9.00 to $10.50 per item.');
+    ).toHaveTextContent('Portland cement × 4 Price changed from $11.25 to $13.13 per item.');
     const skippedEntries = within(
       within(region).getByRole('list', { name: 'Items not added from order #12' }),
     ).getAllByRole('listitem');

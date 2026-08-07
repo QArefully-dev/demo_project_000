@@ -1528,8 +1528,6 @@ void test('seed installs stage-2 country fixtures and targeted promo idempotentl
   seedDatabase(db);
 
   assert.ok(COUNTRY_PROFILES.CN.blockedCategories.includes('Sports Nutrition'));
-  assert.ok(COUNTRY_PROFILES.ES.banner);
-  assert.equal(COUNTRY_PROFILES.UK.banner, undefined);
   assert.ok(
     (db
       .prepare(

@@ -14,6 +14,7 @@ import type { AppContext } from '../app.js';
 import type { AuditContext } from '../features/audit/auditEvent.js';
 import type { BackInStockErrorCode } from '../features/backInStock/backInStockErrors.js';
 import { requireAuth } from '../plugins/auth.js';
+import { sendPublicError } from '../utils/errors.js';
 
 /** Optional buyer-side filter; the service owns the ownership scope, this only narrows status. */
 const BackInStockListQuery = Type.Object(
@@ -45,15 +46,6 @@ const BACK_IN_STOCK_ERROR_STATUS: Readonly<Record<BackInStockErrorCode, 404 | 40
   SUBSCRIPTION_NOT_FOUND: 404,
 };
 
-const BACK_IN_STOCK_ERROR_MESSAGES: Readonly<Record<BackInStockErrorCode, string>> = {
-  VARIANT_NOT_FOUND: 'Variant not found',
-  VARIANT_RETIRED: 'This lot has been retired and will not return',
-  VARIANT_AVAILABLE: 'This lot is already available to order',
-  ALREADY_SUBSCRIBED: 'You are already waiting for this lot',
-  SUBSCRIPTION_LIMIT_REACHED: 'Back-in-stock alert limit reached',
-  SUBSCRIPTION_NOT_FOUND: 'Back-in-stock alert not found',
-};
-
 function auditContext(userId: number, requestId: string): AuditContext {
   return { actor: { type: 'user', userId }, requestId };
 }
@@ -64,13 +56,11 @@ function toTransport(value: BackInStockSubscriptionResponse): BackInStockSubscri
 }
 
 function sendBackInStockError(
-  reply: { code(status: 404 | 409): { send(body: unknown): void } },
+  request: Parameters<typeof sendPublicError>[0],
+  reply: Parameters<typeof sendPublicError>[1],
   code: BackInStockErrorCode,
 ): void {
-  reply.code(BACK_IN_STOCK_ERROR_STATUS[code]).send({
-    code,
-    error: BACK_IN_STOCK_ERROR_MESSAGES[code],
-  });
+  sendPublicError(request, reply, BACK_IN_STOCK_ERROR_STATUS[code], code);
 }
 
 /**
@@ -125,7 +115,7 @@ export default function backInStockRoutes(app: FastifyInstance, { services }: Ap
         auditContext(userId, request.id),
       );
       if (!result.ok) {
-        sendBackInStockError(reply, result.code);
+        sendBackInStockError(request, reply, result.code);
         return;
       }
       return reply.code(201).send(toTransport(result.value));
@@ -155,7 +145,7 @@ export default function backInStockRoutes(app: FastifyInstance, { services }: Ap
         auditContext(userId, request.id),
       );
       if (!result.ok) {
-        sendBackInStockError(reply, result.code);
+        sendBackInStockError(request, reply, result.code);
         return;
       }
       return { success: true as const };

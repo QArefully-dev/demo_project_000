@@ -9,8 +9,13 @@ import { DeliveryStep } from './DeliveryStep';
 import { PaymentDetailsStep } from './PaymentDetailsStep';
 import { ScheduleBillingStep } from './ScheduleBillingStep';
 import { useCheckoutFlow } from './useCheckoutFlow';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { checkoutMessages } from '@shop/localisation/messages/checkout';
 
 export function CheckoutPage() {
+  const { translate, formatCivilDate } = useLocalisation();
+  const t = (key: keyof typeof checkoutMessages, params?: Record<string, string | number>) =>
+    translate(checkoutMessages, key, params);
   const flow = useCheckoutFlow();
   const {
     isInitializing: isCartInitializing,
@@ -24,7 +29,7 @@ export function CheckoutPage() {
   if (!flow.cart) {
     return (
       <ErrorMessage
-        message={cartError ?? 'Your cart is unavailable.'}
+        message={cartError ?? t('checkout.cartUnavailable')}
         onRetry={() => void retryCart()}
       />
     );
@@ -40,9 +45,9 @@ export function CheckoutPage() {
             {flow.cartRecoveryMessage}
           </p>
         )}
-        <p className="text-muted-foreground">Your order is empty</p>
+        <p className="text-muted-foreground">{t('checkout.empty')}</p>
         <Button nativeButton={false} render={<Link to="/catalog" />}>
-          Browse materials
+          {t('checkout.browseMaterials')}
         </Button>
       </div>
     );
@@ -50,11 +55,8 @@ export function CheckoutPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h1 className="mb-2 text-2xl font-bold">Confirm your order</h1>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Payment is simulated for this demo. No real payment is collected and no goods are
-        dispatched.
-      </p>
+      <h1 className="mb-2 text-2xl font-bold">{t('checkout.title')}</h1>
+      <p className="mb-6 text-sm text-muted-foreground">{t('checkout.simulatedNotice')}</p>
       {cartError && (
         <div
           role="alert"
@@ -62,7 +64,7 @@ export function CheckoutPage() {
         >
           <p className="text-sm text-destructive">{cartError}</p>
           <Button type="button" variant="outline" size="sm" onClick={() => void retryCart()}>
-            Retry cart
+            {t('checkout.retryCart')}
           </Button>
         </div>
       )}
@@ -79,12 +81,10 @@ export function CheckoutPage() {
           role="alert"
           className="mb-6 space-y-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
         >
-          <p>One or more items are no longer available in the requested quantity.</p>
-          <p className="text-muted-foreground">
-            Your cart has not been changed. Refresh it, then review quantities before retrying.
-          </p>
+          <p>{t('checkout.stockConflictTitle')}</p>
+          <p className="text-muted-foreground">{t('checkout.stockConflictBody')}</p>
           <Button type="button" variant="outline" size="sm" onClick={() => void retryCart()}>
-            Refresh cart
+            {t('checkout.refreshCart')}
           </Button>
         </div>
       )}
@@ -93,12 +93,10 @@ export function CheckoutPage() {
           role="alert"
           className="mb-6 space-y-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
         >
-          <p>Your checkout reservation expired before payment could complete.</p>
-          <p className="text-muted-foreground">
-            Your cart has not been changed. Refresh it before starting a new payment attempt.
-          </p>
+          <p>{t('checkout.reservationConflictTitle')}</p>
+          <p className="text-muted-foreground">{t('checkout.reservationConflictBody')}</p>
           <Button type="button" variant="outline" size="sm" onClick={() => void retryCart()}>
-            Refresh cart
+            {t('checkout.refreshCart')}
           </Button>
         </div>
       )}
@@ -107,13 +105,14 @@ export function CheckoutPage() {
           role="alert"
           className="mb-6 space-y-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
         >
-          <p>The delivery slot you chose is no longer bookable.</p>
+          <p>{t('checkout.slotConflictTitle')}</p>
           <p className="text-muted-foreground">
-            No payment was taken and your cart has not been changed. The earliest delivery date is
-            now {flow.conflict.earliestDate}. Choose another slot to continue.
+            {t('checkout.slotConflictBody', {
+              date: formatCivilDate(flow.conflict.earliestDate, 'long'),
+            })}
           </p>
           <Button type="button" variant="outline" size="sm" onClick={flow.goToScheduleStep}>
-            Choose another slot
+            {t('checkout.chooseAnotherSlot')}
           </Button>
         </div>
       )}
@@ -122,12 +121,10 @@ export function CheckoutPage() {
           role="status"
           className="mb-6 space-y-3 rounded-lg border border-border bg-muted/60 p-4 text-sm"
         >
-          <p>Your order is awaiting approval from your company approvers.</p>
-          <p className="text-muted-foreground">
-            Your cart has not changed. Once approved, submit this order again.
-          </p>
+          <p>{t('checkout.pendingApprovalTitle')}</p>
+          <p className="text-muted-foreground">{t('checkout.pendingApprovalBody')}</p>
           <Button nativeButton={false} size="sm" render={<Link to="/account/approvals" />}>
-            View approval requests
+            {t('checkout.viewApprovalRequests')}
           </Button>
         </div>
       )}
@@ -136,7 +133,7 @@ export function CheckoutPage() {
           role="alert"
           className="mb-6 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
         >
-          This order request was rejected by an approver. Your cart has not changed.
+          {t('checkout.approvalRejected')}
         </p>
       )}
       {flow.conflict?.code === 'APPROVAL_EXPIRED' && (
@@ -144,7 +141,7 @@ export function CheckoutPage() {
           role="alert"
           className="mb-6 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
         >
-          This approval has expired. Submit the order again to request a new approval.
+          {t('checkout.approvalExpired')}
         </p>
       )}
       {flow.conflict?.code === 'APPROVAL_TOTAL_DRIFT' && (
@@ -152,8 +149,7 @@ export function CheckoutPage() {
           role="alert"
           className="mb-6 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
         >
-          The order total has changed since approval. Submit again to request approval for the
-          current total.
+          {t('checkout.approvalTotalDrift')}
         </p>
       )}
       <div className="grid gap-6 lg:grid-cols-2">
@@ -232,6 +228,7 @@ export function CheckoutPage() {
           totalCents={flow.totalCents}
           promoError={flow.promoError}
           promoErrorCode={flow.promoErrorCode}
+          promoMinSubtotalCents={flow.promoMinSubtotalCents}
           promoValidating={flow.promoValidating}
           isPromoEligible={flow.isPromoEligible}
           destinationSummary={flow.destinationSummary}

@@ -54,7 +54,7 @@ describe('BackInStockSection', () => {
     expect(screen.getByRole('heading', { name: 'Back-in-stock alerts' })).toBeInTheDocument();
     const items = screen.getByRole('list', { name: 'Back-in-stock alerts' });
     expect(items).toHaveTextContent('Rapid-set cement');
-    expect(items).toHaveTextContent('25 kg sack · requested 14 Jul 2026');
+    expect(items).toHaveTextContent('25 kg sack · requested 7/14/26');
   });
 
   it('cancels an alert by its string subscription id', async () => {

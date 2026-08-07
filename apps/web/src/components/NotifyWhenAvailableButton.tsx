@@ -4,6 +4,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/AuthContext';
 import { useBackInStock } from '@/hooks/useBackInStock';
+import { productMessages } from '@shop/localisation/messages/product';
+import { useLocalisation } from '@/i18n/LocaleContext';
 
 export const NOTIFY_LABEL = 'Notify me when this is back in stock';
 export const NOTIFIED_LABEL = 'You will be notified when this is back in stock';
@@ -16,6 +18,7 @@ export const NOTIFIED_LABEL = 'You will be notified when this is back in stock';
 export function NotifyWhenAvailableButton({ variantId }: { variantId: number }) {
   const { user } = useAuth();
   const { pendingVariantIds, subscribe, error } = useBackInStock();
+  const { translate } = useLocalisation();
   const navigate = useNavigate();
   const location = useLocation();
   const subscribed = pendingVariantIds.has(variantId);
@@ -25,7 +28,7 @@ export function NotifyWhenAvailableButton({ variantId }: { variantId: number }) 
   // Only whether the attempt failed is recorded here. The message itself is read from the shared
   // state at render time, because the click closure captured `error` before the write settled.
   const subscribeError = failed
-    ? (error ?? 'Unable to create a back-in-stock alert. Please try again.')
+    ? (error ?? translate(productMessages, 'product.unableCreateAlert'))
     : null;
 
   const onClick = async () => {
@@ -49,14 +52,20 @@ export function NotifyWhenAvailableButton({ variantId }: { variantId: number }) 
         className="w-full"
         disabled={pending || subscribed}
         onClick={() => void onClick()}
-        aria-label={subscribed ? NOTIFIED_LABEL : NOTIFY_LABEL}
+        aria-label={
+          subscribed
+            ? translate(productMessages, 'product.notifiedLabel')
+            : translate(productMessages, 'product.notifyLabel')
+        }
       >
         {subscribed ? (
           <BellRing className="mr-2 size-4" aria-hidden="true" />
         ) : (
           <BellPlus className="mr-2 size-4" aria-hidden="true" />
         )}
-        {subscribed ? "We'll email you" : 'Notify me when available'}
+        {subscribed
+          ? translate(productMessages, 'product.wellEmail')
+          : translate(productMessages, 'product.notifyAvailable')}
       </Button>
       {subscribeError && (
         <p className="sr-only" role="alert">

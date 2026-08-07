@@ -5,7 +5,7 @@ import { ErrorResponse, SuccessResponse } from '@shop/contracts/common';
 import type { AccountDeletionService } from '../features/accountDeletion/deletionService.js';
 import type { SessionService } from '../features/auth/sessionService.js';
 import { requireAuth } from '../plugins/auth.js';
-import { sendBadRequest, sendConflict } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 
 export interface AccountDeletionRouteServices {
   sessions: SessionService;
@@ -41,10 +41,10 @@ export default function accountDeletionRoutes(
       });
       if (!result.ok) {
         if (result.code === 'INVALID_CURRENT') {
-          sendBadRequest(reply, 'Current password is incorrect');
+          sendPublicError(request, reply, 400, 'INVALID_CURRENT');
           return;
         }
-        sendConflict(reply, 'Transfer company ownership before deleting this account');
+        sendPublicError(request, reply, 409, 'OWNS_COMPANY');
         return;
       }
       reply.code(200).send({ success: true });

@@ -13,6 +13,7 @@ import type { AuditContext } from '../features/audit/auditEvent.js';
 import type { ReorderErrorCode } from '../features/reorder/reorderErrors.js';
 import type { ReorderLineOutcome as DomainReorderLineOutcome } from '../features/reorder/reorderRules.js';
 import { requireCustomer } from '../plugins/auth.js';
+import { sendPublicError } from '../utils/errors.js';
 
 /**
  * Code-bearing rejection body for the reorder endpoint.
@@ -32,19 +33,6 @@ const ReorderErrorResponse = Type.Object(
   },
   { additionalProperties: false },
 );
-
-/**
- * Prose for each whole-request rejection.
- *
- * `CART_NOT_FOUND` deliberately reads exactly `Cart not found`, matching every other cart endpoint
- * (`sendNotFound(reply, 'Cart')`): the web client detects a vanished cart by that wording before it
- * recovers a replacement cart and replays the action.
- */
-const REORDER_ERROR_MESSAGES: Readonly<Record<ReorderErrorCode, string>> = {
-  ORDER_NOT_FOUND: 'Order not found',
-  CART_NOT_FOUND: 'Cart not found',
-  CART_RESERVED: 'Cart is reserved for checkout',
-};
 
 const REORDER_ERROR_STATUS: Readonly<Record<ReorderErrorCode, 404 | 409>> = {
   ORDER_NOT_FOUND: 404,
@@ -106,9 +94,7 @@ export default function reorderRoutes(app: FastifyInstance, { services }: AppCon
         context: auditContext(userId, request.id),
       });
       if (!result.ok) {
-        reply
-          .code(REORDER_ERROR_STATUS[result.code])
-          .send({ code: result.code, error: REORDER_ERROR_MESSAGES[result.code] });
+        sendPublicError(request, reply, REORDER_ERROR_STATUS[result.code], result.code);
         return;
       }
       const { cart, addedLineCount, skippedLineCount, outcomes } = result.value;

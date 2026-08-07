@@ -4,10 +4,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as bundlesApi from '@/api/bundles';
 import { useBundles } from './useBundles';
 
+const countryState = vi.hoisted(() => ({ activeCountry: 'US' }));
 vi.mock('@/api/bundles', () => ({ getBundles: vi.fn() }));
+vi.mock('@/hooks/CountryContext', () => ({
+  useOptionalCountry: () => ({ activeCountry: countryState.activeCountry }),
+}));
 
 beforeEach(() => {
   vi.resetAllMocks();
+  countryState.activeCountry = 'US';
 });
 
 function deferred<T>() {
@@ -76,6 +81,34 @@ describe('useBundles', () => {
       await oldResponse.promise;
     });
     expect(result.current.bundles.map((item) => item.id)).toEqual(['2']);
+  });
+
+  it('aborts and ignores a stale prior-country response after a country switch', async () => {
+    const oldResponse = deferred<CuratedBundle[]>();
+    const currentResponse = deferred<CuratedBundle[]>();
+    vi.mocked(bundlesApi.getBundles)
+      .mockReturnValueOnce(oldResponse.promise)
+      .mockReturnValueOnce(currentResponse.promise);
+    const { result, rerender } = renderHook(() => useBundles('1'));
+    await waitFor(() => expect(bundlesApi.getBundles).toHaveBeenCalledOnce());
+
+    const oldSignal = vi.mocked(bundlesApi.getBundles).mock.calls[0]?.[1];
+    countryState.activeCountry = 'DE';
+    rerender();
+    await waitFor(() => expect(bundlesApi.getBundles).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(bundlesApi.getBundles).mock.calls[1]?.[0]).toBe('1');
+    expect(oldSignal?.aborted).toBe(true);
+
+    await act(async () => {
+      currentResponse.resolve([bundle('de')]);
+      await currentResponse.promise;
+    });
+    await act(async () => {
+      oldResponse.resolve([bundle('us')]);
+      await oldResponse.promise;
+    });
+
+    expect(result.current.bundles.map((item) => item.id)).toEqual(['de']);
   });
 
   it('clears loaded bundles while loading a replacement product', async () => {

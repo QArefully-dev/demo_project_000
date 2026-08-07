@@ -6,23 +6,29 @@ import { useProductReviews } from '@/hooks/useProductReviews';
 import { ReviewForm } from './ReviewForm';
 import { ReviewList } from './ReviewList';
 import { ReviewSummary } from './ReviewSummary';
+import { productMessages } from '@shop/localisation/messages/product';
+import { useLocalisation } from '@/i18n/LocaleContext';
 
 interface ReviewsSectionProps {
   productId: string;
 }
 
-const sortOptions: Array<{ value: ReviewSort; label: string }> = [
-  { value: 'newest', label: 'Newest' },
-  { value: 'oldest', label: 'Oldest' },
-  { value: 'highest', label: 'Highest rating' },
-  { value: 'lowest', label: 'Lowest rating' },
-  { value: 'helpful', label: 'Most helpful' },
-];
-
 export function ReviewsSection({ productId }: ReviewsSectionProps) {
   const { user, loading: isAuthLoading } = useAuth();
   const location = useLocation();
   const reviews = useProductReviews(productId);
+  const { translate, formatCount } = useLocalisation();
+  const t = <K extends keyof typeof productMessages>(
+    key: K,
+    params?: Record<string, string | number>,
+  ) => translate(productMessages, key, params);
+  const sortOptions: Array<{ value: ReviewSort; label: string }> = [
+    { value: 'newest', label: t('product.sortNewest') },
+    { value: 'oldest', label: t('product.sortOldest') },
+    { value: 'highest', label: t('product.sortHighest') },
+    { value: 'lowest', label: t('product.sortLowest') },
+    { value: 'helpful', label: t('product.sortHelpful') },
+  ];
   const totalPages = reviews.list
     ? Math.max(1, Math.ceil(reviews.list.summary.total / reviews.list.pageSize))
     : 1;
@@ -32,14 +38,14 @@ export function ReviewsSection({ productId }: ReviewsSectionProps) {
     <section className="mt-16" aria-labelledby="reviews-heading">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="section-eyebrow">From verified and everyday customers</p>
+          <p className="section-eyebrow">{t('product.reviewsEyebrow')}</p>
           <h2 id="reviews-heading" className="section-heading mt-2">
-            Customer reviews
+            {t('product.customerReviews')}
           </h2>
         </div>
         {reviews.list && reviews.list.summary.total > 0 && (
           <label className="text-sm font-medium">
-            Sort reviews
+            {t('product.sortReviews')}
             <select
               className="ml-2 rounded-md border border-input bg-background px-2 py-1"
               value={reviews.sort}
@@ -66,20 +72,20 @@ export function ReviewsSection({ productId }: ReviewsSectionProps) {
                 to="/login"
                 state={{ from: returnPath }}
               >
-                Sign in to write a review
+                {t('product.signInReview')}
               </Link>{' '}
-              or mark reviews helpful and report concerns.
+              {t('product.reviewEngagementHint')}
             </p>
           )}
           {!isAuthLoading && user?.role === 'customer' && reviews.isOwnerLoading && (
             <p className="text-sm text-muted-foreground" aria-busy="true">
-              Loading your review…
+              {t('product.loadingReview')}
             </p>
           )}
           {!isAuthLoading && user?.role === 'customer' && reviews.ownerError && (
             <div className="rounded-lg border border-border p-4">
               <p role="alert" className="text-sm text-destructive">
-                Could not load your review.
+                {t('product.couldNotLoadReview')}
               </p>
               <Button
                 type="button"
@@ -87,7 +93,7 @@ export function ReviewsSection({ productId }: ReviewsSectionProps) {
                 className="mt-1 px-0"
                 onClick={reviews.retryOwner}
               >
-                Try again
+                {t('product.tryAgain')}
               </Button>
             </div>
           )}
@@ -108,13 +114,13 @@ export function ReviewsSection({ productId }: ReviewsSectionProps) {
         <div>
           {reviews.isListLoading && (
             <p className="text-sm text-muted-foreground" aria-busy="true">
-              Loading reviews…
+              {t('product.loadingReviews')}
             </p>
           )}
           {reviews.listError && (
             <div>
               <p role="alert" className="text-sm text-destructive">
-                Could not load reviews.
+                {t('product.couldNotLoadReviews')}
               </p>
               <Button
                 type="button"
@@ -122,7 +128,7 @@ export function ReviewsSection({ productId }: ReviewsSectionProps) {
                 className="mt-1 px-0"
                 onClick={reviews.retryList}
               >
-                Try again
+                {t('product.tryAgain')}
               </Button>
             </div>
           )}
@@ -138,17 +144,20 @@ export function ReviewsSection({ productId }: ReviewsSectionProps) {
                 isEngagementMutating={reviews.isEngagementMutating}
               />
               {totalPages > 1 && (
-                <nav className="mt-5 flex items-center gap-3" aria-label="Review pages">
+                <nav className="mt-5 flex items-center gap-3" aria-label={t('product.reviewPages')}>
                   <Button
                     type="button"
                     variant="outline"
                     disabled={reviews.page === 1}
                     onClick={() => reviews.setPage(reviews.page - 1)}
                   >
-                    Previous
+                    {t('product.previous')}
                   </Button>
                   <span className="text-sm text-muted-foreground">
-                    Page {reviews.page} of {totalPages}
+                    {t('product.pageOf', {
+                      page: formatCount(reviews.page),
+                      total: formatCount(totalPages),
+                    })}
                   </span>
                   <Button
                     type="button"
@@ -156,7 +165,7 @@ export function ReviewsSection({ productId }: ReviewsSectionProps) {
                     disabled={reviews.page === totalPages}
                     onClick={() => reviews.setPage(reviews.page + 1)}
                   >
-                    Next
+                    {t('product.next')}
                   </Button>
                 </nav>
               )}

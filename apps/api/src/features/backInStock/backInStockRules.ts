@@ -1,3 +1,6 @@
+import type { Country } from '@shop/contracts/country';
+import { backInStockCopy } from '@shop/localisation/messages/asyncContent';
+
 /**
  * Ceiling on simultaneously pending subscriptions per buyer. Bounds the fan-out one stock
  * movement can produce and keeps the buyer's own list readable without paging.
@@ -27,9 +30,7 @@ export function backInStockJobDedupeKey(variantId: number, occurredAt: string): 
 export function backInStockNotificationCopy(
   productName: string,
   variantLabel: string,
+  country: Country = 'UK',
 ): { title: string; body: string } {
-  return {
-    title: `Back in stock: ${productName}`,
-    body: `${productName} (${variantLabel}) is available to order again.`,
-  };
+  return backInStockCopy(country, productName, variantLabel);
 }

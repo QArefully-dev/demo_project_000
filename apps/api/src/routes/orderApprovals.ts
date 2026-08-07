@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import {
   ApprovalDecisionBody,
@@ -11,7 +11,7 @@ import type { SessionService } from '../features/auth/sessionService.js';
 import type { ApprovalErrorCode } from '../features/orderApprovals/approvalErrors.js';
 import type { ApprovalService } from '../features/orderApprovals/approvalService.js';
 import { requireAuth } from '../plugins/auth.js';
-import { sendBadRequest, sendConflict, sendForbidden, sendNotFound } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 
 export interface OrderApprovalsRouteServices {
   sessions: SessionService;
@@ -22,19 +22,23 @@ function context(userId: number, requestId: string) {
   return { actor: { type: 'user' as const, userId }, requestId };
 }
 
-function sendApprovalError(reply: FastifyReply, code: ApprovalErrorCode): void {
+function sendApprovalError(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  code: ApprovalErrorCode,
+): void {
   switch (code) {
     case 'APPROVAL_NOT_FOUND':
-      sendNotFound(reply, 'Approval');
+      sendPublicError(request, reply, 404, 'APPROVAL_NOT_FOUND');
       return;
     case 'NOT_APPROVER':
-      sendForbidden(reply, 'Approver access required');
+      sendPublicError(request, reply, 403, 'NOT_APPROVER');
       return;
     case 'APPROVAL_EXPIRED':
-      sendBadRequest(reply, 'Approval has expired');
+      sendPublicError(request, reply, 400, 'APPROVAL_EXPIRED');
       return;
     case 'APPROVAL_ALREADY_RESOLVED':
-      sendConflict(reply, 'Approval has already been resolved');
+      sendPublicError(request, reply, 409, 'APPROVAL_ALREADY_RESOLVED');
       return;
   }
 }
@@ -60,7 +64,7 @@ export default function orderApprovalRoutes(
     },
     async (request, reply) => {
       const result = services.approvals.listPendingForApprover(request.authenticatedUser!.id);
-      if (!result.ok) return sendApprovalError(reply, result.code);
+      if (!result.ok) return sendApprovalError(request, reply, result.code);
       reply.code(200).send(result.value);
     },
   );
@@ -93,7 +97,7 @@ export default function orderApprovalRoutes(
         request.authenticatedUser!.id,
         Number(request.params.approvalId),
       );
-      if (!result.ok) return sendApprovalError(reply, result.code);
+      if (!result.ok) return sendApprovalError(request, reply, result.code);
       reply.code(200).send(result.value);
     },
   );
@@ -123,7 +127,7 @@ export default function orderApprovalRoutes(
         request.body.reason,
         context(user.id, request.id),
       );
-      if (!result.ok) return sendApprovalError(reply, result.code);
+      if (!result.ok) return sendApprovalError(request, reply, result.code);
       reply.code(200).send(result.value);
     },
   );

@@ -72,6 +72,7 @@ void test('customer return routes enforce ownership and auth', async (t) => {
       headers: { cookie: bobCookie },
     });
     assert.equal(r.statusCode, 404);
+    assert.equal(r.json<{ code: string }>().code, 'RETURN_NOT_FOUND');
   }
 
   // ── Alice can see her overview (delivered order) ──────────────

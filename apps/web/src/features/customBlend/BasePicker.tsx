@@ -11,9 +11,8 @@ import { resolveCatalogPackagingPalette } from '@/components/packaging/catalogPa
 import { resolvePackagingSpec } from '@/components/packaging/packagingSpec';
 import { useCategories } from '@/hooks/useCategories';
 import { useProducts } from '@/hooks/useProducts';
-
-const NO_SACK_VARIANT_MESSAGE =
-  'That material is not stocked in a 25 kg sack, so it cannot be a blend base. Choose another material.';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { customBlendMessages } from '@shop/localisation/messages/customBlend';
 
 function findSackVariant(variants: { weightGrams: number; active: boolean; variantId: number }[]) {
   return variants.find((variant) => variant.active && variant.weightGrams === SACK_WEIGHT_GRAMS);
@@ -38,6 +37,7 @@ export function SelectedBaseChip({
   base: CustomBlendOption;
   onChange: () => void;
 }) {
+  const { translate } = useLocalisation();
   const product = optionPackagingProduct(base);
   const hasArtwork = resolveCatalogPackagingPalette(product) !== undefined;
 
@@ -49,15 +49,15 @@ export function SelectedBaseChip({
           spec={resolvePackagingSpec({ product, variant: base.variant })}
           mark="CB"
           consumptionLabel={base.consumptionClassification}
-          ariaLabel={`${base.productName} packaging`}
+          ariaLabel={`${base.productName} ${translate(customBlendMessages, 'customBlend.packaging')}`}
           className="h-14 w-14 shrink-0"
         />
       ) : (
         <div
-          aria-label={`${base.productName} packaging unavailable`}
+          aria-label={`${base.productName} ${translate(customBlendMessages, 'customBlend.packagingUnavailableAria')}`}
           className="grid h-14 w-14 shrink-0 place-items-center rounded border bg-muted px-1 text-center text-[10px] text-muted-foreground"
         >
-          Packaging unavailable
+          {translate(customBlendMessages, 'customBlend.packagingUnavailable')}
         </div>
       )}
       <div className="min-w-0 flex-1">
@@ -65,13 +65,14 @@ export function SelectedBaseChip({
         <p className="text-xs text-muted-foreground">{base.variant.label}</p>
       </div>
       <Button type="button" variant="outline" size="sm" onClick={onChange}>
-        Change base material
+        {translate(customBlendMessages, 'customBlend.changeBase')}
       </Button>
     </div>
   );
 }
 
 export function BasePicker({ onSelectBase }: { onSelectBase: (variantId: number) => void }) {
+  const { translate } = useLocalisation();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('');
   const [resolvingProductId, setResolvingProductId] = useState<string | null>(null);
@@ -117,14 +118,16 @@ export function BasePicker({ onSelectBase }: { onSelectBase: (variantId: number)
       className="custom-blend-surface grid gap-4 rounded-xl p-5"
     >
       <div>
-        <p className="text-sm font-medium text-muted-foreground">1. Base</p>
+        <p className="text-sm font-medium text-muted-foreground">
+          {translate(customBlendMessages, 'customBlend.baseStep')}
+        </p>
         <h2 id="custom-blend-base-picker-heading" className="text-xl font-semibold">
-          Choose a base material
+          {translate(customBlendMessages, 'customBlend.baseMaterial')}
         </h2>
       </div>
       <div className="flex flex-wrap gap-3">
         <label className="grid gap-1 text-sm">
-          Search materials
+          {translate(customBlendMessages, 'customBlend.searchMaterials')}
           <input
             type="search"
             id="custom-blend-search"
@@ -134,14 +137,14 @@ export function BasePicker({ onSelectBase }: { onSelectBase: (variantId: number)
           />
         </label>
         <label className="grid gap-1 text-sm">
-          Category
+          {translate(customBlendMessages, 'customBlend.category')}
           <select
             id="custom-blend-category"
             className="rounded-md border px-3 py-1.5 text-sm"
             value={category}
             onChange={(event) => setCategory(event.target.value)}
           >
-            <option value="">All categories</option>
+            <option value="">{translate(customBlendMessages, 'customBlend.allCategories')}</option>
             {categories.map((name) => (
               <option key={name} value={name}>
                 {name}
@@ -153,14 +156,21 @@ export function BasePicker({ onSelectBase }: { onSelectBase: (variantId: number)
       {error ? (
         <ErrorMessage message={error} onRetry={() => void refetch()} />
       ) : isLoading ? (
-        <div aria-live="polite" aria-label="Loading materials" className="grid gap-3">
+        <div
+          aria-live="polite"
+          aria-label={translate(customBlendMessages, 'customBlend.loadingMaterials')}
+          className="grid gap-3"
+        >
           <div className="h-12 animate-pulse rounded-xl bg-muted" />
           <div className="h-12 animate-pulse rounded-xl bg-muted" />
         </div>
       ) : products.length === 0 ? (
-        <p aria-live="polite">No materials match that search.</p>
+        <p aria-live="polite">{translate(customBlendMessages, 'customBlend.noMaterials')}</p>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2" aria-label="Base material options">
+        <ul
+          className="grid gap-3 sm:grid-cols-2"
+          aria-label={translate(customBlendMessages, 'customBlend.baseOptions')}
+        >
           {products.map((product) => (
             <li
               key={product.id}
@@ -172,15 +182,15 @@ export function BasePicker({ onSelectBase }: { onSelectBase: (variantId: number)
                   spec={resolvePackagingSpec({ product })}
                   mark="CB"
                   consumptionLabel={product.consumptionClassification ?? null}
-                  ariaLabel={`${product.name} packaging`}
+                  ariaLabel={`${product.name} ${translate(customBlendMessages, 'customBlend.packaging')}`}
                   className="h-[4.5rem] w-[4.5rem]"
                 />
               ) : (
                 <div
-                  aria-label={`${product.name} packaging unavailable`}
+                  aria-label={`${product.name} ${translate(customBlendMessages, 'customBlend.packagingUnavailableAria')}`}
                   className="grid h-[4.5rem] w-[4.5rem] place-items-center rounded border bg-muted px-1 text-center text-[10px] text-muted-foreground"
                 >
-                  Packaging unavailable
+                  {translate(customBlendMessages, 'customBlend.packagingUnavailable')}
                 </div>
               )}
               <div className="grid content-start gap-2">
@@ -190,12 +200,14 @@ export function BasePicker({ onSelectBase }: { onSelectBase: (variantId: number)
                 </div>
                 {product.mixingGroup && (
                   <span className="text-xs text-muted-foreground">
-                    {product.mixingGroup} blend group
+                    {translate(customBlendMessages, 'customBlend.mixingGroup', {
+                      group: product.mixingGroup,
+                    })}
                   </span>
                 )}
                 {resolveErrorProductIds.has(product.id) && (
                   <p role="alert" className="text-xs text-destructive">
-                    {NO_SACK_VARIANT_MESSAGE}
+                    {translate(customBlendMessages, 'customBlend.noSackVariant')}
                   </p>
                 )}
                 <Button
@@ -206,7 +218,7 @@ export function BasePicker({ onSelectBase }: { onSelectBase: (variantId: number)
                   disabled={resolvingProductId === product.id}
                   onClick={() => void selectBaseProduct(product.id)}
                 >
-                  Use {product.name} as base
+                  {translate(customBlendMessages, 'customBlend.useAsBase', { name: product.name })}
                 </Button>
               </div>
             </li>

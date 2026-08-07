@@ -9,6 +9,8 @@ import { CartSheet } from './CartSheet';
 import { NotificationBell } from '@/features/notifications/NotificationBell';
 import { useAuth } from '@/hooks/AuthContext';
 import { useCountry } from '@/hooks/CountryContext';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { webMessages } from '@shop/localisation/messages/webShell';
 
 /** Composes the sticky storefront navigation and customer controls. */
 export function Header() {
@@ -16,6 +18,9 @@ export function Header() {
   const { activeCountry, isAccountBound, selectCountry } = useCountry();
   const { defaultList } = useSavedLists();
   const defaultItemCount = defaultList?.items.length ?? 0;
+  const { translate } = useLocalisation();
+  const t = (key: keyof typeof webMessages, params?: Record<string, string | number>) =>
+    translate(webMessages, key, params);
 
   const countryDisabled = isAccountBound;
 
@@ -32,7 +37,7 @@ export function Header() {
           </Link>
           <div
             role="group"
-            aria-label="Customer tools"
+            aria-label={t('shell.customerTools')}
             className="flex items-center justify-end gap-0.5 whitespace-nowrap sm:gap-1 lg:order-2 [&_a:focus-visible]:outline-none [&_a:focus-visible]:ring-2 [&_a:focus-visible]:ring-ring [&_a:focus-visible]:ring-offset-2 [&_button:focus-visible]:ring-ring [&_button:focus-visible]:ring-offset-2"
           >
             <CountryPicker
@@ -44,11 +49,15 @@ export function Header() {
             {user && <NotificationBell />}
             <Link
               to="/lists"
-              aria-label={`Saved lists${defaultItemCount > 0 ? ` (${defaultItemCount})` : ''}`}
+              aria-label={
+                defaultItemCount > 0
+                  ? t('shell.savedListsCount', { count: defaultItemCount })
+                  : t('shell.savedLists')
+              }
               className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors hover:bg-accent"
             >
               <List className="size-4" aria-hidden="true" />
-              Lists
+              {t('shell.savedLists')}
               {defaultItemCount > 0 && (
                 <span className="rounded-full bg-primary px-1.5 py-0.5 text-xs font-semibold text-primary-foreground">
                   {defaultItemCount}
@@ -64,7 +73,7 @@ export function Header() {
         <div className="content-shell flex h-11 items-center justify-between gap-4 overflow-x-auto [scrollbar-width:none]">
           <CategoryNav />
           <p className="hidden shrink-0 whitespace-nowrap text-xs font-medium text-muted-foreground xl:block">
-            Materials data · Available stock · Trade supply
+            {t('shell.materialsTagline')}
           </p>
         </div>
       </div>

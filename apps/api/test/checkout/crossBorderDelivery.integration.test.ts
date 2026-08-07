@@ -195,6 +195,7 @@ void test('payment route rejects a delivery address outside the persisted cart c
 
   assert.equal(response.statusCode, 400, response.body);
   assert.deepEqual(response.json(), {
-    error: 'Selected delivery country is not available',
+    error: 'Delivery is only available within your country.',
+    code: 'DELIVERY_COUNTRY_NOT_ALLOWED',
   });
 });

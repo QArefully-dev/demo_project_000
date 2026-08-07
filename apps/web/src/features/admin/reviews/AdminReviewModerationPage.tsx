@@ -5,12 +5,22 @@ import type {
   AdminReviewQueueItem,
   AdminReviewQueueQuery,
   AdminReviewQueueResponse,
+  ReviewReportReason,
+  ReviewStatus,
 } from '@shop/contracts/reviews';
+import type { MessageParams } from '@shop/localisation';
+import { apiErrors } from '@shop/localisation/messages/apiErrors';
+import {
+  adminCommerceMessages,
+  type AdminCommerceMessageKey,
+} from '@shop/localisation/messages/adminCommerce';
 import { getAdminReviewQueue, moderateAdminReview, restoreAdminReview } from '@/api/adminReviews';
+import { ApiError } from '@/api/client';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { useLocalisation } from '@/i18n/LocaleContext';
 
 const PAGE_SIZE = 10;
 type Queue = 'reported' | 'hidden';
@@ -29,17 +39,64 @@ function readPage(value: string | null): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
 }
 
-function messageFor(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
+type Translate = (key: AdminCommerceMessageKey, params?: MessageParams) => string;
+type TranslateApiError = (key: string, params?: MessageParams) => string;
+
+const statusMessageKeys: Record<ReviewStatus, AdminCommerceMessageKey> = {
+  published: 'adminCommerce.reviews.status.published',
+  hidden: 'adminCommerce.reviews.status.hidden',
+};
+
+const reasonMessageKeys: Record<ReviewReportReason, AdminCommerceMessageKey> = {
+  spam: 'adminCommerce.reviews.reason.spam',
+  harassment: 'adminCommerce.reviews.reason.harassment',
+  unsafe: 'adminCommerce.reviews.reason.unsafe',
+  off_topic: 'adminCommerce.reviews.reason.off_topic',
+  other: 'adminCommerce.reviews.reason.other',
+};
+
+function errorParams(error: ApiError): MessageParams {
+  if (!error.meta || typeof error.meta !== 'object') return {};
+  const params: Record<string, string | number | bigint> = {};
+  for (const [key, value] of Object.entries(error.meta)) {
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint')
+      params[key] = value;
+  }
+  return params;
 }
 
-function actionLabel(decision: AdminReviewModerationBody['decision']): string {
-  return decision === 'hide_review'
-    ? 'Review hidden and reports actioned.'
-    : 'Open reports dismissed.';
+function messageFor(
+  error: unknown,
+  fallback: AdminCommerceMessageKey,
+  t: Translate,
+  translateApiError: TranslateApiError,
+): string {
+  if (error instanceof ApiError) {
+    if (error.code && error.code in apiErrors)
+      return translateApiError(error.code, errorParams(error));
+    return t(fallback);
+  }
+  return t(fallback);
+}
+
+function actionLabel(decision: AdminReviewModerationBody['decision'], t: Translate): string {
+  return t(
+    decision === 'hide_review'
+      ? 'adminCommerce.reviews.action.hideSuccess'
+      : 'adminCommerce.reviews.action.dismissSuccess',
+  );
 }
 
 export function AdminReviewModerationPage() {
+  const { translate, formatCount } = useLocalisation();
+  const t = useCallback<Translate>(
+    (key, params = {}) => translate(adminCommerceMessages, key, params),
+    [translate],
+  );
+  const translateApiError = useCallback<TranslateApiError>(
+    (key, params = {}) => translate(apiErrors, key, params),
+    [translate],
+  );
   const [searchParams, setSearchParams] = useSearchParams();
   const queue = readQueue(searchParams.get('queue'));
   const sort = readSort(searchParams.get('sort'));
@@ -88,7 +145,9 @@ export function AdminReviewModerationPage() {
       })
       .catch((requestError: unknown) => {
         if (current && !controller.signal.aborted) {
-          setError(messageFor(requestError, 'Unable to load moderation queue.'));
+          setError(
+            messageFor(requestError, 'adminCommerce.reviews.error.load', t, translateApiError),
+          );
         }
       })
       .finally(() => {
@@ -99,7 +158,7 @@ export function AdminReviewModerationPage() {
       current = false;
       controller.abort();
     };
-  }, [page, queue, reloadVersion, sort, updateParams]);
+  }, [page, queue, reloadVersion, sort, t, translateApiError, updateParams]);
 
   const retry = useCallback(() => setReloadVersion((version) => version + 1), []);
 
@@ -116,14 +175,16 @@ export function AdminReviewModerationPage() {
         } else {
           retry();
         }
-        setStatus(actionLabel(decision));
+        setStatus(actionLabel(decision, t));
       } catch (requestError) {
-        setMutationError(messageFor(requestError, 'Unable to moderate this review.'));
+        setMutationError(
+          messageFor(requestError, 'adminCommerce.reviews.error.moderate', t, translateApiError),
+        );
       } finally {
         setPendingReviewId(null);
       }
     },
-    [page, result?.items.length, retry, updateParams],
+    [page, result?.items.length, retry, t, translateApiError, updateParams],
   );
 
   const restore = useCallback(
@@ -139,37 +200,44 @@ export function AdminReviewModerationPage() {
         } else {
           retry();
         }
-        setStatus('Review restored.');
+        setStatus(t('adminCommerce.reviews.action.restoreSuccess'));
       } catch (requestError) {
-        setMutationError(messageFor(requestError, 'Unable to restore this review.'));
+        setMutationError(
+          messageFor(requestError, 'adminCommerce.reviews.error.restore', t, translateApiError),
+        );
       } finally {
         setPendingReviewId(null);
       }
     },
-    [page, result?.items.length, retry, updateParams],
+    [page, result?.items.length, retry, t, translateApiError, updateParams],
   );
 
   if (loading && !result) return <LoadingSpinner />;
   if (error && !result) return <ErrorMessage message={error} onRetry={() => void retry()} />;
   if (!result)
-    return <ErrorMessage message="Moderation queue is unavailable" onRetry={() => void retry()} />;
+    return (
+      <ErrorMessage
+        message={t('adminCommerce.reviews.error.unavailable')}
+        onRetry={() => void retry()}
+      />
+    );
 
   const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
 
   return (
     <section className="mx-auto max-w-4xl space-y-6" aria-labelledby="admin-reviews-heading">
       <div>
-        <p className="section-eyebrow">Administration</p>
+        <p className="section-eyebrow">{t('adminCommerce.administration')}</p>
         <h1
           ref={queueHeadingRef}
           id="admin-reviews-heading"
           tabIndex={-1}
           className="section-heading mt-2"
         >
-          Review moderation
+          {t('adminCommerce.reviews.heading')}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Review reported content and restore hidden customer reviews.
+          {t('adminCommerce.reviews.description')}
         </p>
       </div>
 
@@ -189,25 +257,25 @@ export function AdminReviewModerationPage() {
 
       <div className="flex flex-wrap gap-3">
         <label className="text-sm font-medium">
-          Queue
+          {t('adminCommerce.reviews.queue')}
           <select
             className="ml-2 rounded-md border border-input bg-background px-2 py-1"
             value={queue}
             onChange={(event) => updateParams({ queue: event.target.value as Queue, page: 1 })}
           >
-            <option value="reported">Reported</option>
-            <option value="hidden">Hidden</option>
+            <option value="reported">{t('adminCommerce.reviews.queue.reported')}</option>
+            <option value="hidden">{t('adminCommerce.reviews.queue.hidden')}</option>
           </select>
         </label>
         <label className="text-sm font-medium">
-          Sort
+          {t('adminCommerce.reviews.sort')}
           <select
             className="ml-2 rounded-md border border-input bg-background px-2 py-1"
             value={sort}
             onChange={(event) => updateParams({ sort: event.target.value as Sort, page: 1 })}
           >
-            <option value="oldest">Oldest first</option>
-            <option value="newest">Newest first</option>
+            <option value="oldest">{t('adminCommerce.reviews.sort.oldest')}</option>
+            <option value="newest">{t('adminCommerce.reviews.sort.newest')}</option>
           </select>
         </label>
       </div>
@@ -215,11 +283,19 @@ export function AdminReviewModerationPage() {
       {result.items.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
-            <p className="font-medium">No {queue} reviews</p>
+            <p className="font-medium">
+              {t('adminCommerce.reviews.noQueue', {
+                queue: t(
+                  queue === 'reported'
+                    ? 'adminCommerce.reviews.queue.reportedLower'
+                    : 'adminCommerce.reviews.queue.hiddenLower',
+                ),
+              })}
+            </p>
             <p className="mt-1 text-sm text-muted-foreground">
               {queue === 'reported'
-                ? 'Open reports will appear here.'
-                : 'Hidden reviews will appear here.'}
+                ? t('adminCommerce.reviews.reportedEmpty')
+                : t('adminCommerce.reviews.hiddenEmpty')}
             </p>
           </CardContent>
         </Card>
@@ -232,7 +308,9 @@ export function AdminReviewModerationPage() {
                 key={review.id}
                 ref={index === 0 ? firstCardRef : undefined}
                 tabIndex={-1}
-                aria-label={`Review for ${review.productName}`}
+                aria-label={t('adminCommerce.reviews.reviewAria', {
+                  productName: review.productName,
+                })}
               >
                 <Card>
                   <CardContent className="space-y-4 py-5">
@@ -240,22 +318,33 @@ export function AdminReviewModerationPage() {
                       <div>
                         <h2 className="font-semibold">{review.productName}</h2>
                         <p className="text-sm text-muted-foreground">
-                          {review.author.displayName} · {review.rating}/5 · {review.status}
+                          {review.author.displayName} · {formatCount(review.rating)}/
+                          {formatCount(5)} · {t(statusMessageKeys[review.status])}
                         </p>
                       </div>
                       <span className="text-sm text-muted-foreground">
-                        {review.helpfulCount} helpful
+                        {t('adminCommerce.reviews.helpful', {
+                          count: review.helpfulCount,
+                          displayCount: formatCount(review.helpfulCount),
+                        })}
                       </span>
                     </div>
                     <p className="whitespace-pre-wrap text-sm">{review.body}</p>
                     {queue === 'reported' && (
                       <div className="space-y-3 rounded-md border border-border p-3">
-                        <h3 className="font-medium">Open reports ({review.openReportCount})</h3>
+                        <h3 className="font-medium">
+                          {t('adminCommerce.reviews.openReports', {
+                            count: review.openReportCount,
+                            displayCount: formatCount(review.openReportCount),
+                          })}
+                        </h3>
                         {review.openReports.map((report) => (
                           <div key={report.id} className="text-sm">
                             <p>
-                              <span className="font-medium">{report.reason}</span> reported by{' '}
-                              {report.reporterDisplayName}
+                              <span className="font-medium">
+                                {t(reasonMessageKeys[report.reason])}
+                              </span>{' '}
+                              {t('adminCommerce.reviews.reportedBy')} {report.reporterDisplayName}
                             </p>
                             {report.detail && (
                               <p className="mt-1 whitespace-pre-wrap">{report.detail}</p>
@@ -273,7 +362,9 @@ export function AdminReviewModerationPage() {
                             disabled={pending}
                             onClick={() => void moderate(review, 'hide_review')}
                           >
-                            {pending ? 'Working…' : 'Hide and action reports'}
+                            {pending
+                              ? t('adminCommerce.reviews.working')
+                              : t('adminCommerce.reviews.hide')}
                           </Button>
                           <Button
                             type="button"
@@ -281,7 +372,7 @@ export function AdminReviewModerationPage() {
                             disabled={pending}
                             onClick={() => void moderate(review, 'dismiss_reports')}
                           >
-                            Dismiss reports
+                            {t('adminCommerce.reviews.dismiss')}
                           </Button>
                         </>
                       ) : (
@@ -290,7 +381,9 @@ export function AdminReviewModerationPage() {
                           disabled={pending}
                           onClick={() => void restore(review)}
                         >
-                          {pending ? 'Working…' : 'Restore review'}
+                          {pending
+                            ? t('adminCommerce.reviews.working')
+                            : t('adminCommerce.reviews.restore')}
                         </Button>
                       )}
                     </div>
@@ -302,17 +395,23 @@ export function AdminReviewModerationPage() {
         </div>
       )}
 
-      <nav className="flex items-center justify-between" aria-label="Moderation pages">
+      <nav
+        className="flex items-center justify-between"
+        aria-label={t('adminCommerce.reviews.pagesAria')}
+      >
         <Button
           type="button"
           variant="outline"
           disabled={page <= 1 || loading}
           onClick={() => updateParams({ page: page - 1 })}
         >
-          Previous
+          {t('adminCommerce.reviews.previous')}
         </Button>
         <span className="text-sm text-muted-foreground">
-          Page {result.page} of {totalPages}
+          {t('adminCommerce.reviews.pageOf', {
+            page: formatCount(result.page),
+            totalPages: formatCount(totalPages),
+          })}
         </span>
         <Button
           type="button"
@@ -320,7 +419,7 @@ export function AdminReviewModerationPage() {
           disabled={page >= totalPages || loading}
           onClick={() => updateParams({ page: page + 1 })}
         >
-          Next
+          {t('adminCommerce.reviews.next')}
         </Button>
       </nav>
     </section>

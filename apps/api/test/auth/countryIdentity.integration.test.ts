@@ -6,11 +6,12 @@ import test from 'node:test';
 import { buildApp } from '../../src/app.js';
 import { closeDatabase, openDatabase } from '../../src/db/index.js';
 
-function readError(response: { body: string }): string {
+function readError(response: { body: string }): { error: string; code: string } {
   const body: unknown = JSON.parse(response.body);
-  assert.ok(typeof body === 'object' && body !== null && 'error' in body);
+  assert.ok(typeof body === 'object' && body !== null && 'error' in body && 'code' in body);
   assert.equal(typeof body.error, 'string');
-  return body.error;
+  assert.equal(typeof body.code, 'string');
+  return { error: body.error, code: body.code };
 }
 
 function sessionCookie(response: {
@@ -106,7 +107,7 @@ void test('country-scoped identity: same email in two countries yields independe
       payload: { email: 'seccheck@example.test', password: 'pass2-DE!', country: 'UK' },
     });
     assert.equal(login.statusCode, 401);
-    assert.equal(readError(login), 'Invalid email or password');
+    assert.equal(readError(login).code, 'UNAUTHORIZED');
   });
 
   await t.test('login DE with pass1 returns 401 with expected message', async () => {
@@ -116,26 +117,32 @@ void test('country-scoped identity: same email in two countries yields independe
       payload: { email: 'seccheck@example.test', password: 'pass1-UK!!', country: 'DE' },
     });
     assert.equal(login.statusCode, 401);
-    assert.equal(readError(login), 'Invalid email or password');
+    assert.equal(readError(login).code, 'UNAUTHORIZED');
   });
 
-  await t.test('401 body byte-identical across wrong-password and wrong-country', async () => {
-    const wrongPass = await app.inject({
-      method: 'POST',
-      url: '/login',
-      payload: { email: 'seccheck@example.test', password: 'wrong-pass', country: 'UK' },
-    });
-    const wrongCountry = await app.inject({
-      method: 'POST',
-      url: '/login',
-      payload: { email: 'seccheck@example.test', password: 'pass1-UK!!', country: 'DE' },
-    });
-    assert.equal(wrongPass.statusCode, 401);
-    assert.equal(wrongCountry.statusCode, 401);
-    assert.equal(readError(wrongPass), 'Invalid email or password');
-    assert.equal(readError(wrongCountry), 'Invalid email or password');
-    assert.equal(wrongPass.body, wrongCountry.body);
-  });
+  await t.test(
+    'wrong-password and wrong-country stay indistinguishable by public identity',
+    async () => {
+      const wrongPass = await app.inject({
+        method: 'POST',
+        url: '/login',
+        payload: { email: 'seccheck@example.test', password: 'wrong-pass', country: 'UK' },
+      });
+      const wrongCountry = await app.inject({
+        method: 'POST',
+        url: '/login',
+        payload: { email: 'seccheck@example.test', password: 'pass1-UK!!', country: 'DE' },
+      });
+      assert.equal(wrongPass.statusCode, 401);
+      assert.equal(wrongCountry.statusCode, 401);
+      assert.equal(readError(wrongPass).code, 'UNAUTHORIZED');
+      assert.equal(readError(wrongCountry).code, 'UNAUTHORIZED');
+      assert.equal(
+        wrongPass.json<{ code: string }>().code,
+        wrongCountry.json<{ code: string }>().code,
+      );
+    },
+  );
 
   await t.test('both sessions valid concurrently', async () => {
     const ukLogin = await app.inject({
@@ -187,6 +194,6 @@ void test('country-scoped identity: same email in two countries yields independe
       },
     });
     assert.equal(dup.statusCode, 409);
-    assert.equal(readError(dup), 'A user with this email already exists');
+    assert.equal(readError(dup).code, 'EMAIL_EXISTS');
   });
 });

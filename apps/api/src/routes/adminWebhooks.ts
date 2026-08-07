@@ -12,7 +12,7 @@ import type { SessionService } from '../features/auth/sessionService.js';
 import type { CapturedWebhook } from '../features/webhooks/webhookRepository.js';
 import type { createWebhookService } from '../features/webhooks/webhookService.js';
 import { requireAdmin } from '../plugins/auth.js';
-import { sendNotFound } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 
 const WebhookIdParam = Type.Object(
   { webhookId: Type.String({ pattern: '^[1-9][0-9]*$' }) },
@@ -43,7 +43,7 @@ export default function adminWebhooksRoutes(
   app: FastifyInstance,
   { services }: { services: AdminWebhooksRouteServices },
 ): void {
-  app.addHook('onRequest', requireAdmin(services.sessions));
+  app.addHook('preValidation', requireAdmin(services.sessions));
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
   typed.get(
     '/api/admin/webhooks',
@@ -76,7 +76,7 @@ export default function adminWebhooksRoutes(
     },
     (request, reply) => {
       const webhook = services.webhooks.get(Number(request.params.webhookId));
-      if (!webhook) return sendNotFound(reply, 'Webhook');
+      if (!webhook) return sendPublicError(request, reply, 404, 'WEBHOOK_NOT_FOUND');
       return transport(webhook);
     },
   );

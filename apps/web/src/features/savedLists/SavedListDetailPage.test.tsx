@@ -25,7 +25,7 @@ const detail: SavedListDetail = {
       itemId: '9',
       variantId: 1,
       sku: 'CEM-25',
-      label: '25 kg sack',
+      label: 'legacy server label',
       productId: 'cement',
       productName: 'Cement',
       quantity: 2,
@@ -101,14 +101,16 @@ describe('SavedListDetailPage', () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByRole('heading', { name: 'Site restock' });
-    expect(screen.getByText(/£200.00 \/ tonne/)).toBeInTheDocument();
+    expect(screen.getByText('25 kg sack · CEM-25')).toBeInTheDocument();
+    expect(screen.queryByText('legacy server label')).not.toBeInTheDocument();
+    expect(screen.getByText(/\$250\.00 \/ tonne/)).toBeInTheDocument();
     expect(screen.getByText(/MOQ: 4 sacks/)).toBeInTheDocument();
     const quantity = screen.getByRole('spinbutton', { name: 'Quantity for Cement' });
     await user.clear(quantity);
     await user.type(quantity, '5');
     await user.tab();
     await waitFor(() => expect(saved.updateItem).toHaveBeenCalledWith('7', '9', { quantity: 5 }));
-    await user.click(screen.getByRole('button', { name: 'Add list to cart' }));
+    await user.click(screen.getByRole('button', { name: 'Add to cart' }));
     await screen.findByText('1 item added to your cart. 1 item could not be added.');
     expect(screen.getByText('We no longer sell this item.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Remove' }));

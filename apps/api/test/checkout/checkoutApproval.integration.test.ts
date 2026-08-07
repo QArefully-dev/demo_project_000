@@ -71,7 +71,11 @@ void test('payment route serializes pending approval request IDs', async (t) => 
   });
 
   assert.equal(response.statusCode, 409);
-  assert.deepEqual(response.json(), { error: 'PENDING_APPROVAL', approvalRequestId: '17' });
+  assert.deepEqual(response.json(), {
+    error: 'Approval is required (request 17).',
+    code: 'PENDING_APPROVAL',
+    meta: { approvalRequestId: '17' },
+  });
 });
 
 void test('approval-gated checkout only re-arms an approved same-key retry for its requesting buyer', async (t) => {

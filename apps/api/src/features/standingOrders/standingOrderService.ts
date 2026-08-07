@@ -6,6 +6,11 @@ import type {
   StandingOrderRun,
   StandingOrderSource,
 } from '@shop/contracts/standing-orders';
+import type { Country } from '@shop/contracts/country';
+import {
+  standingOrderCompletedCopy,
+  standingOrderFailedCopy,
+} from '@shop/localisation/messages/asyncContent';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter, Clock } from '../audit/auditService.js';
 import type { CartService } from '../cart/cartService.js';
@@ -71,6 +76,8 @@ export interface StandingOrderServiceDependencies {
   unitOfWork: UnitOfWork;
   clock: Clock;
   faults: FaultSwitch;
+  /** Persisted account country used for system notification snapshots. */
+  countryForUser?: (userId: number) => Country | undefined;
 }
 export interface StandingOrderService {
   list(userId: number): StandingOrder[];
@@ -125,6 +132,14 @@ function outcomesFromSaved(outcomes: any[]): StandingOrderLineOutcome[] {
 export function createStandingOrderService(
   d: StandingOrderServiceDependencies,
 ): StandingOrderService {
+  const countryForUser = (userId: number): Country => {
+    // Direct service fixtures predating country provenance use the legacy UK snapshot. The app
+    // composition always supplies the persisted lookup, so live jobs never infer from a request.
+    if (!d.countryForUser) return 'UK';
+    const country = d.countryForUser?.(userId);
+    if (!country) throw new Error('Standing-order owner country is missing');
+    return country;
+  };
   return {
     list: (userId) => d.repository.listOwned(userId).map(map),
     listRuns: (userId, standingOrderId) =>
@@ -254,11 +269,12 @@ export function createStandingOrderService(
             standingOrderId: row.id,
             context: systemContext,
           });
+          const copy = standingOrderFailedCopy(countryForUser(row.user_id));
           d.notifications.notify({
             userId: row.user_id,
             kind: 'standing_order.run_failed',
-            title: 'Standing order run failed',
-            body: err,
+            title: copy.title,
+            body: copy.body,
             entityType: 'standing_order_run',
             entityId: String(run.id),
             context: systemContext,
@@ -281,11 +297,12 @@ export function createStandingOrderService(
           standingOrderId: row.id,
           context: systemContext,
         });
+        const copy = standingOrderCompletedCopy(countryForUser(row.user_id), counts.addedLineCount);
         d.notifications.notify({
           userId: row.user_id,
           kind: 'standing_order.run_completed',
-          title: 'Standing order run completed',
-          body: `${counts.addedLineCount} lines added`,
+          title: copy.title,
+          body: copy.body,
           entityType: 'standing_order_run',
           entityId: String(run.id),
           context: systemContext,

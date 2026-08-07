@@ -1,6 +1,11 @@
 import { useState, type FormEvent } from 'react';
 import type { CompanyInvite } from '@shop/contracts/company-accounts';
 import { Button } from '@/components/ui/button';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import {
+  tradeAsyncMessages,
+  type TradeAsyncMessageKey,
+} from '@shop/localisation/messages/tradeAsync';
 
 type Props = {
   invites: CompanyInvite[];
@@ -8,6 +13,11 @@ type Props = {
   onRevoke: (id: string) => Promise<void>;
 };
 export function InvitesSection({ invites, onInvite, onRevoke }: Props) {
+  const { translate } = useLocalisation();
+  const t = <K extends TradeAsyncMessageKey>(
+    key: K,
+    params?: Record<string, string | number | bigint>,
+  ) => translate(tradeAsyncMessages, key, params);
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'buyer' | 'approver'>('buyer');
   const [busy, setBusy] = useState(false);
@@ -23,37 +33,40 @@ export function InvitesSection({ invites, onInvite, onRevoke }: Props) {
   }
   return (
     <section className="mt-6 rounded-lg border p-5">
-      <h2 className="font-semibold">Invite a member</h2>
+      <h2 className="font-semibold">{t('company.invite.heading')}</h2>
       <form onSubmit={(event) => void submit(event)} className="mt-3 flex flex-wrap gap-2">
         <input
-          aria-label="Invite email"
+          aria-label={t('company.invite.email')}
           required
           type="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           className="min-w-52 flex-1 rounded-md border px-3 py-2 text-sm"
-          placeholder="buyer@example.com"
+          placeholder={t('company.invite.placeholder')}
         />
         <select
-          aria-label="Invite role"
+          aria-label={t('company.invite.role')}
           value={role}
           onChange={(event) => setRole(event.target.value as 'buyer' | 'approver')}
           className="rounded-md border px-2 py-1 text-sm"
         >
-          <option value="buyer">Buyer</option>
-          <option value="approver">Approver</option>
+          <option value="buyer">{t('company.role.buyer')}</option>
+          <option value="approver">{t('company.role.approver')}</option>
         </select>
         <Button type="submit" disabled={busy}>
-          {busy ? 'Sending…' : 'Send invite'}
+          {busy ? t('company.invite.sending') : t('company.invite.send')}
         </Button>
       </form>
       {invites.length > 0 && (
         <ul className="mt-4 divide-y">
-          <h3 className="pb-2 text-sm font-medium">Pending invitations</h3>
+          <h3 className="pb-2 text-sm font-medium">{t('company.invite.pending')}</h3>
           {invites.map((invite) => (
             <li key={invite.id} className="flex items-center justify-between gap-3 py-2 text-sm">
               <span>
-                {invite.email} · {invite.role}
+                {t('company.invite.item', {
+                  email: invite.email,
+                  role: t(`company.role.${invite.role}` as TradeAsyncMessageKey),
+                })}
               </span>
               <Button
                 type="button"
@@ -61,7 +74,7 @@ export function InvitesSection({ invites, onInvite, onRevoke }: Props) {
                 size="sm"
                 onClick={() => void onRevoke(invite.id)}
               >
-                Revoke
+                {t('company.invite.revoke')}
               </Button>
             </li>
           ))}

@@ -1,10 +1,14 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
 import type { Cart, CartLine } from '@shop/contracts/cart';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { useCartContext } from '@/hooks/CartContext';
 import type { useCart } from '@/hooks/useCart';
+import { CountryProvider } from '@/hooks/CountryContext';
+import { LocaleProvider } from '@/i18n/LocaleContext';
+import type { CountryStorage } from '@/lib/countryStorage';
 import { CartPage } from './CartPage';
 
 vi.mock('@/hooks/CartContext', () => ({ useCartContext: vi.fn() }));
@@ -67,7 +71,11 @@ interface CartContextOverrides {
   isActionPending?: ReturnType<typeof vi.fn>;
 }
 
-function renderCart(error: string | null = null, overrides: CartContextOverrides = {}) {
+function renderCart(
+  error: string | null = null,
+  overrides: CartContextOverrides = {},
+  country: 'US' | 'DE' = 'US',
+) {
   vi.mocked(useCartContext).mockReturnValue({
     cart: overrides.cart ?? cart,
     isLoading: false,
@@ -78,10 +86,21 @@ function renderCart(error: string | null = null, overrides: CartContextOverrides
     retryCart: vi.fn(),
     isActionPending: overrides.isActionPending ?? vi.fn(),
   } as unknown as ReturnType<typeof useCart>);
-  return render(
+  const content: ReactNode = (
     <MemoryRouter>
       <CartPage />
-    </MemoryRouter>,
+    </MemoryRouter>
+  );
+  if (country === 'US') return render(content);
+  const storage: CountryStorage = {
+    getItem: () => country,
+    setItem: () => undefined,
+    removeItem: () => undefined,
+  };
+  return render(
+    <CountryProvider storage={storage}>
+      <LocaleProvider>{content}</LocaleProvider>
+    </CountryProvider>,
   );
 }
 
@@ -138,15 +157,15 @@ describe('CartPage', () => {
         'Lines held in your order for this session. Adjust pallet quantities before checkout.',
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText('Resolved order subtotal (1 units)')).toBeInTheDocument();
-    expect(screen.getAllByText('$10.00')).not.toHaveLength(0);
-    expect(screen.getByText(/Resolved pack price: \$10.00/)).toBeInTheDocument();
-    expect(screen.getByText(/\$400.00 \/ tonne/)).toBeInTheDocument();
-    expect(screen.getByText(/25,?000g pack/)).toBeInTheDocument();
+    expect(screen.getByText('Resolved order subtotal (1 unit)')).toBeInTheDocument();
+    expect(screen.getAllByText('$12.50')).not.toHaveLength(0);
+    expect(screen.getByText(/Resolved pack price: \$12.50/)).toBeInTheDocument();
+    expect(screen.getByText(/\$500.00 \/ tonne/)).toBeInTheDocument();
+    expect(screen.getByText(/25 kg pack/)).toBeInTheDocument();
     expect(
       screen.getByText(/Pallet freight scheduled after order confirmation/),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Total order weight: 100,000g/)).toBeInTheDocument();
+    expect(screen.getByText(/Total order weight: 100 kg/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Quick order by item code' })).toHaveAttribute(
       'href',
       '/quick-order',
@@ -190,6 +209,39 @@ describe('CartPage', () => {
     expect(updateQuantity).toHaveBeenCalledWith('1', 5, 1, CONFIG_KEY_B);
   });
 
+  it('formats non-US grouping and semantic weights without changing mutation quantities', async () => {
+    const user = userEvent.setup();
+    const updateQuantity = vi.fn().mockResolvedValue(true);
+    const isActionPending = vi.fn().mockReturnValue(false);
+    renderCart(
+      null,
+      {
+        cart: {
+          ...cart,
+          items: [
+            {
+              ...plainLine,
+              quantity: 1_234,
+              variantSnap: { ...plainLine.variantSnap!, weightGrams: 1_250_000 },
+            },
+          ],
+          totalItems: 1_234,
+          deliveryPreview: { ...cart.deliveryPreview!, weightGrams: 1_250_000 },
+        },
+        updateQuantity,
+        isActionPending,
+      },
+      'DE',
+    );
+
+    expect(screen.getByText('1.234')).toBeInTheDocument();
+    expect(screen.getAllByText(/1,25 tonnes/).length).toBeGreaterThan(0);
+    expect(screen.getByText('Gesamtgewicht der Bestellung: 1,25 tonnes')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Menge erhöhen' }));
+    expect(updateQuantity).toHaveBeenCalledWith('1', 1_235, 1, undefined);
+  });
+
   it('shows the MOQ error returned by the cart hook', () => {
     renderCart('Minimum order quantity not met. Adjust pallet quantity and try again.');
 
@@ -217,7 +269,7 @@ describe('CartPage', () => {
     });
 
     expect(screen.getByLabelText('Clearance price applied')).toHaveTextContent(
-      'Clearance price applied: $8.00 per pack',
+      'Clearance price applied: $10.00 per pack',
     );
   });
 

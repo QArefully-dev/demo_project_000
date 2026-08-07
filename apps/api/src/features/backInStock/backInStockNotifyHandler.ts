@@ -5,9 +5,10 @@ import type { FaultSwitch } from '../jobs/faultSwitch.js';
 import type { JobHandler } from '../jobs/jobHandlerRegistry.js';
 import type { NotificationService } from '../notifications/notificationService.js';
 import type { CountryProfileService } from '../countryProfile/countryProfileService.js';
+import { backInStockCopy } from '@shop/localisation/messages/asyncContent';
 import { minimumOrderQuantity } from '../pricing/pricingRules.js';
 import type { BackInStockRepository } from './backInStockRepository.js';
-import { backInStockNotificationCopy, isNotifiable } from './backInStockRules.js';
+import { isNotifiable } from './backInStockRules.js';
 import type { BackInStockNotifyPayload } from './backInStockTrigger.js';
 
 export interface BackInStockNotifyHandlerDependencies {
@@ -96,11 +97,13 @@ export function createBackInStockNotifyHandler(
     // Below the MOQ floor the lot is not orderable, so pending interest stays pending.
     if (!isNotifiable(availableToSell, minimum)) return { ok: true };
 
-    const copy = backInStockNotificationCopy(facts.product_name, facts.label);
     for (const row of pending) {
       d.unitOfWork.run(() => {
         // Re-read inside the transaction: a buyer may have cancelled since the list was taken.
         if (settleCancellation(row)) return;
+        const country = d.repository.userCountry(row.user_id);
+        if (!country) throw new Error('Back-in-stock subscriber country is missing');
+        const copy = backInStockCopy(country, facts.product_name, facts.label);
         const notified = d.notifications.notify({
           userId: row.user_id,
           kind: 'back_in_stock.available',

@@ -133,9 +133,7 @@ describe('custom blend reachability', () => {
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Build a custom blend' }),
     ).toBeVisible();
-    expect(
-      screen.getByRole('heading', { level: 2, name: 'Choose a base material' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Base material' })).toBeInTheDocument();
   });
 
   it('honours a baseVariantId deep link and keeps sold-out ingredients selectable', async () => {
@@ -163,9 +161,7 @@ describe('custom blend reachability', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'That base material is not available for Custom Blend.',
     );
-    expect(
-      screen.getByRole('heading', { level: 2, name: 'Choose a base material' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Base material' })).toBeInTheDocument();
   });
 
   it('serves the Custom Blend help article on its own route', async () => {
@@ -174,6 +170,6 @@ describe('custom blend reachability', () => {
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Custom Blend' }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/flat blending fee of \$25\.00/)).toBeInTheDocument();
+    expect(screen.getByText(/flat blending fee of \$31\.25/)).toBeInTheDocument();
   });
 });

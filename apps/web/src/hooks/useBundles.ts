@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CuratedBundle } from '@shop/contracts/bundles';
 import { getBundles } from '@/api/bundles';
+import { useOptionalCountry } from '@/hooks/CountryContext';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Failed to load bundles';
@@ -8,6 +9,7 @@ function errorMessage(error: unknown): string {
 
 /** Loads current bundle prices and availability independently from cart state. */
 export function useBundles(productId?: string) {
+  const { activeCountry } = useOptionalCountry();
   const [bundles, setBundles] = useState<readonly CuratedBundle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +39,7 @@ export function useBundles(productId?: string) {
       if (mountedRef.current && !controller.signal.aborted && request === requestRef.current)
         setIsLoading(false);
     }
-  }, [productId]);
+  }, [activeCountry, productId]);
 
   useEffect(() => {
     mountedRef.current = true;

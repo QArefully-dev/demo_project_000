@@ -1,7 +1,9 @@
 import type Database from 'better-sqlite3';
+import type { Country } from '@shop/contracts/country';
 
 export interface CompanyRow {
   id: number;
+  country: Country;
   name: string;
   created_by_user_id: number;
   active: number;
@@ -11,7 +13,14 @@ export interface CompanyRow {
 }
 
 export interface CompanyRepository {
-  create(input: { name: string; createdByUserId: number; now: string }): CompanyRow;
+  /** Reads the immutable identity country used to partition a creator's company account. */
+  findUserCountry(userId: number): Country | undefined;
+  create(input: {
+    name: string;
+    createdByUserId: number;
+    country: Country;
+    now: string;
+  }): CompanyRow;
   findActiveById(id: number): CompanyRow | null;
   updateThreshold(id: number, thresholdCents: number | null, now: string): void;
 }
@@ -20,19 +29,25 @@ export function createCompanyRepository(db: Database.Database): CompanyRepositor
   const get = (id: number) =>
     (db
       .prepare(
-        `SELECT id, name, created_by_user_id, active,
+        `SELECT id, country, name, created_by_user_id, active,
     approval_threshold_cents, created_at, updated_at FROM company_accounts WHERE id = ? AND active = 1`,
       )
       .get(id) as CompanyRow | undefined) ?? null;
   return {
-    create({ name, createdByUserId, now }) {
+    findUserCountry(userId) {
+      const row = db.prepare('SELECT country FROM users WHERE id = ?').get(userId) as
+        { country?: Country } | undefined;
+      return row?.country;
+    },
+    create({ name, createdByUserId, country, now }) {
       const id = Number(
         db
           .prepare(
             `INSERT INTO company_accounts
-        (name, created_by_user_id, active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)`,
+        (country, name, created_by_user_id, active, created_at, updated_at)
+        VALUES (?, ?, ?, 1, ?, ?)`,
           )
-          .run(name, createdByUserId, now, now).lastInsertRowid,
+          .run(country, name, createdByUserId, now, now).lastInsertRowid,
       );
       return get(id)!;
     },

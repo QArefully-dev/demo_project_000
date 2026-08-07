@@ -1,6 +1,9 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import type { Country } from '@shop/contracts/country';
+import { translateUnchecked } from '@shop/localisation';
+import { countryMessages } from '@shop/localisation/messages/country';
+import { identityAccountMessages } from '@shop/localisation/messages/identityAccount';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useOptionalCountry } from '@/hooks/CountryContext';
 import {
@@ -81,8 +84,39 @@ describe('PostalAddressFields', () => {
     render(<AddressHarness initialCountry="UK" />);
 
     expect(screen.getByLabelText('Postleitzahl')).toHaveAttribute('placeholder', '10115');
-    await waitFor(() => expect(screen.getByLabelText('Country code')).toHaveValue('DE'));
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText(
+          translateUnchecked(identityAccountMessages, 'DE', 'account.address.countryCode'),
+        ),
+      ).toHaveValue('DE'),
+    );
   });
+
+  it.each([
+    ['UK', 'Postcode'],
+    ['US', 'ZIP code'],
+    ['CN', '邮政编码'],
+    ['PL', 'Kod pocztowy'],
+    ['ES', 'Código postal'],
+    ['DE', 'Postleitzahl'],
+    ['FR', 'Code postal'],
+  ] as const)(
+    'renders the %s postcode label from the country catalog',
+    (country, expectedLabel) => {
+      vi.mocked(useOptionalCountry).mockReturnValue({
+        activeCountry: country,
+        isAccountBound: true,
+        selectCountry: vi.fn(),
+        countryStorage: storage,
+      });
+
+      render(<AddressHarness initialCountry={country} />);
+
+      expect(translateUnchecked(countryMessages, country, 'postcode.label')).toBe(expectedLabel);
+      expect(screen.getByLabelText(expectedLabel)).toBeInTheDocument();
+    },
+  );
 
   it('preserves postcode error accessibility wiring', () => {
     render(<AddressHarness initialCountry="UK" />);

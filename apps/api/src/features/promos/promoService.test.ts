@@ -289,4 +289,6 @@ void test('scoped subtotal gate ignores nonmatching merchandise', () => {
   assert.equal(result.valid, false);
   if (result.valid) return;
   assert.equal(result.errorCode, 'MIN_SUBTOTAL');
+  assert.equal(result.minSubtotalCents, 10_000);
+  assert.doesNotMatch(result.error, /[$£€]/);
 });

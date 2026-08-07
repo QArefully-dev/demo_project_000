@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
-import { sendConflict, sendNotFound } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 import {
   CancelOrderBody,
   OrderDetailResponse,
@@ -13,11 +13,16 @@ import type { AppContext } from '../app.js';
 import { OrderDomainError } from '../features/orders/orderErrors.js';
 import { requireCustomer } from '../plugins/auth.js';
 
-function sendOrderError(reply: Parameters<typeof sendConflict>[0], error: OrderDomainError): void {
+function sendOrderError(
+  request: Parameters<typeof sendPublicError>[0],
+  reply: Parameters<typeof sendPublicError>[1],
+  error: OrderDomainError,
+): void {
   switch (error.code) {
     case 'ORDER_NOT_FOUND':
     case 'ORDER_FORBIDDEN':
-      sendNotFound(reply, 'Order');
+      // Keep ownership-hiding behavior: forbidden and missing orders are indistinguishable.
+      sendPublicError(request, reply, 404, 'ORDER_NOT_FOUND');
       return;
     case 'INVALID_ALLOCATION':
     case 'INVALID_TRANSITION':
@@ -26,7 +31,8 @@ function sendOrderError(reply: Parameters<typeof sendConflict>[0], error: OrderD
     case 'IDEMPOTENCY_CONFLICT':
     case 'TRACKING_NOT_ALLOWED':
     case 'OUTSTANDING_BACKORDER':
-      sendConflict(reply, error.message);
+      sendPublicError(request, reply, 409, error.code);
+      return;
   }
 }
 
@@ -82,7 +88,7 @@ export default function ordersRoutes(app: FastifyInstance, { services }: AppCont
           ? services.orders.get(orderId)
           : undefined);
       if (!order) {
-        sendNotFound(reply, 'Order');
+        sendPublicError(request, reply, 404, 'ORDER_NOT_FOUND');
         return;
       }
       return order;
@@ -110,7 +116,7 @@ export default function ordersRoutes(app: FastifyInstance, { services }: AppCont
       const orderId = Number(request.params.orderId);
       const userId = request.authenticatedUser!.id;
       if (!services.orders.getOwned(orderId, userId)) {
-        sendNotFound(reply, 'Order');
+        sendPublicError(request, reply, 404, 'ORDER_NOT_FOUND');
         return;
       }
       try {
@@ -122,7 +128,7 @@ export default function ordersRoutes(app: FastifyInstance, { services }: AppCont
         });
       } catch (error) {
         if (error instanceof OrderDomainError) {
-          sendOrderError(reply, error);
+          sendOrderError(request, reply, error);
           return;
         }
         throw error;

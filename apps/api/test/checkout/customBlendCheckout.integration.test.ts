@@ -404,5 +404,8 @@ void test('payment route maps a stale Custom Blend line to a 409 conflict', asyn
     },
   });
   assert.equal(response.statusCode, 409);
-  assert.deepEqual(response.json(), { error: 'CUSTOM_BLEND_INVALID' });
+  assert.deepEqual(response.json(), {
+    error: 'The custom blend is no longer valid.',
+    code: 'CUSTOM_BLEND_INVALID',
+  });
 });

@@ -6,6 +6,7 @@ import type {
   CompanyInviteRole,
   CompanyMembership,
 } from '@shop/contracts/company-accounts';
+import { companyInviteCopy } from '@shop/localisation/messages/asyncContent';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter, Clock } from '../audit/auditService.js';
@@ -160,9 +161,14 @@ export function createCompanyService(dependencies: CompanyServiceDependencies): 
       const timestamp = now();
       return dependencies.unitOfWork.run(() => {
         if (current(userId)) return companyError('ALREADY_MEMBER');
+        // Company country is creator-account authority. Never use the request's selected/admin
+        // browsing country, which is deliberately absent from this service boundary.
+        const country = dependencies.companies.findUserCountry(userId);
+        if (!country) throw new Error('Company creator account not found');
         const company = dependencies.companies.create({
           name: normalized,
           createdByUserId: userId,
+          country,
           now: timestamp,
         });
         const membership = dependencies.memberships.create({
@@ -269,11 +275,29 @@ export function createCompanyService(dependencies: CompanyServiceDependencies): 
           expiresAt,
           now: timestamp,
         });
+        const companyCountry = dependencies.companies.findActiveById(
+          Number(owner.value.company.id),
+        )?.country;
+        if (!companyCountry) throw new Error('Company country is missing');
+        const copy = companyInviteCopy(companyCountry, {
+          companyName: owner.value.company.name,
+          inviteUrl: inviteLink(dependencies.baseUrl, token),
+          role,
+          expiresAt,
+        });
         dependencies.mailbox.add({
           recipient: normalizedEmail,
-          subject: `Invitation to ${owner.value.company.name}`,
-          body: `Accept your company invitation: ${inviteLink(dependencies.baseUrl, token)}`,
-          kind: 'company-invite',
+          subject: copy.subject,
+          body: copy.body,
+          kind: 'template',
+          templateKey: 'company_invite',
+          templateParams: {
+            companyName: owner.value.company.name,
+            inviteUrl: inviteLink(dependencies.baseUrl, token),
+            role,
+            expiresAt,
+          },
+          country: companyCountry,
           createdAt: timestamp,
         });
         dependencies.audit.append({
@@ -331,6 +355,11 @@ export function createCompanyService(dependencies: CompanyServiceDependencies): 
         if (current(userId)) return companyError('ALREADY_MEMBER');
         const company = dependencies.companies.findActiveById(fresh.company_id);
         if (!company) return companyError('INVITE_NOT_FOUND');
+        // Keep invite acceptance inside one-country company boundary. Return settled not-found
+        // identity for mismatches so invite/company existence stays undisclosed.
+        const userCountry = dependencies.companies.findUserCountry(userId);
+        if (!userCountry || userCountry !== company.country)
+          return companyError('INVITE_NOT_FOUND');
         const membership = dependencies.memberships.create({
           companyId: fresh.company_id,
           userId,

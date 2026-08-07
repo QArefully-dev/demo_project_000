@@ -62,6 +62,7 @@ describe('CompanyPage', () => {
     const user = userEvent.setup();
     render(<CompanyPage />);
     const input = await screen.findByRole('textbox', { name: /Threshold/ });
+    expect(screen.getByText(/GBP/)).toBeInTheDocument();
     await user.clear(input);
     await user.type(input, '1.005');
     await user.click(screen.getByRole('button', { name: 'Save threshold' }));

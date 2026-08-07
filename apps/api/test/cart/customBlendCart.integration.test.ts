@@ -122,6 +122,62 @@ void test('Custom Blend cart lines deduplicate, rehydrate, merge edits, and addr
   assert.equal(remaining.blendingFeeTotalCents, 0);
 });
 
+void test('Custom Blend below MOQ returns localized guidance and safe metadata', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-custom-blend-cart-moq-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
+  t.after(async () => {
+    await app.close();
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const lots = db
+    .prepare(
+      `SELECT pv.id, pv.moq_sacks, pv.weight_grams, pv.product_id
+       FROM product_variants pv
+       INNER JOIN products p ON p.id = pv.product_id
+       WHERE p.active = 1 AND pv.active = 1 AND pv.sort_order = 1
+         AND pv.weight_grams = 25000 AND pv.moq_sacks > 1
+         AND p.mixing_group = (
+           SELECT p2.mixing_group
+           FROM product_variants pv2 INNER JOIN products p2 ON p2.id = pv2.product_id
+           WHERE p2.active = 1 AND pv2.active = 1 AND pv2.sort_order = 1
+             AND pv2.weight_grams = 25000 AND p2.mixing_group IS NOT NULL
+           GROUP BY p2.mixing_group HAVING COUNT(*) >= 2 ORDER BY p2.mixing_group LIMIT 1
+         )
+       ORDER BY pv.id LIMIT 2`,
+    )
+    .all() as Array<{ id: number; moq_sacks: number; weight_grams: number; product_id: number }>;
+  assert.equal(lots.length, 2);
+  const [base, ingredient] = lots;
+  if (!base || !ingredient) throw new Error('Expected compatible Custom Blend lots');
+
+  const minimumQuantity = Math.ceil((base.moq_sacks * 25_000) / base.weight_grams);
+  const cartId = Value.Parse(
+    CreateCartResponse,
+    (await app.inject({ method: 'POST', url: '/api/cart' })).json(),
+  ).cartId;
+  const response = await app.inject({
+    method: 'POST',
+    url: `/api/cart/${cartId}/custom-blends`,
+    headers: { 'x-shop-country': 'DE' },
+    payload: {
+      baseVariantId: base.id,
+      ingredients: [{ variantId: ingredient.id, percentage: 5 }],
+      quantity: minimumQuantity - 1,
+    },
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.deepEqual(response.json(), {
+    error: `Die Menge muss mindestens ${minimumQuantity} betragen.`,
+    code: 'BELOW_MOQ',
+    meta: { minQuantity: minimumQuantity },
+  });
+});
+
 void test('Custom Blend applies active clearance to material only and preserves its flat fee', async (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-custom-blend-cart-clearance-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });

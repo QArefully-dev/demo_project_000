@@ -8,7 +8,13 @@ import type {
   ReorderSkipReason,
 } from '@shop/contracts/reorder';
 import { ReorderOutcomeList } from './ReorderOutcomeList';
-import { reorderSummaryMessage, SKIP_REASONS, skipReasonMessage } from './reorderPresentation';
+import {
+  BUY_AGAIN_FAILURE_KEY,
+  BUY_AGAIN_FAILURE_MESSAGE,
+  reorderSummaryMessage,
+  SKIP_REASONS,
+  skipReasonMessage,
+} from './reorderPresentation';
 
 const emptyCart: Cart = {
   id: '5e6f7a8b-1c2d-4e3f-8a9b-0c1d2e3f4a5b',
@@ -97,6 +103,18 @@ describe('ReorderOutcomeList', () => {
     );
   });
 
+  it('renders a stable error key instead of a stale server message', () => {
+    renderList({
+      kind: 'error',
+      message: 'legacy unlocalised error',
+      messageKey: BUY_AGAIN_FAILURE_KEY,
+    });
+
+    const region = screen.getByRole('status', { name: regionName });
+    expect(region).toHaveTextContent(BUY_AGAIN_FAILURE_MESSAGE);
+    expect(region).not.toHaveTextContent('legacy unlocalised error');
+  });
+
   it('names every skipped line with a plain-language cause and links to the cart', () => {
     renderList({
       kind: 'result',
@@ -135,7 +153,7 @@ describe('ReorderOutcomeList', () => {
     const region = screen.getByRole('status', { name: regionName });
     const changes = within(region).getByRole('list', { name: 'Price changes on order #12' });
     expect(within(changes).getByRole('listitem')).toHaveTextContent(
-      'Portland cement × 4 Price changed from $9.00 to $10.50 per item.',
+      'Portland cement × 4 Price changed from $11.25 to $13.13 per item.',
     );
     expect(region).toHaveTextContent('1 item from this order was added to your cart.');
   });

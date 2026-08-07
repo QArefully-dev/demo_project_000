@@ -10,6 +10,8 @@ import type {
 import { QuickOrderOutcomeList } from './QuickOrderOutcomeList';
 import {
   adjustedOutcomes,
+  QUICK_ORDER_FAILURE_KEY,
+  QUICK_ORDER_FAILURE_MESSAGE,
   quickOrderSummaryMessage,
   SKIP_REASONS,
   skipReasonMessage,
@@ -162,6 +164,18 @@ describe('QuickOrderOutcomeList', () => {
     const region = screen.getByRole('status', { name: regionName });
     expect(region).toHaveTextContent('Nothing was added to your cart. 1 line could not be added.');
     expect(within(region).queryByRole('link', { name: 'View cart' })).not.toBeInTheDocument();
+  });
+
+  it('renders a stable error key instead of a stale server message', () => {
+    renderList({
+      kind: 'error',
+      message: 'legacy unlocalised error',
+      messageKey: QUICK_ORDER_FAILURE_KEY,
+    });
+
+    const region = screen.getByRole('status', { name: regionName });
+    expect(region).toHaveTextContent(QUICK_ORDER_FAILURE_MESSAGE);
+    expect(region).not.toHaveTextContent('legacy unlocalised error');
   });
 });
 

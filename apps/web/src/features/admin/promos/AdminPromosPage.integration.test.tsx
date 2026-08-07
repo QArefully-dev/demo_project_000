@@ -1,6 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { Country } from '@shop/contracts/country';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LocaleProvider } from '@/i18n/LocaleContext';
 import { AdminPromosPage } from './AdminPromosPage';
 const api = vi.hoisted(() => ({
   getAdminPromos: vi.fn(),
@@ -9,7 +11,7 @@ const api = vi.hoisted(() => ({
   deactivateAdminPromo: vi.fn(),
 }));
 vi.mock('@/api/adminPromos', () => api);
-const countryState = vi.hoisted(() => ({ activeCountry: 'DE' }));
+const countryState: { activeCountry: Country } = vi.hoisted(() => ({ activeCountry: 'DE' }));
 vi.mock('@/hooks/CountryContext', () => ({
   useCountry: () => ({
     activeCountry: countryState.activeCountry,
@@ -39,17 +41,26 @@ describe('AdminPromosPage', () => {
     countryState.activeCountry = 'DE';
   });
   afterEach(() => vi.resetAllMocks());
+
+  function renderPage() {
+    return render(
+      <LocaleProvider>
+        <AdminPromosPage />
+      </LocaleProvider>,
+    );
+  }
+
   it('creates a promotion through the typed client', async () => {
     api.getAdminPromos.mockResolvedValue({ items: [promo] });
     api.createAdminPromo.mockResolvedValue({ ...promo, code: 'NEW10' });
     const user = userEvent.setup();
-    render(<AdminPromosPage />);
+    renderPage();
     await screen.findByText('TRADE10');
-    await user.click(screen.getByRole('button', { name: 'New promotion' }));
+    await user.click(screen.getByRole('button', { name: 'Neue Aktion' }));
     await user.type(screen.getByLabelText('Code'), 'new10');
-    await user.clear(screen.getByLabelText('Discount percent'));
-    await user.type(screen.getByLabelText('Discount percent'), '10');
-    await user.click(screen.getByRole('button', { name: 'Save promotion' }));
+    await user.clear(screen.getByLabelText('Rabatt in Prozent'));
+    await user.type(screen.getByLabelText('Rabatt in Prozent'), '10');
+    await user.click(screen.getByRole('button', { name: 'Aktion speichern' }));
     await waitFor(() =>
       expect(api.createAdminPromo).toHaveBeenCalledWith(expect.objectContaining({ code: 'NEW10' })),
     );
@@ -58,22 +69,23 @@ describe('AdminPromosPage', () => {
     api.getAdminPromos.mockResolvedValue({ items: [promo] });
     api.deactivateAdminPromo.mockRejectedValue(new Error('Promotion already redeemed'));
     const user = userEvent.setup();
-    render(<AdminPromosPage />);
-    await user.click(await screen.findByRole('button', { name: 'TRADE10 Active' }));
-    await user.click(screen.getByRole('button', { name: 'Deactivate promotion' }));
-    await user.click(screen.getByRole('button', { name: 'Confirm deactivate' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Promotion already redeemed');
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'TRADE10 Aktiv' }));
+    await user.click(screen.getByRole('button', { name: 'Aktion deaktivieren' }));
+    await user.click(screen.getByRole('button', { name: 'Deaktivierung bestätigen' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Anfrage fehlgeschlagen.');
+    expect(screen.queryByText('Promotion already redeemed')).not.toBeInTheDocument();
   });
   it('serialises only update fields when editing a promotion', async () => {
     api.getAdminPromos.mockResolvedValue({ items: [promo] });
     api.updateAdminPromo.mockResolvedValue(promo);
     const user = userEvent.setup();
-    render(<AdminPromosPage />);
-    await user.click(await screen.findByRole('button', { name: 'TRADE10 Active' }));
-    await user.selectOptions(screen.getByLabelText('Category scope'), 'Drinks');
-    await user.clear(screen.getByLabelText('Maximum redemptions'));
-    await user.type(screen.getByLabelText('Maximum redemptions'), '20');
-    await user.click(screen.getByRole('button', { name: 'Save promotion' }));
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'TRADE10 Aktiv' }));
+    await user.selectOptions(screen.getByLabelText('Kategorieumfang'), 'Drinks');
+    await user.clear(screen.getByLabelText('Maximale Einlösungen'));
+    await user.type(screen.getByLabelText('Maximale Einlösungen'), '20');
+    await user.click(screen.getByRole('button', { name: 'Aktion speichern' }));
     await waitFor(() =>
       expect(api.updateAdminPromo).toHaveBeenCalledWith(
         'TRADE10',
@@ -95,25 +107,53 @@ describe('AdminPromosPage', () => {
 
   it('refetches the server-scoped list when the standing country changes', async () => {
     api.getAdminPromos.mockResolvedValue({ items: [promo] });
-    const { rerender } = render(<AdminPromosPage />);
+    const { rerender } = renderPage();
     await screen.findByText('TRADE10');
     expect(api.getAdminPromos).toHaveBeenCalledTimes(1);
 
     countryState.activeCountry = 'UK';
-    rerender(<AdminPromosPage />);
+    rerender(
+      <LocaleProvider>
+        <AdminPromosPage />
+      </LocaleProvider>,
+    );
     await waitFor(() => expect(api.getAdminPromos).toHaveBeenCalledTimes(2));
   });
 
   it('labels an empty targeting selection as applying to all countries', async () => {
     api.getAdminPromos.mockResolvedValue({ items: [promo] });
     const user = userEvent.setup();
-    render(<AdminPromosPage />);
-    await user.click(await screen.findByRole('button', { name: 'TRADE10 Active' }));
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'TRADE10 Aktiv' }));
 
-    expect(screen.getByLabelText('Country targeting')).toHaveValue(['UK', 'DE']);
+    expect(screen.getByLabelText('Länderzielgruppe')).toHaveValue(['UK', 'DE']);
 
-    await user.click(screen.getByRole('button', { name: 'New promotion' }));
-    expect(screen.getByLabelText('Country targeting')).toHaveValue([]);
-    expect(screen.getByText('Leave empty to apply to all countries.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Neue Aktion' }));
+    expect(screen.getByLabelText('Länderzielgruppe')).toHaveValue([]);
+    expect(screen.getByText('Leer lassen, um alle Länder einzuschließen.')).toBeInTheDocument();
+  });
+
+  it('keeps raw targeting values, GBP pence input, and datetime-local minute display', async () => {
+    const datedPromo = {
+      ...promo,
+      amountCents: 750,
+      startAt: '2026-01-01T12:34:56.789Z',
+      endAt: '2026-01-02T12:34:56.789Z',
+    };
+    api.getAdminPromos.mockResolvedValue({ items: [datedPromo] });
+    api.updateAdminPromo.mockResolvedValue(datedPromo);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'TRADE10 Aktiv' }));
+    expect(screen.getByLabelText('Länderzielgruppe')).toHaveValue(['UK', 'DE']);
+    expect(screen.getByLabelText('Fester Betrag (GBP-Pence)')).toHaveValue(750);
+    expect(screen.getByLabelText('Beginnt am')).toHaveValue('2026-01-01T12:34');
+    expect(screen.getByLabelText('Endet am')).toHaveValue('2026-01-02T12:34');
+    await user.click(screen.getByRole('button', { name: 'Aktion speichern' }));
+    await waitFor(() => expect(api.updateAdminPromo).toHaveBeenCalled());
+    expect(api.updateAdminPromo).toHaveBeenCalledWith(
+      'TRADE10',
+      expect.objectContaining({ countries: ['UK', 'DE'], amountCents: 750 }),
+    );
   });
 });

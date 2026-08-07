@@ -1,6 +1,8 @@
 interface NavItem {
   key: string;
   label: string;
+  /** Stable lookup key; `label` remains a compatibility/default value for non-React consumers. */
+  messageKey?: string;
   icon: string;
   enabled: boolean;
   className?: string;
@@ -9,6 +11,7 @@ interface NavItem {
 export const searchItem: NavItem = {
   key: 'search',
   label: 'Search',
+  messageKey: 'shell.searchProducts',
   icon: 'Search',
   enabled: false,
 };
@@ -16,6 +19,7 @@ export const searchItem: NavItem = {
 export const accountItem: NavItem = {
   key: 'account',
   label: 'Account',
+  messageKey: 'shell.account',
   icon: 'User',
   enabled: false,
 };
@@ -23,6 +27,7 @@ export const accountItem: NavItem = {
 export const savedListsItem: NavItem = {
   key: 'savedLists',
   label: 'Saved Lists',
+  messageKey: 'shell.savedLists',
   icon: 'List',
   enabled: true,
 };
@@ -30,6 +35,7 @@ export const savedListsItem: NavItem = {
 export const bundlesItem: NavItem = {
   key: 'bundles',
   label: 'Bundles',
+  messageKey: 'shell.bundles',
   icon: 'Package',
   enabled: true,
 };
@@ -41,6 +47,7 @@ export const bundlesItem: NavItem = {
 export const customBlendItem: NavItem = {
   key: 'customBlend',
   label: 'Custom Blend',
+  messageKey: 'shell.customBlend',
   icon: 'Blend',
   enabled: true,
   className: 'custom-blend-nav-link',

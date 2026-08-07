@@ -5,44 +5,112 @@ import type {
 } from '@shop/contracts/standing-orders';
 import { ApiError } from '@/api/client';
 import { outcomeLineLabel, skipReasonMessage } from '@/features/reorder/reorderPresentation';
-const cadence: Readonly<Record<StandingOrderCadence, string>> = {
-  weekly: 'Weekly',
-  fortnightly: 'Every two weeks',
-  monthly: 'Monthly',
+import type { RepeatBuyingTranslator } from '@/features/savedLists/savedListsPresentation';
+import {
+  translateTradeAsync,
+  type TradeAsyncMessageKey,
+} from '@shop/localisation/messages/tradeAsync';
+
+const cadence: Readonly<Record<StandingOrderCadence, TradeAsyncMessageKey>> = {
+  weekly: 'standing.weekly',
+  fortnightly: 'standing.fortnightly',
+  monthly: 'standing.monthly',
 };
-const errors: Readonly<Record<string, string>> = {
-  NOT_FOUND: 'This standing order no longer exists. Refresh the page and try again.',
-  SOURCE_NOT_FOUND: 'The saved list or order for this schedule is no longer available.',
-  CART_RESERVED: 'This run could not start because its cart is in checkout. Try again shortly.',
-  CART_NOT_FOUND: 'This run could not start because its cart is no longer available. Try again.',
-  UNAUTHENTICATED: 'Sign in again to manage standing orders.',
-  FORBIDDEN: 'You do not have permission to manage this standing order.',
+const defaultTranslate = (
+  key: TradeAsyncMessageKey,
+  params?: Readonly<Record<string, string | number | bigint>>,
+) => translateTradeAsync('UK', key, params);
+
+export type StandingOrderTranslator = (
+  key: TradeAsyncMessageKey,
+  params?: Readonly<Record<string, string | number | bigint>>,
+) => string;
+
+const resolve = (translate?: StandingOrderTranslator): StandingOrderTranslator =>
+  typeof translate === 'function' ? translate : defaultTranslate;
+
+const apiErrorParams = (error: ApiError): Record<string, string | number | bigint> => {
+  const params: Record<string, string | number | bigint> = {};
+  for (const [key, value] of Object.entries(error.meta ?? {})) {
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint')
+      params[key] = value;
+  }
+  return params;
+};
+
+const API_ERROR_FALLBACK_KEYS: Readonly<Record<string, TradeAsyncMessageKey>> = {
+  NOT_FOUND: 'standing.error.generic',
+  SOURCE_NOT_FOUND: 'standing.error.generic',
+  CART_RESERVED: 'standing.error.generic',
+  CART_NOT_FOUND: 'standing.error.generic',
+  UNAUTHENTICATED: 'standing.error.generic',
+  FORBIDDEN: 'standing.error.generic',
 };
 export const STANDING_ORDER_CADENCES = Object.keys(cadence) as StandingOrderCadence[];
-export const STANDING_ORDER_ERROR_CODES = Object.keys(errors);
-export const standingOrderCadenceLabel = (value: StandingOrderCadence) => cadence[value];
-export function standingOrderErrorMessage(error: unknown): string {
+export const STANDING_ORDER_ERROR_CODES = Object.keys(API_ERROR_FALLBACK_KEYS);
+export const standingOrderCadenceLabel = (
+  value: StandingOrderCadence,
+  translate?: StandingOrderTranslator,
+) => resolve(translate)(cadence[value]);
+export function standingOrderErrorMessage(
+  error: unknown,
+  translate?: StandingOrderTranslator,
+  translateApi?: (
+    key: string,
+    params?: Readonly<Record<string, string | number | bigint>>,
+  ) => string,
+): string {
+  const t = resolve(translate);
   if (error instanceof ApiError) {
-    const code = (error.response as unknown as { code?: unknown } | null)?.code;
-    if (typeof code === 'string' && code in errors) return errors[code]!;
-    if (error.status === 401) return errors.UNAUTHENTICATED!;
-    if (error.status === 403) return errors.FORBIDDEN!;
-    if (error.isNetworkError)
-      return 'We could not reach the server. Check your connection and try again.';
+    if (error.code !== null && translateApi) {
+      try {
+        return translateApi(error.code, apiErrorParams(error));
+      } catch {
+        // Safe generic fallback below.
+      }
+    }
+    if (error.status === 401) {
+      try {
+        return translateApi?.('UNAUTHORIZED', {}) ?? t('standing.error.generic');
+      } catch {
+        return t('standing.error.generic');
+      }
+    }
+    if (error.status === 403) {
+      try {
+        return translateApi?.('FORBIDDEN', {}) ?? t('standing.error.generic');
+      } catch {
+        return t('standing.error.generic');
+      }
+    }
+    if (error.isNetworkError) return t('standing.error.network');
   }
-  return 'We could not complete that standing-order request. Please try again.';
+  return t('standing.error.generic');
 }
-export const standingOrderOutcomeLabel = (outcome: StandingOrderLineOutcome) =>
-  outcomeLineLabel(outcome);
-export const standingOrderSkipReasonLabel = (outcome: StandingOrderLineOutcome) =>
-  outcome.status === 'skipped' && outcome.reason ? skipReasonMessage(outcome.reason) : null;
-export function standingOrderRunSummary(run: StandingOrderRun): string {
-  if (run.status === 'pending') return 'Run is waiting to be processed.';
-  if (run.status === 'failed') return `Run failed: ${run.failureReason ?? 'Please try again.'}`;
-  if (!run.addedLineCount && !run.skippedLineCount) return 'This run had no items to add.';
-  if (!run.skippedLineCount)
-    return `${run.addedLineCount} ${run.addedLineCount === 1 ? 'item was' : 'items were'} added.`;
-  if (!run.addedLineCount)
-    return `No items were added; ${run.skippedLineCount} could not be added.`;
-  return `${run.addedLineCount} added; ${run.skippedLineCount} could not be added.`;
+export const standingOrderOutcomeLabel = (
+  outcome: StandingOrderLineOutcome,
+  translate?: RepeatBuyingTranslator,
+) => outcomeLineLabel(outcome, translate);
+export const standingOrderSkipReasonLabel = (
+  outcome: StandingOrderLineOutcome,
+  translate?: RepeatBuyingTranslator,
+) =>
+  outcome.status === 'skipped' && outcome.reason
+    ? skipReasonMessage(outcome.reason, translate)
+    : null;
+export function standingOrderRunSummary(
+  run: StandingOrderRun,
+  translate?: StandingOrderTranslator,
+): string {
+  const t = resolve(translate);
+  if (run.status === 'pending') return t('standing.run.pending');
+  if (run.status === 'failed')
+    return t('standing.run.failed', { reason: t('standing.error.generic') });
+  if (!run.addedLineCount && !run.skippedLineCount) return t('standing.run.none');
+  if (!run.skippedLineCount) return t('standing.run.added', { count: run.addedLineCount });
+  if (!run.addedLineCount) return t('standing.run.noneAdded', { count: run.skippedLineCount });
+  return t('standing.run.mixed', {
+    added: run.addedLineCount,
+    skipped: run.skippedLineCount,
+  });
 }

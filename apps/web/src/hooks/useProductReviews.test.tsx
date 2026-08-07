@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { OwnedReview, ReviewListResponse } from '@shop/contracts/reviews';
 import type { PublicUser } from '@shop/contracts/auth';
+import { ApiContractError, ApiError } from '@/api/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useProductReviews } from './useProductReviews';
 
@@ -99,6 +100,34 @@ describe('useProductReviews', () => {
       await first.promise;
     });
     expect(result.current.list?.items[0]?.id).toBe('two');
+  });
+
+  it('uses localized fallback copy for raw and contract failures', async () => {
+    reviewsApi.getProductReviews.mockRejectedValueOnce(new Error('raw server detail'));
+    const first = renderHook(() => useProductReviews('one'));
+    await waitFor(() => expect(first.result.current.isListLoading).toBe(false));
+    expect(first.result.current.listError).toBe('Could not load reviews.');
+    first.unmount();
+
+    reviewsApi.getProductReviews.mockRejectedValueOnce(
+      new ApiContractError('/api/products/one/reviews', 'raw contract detail'),
+    );
+    const second = renderHook(() => useProductReviews('one'));
+    await waitFor(() => expect(second.result.current.isListLoading).toBe(false));
+    expect(second.result.current.listError).toBe('Could not load reviews.');
+  });
+
+  it('maps recognized API review failures by code and safe metadata', async () => {
+    reviewsApi.getProductReviews.mockRejectedValueOnce(
+      new ApiError('raw server detail', 429, {
+        error: 'raw server detail',
+        code: 'TOO_MANY_REPORTS',
+      } as never),
+    );
+    const { result } = renderHook(() => useProductReviews('one'));
+    await waitFor(() => expect(result.current.isListLoading).toBe(false));
+    expect(result.current.listError).toBe('You have submitted too many reports.');
+    expect(result.current.listError).not.toContain('raw server detail');
   });
 
   it('aborts and ignores stale public and owner responses after a product route change', async () => {

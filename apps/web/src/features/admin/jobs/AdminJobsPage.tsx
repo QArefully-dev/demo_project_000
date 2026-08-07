@@ -6,12 +6,23 @@ import { ErrorMessage } from '@/components/ErrorMessage';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { useLocalisation, useMessages } from '@/i18n/LocaleContext';
+import {
+  adminDiagnosticsMessages,
+  localizeAdminDiagnosticsError,
+  type AdminDiagnosticsMessageKey,
+} from '@shop/localisation/messages/adminDiagnostics';
 
 const PAGE_SIZE = 10;
 const statuses: JobStatus[] = ['pending', 'running', 'succeeded', 'failed', 'dead'];
 const kinds: JobKind[] = ['notification.deliver', 'webhook.process', 'standing_order.run'];
-const errorMessage = (error: unknown, fallback: string) =>
-  error instanceof Error && error.message ? error.message : fallback;
+const JOB_STATUS_LABELS: Record<JobStatus, AdminDiagnosticsMessageKey> = {
+  pending: 'admin.jobs.status.pending',
+  running: 'admin.jobs.status.running',
+  succeeded: 'admin.jobs.status.succeeded',
+  failed: 'admin.jobs.status.failed',
+  dead: 'admin.jobs.status.dead',
+};
 const readPage = (value: string | null) => {
   const page = Number(value);
   return Number.isInteger(page) && page > 0 ? page : 1;
@@ -26,6 +37,8 @@ type QueryUpdate = Omit<Partial<AdminJobListQuery>, 'status' | 'kind'> & {
 };
 
 export function AdminJobsPage() {
+  const { country, formatCount } = useLocalisation();
+  const t = useMessages(adminDiagnosticsMessages);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const status = readStatus(searchParams.get('status'));
@@ -70,7 +83,7 @@ export function AdminJobsPage() {
       })
       .catch((requestError: unknown) => {
         if (current && !controller.signal.aborted)
-          setError(errorMessage(requestError, 'Unable to load jobs.'));
+          setError(localizeAdminDiagnosticsError(requestError, country, 'admin.jobs.loadError'));
       })
       .finally(() => {
         if (current && !controller.signal.aborted) setLoading(false);
@@ -79,7 +92,7 @@ export function AdminJobsPage() {
       current = false;
       controller.abort();
     };
-  }, [kind, page, reloadVersion, status, updateParams]);
+  }, [country, kind, page, reloadVersion, status, updateParams]);
 
   useEffect(() => {
     if (!focusAfterReloadRef.current || !result) return;
@@ -96,31 +109,33 @@ export function AdminJobsPage() {
       const response = await drainAdminJobs();
       focusAfterReloadRef.current = true;
       setDrainMessage(
-        `Processed ${response.processedCount}; succeeded ${response.succeededCount}; failed ${response.failedCount}.`,
+        t('admin.jobs.drainSummary', {
+          processed: formatCount(response.processedCount),
+          succeeded: formatCount(response.succeededCount),
+          failed: formatCount(response.failedCount),
+        }),
       );
       refresh();
     } catch (requestError) {
-      setError(errorMessage(requestError, 'Unable to drain jobs.'));
+      setError(localizeAdminDiagnosticsError(requestError, country, 'admin.jobs.drainError'));
     } finally {
       setDraining(false);
     }
-  }, [draining, refresh]);
+  }, [country, draining, formatCount, refresh, t]);
 
   if (loading && !result) return <LoadingSpinner />;
   if (error && !result) return <ErrorMessage message={error} onRetry={refresh} />;
-  if (!result) return <ErrorMessage message="Job queue is unavailable" onRetry={refresh} />;
+  if (!result) return <ErrorMessage message={t('admin.jobs.queueUnavailable')} onRetry={refresh} />;
   const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
 
   return (
     <section className="mx-auto max-w-4xl space-y-6" aria-labelledby="admin-jobs-heading">
       <div>
-        <p className="section-eyebrow">Administration</p>
+        <p className="section-eyebrow">{t('admin.common.administration')}</p>
         <h1 ref={headingRef} id="admin-jobs-heading" tabIndex={-1} className="section-heading mt-2">
-          Job queue
+          {t('admin.jobs.heading')}
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Inspect and operate local asynchronous work.
-        </p>
+        <p className="mt-2 text-sm text-muted-foreground">{t('admin.jobs.description')}</p>
       </div>
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -132,34 +147,34 @@ export function AdminJobsPage() {
       </p>
       <div className="flex flex-wrap gap-3">
         <label className="text-sm font-medium">
-          Status
+          {t('admin.jobs.statusLabel')}
           <select
-            aria-label="Job status"
+            aria-label={t('admin.jobs.statusLabel')}
             className="ml-2 rounded-md border border-input bg-background px-2 py-1"
             value={status ?? ''}
             onChange={(event) =>
               updateParams({ status: readStatus(event.target.value) ?? null, page: 1 })
             }
           >
-            <option value="">All</option>
+            <option value="">{t('admin.common.all')}</option>
             {statuses.map((item) => (
               <option key={item} value={item}>
-                {item}
+                {t(JOB_STATUS_LABELS[item])}
               </option>
             ))}
           </select>
         </label>
         <label className="text-sm font-medium">
-          Kind
+          {t('admin.jobs.kindLabel')}
           <select
-            aria-label="Job kind"
+            aria-label={t('admin.jobs.kindLabel')}
             className="ml-2 rounded-md border border-input bg-background px-2 py-1"
             value={kind ?? ''}
             onChange={(event) =>
               updateParams({ kind: readKind(event.target.value) ?? null, page: 1 })
             }
           >
-            <option value="">All</option>
+            <option value="">{t('admin.common.all')}</option>
             {kinds.map((item) => (
               <option key={item} value={item}>
                 {item}
@@ -168,12 +183,12 @@ export function AdminJobsPage() {
           </select>
         </label>
         <Button type="button" disabled={draining} onClick={() => void drain()}>
-          {draining ? 'Draining…' : 'Drain due jobs'}
+          {draining ? t('admin.jobs.draining') : t('admin.jobs.drain')}
         </Button>
       </div>
       {result.items.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center">No jobs match these filters.</CardContent>
+          <CardContent className="py-12 text-center">{t('admin.jobs.empty')}</CardContent>
         </Card>
       ) : (
         <div className="space-y-3" aria-busy={loading}>
@@ -184,7 +199,11 @@ export function AdminJobsPage() {
                   <div>
                     <h2 className="font-semibold">{job.kind}</h2>
                     <p className="text-sm text-muted-foreground">
-                      #{job.id} · {job.status} · {job.attempts}/{job.maxAttempts} attempts
+                      #{job.id} · {t(JOB_STATUS_LABELS[job.status])} ·{' '}
+                      {t('admin.jobs.attempts', {
+                        attempts: formatCount(job.attempts),
+                        maxAttempts: formatCount(job.maxAttempts),
+                      })}
                     </p>
                   </div>
                   <Button
@@ -192,7 +211,7 @@ export function AdminJobsPage() {
                     variant="outline"
                     onClick={() => navigate(`/admin/jobs/${job.id}`)}
                   >
-                    View detail
+                    {t('admin.common.viewDetail')}
                   </Button>
                 </CardContent>
               </Card>
@@ -200,17 +219,20 @@ export function AdminJobsPage() {
           ))}
         </div>
       )}
-      <nav className="flex items-center justify-between" aria-label="Job queue pages">
+      <nav className="flex items-center justify-between" aria-label={t('admin.jobs.queuePages')}>
         <Button
           type="button"
           variant="outline"
           disabled={page <= 1 || loading}
           onClick={() => updateParams({ page: page - 1 })}
         >
-          Previous
+          {t('admin.common.previous')}
         </Button>
         <span className="text-sm text-muted-foreground">
-          Page {result.page} of {totalPages}
+          {t('admin.common.page', {
+            page: formatCount(result.page),
+            totalPages: formatCount(totalPages),
+          })}
         </span>
         <Button
           type="button"
@@ -218,7 +240,7 @@ export function AdminJobsPage() {
           disabled={page >= totalPages || loading}
           onClick={() => updateParams({ page: page + 1 })}
         >
-          Next
+          {t('admin.common.next')}
         </Button>
       </nav>
     </section>

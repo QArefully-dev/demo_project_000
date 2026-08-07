@@ -2,15 +2,19 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { formatMoney } from '@/lib/formatMoney';
 import type { OrderDetailResponse } from '@shop/contracts/orders';
 import type { Product } from '@shop/contracts/products';
 import type { LegacyRef } from 'react';
+import { useLocalisation } from '@/i18n/LocaleContext';
 import {
-  CUSTOM_BLEND_MADE_TO_ORDER_NOTE,
   CustomBlendPackaging,
   customBlendCompositionLabel,
+  customBlendMadeToOrderNote,
 } from '@/features/customBlend/CustomBlendPackaging';
+import {
+  orderLifecycleMessages,
+  type OrderLifecycleMessageKey,
+} from '@shop/localisation/messages/orderLifecycle';
 import {
   formatBillingIdentifiers,
   formatAddressLine,
@@ -33,10 +37,6 @@ function statusVariant(status: string): 'default' | 'secondary' | 'destructive' 
   if (status === 'delivery_failed' || status === 'cancelled') return 'destructive';
   if (status === 'delivered') return 'default';
   return 'secondary';
-}
-
-function deliveryModeLabel(mode: string): string {
-  return mode === 'freight' ? 'Freight' : 'Parcel';
 }
 
 function orderPackagingProduct(item: OrderDetailResponse['items'][number]): Product {
@@ -72,34 +72,40 @@ export function OrderDetailView({
   onRequestCancellation,
   cancelTriggerRef,
 }: Props) {
+  const locale = useLocalisation();
+  const t = (key: OrderLifecycleMessageKey, params?: Record<string, string | number | bigint>) =>
+    locale.translate(orderLifecycleMessages, key, params);
+  const deliveryModeLabel = (mode: string) =>
+    t(mode === 'freight' ? 'order.deliveryMode.freight' : 'order.deliveryMode.parcel');
   const namesByLineId = new Map<string, string>(
     order.items.map((line): [string, string] => [line.lineId, line.productName]),
   );
   const hasCustomBlend = order.items.some((line) => line.customBlend !== undefined);
   const deliveryAddress = formatAddressLine(order.deliveryAddress);
-  const deliverySlot = formatDeliverySlot(order.deliverySlot);
-  const billingIdentifiers = formatBillingIdentifiers(order.billingEntity);
+  const deliverySlot = formatDeliverySlot(order.deliverySlot, locale);
+  const billingIdentifiers = formatBillingIdentifiers(order.billingEntity, locale);
   const purchaseOrderReference = formatPurchaseOrderReference(order.purchaseOrderReference);
+  const total = locale.formatDualTotal(order.totalCents);
 
   return (
-    <section className="space-y-6" aria-label={`Order ${order.id}`}>
+    <section className="space-y-6" aria-label={t('order.orderAria', { orderId: order.id })}>
       <Card>
         <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <CardTitle>Order #{order.id}</CardTitle>
+            <CardTitle>{t('order.orderNumber', { orderId: order.id })}</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Placed {formatOrderDate(order.createdAt)}
+              {t('order.placed', { date: formatOrderDate(order.createdAt, locale) })}
             </p>
           </div>
           <Badge
             variant={statusVariant(order.status)}
-            aria-label={`Order status: ${orderStatusLabel(order.status)}`}
+            aria-label={t('order.statusAria', { status: orderStatusLabel(order.status, locale) })}
           >
-            {orderStatusLabel(order.status)}
+            {orderStatusLabel(order.status, locale)}
           </Badge>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-3" aria-label="Purchased items">
+          <div className="space-y-3" aria-label={t('order.purchasedItems')}>
             {order.items.map((item) => (
               <div key={item.lineId} className="flex items-center justify-between gap-4 text-sm">
                 {item.customBlend && (
@@ -117,72 +123,93 @@ export function OrderDetailView({
                   <span className="text-muted-foreground">× {item.quantity}</span>
                   {item.variantSnapshot && (
                     <span className="block text-xs text-muted-foreground">
-                      {item.variantSnapshot.label} · SKU: {item.variantSnapshot.sku} ·{' '}
-                      {item.variantSnapshot.weightGrams}g
+                      {t('order.variantMeta', {
+                        label: item.variantSnapshot.label,
+                        sku: item.variantSnapshot.sku,
+                        weight: locale.formatWeightGrams(item.variantSnapshot.weightGrams),
+                      })}
                     </span>
                   )}
                   {item.customBlend && (
                     <span className="block text-xs text-muted-foreground" data-testid="order-blend">
                       <Badge variant="outline" className="mb-0.5 w-fit text-[10px]">
-                        Custom blend
+                        {t('order.customBlend')}
                       </Badge>
                       <span className="block">
-                        {customBlendCompositionLabel(item.productName, item.customBlend)}
+                        {customBlendCompositionLabel(
+                          item.productName,
+                          item.customBlend,
+                          locale.country,
+                        )}
                       </span>
                       <span className="block">
-                        Base material: {formatMoney(item.discountableTotalCents)} · Blending fee:{' '}
-                        {formatMoney(item.blendingFeeCents)}
+                        {t('order.baseMaterial', {
+                          money: locale.formatDisplayMoney(item.discountableTotalCents),
+                        })}
+                        {' · '}
+                        {t('order.blendingFee', {
+                          money: locale.formatDisplayMoney(item.blendingFeeCents),
+                        })}
                       </span>
                     </span>
                   )}
                   {item.inventoryStatus === 'partially_backordered' && (
                     <span className="block text-xs font-medium text-amber-700">
-                      {item.allocatedQuantity} allocated; {item.backorderedQuantity} awaiting stock
+                      {t('order.inventory.partiallyBackordered', {
+                        allocated: item.allocatedQuantity,
+                        backordered: item.backorderedQuantity,
+                      })}
                     </span>
                   )}
                   {item.inventoryStatus === 'backordered' && (
-                    <span className="block text-xs font-medium text-amber-700">Awaiting stock</span>
+                    <span className="block text-xs font-medium text-amber-700">
+                      {t('order.inventory.backordered')}
+                    </span>
                   )}
                   {item.inventoryStatus === 'allocated' && (
                     <span className="block text-xs text-muted-foreground">
-                      Allocated for fulfilment
+                      {t('order.inventory.allocated')}
                     </span>
                   )}
                   {item.inventoryStatus === 'cancelled' && (
                     <span className="block text-xs text-muted-foreground">
-                      Allocation cancelled
+                      {t('order.inventory.cancelled')}
                     </span>
                   )}
                 </span>
-                <span className="shrink-0">{formatMoney(item.lineTotalCents)}</span>
+                <span className="shrink-0">{locale.formatDisplayMoney(item.lineTotalCents)}</span>
               </div>
             ))}
           </div>
           {hasCustomBlend && (
             <p className="custom-blend-notice rounded-md px-3 py-2 text-xs">
-              {CUSTOM_BLEND_MADE_TO_ORDER_NOTE}
+              {customBlendMadeToOrderNote(locale.country)}
             </p>
           )}
           <Separator />
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Merchandise subtotal</span>
-              <span>{formatMoney(order.subtotalCents)}</span>
+              <span className="text-muted-foreground">{t('order.merchandiseSubtotal')}</span>
+              <span>{locale.formatDisplayMoney(order.subtotalCents)}</span>
             </div>
             {order.discountCents > 0 && (
               <div className="flex items-center justify-between text-sm text-green-700">
-                <span>Discount{order.promoApplied ? ` (${order.promoApplied})` : ''}</span>
-                <span>−{formatMoney(order.discountCents)}</span>
+                <span>
+                  {order.promoApplied
+                    ? t('order.discountWithPromo', { promo: order.promoApplied })
+                    : t('order.discount')}
+                </span>
+                <span>{locale.formatDisplayMoney(-order.discountCents)}</span>
               </div>
             )}
             {order.deliveryMode && (
               <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <span>{deliveryModeLabel(order.deliveryMode)} delivery</span>
+                <span>{t('order.delivery', { mode: deliveryModeLabel(order.deliveryMode) })}</span>
                 <span>
                   {order.deliveryChargeCents !== undefined && order.deliveryChargeCents === 0
-                    ? 'Free'
+                    ? t('order.free')
                     : order.deliveryChargeCents !== undefined
-                      ? formatMoney(order.deliveryChargeCents)
+                      ? locale.formatDisplayMoney(order.deliveryChargeCents)
                       : ''}
                 </span>
               </div>
@@ -190,8 +217,15 @@ export function OrderDetailView({
           </div>
           <Separator />
           <div className="flex items-center justify-between text-lg font-bold">
-            <span>Total</span>
-            <span>{formatMoney(order.totalCents)}</span>
+            <span>{t('order.total')}</span>
+            <span>
+              {total.display}
+              {total.settlement && (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  {t('order.settlementTotal', { money: total.settlement })}
+                </span>
+              )}
+            </span>
           </div>
         </CardContent>
       </Card>
@@ -199,14 +233,14 @@ export function OrderDetailView({
       {hasOrderTradeDetails(order) && (
         <Card>
           <CardHeader>
-            <CardTitle>Delivery and billing</CardTitle>
+            <CardTitle>{t('order.deliveryBilling')}</CardTitle>
           </CardHeader>
           <CardContent>
             <dl className="grid gap-4 text-sm sm:grid-cols-2">
               {deliveryAddress && (
                 <div>
                   <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Delivery address
+                    {t('order.deliveryAddress')}
                   </dt>
                   <dd className="mt-1">{deliveryAddress}</dd>
                 </div>
@@ -214,7 +248,7 @@ export function OrderDetailView({
               {deliverySlot && (
                 <div>
                   <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Delivery slot
+                    {t('order.deliverySlot')}
                   </dt>
                   <dd className="mt-1">{deliverySlot}</dd>
                 </div>
@@ -222,7 +256,7 @@ export function OrderDetailView({
               {order.billingEntity && (
                 <div>
                   <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Billing details
+                    {t('order.billingDetails')}
                   </dt>
                   <dd className="mt-1">
                     <span className="block font-medium">{order.billingEntity.legalName}</span>
@@ -240,7 +274,7 @@ export function OrderDetailView({
               {purchaseOrderReference && (
                 <div>
                   <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Purchase order reference
+                    {t('order.purchaseOrderReference')}
                   </dt>
                   <dd className="mt-1 font-medium">{purchaseOrderReference}</dd>
                 </div>
@@ -252,45 +286,49 @@ export function OrderDetailView({
 
       <Card>
         <CardHeader>
-          <CardTitle>Shipments</CardTitle>
+          <CardTitle>{t('order.shipments')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {order.shipments.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Shipment planning has not started.</p>
+            <p className="text-sm text-muted-foreground">{t('order.shipmentPlanningPending')}</p>
           ) : (
             order.shipments.map((shipment) => (
               <article
                 key={shipment.id}
                 className="rounded-lg border p-4"
-                aria-label={`Shipment ${shipment.shipmentNumber}`}
+                aria-label={t('order.shipmentAria', { number: shipment.shipmentNumber })}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="font-medium">Shipment {shipment.shipmentNumber}</h3>
+                  <h3 className="font-medium">
+                    {t('order.shipment', { number: shipment.shipmentNumber })}
+                  </h3>
                   <Badge variant={statusVariant(shipment.status)}>
-                    {orderStatusLabel(shipment.status)}
+                    {orderStatusLabel(shipment.status, locale)}
                   </Badge>
                 </div>
                 {shipment.trackingReference && (
                   <p className="mt-2 text-sm">
-                    Tracking reference:{' '}
-                    <span className="font-medium">{shipment.trackingReference}</span>
+                    {t('order.trackingReference', { reference: shipment.trackingReference })}
                   </p>
                 )}
                 {order.deliveryMode && (
                   <p className="text-xs text-muted-foreground">
-                    {deliveryModeLabel(order.deliveryMode)} ·{' '}
-                    {order.deliveryWeightGrams !== undefined
-                      ? `${(order.deliveryWeightGrams / 1000).toFixed(1)}kg`
-                      : ''}
+                    {t('order.shipmentWeight', {
+                      mode: deliveryModeLabel(order.deliveryMode),
+                      weight:
+                        order.deliveryWeightGrams !== undefined
+                          ? locale.formatWeightGrams(order.deliveryWeightGrams)
+                          : '',
+                    })}
                   </p>
                 )}
                 <ul
                   className="mt-3 list-inside list-disc text-sm text-muted-foreground"
-                  aria-label={`Shipment ${shipment.shipmentNumber} items`}
+                  aria-label={t('order.shipmentItems', { number: shipment.shipmentNumber })}
                 >
                   {shipment.lines.map((line) => (
                     <li key={line.lineId}>
-                      {namesByLineId.get(line.lineId) ?? 'Purchased item'} × {line.quantity}
+                      {namesByLineId.get(line.lineId) ?? t('order.purchasedItem')} × {line.quantity}
                     </li>
                   ))}
                 </ul>
@@ -302,10 +340,10 @@ export function OrderDetailView({
 
       <Card>
         <CardHeader>
-          <CardTitle>Order timeline</CardTitle>
+          <CardTitle>{t('order.timeline')}</CardTitle>
         </CardHeader>
         <CardContent>
-          <ol className="space-y-4 border-l pl-5" aria-label="Order timeline">
+          <ol className="space-y-4 border-l pl-5" aria-label={t('order.timelineAria')}>
             {order.events.map((event) => (
               <li key={event.id} className="relative text-sm">
                 <span
@@ -316,7 +354,7 @@ export function OrderDetailView({
                 {event.detail && <p className="text-muted-foreground">{event.detail}</p>}
                 {event.location && <p className="text-muted-foreground">{event.location}</p>}
                 <time className="text-xs text-muted-foreground" dateTime={event.occurredAt}>
-                  {formatOrderDate(event.occurredAt)}
+                  {formatOrderDate(event.occurredAt, locale)}
                 </time>
               </li>
             ))}
@@ -326,11 +364,8 @@ export function OrderDetailView({
 
       {allowCancellation && order.canCancel && onRequestCancellation && (
         <div className="rounded-lg border border-destructive/40 p-4">
-          <h2 className="font-medium">Cancel this order</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            This stops simulated fulfilment. Unshipped allocated stock is released; no refund is
-            issued.
-          </p>
+          <h2 className="font-medium">{t('order.cancel.heading')}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t('order.cancel.description')}</p>
           <Button
             ref={cancelTriggerRef}
             className="mt-3"
@@ -338,7 +373,7 @@ export function OrderDetailView({
             disabled={isCancelling}
             onClick={onRequestCancellation}
           >
-            {isCancelling ? 'Cancelling…' : 'Cancel order'}
+            {isCancelling ? t('order.cancel.cancelling') : t('order.cancel.button')}
           </Button>
         </div>
       )}

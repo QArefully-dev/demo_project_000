@@ -11,6 +11,8 @@ import {
 import type { AppContext } from '../app.js';
 import type { AuditContext } from '../features/audit/auditEvent.js';
 import type { QuickOrderErrorCode } from '../features/quickOrder/quickOrderErrors.js';
+import { parseQuickOrderText } from '../features/quickOrder/quickOrderRules.js';
+import { sendPublicError } from '../utils/errors.js';
 
 const QuickOrderErrorResponse = Type.Object(
   {
@@ -24,13 +26,6 @@ const QuickOrderErrorResponse = Type.Object(
   },
   { additionalProperties: false },
 );
-
-const QUICK_ORDER_ERROR_MESSAGES: Readonly<Record<QuickOrderErrorCode, string>> = {
-  NO_INPUT_LINES: 'Enter at least one line',
-  TOO_MANY_LINES: 'Too many lines in one submission',
-  CART_NOT_FOUND: 'Cart not found',
-  CART_RESERVED: 'Cart is reserved for checkout',
-};
 
 const QUICK_ORDER_ERROR_STATUS: Readonly<Record<QuickOrderErrorCode, 400 | 404 | 409>> = {
   NO_INPUT_LINES: 400,
@@ -95,10 +90,13 @@ export default function quickOrderRoutes(app: FastifyInstance, { services }: App
         context: auditContext(request),
       });
       if (!result.ok) {
-        reply.code(QUICK_ORDER_ERROR_STATUS[result.code]).send({
-          code: result.code,
-          error: QUICK_ORDER_ERROR_MESSAGES[result.code],
-        });
+        if (result.code === 'TOO_MANY_LINES') {
+          sendPublicError(request, reply, QUICK_ORDER_ERROR_STATUS[result.code], result.code, {
+            lineCount: parseQuickOrderText(request.body.text).length,
+          });
+        } else {
+          sendPublicError(request, reply, QUICK_ORDER_ERROR_STATUS[result.code], result.code);
+        }
         return;
       }
       const { cart, addedLineCount, skippedLineCount, outcomes } = result.value;

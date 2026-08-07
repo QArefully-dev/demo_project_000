@@ -40,7 +40,7 @@ describe('NotificationsPage', () => {
     state.loading = false;
     state.error = 'Inbox unavailable';
     rerender(<NotificationsPage />);
-    await userEvent.click(screen.getByRole('button', { name: 'Try Again' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(state.refresh).toHaveBeenCalledOnce();
     state.error = null;
     state.unreadCount = 1;
@@ -60,5 +60,23 @@ describe('NotificationsPage', () => {
     expect(screen.getByText('On its way')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Mark as read' }));
     expect(state.markRead).toHaveBeenCalledWith('9');
+  });
+
+  it('preserves a translated notification snapshot instead of re-translating title/body', () => {
+    state.notifications = [
+      {
+        id: 'de-1',
+        kind: 'back_in_stock.available',
+        title: 'Wieder auf Lager: Zement',
+        body: 'Zement kann wieder bestellt werden.',
+        entityType: 'variant',
+        entityId: '7',
+        createdAt: '2026-08-01T00:00:00.000Z',
+        readAt: null,
+      },
+    ];
+    render(<NotificationsPage />);
+    expect(screen.getByText('Wieder auf Lager: Zement')).toBeInTheDocument();
+    expect(screen.getByText('Zement kann wieder bestellt werden.')).toBeInTheDocument();
   });
 });

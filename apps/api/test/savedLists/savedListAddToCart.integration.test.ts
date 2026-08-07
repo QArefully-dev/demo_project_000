@@ -174,7 +174,7 @@ void test('saved-list add-to-cart preserves missing and reserved carts and is cu
     payload: { cartId: '00000000-0000-4000-8000-000000000000' },
   });
   assert.equal(missing.statusCode, 404);
-  assert.deepEqual(missing.json(), { code: 'CART_NOT_FOUND', error: 'Cart not found' });
+  assert.equal(missing.json<{ code: string }>().code, 'CART_NOT_FOUND');
 
   const cartId = await createCart(app);
   db.prepare(
@@ -202,10 +202,7 @@ void test('saved-list add-to-cart preserves missing and reserved carts and is cu
     payload: { cartId },
   });
   assert.equal(reserved.statusCode, 409);
-  assert.deepEqual(reserved.json(), {
-    code: 'CART_RESERVED',
-    error: 'Cart is reserved for checkout',
-  });
+  assert.equal(reserved.json<{ code: string }>().code, 'CART_RESERVED');
   assert.deepEqual(
     Value.Parse(Cart, (await app.inject({ method: 'GET', url: `/api/cart/${cartId}` })).json()),
     before,

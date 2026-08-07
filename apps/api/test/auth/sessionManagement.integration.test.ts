@@ -123,7 +123,7 @@ void test('account session management scopes sessions, audits revocation, and th
     headers: currentHeaders,
   });
   assert.equal(current.statusCode, 400);
-  assert.deepEqual(JSON.parse(current.body), { error: 'CANNOT_REVOKE_CURRENT' });
+  assert.equal(current.json<{ code: string }>().code, 'CANNOT_REVOKE_CURRENT');
 
   const foreign = await app.inject({
     method: 'DELETE',
@@ -131,7 +131,7 @@ void test('account session management scopes sessions, audits revocation, and th
     headers: currentHeaders,
   });
   assert.equal(foreign.statusCode, 404);
-  assert.deepEqual(JSON.parse(foreign.body), { error: 'SESSION_NOT_FOUND' });
+  assert.equal(foreign.json<{ code: string }>().code, 'SESSION_NOT_FOUND');
 
   const revoked = await app.inject({
     method: 'DELETE',

@@ -32,6 +32,8 @@ export const ValidatePromoResponse = Type.Object({
   promoCode: Type.Optional(PromoCode),
   error: Type.Optional(Type.String({ minLength: 1, maxLength: 500 })),
   errorCode: Type.Optional(PromoValidationErrorCode),
+  /** Canonical GBP pence threshold returned for a failed minimum-subtotal gate. */
+  minSubtotalCents: Type.Optional(MoneyCents),
   discountBaseCents: Type.Optional(MoneyCents),
   discountCents: Type.Optional(MoneyCents),
   totalCents: Type.Optional(MoneyCents),

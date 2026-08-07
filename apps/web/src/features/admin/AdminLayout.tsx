@@ -1,24 +1,25 @@
 import { Outlet } from 'react-router-dom';
 import { useCountry } from '@/hooks/CountryContext';
+import { useMessages } from '@/i18n/LocaleContext';
+import { adminDiagnosticsMessages } from '@shop/localisation/messages/adminDiagnostics';
 import { AdminNav } from './AdminNav';
 
 /** Shared container for protected administration routes. */
 export function AdminLayout() {
   const { activeCountry } = useCountry();
+  const t = useMessages(adminDiagnosticsMessages);
 
   return (
     <section className="mx-auto max-w-6xl space-y-6" aria-labelledby="admin-shell-heading">
       <header>
-        <p className="section-eyebrow">Administration</p>
+        <p className="section-eyebrow">{t('admin.shell.eyebrow')}</p>
         <h1 id="admin-shell-heading" className="section-heading mt-2">
-          Operations console
+          {t('admin.shell.heading')}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground" data-testid="admin-standing-country">
-          Standing country: <span className="font-medium text-foreground">{activeCountry}</span>
+          {t('admin.shell.standingCountry', { country: activeCountry })}
         </p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Jobs, webhooks, and feature flags are global sections.
-        </p>
+        <p className="mt-1 text-xs text-muted-foreground">{t('admin.shell.globalSections')}</p>
       </header>
       <AdminNav />
       {/*

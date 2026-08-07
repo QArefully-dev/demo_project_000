@@ -15,9 +15,12 @@ import {
   formatAddressLine,
   formatBillingIdentifiers,
   formatDeliverySlot,
+  formatOrderTimestamp,
   formatPurchaseOrderReference,
   hasOrderTradeDetails,
+  orderStatusLabel,
 } from './orderPresentation';
+import { formatDualTotal } from '@shop/localisation';
 
 vi.mock('@/api/orders', () => ({ getOrders: vi.fn(), getOrder: vi.fn(), cancelOrder: vi.fn() }));
 vi.mock('@/api/returns', () => ({ fetchReturnOverview: vi.fn(), createReturnRequest: vi.fn() }));
@@ -213,8 +216,10 @@ describe('customer order UI', () => {
         <OrderHistoryPage />
       </MemoryRouter>,
     );
-    expect(await screen.findByText('Network unavailable')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Try Again' }));
+    expect(
+      await screen.findByText('Unable to complete this order request. Try again.'),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByRole('link', { name: 'Order #12' })).toBeInTheDocument();
   });
 
@@ -260,7 +265,7 @@ describe('customer order UI', () => {
         </Routes>
       </MemoryRouter>,
     );
-    expect(await screen.findByText('SIM-ONE')).toBeInTheDocument();
+    expect(await screen.findByText('Tracking reference: SIM-ONE')).toBeInTheDocument();
     expect(screen.getByText('Delivery failed')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Cancel order' }));
     expect(screen.getByRole('dialog', { name: 'Cancel order #12?' })).toBeInTheDocument();
@@ -331,7 +336,7 @@ describe('customer order UI', () => {
     expect(screen.getByTestId('custom-blend-livery')).toBeInTheDocument();
     expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute('data-vessel', 'kraft-sack');
     expect(screen.getByText('Mineral')).toBeInTheDocument();
-    expect(screen.getByText(/Base material: \$10.00 · Blending fee: \$25.00/)).toBeInTheDocument();
+    expect(screen.getByText(/Base material: \$12.50.*Blending fee: \$31.25/)).toBeInTheDocument();
     expect(
       screen.getByText(/Made to order\. Custom blends cannot be returned/),
     ).toBeInTheDocument();
@@ -555,7 +560,7 @@ describe('customer order UI', () => {
     expect(
       screen.getByText('Unit 4 Foundry Park, Kiln Road, Sheffield, South Yorkshire, S9 1TQ, GB'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Friday, August 7, 2026 · Morning')).toBeInTheDocument();
+    expect(screen.getByText(formatDeliverySlot(tradeDetail.deliverySlot)!)).toBeInTheDocument();
     expect(screen.getByText('Northgate Building Supplies Ltd')).toBeInTheDocument();
     expect(screen.getByText('12 Cathedral Street, Sheffield, S1 2LH, GB')).toBeInTheDocument();
     expect(screen.getByText('Reg. 09876543 · VAT GB123456789')).toBeInTheDocument();
@@ -595,7 +600,9 @@ describe('customer order UI', () => {
     );
 
     expect(await screen.findByText('Delivery and billing')).toBeInTheDocument();
-    expect(screen.getByText('Saturday, August 8, 2026 · Afternoon')).toBeInTheDocument();
+    expect(
+      screen.getByText(formatDeliverySlot({ date: '2026-08-08', window: 'pm' })!),
+    ).toBeInTheDocument();
     expect(screen.getByText('PO-77')).toBeInTheDocument();
     expect(screen.queryByText('Delivery address')).not.toBeInTheDocument();
     expect(screen.queryByText('Billing details')).not.toBeInTheDocument();
@@ -684,11 +691,37 @@ describe('order trade detail presentation', () => {
   it('renders a booked slot on its calendar day regardless of host timezone', () => {
     expect(formatDeliverySlot(undefined)).toBeUndefined();
     expect(formatDeliverySlot({ date: '2026-08-07', window: 'am' })).toBe(
-      'Friday, August 7, 2026 · Morning',
+      'August 7, 2026 · Morning',
     );
     expect(formatDeliverySlot({ date: '2026-08-07', window: 'pm' })).toBe(
-      'Friday, August 7, 2026 · Afternoon',
+      'August 7, 2026 · Afternoon',
     );
+  });
+
+  it('keeps civil delivery dates stable across country zones and midnight boundaries', () => {
+    const us = formatDeliverySlot({ date: '2026-03-29', window: 'am' }, 'US');
+    const de = formatDeliverySlot({ date: '2026-03-29', window: 'am' }, 'DE');
+    expect(us).toContain('March 29, 2026');
+    expect(de).toContain('29. März 2026');
+    expect(us).not.toContain('March 28');
+    expect(de).not.toContain('28. März');
+  });
+
+  it('formats instants in country zones through DST transitions', () => {
+    expect(formatOrderTimestamp('2026-03-29T00:30:00.000Z', 'DE')).toMatch(/01:30/);
+    expect(formatOrderTimestamp('2026-03-29T01:30:00.000Z', 'DE')).toMatch(/03:30/);
+  });
+
+  it('uses a translated fallback for invalid timestamps', () => {
+    const value = formatOrderTimestamp('not-a-timestamp', 'DE');
+    expect(value).toBe('Datum nicht verfügbar');
+    expect(value).not.toContain('Invalid Date');
+  });
+
+  it('localizes lifecycle status labels and keeps order totals dual', () => {
+    expect(orderStatusLabel('shipped', 'DE')).toBe('Versandt');
+    expect(formatDualTotal(2200, 'US')).toEqual({ display: '$27.50', settlement: '£22.00' });
+    expect(formatDualTotal(2200, 'UK')).toEqual({ display: '£22.00' });
   });
 
   it('drops billing identifiers that were never recorded', () => {

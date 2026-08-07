@@ -109,8 +109,8 @@ describe('ProductCard', () => {
     );
 
     expect(screen.getByText('Sale')).toBeInTheDocument();
-    expect(screen.getByText('$79.99')).toBeInTheDocument();
     expect(screen.getByText('$99.99')).toBeInTheDocument();
+    expect(screen.getByText('$124.99')).toBeInTheDocument();
 
     rerender(
       <MemoryRouter>
@@ -126,7 +126,7 @@ describe('ProductCard', () => {
     );
 
     expect(screen.queryByText('Sale')).not.toBeInTheDocument();
-    expect(screen.queryByText('$99.99')).not.toBeInTheDocument();
+    expect(screen.queryByText('$124.99')).not.toBeInTheDocument();
   });
 
   it('renders the server-resolved clearance badge only when active', () => {

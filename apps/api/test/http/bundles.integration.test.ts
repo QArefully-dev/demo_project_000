@@ -42,7 +42,7 @@ void test('bundle HTTP routes validate input, expose current bundles, and audit 
     url: `/api/cart/${cartId}/bundles`,
     payload: { bundleId: '9999' },
   });
-  assert.deepEqual(missingBundle.json(), { error: 'Bundle not found' });
+  assert.equal(missingBundle.json<{ code: string }>().code, 'BUNDLE_NOT_FOUND');
   assert.equal(missingBundle.statusCode, 404);
 
   const added = await app.inject({
@@ -110,10 +110,10 @@ void test('bundle HTTP add maps unavailable and reserved-cart conflicts', async 
     payload: { bundleId: '1' },
   });
   assert.equal(unavailable.statusCode, 409);
-  assert.deepEqual(unavailable.json(), {
+  assert.deepEqual(unavailable.json<{ code: string; meta?: { variantIds?: string[] } }>(), {
     code: 'BUNDLE_UNAVAILABLE',
-    error: 'One or more bundle components are unavailable',
-    productIds: [String(unavailableVariant.id)],
+    error: 'One or more bundle components are unavailable.',
+    meta: { variantIds: [String(unavailableVariant.id)] },
   });
 
   const reservedCart = (await app.inject({ method: 'POST', url: '/api/cart' })).json<{
@@ -129,5 +129,5 @@ void test('bundle HTTP add maps unavailable and reserved-cart conflicts', async 
     payload: { bundleId: '1' },
   });
   assert.equal(reserved.statusCode, 409);
-  assert.deepEqual(reserved.json(), { error: 'Cart is reserved for checkout' });
+  assert.equal(reserved.json<{ code: string }>().code, 'CART_RESERVED');
 });

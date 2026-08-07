@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { Type } from '@sinclair/typebox';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import {
@@ -15,6 +15,8 @@ import type { AppContext } from '../app.js';
 import { CustomBlendInvalidError } from '../features/customBlend/customBlendService.js';
 import type { AuditContext } from '../features/audit/auditEvent.js';
 import type { Cart as CartResponse } from '@shop/contracts/cart';
+import { minimumOrderQuantity } from '../features/pricing/pricingRules.js';
+import { sendPublicError } from '../utils/errors.js';
 
 function auditContext(request: {
   id: string;
@@ -48,7 +50,7 @@ export default function customBlendRoutes(app: FastifyInstance, { services }: Ap
         return services.customBlends.listOptions(request.query.baseVariantId);
       } catch (error) {
         if (error instanceof CustomBlendInvalidError) {
-          reply.code(400).send({ code: 'CUSTOM_BLEND_INVALID', error: error.message });
+          sendPublicError(request, reply, 400, 'CUSTOM_BLEND_INVALID');
           return;
         }
         throw error;
@@ -78,10 +80,14 @@ export default function customBlendRoutes(app: FastifyInstance, { services }: Ap
           request.body,
           auditContext(request),
         );
-        return sendMutationResult(reply, result);
+        const minQuantity =
+          result === 'BELOW_MOQ'
+            ? customBlendMinimumQuantity(services, request.body.baseVariantId)
+            : undefined;
+        return sendMutationResult(request, reply, result, request.body.quantity, minQuantity);
       } catch (error) {
         if (error instanceof CustomBlendInvalidError) {
-          reply.code(400).send({ code: 'CUSTOM_BLEND_INVALID', error: error.message });
+          sendPublicError(request, reply, 400, 'CUSTOM_BLEND_INVALID');
           return;
         }
         throw error;
@@ -111,10 +117,14 @@ export default function customBlendRoutes(app: FastifyInstance, { services }: Ap
           request.body,
           auditContext(request),
         );
-        return sendMutationResult(reply, result);
+        const minQuantity =
+          result === 'BELOW_MOQ'
+            ? customBlendMinimumQuantity(services, request.body.baseVariantId)
+            : undefined;
+        return sendMutationResult(request, reply, result, undefined, minQuantity);
       } catch (error) {
         if (error instanceof CustomBlendInvalidError) {
-          reply.code(400).send({ code: 'CUSTOM_BLEND_INVALID', error: error.message });
+          sendPublicError(request, reply, 400, 'CUSTOM_BLEND_INVALID');
           return;
         }
         throw error;
@@ -124,6 +134,7 @@ export default function customBlendRoutes(app: FastifyInstance, { services }: Ap
 }
 
 function sendMutationResult(
+  request: FastifyRequest,
   reply: FastifyReply,
   result:
     | import('@shop/contracts').Cart
@@ -134,30 +145,52 @@ function sendMutationResult(
     | 'BLOCKED_IN_COUNTRY'
     | 'BELOW_MOQ'
     | 'INVALID_QUANTITY',
+  quantity?: number,
+  minQuantity?: number,
 ): CartResponse | void {
   if (typeof result !== 'string') return result;
   if (result === 'CART_NOT_FOUND') {
-    reply.code(404).send({ error: 'Cart not found' });
+    sendPublicError(request, reply, 404, 'CART_NOT_FOUND');
     return;
   }
-  if (
-    result === 'VARIANT_NOT_FOUND' ||
-    result === 'VARIANT_NOT_IN_CART' ||
-    result === 'BLOCKED_IN_COUNTRY'
-  ) {
-    reply.code(404).send({ error: 'Variant in cart not found' });
+  if (result === 'VARIANT_NOT_FOUND' || result === 'BLOCKED_IN_COUNTRY') {
+    sendPublicError(request, reply, 404, 'VARIANT_NOT_FOUND');
+    return;
+  }
+  if (result === 'VARIANT_NOT_IN_CART') {
+    sendPublicError(request, reply, 404, 'VARIANT_NOT_IN_CART');
     return;
   }
   if (result === 'CART_RESERVED') {
-    reply.code(409).send({ error: 'Cart is reserved for checkout' });
+    sendPublicError(request, reply, 409, 'CART_RESERVED');
     return;
   }
   if (result === 'BELOW_MOQ') {
-    reply.code(400).send({
-      code: 'BELOW_MOQ',
-      error: 'Quantity does not meet this variant minimum order quantity.',
-    });
+    if (minQuantity === undefined) {
+      sendPublicError(request, reply, 400, 'INTERNAL_ERROR');
+      return;
+    }
+    sendPublicError(request, reply, 400, 'BELOW_MOQ', { minQuantity });
     return;
   }
-  reply.code(400).send({ error: 'Quantity exceeds supported cart limits.' });
+  sendPublicError(
+    request,
+    reply,
+    400,
+    'INVALID_QUANTITY',
+    quantity === undefined ? undefined : { quantity },
+  );
+}
+
+function customBlendMinimumQuantity(
+  services: AppContext['services'],
+  baseVariantId: number,
+): number | undefined {
+  try {
+    const variant = services.customBlends.listOptions(baseVariantId).base.variant;
+    return minimumOrderQuantity(variant.weightGrams, variant.moqSacks);
+  } catch (error) {
+    if (error instanceof CustomBlendInvalidError) return undefined;
+    throw error;
+  }
 }

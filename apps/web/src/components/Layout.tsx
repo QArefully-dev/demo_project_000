@@ -11,33 +11,36 @@ import { ComparisonSelectionProvider } from '@/features/comparison/ComparisonSel
 import { CountryBanner } from './CountryBanner';
 import { Footer } from './Footer';
 import { Header } from './Header';
+import { LocaleProvider } from '@/i18n/LocaleContext';
 
 export function Layout() {
   return (
     <AuthProvider>
       <CountryProvider>
-        <NotificationsProvider>
-          <BackInStockProvider>
-            <CartProvider>
-              <SavedListsProvider>
-                <ComparisonSelectionProvider>
-                  <TooltipProvider>
-                    <ToastProvider>
-                      <div className="flex min-h-screen flex-col bg-background">
-                        <Header />
-                        <CountryBanner />
-                        <main className="content-shell flex-1 py-6 sm:py-8">
-                          <Outlet />
-                        </main>
-                        <Footer />
-                      </div>
-                    </ToastProvider>
-                  </TooltipProvider>
-                </ComparisonSelectionProvider>
-              </SavedListsProvider>
-            </CartProvider>
-          </BackInStockProvider>
-        </NotificationsProvider>
+        <LocaleProvider>
+          <NotificationsProvider>
+            <BackInStockProvider>
+              <CartProvider>
+                <SavedListsProvider>
+                  <ComparisonSelectionProvider>
+                    <TooltipProvider>
+                      <ToastProvider>
+                        <div className="flex min-h-screen flex-col bg-background">
+                          <Header />
+                          <CountryBanner />
+                          <main className="content-shell flex-1 py-6 sm:py-8">
+                            <Outlet />
+                          </main>
+                          <Footer />
+                        </div>
+                      </ToastProvider>
+                    </TooltipProvider>
+                  </ComparisonSelectionProvider>
+                </SavedListsProvider>
+              </CartProvider>
+            </BackInStockProvider>
+          </NotificationsProvider>
+        </LocaleProvider>
       </CountryProvider>
     </AuthProvider>
   );

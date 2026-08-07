@@ -107,8 +107,8 @@ void test('delivery slot routes', async (t) => {
       url: `/api/delivery/slots?cartId=${randomUUID()}`,
     });
     assert.equal(unknown.statusCode, 404);
-    const body: { error: string } = unknown.json();
-    assert.equal(body.error, 'Cart not found');
+    const body: { error: string; code: string } = unknown.json();
+    assert.deepEqual(body, { error: 'The cart was not found.', code: 'CART_NOT_FOUND' });
     assert.ok(!/\.ts:\d+/.test(body.error), 'no source location leaks into the 404');
 
     assert.equal(

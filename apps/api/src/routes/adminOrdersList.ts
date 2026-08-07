@@ -12,20 +12,24 @@ import type { FastifyInstance } from 'fastify';
 import type { SessionService } from '../features/auth/sessionService.js';
 import { OrderAdminError, type OrderAdminService } from '../features/orders/orderAdminService.js';
 import { requireAdmin } from '../plugins/auth.js';
-import { sendBadRequest, sendNotFound } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 export interface AdminOrdersListRouteServices {
   sessions: SessionService;
   orderAdmin: OrderAdminService;
 }
-function sendError(reply: Parameters<typeof sendBadRequest>[0], e: OrderAdminError) {
-  if (e.code === 'ORDER_NOT_FOUND') return sendNotFound(reply, 'Order');
-  sendBadRequest(reply, e.message);
+function sendError(
+  request: Parameters<typeof sendPublicError>[0],
+  reply: Parameters<typeof sendPublicError>[1],
+  e: OrderAdminError,
+) {
+  if (e.code === 'ORDER_NOT_FOUND') return sendPublicError(request, reply, 404, 'ORDER_NOT_FOUND');
+  return sendPublicError(request, reply, 400, 'INVALID_QUERY');
 }
 export default function adminOrdersListRoutes(
   app: FastifyInstance,
   { services }: { services: AdminOrdersListRouteServices },
 ): void {
-  app.addHook('onRequest', requireAdmin(services.sessions));
+  app.addHook('preValidation', requireAdmin(services.sessions));
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
   typed.get(
     '/api/admin/orders',
@@ -45,7 +49,7 @@ export default function adminOrdersListRoutes(
       try {
         return services.orderAdmin.listAdmin(r.query, r.resolvedCountry);
       } catch (e) {
-        if (e instanceof OrderAdminError) return sendError(reply, e);
+        if (e instanceof OrderAdminError) return sendError(r, reply, e);
         throw e;
       }
     },
@@ -69,7 +73,7 @@ export default function adminOrdersListRoutes(
       try {
         return services.orderAdmin.getAdminDetail(Number(r.params.orderId), r.resolvedCountry);
       } catch (e) {
-        if (e instanceof OrderAdminError) return sendError(reply, e);
+        if (e instanceof OrderAdminError) return sendError(r, reply, e);
         throw e;
       }
     },

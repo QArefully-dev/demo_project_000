@@ -4,6 +4,8 @@ import { getSimilarProducts } from '@/api/products';
 import type { VariantProductList } from '@/api/products';
 import { ProductCard } from '@/components/ProductCard';
 import { ProductGrid } from '@/components/ProductGrid';
+import { productMessages } from '@shop/localisation/messages/product';
+import { useLocalisation } from '@/i18n/LocaleContext';
 
 interface SimilarProductsSectionProps {
   productId: string;
@@ -12,10 +14,10 @@ interface SimilarProductsSectionProps {
   onAddToCart: (productId: string, variantId?: number) => Promise<boolean>;
 }
 
-function SimilarProductsHeading() {
+function SimilarProductsHeading({ label }: { label: string }) {
   return (
     <h2 id="similar-products-heading" className="section-heading">
-      Similar materials
+      {label}
     </h2>
   );
 }
@@ -29,6 +31,7 @@ export function SimilarProductsSection({
   const [products, setProducts] = useState<VariantProductList['items'] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
+  const { translate } = useLocalisation();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -42,24 +45,24 @@ export function SimilarProductsSection({
         if (!current) return;
         setProducts(Array.isArray(response) ? response.slice(0, 5) : []);
       })
-      .catch((loadError: unknown) => {
+      .catch(() => {
         if (!current || controller.signal.aborted) return;
-        setError(
-          loadError instanceof Error ? loadError.message : 'Could not load similar materials.',
-        );
+        setError(translate(productMessages, 'product.couldNotLoadSimilar'));
       });
 
     return () => {
       current = false;
       controller.abort();
     };
-  }, [productId, requestVersion]);
+  }, [productId, requestVersion, translate]);
 
   if (products === null && error === null) {
     return (
       <section className="mt-16" aria-labelledby="similar-products-heading" aria-busy="true">
-        <SimilarProductsHeading />
-        <p className="text-sm text-muted-foreground">Finding similar materials...</p>
+        <SimilarProductsHeading label={translate(productMessages, 'product.similarMaterials')} />
+        <p className="text-sm text-muted-foreground">
+          {translate(productMessages, 'product.findingSimilar')}
+        </p>
       </section>
     );
   }
@@ -67,16 +70,16 @@ export function SimilarProductsSection({
   if (error) {
     return (
       <section className="mt-16" aria-labelledby="similar-products-heading">
-        <SimilarProductsHeading />
+        <SimilarProductsHeading label={translate(productMessages, 'product.similarMaterials')} />
         <p role="alert" className="text-sm text-muted-foreground">
-          Could not load similar materials.
+          {translate(productMessages, 'product.couldNotLoadSimilar')}
         </p>
         <button
           type="button"
           className="mt-2 rounded-sm text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={() => setRequestVersion((version) => version + 1)}
         >
-          Try again
+          {translate(productMessages, 'product.tryAgain')}
         </button>
       </section>
     );
@@ -85,9 +88,9 @@ export function SimilarProductsSection({
   if (!products || products.length === 0) {
     return (
       <section className="mt-16" aria-labelledby="similar-products-heading">
-        <SimilarProductsHeading />
+        <SimilarProductsHeading label={translate(productMessages, 'product.similarMaterials')} />
         <p className="mt-2 text-sm text-muted-foreground">
-          No similar materials available right now.
+          {translate(productMessages, 'product.noSimilar')}
         </p>
       </section>
     );
@@ -97,13 +100,15 @@ export function SimilarProductsSection({
     <section className="mt-16" aria-labelledby="similar-products-heading">
       <div className="mb-6 flex items-end justify-between gap-4">
         <div>
-          <p className="section-eyebrow">Chosen for their shared traits</p>
+          <p className="section-eyebrow">
+            {translate(productMessages, 'product.chosenSharedTraits')}
+          </p>
           <h2 id="similar-products-heading" className="section-heading mt-2">
-            Similar materials
+            {translate(productMessages, 'product.similarMaterials')}
           </h2>
         </div>
         <Link to="/catalog" className="section-link">
-          Browse all materials
+          {translate(productMessages, 'product.browseAllMaterials')}
         </Link>
       </div>
       <ProductGrid>

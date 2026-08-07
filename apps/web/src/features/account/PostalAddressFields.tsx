@@ -1,9 +1,14 @@
 import { useEffect } from 'react';
+import { translateUnchecked, type MessageCatalog, type MessageParams } from '@shop/localisation';
+import { countryMessages } from '@shop/localisation/messages/country';
+import { identityAccountMessages } from '@shop/localisation/messages/identityAccount';
 import type { PostalAddress } from '@shop/contracts/address';
 import { LEGACY_DATA_COUNTRY, type Country } from '@shop/contracts/country';
 import { countryProfile } from '@shop/contracts/country-profiles';
 import { Input } from '@/components/ui/input';
 import { useOptionalCountry } from '@/hooks/CountryContext';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { localizeValidationMessage } from './accountError';
 
 /**
  * Shared postal address sub-form.
@@ -97,6 +102,11 @@ export type PostalAddressValidation =
 export function validatePostalAddressDraft(draft: PostalAddressDraft): PostalAddressValidation {
   const profile = countryProfile(draft.profileCountry);
   const postcodeRule = profile.postcode;
+  const postcodeLabel = translateUnchecked(
+    countryMessages,
+    draft.profileCountry,
+    postcodeRule.labelMessageKey,
+  );
   const line1 = draft.line1.trim();
   const line2 = draft.line2.trim();
   const city = draft.city.trim();
@@ -117,13 +127,13 @@ export function validatePostalAddressDraft(draft: PostalAddressDraft): PostalAdd
   if (regionError) errors.region = regionError;
 
   if (postcode.length === 0) {
-    errors.postcode = `${postcodeRule.label} is required`;
+    errors.postcode = `${postcodeLabel} is required`;
   } else if (postcode.length > MAX_POSTCODE_LENGTH) {
-    errors.postcode = `${postcodeRule.label} must be ${MAX_POSTCODE_LENGTH} characters or fewer`;
+    errors.postcode = `${postcodeLabel} must be ${MAX_POSTCODE_LENGTH} characters or fewer`;
   } else if (MARKUP_PATTERN.test(postcode)) {
-    errors.postcode = `${postcodeRule.label} cannot contain < or >`;
+    errors.postcode = `${postcodeLabel} cannot contain < or >`;
   } else if (!new RegExp(postcodeRule.pattern).test(postcode.toUpperCase())) {
-    errors.postcode = `Enter a valid ${postcodeRule.label}, for example ${postcodeRule.example}`;
+    errors.postcode = `Enter a valid ${postcodeLabel}, for example ${postcodeRule.example}`;
   }
 
   if (!COUNTRY_CODE_PATTERN.test(countryCode)) {
@@ -161,6 +171,7 @@ interface FieldProps {
   autoComplete?: string;
   maxLength: number;
   optional?: boolean;
+  optionalLabel?: string;
   className?: string;
   placeholder?: string;
 }
@@ -175,6 +186,7 @@ function AddressField({
   autoComplete,
   maxLength,
   optional,
+  optionalLabel,
   className,
   placeholder,
 }: FieldProps) {
@@ -183,7 +195,9 @@ function AddressField({
     <div className={className}>
       <label htmlFor={id} className="block text-sm font-medium">
         {label}
-        {optional && <span className="ml-1 font-normal text-muted-foreground">(optional)</span>}
+        {optional && optionalLabel && (
+          <span className="ml-1 font-normal text-muted-foreground">{optionalLabel}</span>
+        )}
       </label>
       <Input
         id={id}
@@ -212,9 +226,10 @@ export function PostalAddressFields({
   onChange,
   errors = {},
   disabled,
-  legend = 'Address',
+  legend,
 }: PostalAddressFieldsProps) {
   const countryContext = useOptionalCountry();
+  const locale = useLocalisation();
   // Provider-free legacy tests and fixtures retain their draft profile; real app surfaces always
   // resolve the active account/guest country from CountryProvider.
   const activeCountry =
@@ -222,6 +237,22 @@ export function PostalAddressFields({
       ? value.profileCountry
       : countryContext.activeCountry;
   const profile = countryProfile(activeCountry);
+  const translateActive = (
+    catalog: MessageCatalog,
+    key: string,
+    params: MessageParams = {},
+  ): string =>
+    locale.country === activeCountry
+      ? locale.translate(catalog, key, params)
+      : translateUnchecked(catalog, activeCountry, key, params);
+  // In the mounted app LocaleProvider follows CountryProvider. Provider-free tests/fixtures use
+  // the draft country directly so postcode labels remain deterministic without a second locale.
+  const postcodeLabel = translateActive(countryMessages, 'postcode.label');
+  const optionalLabel = translateActive(identityAccountMessages, 'account.address.optional');
+  const resolvedLegend =
+    legend ?? translateActive(identityAccountMessages, 'account.address.legend');
+  const errorFor = (field: PostalAddressFieldName): string | undefined =>
+    localizeValidationMessage(errors[field], translateActive, translateActive);
 
   useEffect(() => {
     if (value.profileCountry === activeCountry) return;
@@ -238,62 +269,64 @@ export function PostalAddressFields({
 
   return (
     <fieldset disabled={disabled} className="space-y-3 border-0 p-0">
-      <legend className="text-sm font-medium text-muted-foreground">{legend}</legend>
+      <legend className="text-sm font-medium text-muted-foreground">{resolvedLegend}</legend>
       <AddressField
         id={`${idPrefix}-line1`}
-        label="Address line 1"
+        label={translateActive(identityAccountMessages, 'account.address.line1')}
         value={value.line1}
         onChange={(next) => setField('line1', next)}
-        error={errors.line1}
+        error={errorFor('line1')}
         autoComplete="address-line1"
         maxLength={MAX_LINE_LENGTH}
       />
       <AddressField
         id={`${idPrefix}-line2`}
-        label="Address line 2"
+        label={translateActive(identityAccountMessages, 'account.address.line2')}
         value={value.line2}
         onChange={(next) => setField('line2', next)}
-        error={errors.line2}
+        error={errorFor('line2')}
         autoComplete="address-line2"
         maxLength={MAX_LINE_LENGTH}
         optional
+        optionalLabel={optionalLabel}
       />
       <div className="grid gap-3 sm:grid-cols-2">
         <AddressField
           id={`${idPrefix}-city`}
-          label="City"
+          label={translateActive(identityAccountMessages, 'account.address.city')}
           value={value.city}
           onChange={(next) => setField('city', next)}
-          error={errors.city}
+          error={errorFor('city')}
           autoComplete="address-level2"
           maxLength={MAX_LOCALITY_LENGTH}
         />
         <AddressField
           id={`${idPrefix}-region`}
-          label="County or region"
+          label={translateActive(identityAccountMessages, 'account.address.region')}
           value={value.region}
           onChange={(next) => setField('region', next)}
-          error={errors.region}
+          error={errorFor('region')}
           autoComplete="address-level1"
           maxLength={MAX_LOCALITY_LENGTH}
           optional
+          optionalLabel={optionalLabel}
         />
         <AddressField
           id={`${idPrefix}-postcode`}
-          label={profile.postcode.label}
+          label={postcodeLabel}
           value={value.postcode}
           onChange={(next) => setField('postcode', next)}
-          error={errors.postcode}
+          error={errorFor('postcode')}
           autoComplete="postal-code"
           maxLength={MAX_POSTCODE_LENGTH}
           placeholder={profile.postcode.example}
         />
         <AddressField
           id={`${idPrefix}-countryCode`}
-          label="Country code"
+          label={translateActive(identityAccountMessages, 'account.address.countryCode')}
           value={value.countryCode}
           onChange={(next) => setField('countryCode', next.toUpperCase())}
-          error={errors.countryCode}
+          error={errorFor('countryCode')}
           autoComplete="country"
           maxLength={2}
         />

@@ -54,13 +54,14 @@ function fixture() {
       audit,
       clock,
       faults: noFaults,
+      countryForUser: () => 'DE',
     }),
   );
   const owner = Number(
     (
       db
         .prepare(
-          "INSERT INTO users (email,display_name,password_hash,password_salt,role) VALUES ('buyer@example.test','Buyer','hash','salt','customer') RETURNING id",
+          "INSERT INTO users (email,display_name,password_hash,password_salt,role,country) VALUES ('buyer@example.test','Buyer','hash','salt','customer','DE') RETURNING id",
         )
         .get() as { id: number }
     ).id,
@@ -148,6 +149,17 @@ void test('captures once, queues once, and notifies the order owner only after s
           .get(f.owner) as { count: number }
       ).count,
       1,
+    );
+    assert.deepEqual(
+      f.db
+        .prepare(
+          "SELECT title, body FROM notifications WHERE user_id=? AND kind='payment.webhook_settled'",
+        )
+        .get(f.owner),
+      {
+        title: 'Zahlungsaktualisierung erhalten',
+        body: `Zahlungsaktualisierung f\u00fcr Bestellung Nr. ${f.order} erhalten.`,
+      },
     );
     for (const payload of [
       {

@@ -17,6 +17,13 @@ import {
   type PostalAddressFieldErrors,
 } from './PostalAddressFields';
 import { TradeCheckbox, TradeListStatus, TradeTextField } from './TradeFormFields';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { identityAccountMessages } from '@shop/localisation/messages/identityAccount';
+import {
+  localizeAccountError,
+  localizeValidationErrors,
+  localizeValidationMessage,
+} from './accountError';
 import {
   TRADE_FIELD_BOUNDS,
   checkOptionalTradeText,
@@ -139,6 +146,7 @@ function BillingEntityForm({
   onCancel,
   onSubmit,
 }: EntityFormProps) {
+  const { translate } = useLocalisation();
   const [draft, setDraft] = useState<EntityDraft>(initialDraft);
   const [errors, setErrors] = useState<EntityDraftErrors>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -157,7 +165,7 @@ function BillingEntityForm({
     try {
       await onSubmit(result.body);
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : 'Unable to save billing details');
+      setSubmitError(localizeAccountError(error, translate, 'account.common.saveError'));
     } finally {
       setSubmitting(false);
     }
@@ -175,52 +183,52 @@ function BillingEntityForm({
       )}
       <TradeTextField
         id={`${idPrefix}-legalName`}
-        label="Registered company name"
+        label={translate(identityAccountMessages, 'account.trade.registeredCompanyName')}
         value={draft.legalName}
         onChange={(legalName) => setDraft({ ...draft, legalName })}
-        error={errors.legalName}
+        error={localizeValidationMessage(errors.legalName, translate, translate)}
         maxLength={TRADE_FIELD_BOUNDS.legalName}
         autoComplete="organization"
       />
       <div className="grid gap-3 sm:grid-cols-2">
         <TradeTextField
           id={`${idPrefix}-registrationNumber`}
-          label="Company registration number"
+          label={translate(identityAccountMessages, 'account.trade.registrationNumber')}
           value={draft.registrationNumber}
           onChange={(registrationNumber) => setDraft({ ...draft, registrationNumber })}
-          error={errors.registrationNumber}
+          error={localizeValidationMessage(errors.registrationNumber, translate, translate)}
           maxLength={TRADE_FIELD_BOUNDS.registrationNumber}
           optional
         />
         <TradeTextField
           id={`${idPrefix}-vatNumber`}
-          label="VAT number"
+          label={translate(identityAccountMessages, 'account.trade.vatNumber')}
           value={draft.vatNumber}
           onChange={(vatNumber) => setDraft({ ...draft, vatNumber })}
-          error={errors.vatNumber}
+          error={localizeValidationMessage(errors.vatNumber, translate, translate)}
           maxLength={TRADE_FIELD_BOUNDS.vatNumber}
           optional
         />
       </div>
       <PostalAddressFields
         idPrefix={idPrefix}
-        legend="Billing address"
+        legend={translate(identityAccountMessages, 'account.billing.addressLegend')}
         value={draft.address}
-        errors={errors.address}
+        errors={localizeValidationErrors(errors.address, translate, translate)}
         onChange={(address) => setDraft({ ...draft, address })}
       />
       <TradeCheckbox
         id={`${idPrefix}-isDefault`}
-        label="Use as my default billing details"
+        label={translate(identityAccountMessages, 'account.billing.defaultCheckbox')}
         checked={draft.isDefault}
         onChange={(isDefault) => setDraft({ ...draft, isDefault })}
       />
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={submitting}>
-          {submitting ? 'Saving…' : submitLabel}
+          {submitting ? translate(identityAccountMessages, 'account.common.saving') : submitLabel}
         </Button>
         <Button type="button" size="sm" variant="outline" onClick={onCancel} disabled={submitting}>
-          Cancel
+          {translate(identityAccountMessages, 'account.common.cancel')}
         </Button>
       </div>
     </form>
@@ -228,10 +236,23 @@ function BillingEntityForm({
 }
 
 /** Renders the identifiers a buyer saved, or nothing when both are absent. */
-function identifierLine(entity: BillingEntity): string | null {
+function identifierLine(
+  entity: BillingEntity,
+  translate: ReturnType<typeof useLocalisation>['translate'],
+): string | null {
   const parts: string[] = [];
-  if (entity.registrationNumber) parts.push(`Company no. ${entity.registrationNumber}`);
-  if (entity.vatNumber) parts.push(`VAT ${entity.vatNumber}`);
+  if (entity.registrationNumber) {
+    parts.push(
+      translate(identityAccountMessages, 'account.billing.companyNo', {
+        number: entity.registrationNumber,
+      }),
+    );
+  }
+  if (entity.vatNumber) {
+    parts.push(
+      translate(identityAccountMessages, 'account.billing.vat', { number: entity.vatNumber }),
+    );
+  }
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
@@ -240,6 +261,7 @@ interface BillingEntitiesSectionProps {
 }
 
 export function BillingEntitiesSection({ profile }: BillingEntitiesSectionProps) {
+  const { translate } = useLocalisation();
   const { billingEntities } = profile;
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -254,7 +276,7 @@ export function BillingEntitiesSection({ profile }: BillingEntitiesSectionProps)
     try {
       await action();
     } catch (error) {
-      setRowError(error instanceof Error ? error.message : 'Action failed');
+      setRowError(localizeAccountError(error, translate, 'account.common.actionFailed'));
     } finally {
       setBusyId(null);
     }
@@ -269,15 +291,15 @@ export function BillingEntitiesSection({ profile }: BillingEntitiesSectionProps)
             className="flex items-center gap-2 text-base font-medium"
           >
             <Building2 className="h-4 w-4 text-muted-foreground" />
-            Billing details
+            {translate(identityAccountMessages, 'account.billing.title')}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Companies we invoice. Pick one at checkout.
+            {translate(identityAccountMessages, 'account.billing.description')}
           </p>
         </div>
         {!adding && (
           <Button type="button" size="sm" onClick={() => setAdding(true)}>
-            Add billing details
+            {translate(identityAccountMessages, 'account.billing.add')}
           </Button>
         )}
       </div>
@@ -287,7 +309,7 @@ export function BillingEntitiesSection({ profile }: BillingEntitiesSectionProps)
           <BillingEntityForm
             idPrefix="new-entity"
             initialDraft={EMPTY_ENTITY_DRAFT}
-            submitLabel="Save billing details"
+            submitLabel={translate(identityAccountMessages, 'account.billing.save')}
             onCancel={() => setAdding(false)}
             onSubmit={async (body) => {
               await profile.addBillingEntity(body);
@@ -302,8 +324,8 @@ export function BillingEntitiesSection({ profile }: BillingEntitiesSectionProps)
         error={billingEntities.error}
         onRetry={profile.reloadBillingEntities}
         isEmpty={activeEntities.length === 0}
-        loadingLabel="Loading billing details…"
-        emptyLabel="No billing details saved yet."
+        loadingLabel={translate(identityAccountMessages, 'account.billing.loading')}
+        emptyLabel={translate(identityAccountMessages, 'account.billing.empty')}
       />
 
       {rowError && (
@@ -314,14 +336,14 @@ export function BillingEntitiesSection({ profile }: BillingEntitiesSectionProps)
 
       <ul className="mt-4 space-y-3">
         {activeEntities.map((entity) => {
-          const identifiers = identifierLine(entity);
+          const identifiers = identifierLine(entity, translate);
           return (
             <li key={entity.id} className="rounded-lg border p-4">
               {editingId === entity.id ? (
                 <BillingEntityForm
                   idPrefix={`entity-${entity.id}`}
                   initialDraft={draftFromEntity(entity)}
-                  submitLabel="Save changes"
+                  submitLabel={translate(identityAccountMessages, 'account.common.save')}
                   onCancel={() => setEditingId(null)}
                   onSubmit={async (body) => {
                     await profile.editBillingEntity(entity.id, toUpdateBody(body));
@@ -333,7 +355,11 @@ export function BillingEntitiesSection({ profile }: BillingEntitiesSectionProps)
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{entity.legalName}</span>
-                      {entity.isDefault && <Badge variant="secondary">Default</Badge>}
+                      {entity.isDefault && (
+                        <Badge variant="secondary">
+                          {translate(identityAccountMessages, 'account.delivery.default')}
+                        </Badge>
+                      )}
                     </div>
                     {identifiers && (
                       <p className="mt-1 text-sm text-muted-foreground">{identifiers}</p>
@@ -355,7 +381,7 @@ export function BillingEntitiesSection({ profile }: BillingEntitiesSectionProps)
                           )
                         }
                       >
-                        Set as default
+                        {translate(identityAccountMessages, 'account.delivery.setDefault')}
                       </Button>
                     )}
                     <Button
@@ -364,7 +390,9 @@ export function BillingEntitiesSection({ profile }: BillingEntitiesSectionProps)
                       variant="outline"
                       onClick={() => setEditingId(entity.id)}
                     >
-                      Edit {entity.legalName}
+                      {translate(identityAccountMessages, 'account.delivery.edit', {
+                        name: entity.legalName,
+                      })}
                     </Button>
                     <Button
                       type="button"
@@ -375,7 +403,9 @@ export function BillingEntitiesSection({ profile }: BillingEntitiesSectionProps)
                         void runRowAction(entity.id, () => profile.retireEntity(entity.id))
                       }
                     >
-                      Remove {entity.legalName}
+                      {translate(identityAccountMessages, 'account.delivery.remove', {
+                        name: entity.legalName,
+                      })}
                     </Button>
                   </div>
                 </div>

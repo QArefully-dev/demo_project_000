@@ -125,7 +125,7 @@ describe('useSavedLists', () => {
       await expect(action).resolves.toBe(false);
     });
     expect(result.current.savedVariantIds.has(101)).toBe(false);
-    expect(result.current.error).toBe('Unavailable');
+    expect(result.current.error).toBe('Unable to update this saved item. Please try again.');
   });
 
   it.each([

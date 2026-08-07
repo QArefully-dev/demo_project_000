@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import Database from 'better-sqlite3';
+import { standingOrderCompletedCopy } from '@shop/localisation/messages/asyncContent';
 import { migrateDatabase } from '../../src/db/migrate.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
@@ -25,6 +26,7 @@ function fixture() {
   let orderOwner: number | undefined;
   let savedSucceeds = true;
   const carts: string[] = [];
+  const notificationsSent: Array<{ userId: number; title: string; body: string }> = [];
   const repository = createStandingOrderRepository(db);
   const auditRepository = createAuditRepository(db);
   const service = createStandingOrderService({
@@ -119,20 +121,28 @@ function fixture() {
         return { created: true, job: { id: Number(inserted.lastInsertRowid) } } as any;
       },
     },
-    notifications: { notify: () => ({ created: true }) },
+    notifications: {
+      notify: (input) => {
+        notificationsSent.push({ userId: input.userId, title: input.title, body: input.body });
+        return { created: true };
+      },
+    },
     audit: createAuditWriter({ repository: auditRepository, clock: { now: () => now } }),
     unitOfWork: createUnitOfWork(db),
     clock: { now: () => now },
     faults: noFaults,
+    countryForUser: (userId) =>
+      db.prepare('SELECT country FROM users WHERE id = ?').pluck().get(userId) as
+        'UK' | 'DE' | 'FR' | undefined,
   });
-  const addUser = (email: string) =>
+  const addUser = (email: string, country: 'UK' | 'DE' | 'FR' = 'UK') =>
     Number(
       (
         db
           .prepare(
-            "INSERT INTO users (email, display_name, password_hash, password_salt, role) VALUES (?, 'Buyer', 'hash', 'salt', 'customer') RETURNING id",
+            "INSERT INTO users (email, display_name, password_hash, password_salt, role, country) VALUES (?, 'Buyer', 'hash', 'salt', 'customer', ?) RETURNING id",
           )
-          .get(email) as { id: number }
+          .get(email, country) as { id: number }
       ).id,
     );
   const addSources = (userId: number) => {
@@ -170,6 +180,7 @@ function fixture() {
     repository,
     service,
     carts,
+    notificationsSent,
     addUser,
     addSources,
     addJob,
@@ -422,6 +433,60 @@ void test('run-now records a single pending run and scopes run history to its ow
       ok: false,
       code: 'INACTIVE',
     });
+  } finally {
+    f.close();
+  }
+});
+
+void test('standing-order completion snapshots use each owner country', () => {
+  const f = fixture();
+  try {
+    const de = f.addUser('standing-de@example.test', 'DE');
+    const fr = f.addUser('standing-fr@example.test', 'FR');
+    const deSource = f.addSources(de);
+    const frSource = f.addSources(fr);
+    const deOrder = f.service.create(
+      de,
+      {
+        name: 'DE restock',
+        source: { kind: 'saved_list', listId: deSource.listId },
+        cadence: 'weekly',
+      },
+      system,
+    );
+    const frOrder = f.service.create(
+      fr,
+      {
+        name: 'FR restock',
+        source: { kind: 'saved_list', listId: frSource.listId },
+        cadence: 'weekly',
+      },
+      system,
+    );
+    assert.equal(deOrder.ok, true);
+    assert.equal(frOrder.ok, true);
+    f.addJob(30);
+    f.addJob(31);
+    assert.deepEqual(
+      f.service.runJob(30, {
+        standingOrderId: Number(deOrder.value.id),
+        scheduledRunAt: deOrder.value.nextRunAt,
+      }),
+      { ok: true },
+    );
+    assert.deepEqual(
+      f.service.runJob(31, {
+        standingOrderId: Number(frOrder.value.id),
+        scheduledRunAt: frOrder.value.nextRunAt,
+      }),
+      { ok: true },
+    );
+    const deCopy = standingOrderCompletedCopy('DE', 1);
+    const frCopy = standingOrderCompletedCopy('FR', 1);
+    assert.deepEqual(f.notificationsSent, [
+      { userId: de, title: deCopy.title, body: deCopy.body },
+      { userId: fr, title: frCopy.title, body: frCopy.body },
+    ]);
   } finally {
     f.close();
   }
