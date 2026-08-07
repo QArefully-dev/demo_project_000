@@ -16,6 +16,12 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useCountry } from '@/hooks/CountryContext';
+import { useLocalisation, useMessages } from '@/i18n/LocaleContext';
+import {
+  adminCatalogMessages,
+  adminDateTimeInputValue,
+  localizeAdminError,
+} from '@shop/localisation/messages/adminCatalog';
 const blank: CreateAdminPromoBody = {
   code: '',
   discountPercent: 0,
@@ -30,9 +36,6 @@ const blank: CreateAdminPromoBody = {
   perUserLimit: null,
   countries: [],
 };
-function message(e: unknown) {
-  return e instanceof Error ? e.message : 'Request failed.';
-}
 const categories = [
   'Sports Nutrition',
   'Baking & Pantry',
@@ -61,9 +64,6 @@ function updateBody({ code, ...body }: CreateAdminPromoBody): UpdateAdminPromoBo
   void code;
   return body;
 }
-function datetime(value: string | null) {
-  return value ? value.slice(0, 16) : '';
-}
 function isoOrNull(value: string) {
   if (!value) return null;
   const parsed = new Date(value);
@@ -72,6 +72,8 @@ function isoOrNull(value: string) {
 /** Promotion administration; eligibility and redemption validation remain server-owned. */
 export function AdminPromosPage() {
   const { activeCountry } = useCountry();
+  const { country } = useLocalisation();
+  const t = useMessages(adminCatalogMessages);
   const [items, setItems] = useState<AdminPromo[] | null>(null);
   const [selected, setSelected] = useState<AdminPromo | null>(null);
   const [form, setForm] = useState<CreateAdminPromoBody>(blank);
@@ -88,11 +90,11 @@ export function AdminPromosPage() {
       const response = await getAdminPromos();
       if (version === loadVersion.current) setItems(response.items);
     } catch (e) {
-      if (version === loadVersion.current) setError(message(e));
+      if (version === loadVersion.current) setError(localizeAdminError(e, country));
     } finally {
       if (version === loadVersion.current) setLoading(false);
     }
-  }, [activeCountry]);
+  }, [activeCountry, country]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -115,7 +117,7 @@ export function AdminPromosPage() {
       choose(saved);
       await load();
     } catch (failure) {
-      setError(message(failure));
+      setError(localizeAdminError(failure, country));
     } finally {
       setSaving(false);
     }
@@ -129,7 +131,7 @@ export function AdminPromosPage() {
       choose(saved);
       await load();
     } catch (failure) {
-      setError(message(failure));
+      setError(localizeAdminError(failure, country));
     } finally {
       setSaving(false);
       setConfirming(false);
@@ -141,10 +143,10 @@ export function AdminPromosPage() {
     <section className="space-y-6" aria-labelledby="admin-promos-heading">
       <div>
         <h1 id="admin-promos-heading" className="section-heading">
-          Promotions
+          {t('adminCatalog.promos.heading')}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Create and maintain trade promotion codes.
+          {t('adminCatalog.promos.description')}
         </p>
       </div>
       {error && (
@@ -156,7 +158,7 @@ export function AdminPromosPage() {
         <Card>
           <CardContent className="space-y-3 py-5">
             <Button type="button" onClick={() => choose(null)}>
-              New promotion
+              {t('adminCatalog.promos.new')}
             </Button>
             {items?.length ? (
               items.map((promo) => (
@@ -168,12 +170,14 @@ export function AdminPromosPage() {
                 >
                   <span className="font-medium">{promo.code}</span>
                   <span className="ml-2 text-sm text-muted-foreground">
-                    {promo.active ? 'Active' : 'Inactive'}
+                    {promo.active
+                      ? t('adminCatalog.promos.active')
+                      : t('adminCatalog.promos.inactive')}
                   </span>
                 </button>
               ))
             ) : (
-              <p className="text-sm text-muted-foreground">No promotions found.</p>
+              <p className="text-sm text-muted-foreground">{t('adminCatalog.promos.empty')}</p>
             )}
           </CardContent>
         </Card>
@@ -181,12 +185,14 @@ export function AdminPromosPage() {
           <CardContent className="py-5">
             <form className="space-y-3" onSubmit={(e) => void save(e)}>
               <h2 className="font-semibold">
-                {selected ? `Edit ${selected.code}` : 'New promotion'}
+                {selected
+                  ? t('adminCatalog.promos.edit', { code: selected.code })
+                  : t('adminCatalog.promos.new')}
               </h2>
               <label className="block text-sm">
-                Code
+                {t('adminCatalog.promos.code')}
                 <input
-                  aria-label="Code"
+                  aria-label={t('adminCatalog.promos.code')}
                   disabled={Boolean(selected)}
                   required
                   value={form.code}
@@ -195,22 +201,22 @@ export function AdminPromosPage() {
                 />
               </label>
               <label className="block text-sm">
-                Kind
+                {t('adminCatalog.promos.kind')}
                 <select
-                  aria-label="Kind"
+                  aria-label={t('adminCatalog.promos.kind')}
                   value={form.kind}
                   onChange={(e) => set('kind', e.target.value as CreateAdminPromoBody['kind'])}
                   className="mt-1 w-full rounded border p-2"
                 >
-                  <option value="percent">Percentage</option>
-                  <option value="fixed">Fixed amount</option>
+                  <option value="percent">{t('adminCatalog.promos.percentage')}</option>
+                  <option value="fixed">{t('adminCatalog.promos.fixedAmount')}</option>
                 </select>
               </label>
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-sm">
-                  Discount percent
+                  {t('adminCatalog.promos.discountPercent')}
                   <input
-                    aria-label="Discount percent"
+                    aria-label={t('adminCatalog.promos.discountPercent')}
                     type="number"
                     value={form.discountPercent}
                     onChange={(e) => set('discountPercent', Number(e.target.value))}
@@ -218,9 +224,9 @@ export function AdminPromosPage() {
                   />
                 </label>
                 <label className="text-sm">
-                  Minimum items
+                  {t('adminCatalog.promos.minimumItems')}
                   <input
-                    aria-label="Minimum items"
+                    aria-label={t('adminCatalog.promos.minimumItems')}
                     type="number"
                     value={form.minItemCount}
                     onChange={(e) => set('minItemCount', Number(e.target.value))}
@@ -229,9 +235,9 @@ export function AdminPromosPage() {
                 </label>
               </div>
               <label className="block text-sm">
-                Fixed amount (pence)
+                {t('adminCatalog.promos.fixedAmountPence')}
                 <input
-                  aria-label="Fixed amount (pence)"
+                  aria-label={t('adminCatalog.promos.fixedAmountPence')}
                   type="number"
                   value={form.amountCents ?? ''}
                   onChange={(e) =>
@@ -241,9 +247,9 @@ export function AdminPromosPage() {
                 />
               </label>
               <label className="block text-sm">
-                Minimum subtotal (pence)
+                {t('adminCatalog.promos.minimumSubtotalPence')}
                 <input
-                  aria-label="Minimum subtotal (pence)"
+                  aria-label={t('adminCatalog.promos.minimumSubtotalPence')}
                   type="number"
                   value={form.minSubtotalCents ?? ''}
                   onChange={(e) =>
@@ -253,9 +259,9 @@ export function AdminPromosPage() {
                 />
               </label>
               <label className="block text-sm">
-                Category scope
+                {t('adminCatalog.promos.categoryScope')}
                 <select
-                  aria-label="Category scope"
+                  aria-label={t('adminCatalog.promos.categoryScope')}
                   value={form.categoryScope ?? ''}
                   onChange={(e) =>
                     set(
@@ -265,7 +271,7 @@ export function AdminPromosPage() {
                   }
                   className="mt-1 w-full rounded border p-2"
                 >
-                  <option value="">All categories</option>
+                  <option value="">{t('adminCatalog.promos.allCategories')}</option>
                   {categories.map((category) => (
                     <option key={category} value={category}>
                       {category}
@@ -274,9 +280,9 @@ export function AdminPromosPage() {
                 </select>
               </label>
               <label className="block text-sm">
-                Country targeting
+                {t('adminCatalog.promos.countryTargeting')}
                 <select
-                  aria-label="Country targeting"
+                  aria-label={t('adminCatalog.promos.countryTargeting')}
                   multiple
                   value={form.countries ?? []}
                   onChange={(e) =>
@@ -294,26 +300,26 @@ export function AdminPromosPage() {
                   ))}
                 </select>
                 <span className="mt-1 block text-xs text-muted-foreground">
-                  Leave empty to apply to all countries.
+                  {t('adminCatalog.promos.countryTargetingHint')}
                 </span>
               </label>
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-sm">
-                  Starts at
+                  {t('adminCatalog.promos.startsAt')}
                   <input
-                    aria-label="Starts at"
+                    aria-label={t('adminCatalog.promos.startsAt')}
                     type="datetime-local"
-                    value={datetime(form.startAt)}
+                    value={adminDateTimeInputValue(form.startAt)}
                     onChange={(e) => set('startAt', isoOrNull(e.target.value))}
                     className="mt-1 w-full rounded border p-2"
                   />
                 </label>
                 <label className="text-sm">
-                  Ends at
+                  {t('adminCatalog.promos.endsAt')}
                   <input
-                    aria-label="Ends at"
+                    aria-label={t('adminCatalog.promos.endsAt')}
                     type="datetime-local"
-                    value={datetime(form.endAt)}
+                    value={adminDateTimeInputValue(form.endAt)}
                     onChange={(e) => set('endAt', isoOrNull(e.target.value))}
                     className="mt-1 w-full rounded border p-2"
                   />
@@ -321,9 +327,9 @@ export function AdminPromosPage() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <label className="text-sm">
-                  Maximum redemptions
+                  {t('adminCatalog.promos.maximumRedemptions')}
                   <input
-                    aria-label="Maximum redemptions"
+                    aria-label={t('adminCatalog.promos.maximumRedemptions')}
                     type="number"
                     min="0"
                     value={form.maxRedemptions ?? ''}
@@ -334,9 +340,9 @@ export function AdminPromosPage() {
                   />
                 </label>
                 <label className="text-sm">
-                  Per-user limit
+                  {t('adminCatalog.promos.perUserLimit')}
                   <input
-                    aria-label="Per-user limit"
+                    aria-label={t('adminCatalog.promos.perUserLimit')}
                     type="number"
                     min="1"
                     value={form.perUserLimit ?? ''}
@@ -348,29 +354,29 @@ export function AdminPromosPage() {
                 </label>
               </div>
               <Button disabled={saving} type="submit">
-                {saving ? 'Saving…' : 'Save promotion'}
+                {saving ? t('adminCatalog.saving') : t('adminCatalog.promos.save')}
               </Button>
             </form>
             {selected?.active && (
               <div className="mt-6 border-t pt-4">
                 {confirming ? (
                   <>
-                    <p className="mb-2 text-sm">Deactivate this promotion?</p>
+                    <p className="mb-2 text-sm">{t('adminCatalog.promos.deactivateQuestion')}</p>
                     <Button
                       type="button"
                       variant="destructive"
                       disabled={saving}
                       onClick={() => void deactivate()}
                     >
-                      Confirm deactivate
+                      {t('adminCatalog.promos.confirmDeactivate')}
                     </Button>
                     <Button type="button" variant="outline" onClick={() => setConfirming(false)}>
-                      Cancel
+                      {t('adminCatalog.cancel')}
                     </Button>
                   </>
                 ) : (
                   <Button type="button" variant="outline" onClick={() => setConfirming(true)}>
-                    Deactivate promotion
+                    {t('adminCatalog.promos.deactivate')}
                   </Button>
                 )}
               </div>
