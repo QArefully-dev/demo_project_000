@@ -70,7 +70,7 @@ export function CountryPicker({ value, onChange, disabled }: CountryPickerProps)
         <p
           id="country-picker-account-note"
           data-testid="country-picker-account-note"
-          className="max-w-52 text-xs text-muted-foreground"
+          className="max-w-52 whitespace-normal text-xs text-muted-foreground"
         >
           {accountBoundExplanation}
         </p>
