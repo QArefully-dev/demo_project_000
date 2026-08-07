@@ -3,13 +3,14 @@ import { Link } from 'react-router-dom';
 import { Minus, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { formatMoney } from '@/lib/formatMoney';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { cartMessages, type CartMessageKey } from '@shop/localisation/messages/cart';
 import type { CartLine } from '@shop/contracts/cart';
 import { ProductMedia } from '@/components/ProductMedia';
 import {
-  CUSTOM_BLEND_MADE_TO_ORDER_NOTE,
   CustomBlendPackaging,
   customBlendCompositionLabel,
+  customBlendMadeToOrderNote,
 } from '@/features/customBlend/CustomBlendPackaging';
 
 interface CartLineItemProps {
@@ -49,7 +50,8 @@ export function CartLineItem({
   isUpdating = false,
   isRemoving = false,
 }: CartLineItemProps) {
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<CartMessageKey | null>(null);
+  const { translate, formatMoney, number, activeCountry } = useLocalisation();
   const isPending = isUpdating || isRemoving;
   const lineKey = cartLineKey(item);
 
@@ -60,18 +62,19 @@ export function CartLineItem({
   const configKey = mutationConfigKey(item);
   const blend = item.customBlend;
   const baseVariantId = item.variantSnap?.variantId;
+  const weightLabel = item.variantSnap ? number.weightGrams(item.variantSnap.weightGrams) : null;
 
   const updateQuantity = async (quantity: number) => {
     setActionError(null);
     if (!(await onUpdateQuantity(item.productId, quantity, baseVariantId, configKey))) {
-      setActionError('Quantity update failed. Try again.');
+      setActionError('cart.actionError');
     }
   };
 
   const remove = async () => {
     setActionError(null);
     if (!(await onRemove(item.productId, baseVariantId, configKey))) {
-      setActionError('Remove failed. Try again.');
+      setActionError('cart.actionError');
     }
   };
 
@@ -100,25 +103,31 @@ export function CartLineItem({
           <p className="text-xs text-muted-foreground">
             SKU: {item.variantSnap.sku}
             <span className="mx-1.5">·</span>
-            {item.variantSnap.weightGrams}g
+            {weightLabel}
           </p>
         )}
         <p className="text-xs text-muted-foreground">
-          Resolved pack price: {formatMoney(item.resolvedUnitPriceCents)}
+          {translate(cartMessages, 'cart.resolvedPackPrice', {
+            money: formatMoney(item.resolvedUnitPriceCents),
+          })}
         </p>
         {blend && (
           <div className="grid gap-0.5" data-testid="cart-line-custom-blend">
             <Badge variant="outline" className="w-fit text-[10px]">
-              Custom blend
+              {translate(cartMessages, 'cart.customBlend')}
             </Badge>
             <p className="break-words text-xs text-muted-foreground">
-              {customBlendCompositionLabel(item.product.name, blend)}
+              {customBlendCompositionLabel(item.product.name, blend, activeCountry)}
             </p>
             <p className="text-xs text-muted-foreground">
-              Base material: {formatMoney(item.materialSubtotalCents)}
+              {translate(cartMessages, 'cart.baseMaterial', {
+                money: formatMoney(item.materialSubtotalCents),
+              })}
             </p>
             <p className="text-xs text-muted-foreground">
-              Blending fee: {formatMoney(item.blendingFeeCents)}
+              {translate(cartMessages, 'cart.blendingFee', {
+                money: formatMoney(item.blendingFeeCents),
+              })}
             </p>
             {/*
              * Non-returnable status has to be visible where the line is first held, not first at
@@ -128,31 +137,36 @@ export function CartLineItem({
               data-testid="cart-line-made-to-order"
               className="custom-blend-notice w-fit rounded-md px-2 py-1 text-xs"
             >
-              {CUSTOM_BLEND_MADE_TO_ORDER_NOTE}
+              {customBlendMadeToOrderNote(activeCountry)}
             </p>
             {baseVariantId !== undefined && (
               <Link
                 to={editBlendHref(item, baseVariantId)}
                 className="w-fit text-xs font-medium underline underline-offset-2"
               >
-                Edit blend
+                {translate(cartMessages, 'cart.editBlend')}
               </Link>
             )}
           </div>
         )}
         {item.variantSnap && (
           <Badge variant="outline" className="w-fit text-[10px]">
-            {item.variantSnap.deliveryClass}
+            {translate(
+              cartMessages,
+              item.variantSnap.deliveryClass === 'freight'
+                ? 'cart.deliveryClass.freight'
+                : 'cart.deliveryClass.parcel',
+            )}
           </Badge>
         )}
         {item.product.availability === 'backorder' && (
           <p className="text-xs font-medium text-amber-700">
-            Available to backorder. Checkout confirms availability.
+            {translate(cartMessages, 'cart.backorder')}
           </p>
         )}
         {item.product.availability === 'out_of_stock' && (
           <p className="text-xs font-medium text-destructive">
-            Currently out of stock. Checkout confirms availability.
+            {translate(cartMessages, 'cart.outOfStock')}
           </p>
         )}
         <div className="flex items-center gap-2 mt-1">
@@ -160,20 +174,20 @@ export function CartLineItem({
             variant="outline"
             size="icon"
             className="h-7 w-7"
-            aria-label="Decrease quantity"
+            aria-label={translate(cartMessages, 'cart.decreaseQuantity')}
             disabled={item.quantity <= 1 || isPending}
             onClick={() => void updateQuantity(item.quantity - 1)}
           >
             <Minus className="h-3 w-3" />
           </Button>
           <span className="w-8 text-center text-sm" aria-live="polite">
-            {item.quantity}
+            {number.count(item.quantity)}
           </span>
           <Button
             variant="outline"
             size="icon"
             className="h-7 w-7"
-            aria-label="Increase quantity"
+            aria-label={translate(cartMessages, 'cart.increaseQuantity')}
             disabled={isPending}
             onClick={() => void updateQuantity(item.quantity + 1)}
           >
@@ -190,11 +204,13 @@ export function CartLineItem({
           disabled={isPending}
           onClick={() => void remove()}
         >
-          {isRemoving ? 'Removing...' : 'Remove'}
+          {isRemoving
+            ? translate(cartMessages, 'cart.removing')
+            : translate(cartMessages, 'cart.remove')}
         </Button>
         {actionError && (
           <p role="alert" className="max-w-36 text-right text-xs text-destructive">
-            {actionError}
+            {translate(cartMessages, actionError)}
           </p>
         )}
       </div>

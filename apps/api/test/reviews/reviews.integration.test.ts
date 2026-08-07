@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { buildApp } from '../../src/app.js';
 import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
@@ -87,6 +88,46 @@ void test('published list and aggregate share visibility while owner can read hi
     ]);
   }
   assert.equal(service.findOwned(1, 1)?.status, 'hidden');
+});
+
+void test('admin review failures use selected admin country copy and stable code', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-review-route-errors-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  seedDatabase(db);
+  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
+  t.after(async () => {
+    await app.close();
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const login = await app.inject({
+    method: 'POST',
+    url: '/login',
+    payload: { email: 'admin@example.com', password: 'Password123!', country: 'UK' },
+  });
+  assert.equal(login.statusCode, 200, login.body);
+  const setCookie = login.headers['set-cookie'];
+  const session = (Array.isArray(setCookie) ? setCookie[0] : setCookie)?.split(';', 1)[0];
+  if (!session) throw new Error('Expected admin session cookie');
+
+  const fr = await app.inject({
+    method: 'POST',
+    url: '/api/admin/reviews/999999/moderation',
+    headers: { cookie: session, 'x-shop-country': 'FR' },
+    payload: { decision: 'hide_review' },
+  });
+  const uk = await app.inject({
+    method: 'POST',
+    url: '/api/admin/reviews/999999/moderation',
+    headers: { cookie: session, 'x-shop-country': 'UK' },
+    payload: { decision: 'hide_review' },
+  });
+  assert.equal(fr.statusCode, 404);
+  assert.equal(uk.statusCode, 404);
+  assert.equal(fr.json<{ code: string }>().code, 'NOT_FOUND');
+  assert.equal(uk.json<{ code: string }>().code, 'NOT_FOUND');
+  assert.notEqual(fr.json<{ error: string }>().error, uk.json<{ error: string }>().error);
 });
 
 void test('verified purchase requires reviewer-owned order, matching line, and succeeded payment', (t) => {

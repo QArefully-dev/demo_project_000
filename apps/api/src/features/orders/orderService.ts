@@ -3,6 +3,8 @@ import type {
   OrderListResponse,
   ShipmentStatus,
 } from '@shop/contracts/orders';
+import type { Country } from '@shop/contracts/country';
+import { orderLifecycleTitle } from '@shop/localisation/messages/asyncContent';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
@@ -55,12 +57,12 @@ export interface OrderService {
   }): OrderDetailResponse;
 }
 
-function titleForStatus(status: ShipmentStatus): string {
+function titleForStatus(status: ShipmentStatus, country: Country): string {
   return status === 'shipped'
-    ? 'Shipment shipped'
+    ? orderLifecycleTitle(country, 'shipmentShipped')
     : status === 'delivered'
-      ? 'Shipment delivered'
-      : 'Shipment delivery failed';
+      ? orderLifecycleTitle(country, 'shipmentDelivered')
+      : orderLifecycleTitle(country, 'shipmentDeliveryFailed');
 }
 
 type OrderServiceDependencies = {
@@ -127,6 +129,8 @@ export function createOrderService(
         const lines = dependencies.repository.listAllocatableLines(input.orderId);
         assertCompleteAllocation(lines, input.shipments);
         const occurredAt = clock.now().toISOString();
+        const country = dependencies.repository.country(input.orderId);
+        if (!country) throw new OrderDomainError('ORDER_NOT_FOUND');
         input.shipments.forEach((shipment, index) => {
           const shipmentId = dependencies.repository.insertShipment({
             orderId: input.orderId,
@@ -147,7 +151,7 @@ export function createOrderService(
             orderId: input.orderId,
             shipmentId,
             type: 'shipment_packed',
-            title: 'Shipment packed',
+            title: orderLifecycleTitle(country, 'shipmentPacked'),
             idempotencyKey: index === 0 ? input.idempotencyKey : undefined,
             requestFingerprint: index === 0 ? fingerprint : undefined,
             occurredAt,
@@ -186,6 +190,8 @@ export function createOrderService(
         const state = dependencies.repository.getOrderState(shipment.orderId);
         if (!state) throw new OrderDomainError('ORDER_NOT_FOUND');
         const occurredAt = clock.now().toISOString();
+        const country = dependencies.repository.country(shipment.orderId);
+        if (!country) throw new OrderDomainError('ORDER_NOT_FOUND');
         if (
           !dependencies.repository.updateShipmentStatus({
             shipmentId: shipment.id,
@@ -215,7 +221,7 @@ export function createOrderService(
               : input.status === 'delivered'
                 ? 'shipment_delivered'
                 : 'shipment_delivery_failed',
-          title: titleForStatus(input.status),
+          title: titleForStatus(input.status, country),
           idempotencyKey: input.idempotencyKey,
           requestFingerprint: fingerprint,
           occurredAt,
@@ -290,6 +296,8 @@ export function createOrderService(
         if (state.version !== input.version) throw new OrderDomainError('STALE_VERSION');
         assertCanCancel(state.status, dependencies.repository.listShipments(input.orderId));
         const occurredAt = clock.now().toISOString();
+        const country = dependencies.repository.country(input.orderId);
+        if (!country) throw new OrderDomainError('ORDER_NOT_FOUND');
         dependencies.inventory?.cancelOrderInventory({ orderId: input.orderId, occurredAt });
         dependencies.repository.cancelPackedShipments(input.orderId, occurredAt);
         if (
@@ -304,7 +312,7 @@ export function createOrderService(
         dependencies.repository.insertEvent({
           orderId: input.orderId,
           type: 'order_cancelled',
-          title: 'Order cancelled',
+          title: orderLifecycleTitle(country, 'cancelled'),
           idempotencyKey: input.idempotencyKey,
           requestFingerprint: fingerprint,
           occurredAt,

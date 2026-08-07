@@ -9,9 +9,14 @@ import {
   type ReactNode,
 } from 'react';
 import type { BackInStockSubscription } from '@shop/contracts/back-in-stock';
+import type { PublicErrorCode } from '@shop/contracts/public-errors';
+import type { MessageCatalog, MessageParams } from '@shop/localisation';
 import * as backInStockApi from '@/api/backInStock';
-import { ApiError } from '@/api/client';
+import { ApiError, type ApiErrorMeta } from '@/api/client';
 import { useAuth } from './AuthContext';
+import { apiErrors } from '@shop/localisation/messages/apiErrors';
+import { productMessages } from '@shop/localisation/messages/product';
+import { useLocalisation } from '@/i18n/LocaleContext';
 
 type BackInStockContextValue = {
   subscriptions: BackInStockSubscription[];
@@ -19,6 +24,7 @@ type BackInStockContextValue = {
   pendingVariantIds: ReadonlySet<number>;
   loading: boolean;
   error: string | null;
+  errorState?: BackInStockErrorState | null;
   refresh: () => Promise<boolean>;
   subscribe: (variantId: number) => Promise<BackInStockSubscription | false>;
   cancel: (subscriptionId: string) => Promise<boolean>;
@@ -53,21 +59,46 @@ const replayEffects = (
   return next;
 };
 
-const BACK_IN_STOCK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
-  VARIANT_AVAILABLE: 'This item is back in stock already. Add it to your order now.',
-  ALREADY_SUBSCRIBED: "You're already on the waiting list for this item.",
-  SUBSCRIPTION_LIMIT_REACHED:
-    'You have reached the back-in-stock alert limit. Cancel an alert before adding another.',
+type ProductMessageKey = keyof typeof productMessages;
+export type BackInStockErrorState = {
+  readonly code: PublicErrorCode | null;
+  readonly meta: ApiErrorMeta | null;
+  readonly key: ProductMessageKey;
+  readonly params?: MessageParams;
 };
 
-const errorMessage = (cause: unknown, fallback: string) => {
-  if (cause instanceof ApiError) {
-    const code = (cause.response as { code?: unknown } | null)?.code;
-    if (typeof code === 'string' && code in BACK_IN_STOCK_ERROR_MESSAGES)
-      return BACK_IN_STOCK_ERROR_MESSAGES[code]!;
+function safeMessageParams(meta: ApiErrorMeta | null): MessageParams {
+  if (meta === null || typeof meta !== 'object') return {};
+  const params: Record<string, string | number | bigint> = {};
+  for (const [key, value] of Object.entries(meta)) {
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint')
+      params[key] = value;
   }
-  return cause instanceof Error && cause.message ? cause.message : fallback;
-};
+  return params;
+}
+
+function localizeBackInStockError(
+  state: BackInStockErrorState | null,
+  translate: (catalog: MessageCatalog, key: string, params?: MessageParams) => string,
+): string | null {
+  if (state === null) return null;
+  if (state.code !== null) {
+    try {
+      return translate(apiErrors, state.code, safeMessageParams(state.meta));
+    } catch {
+      // Stale/malformed descriptors use safe P17 copy.
+    }
+  }
+  return translate(productMessages, state.key, state.params);
+}
+
+function errorState(cause: unknown, fallback: ProductMessageKey): BackInStockErrorState {
+  if (cause instanceof ApiError && cause.code !== null) {
+    return { code: cause.code, meta: cause.meta, key: fallback };
+  }
+  // Network, contract, legacy, and unknown failures never expose Error.message.
+  return { code: null, meta: null, key: fallback };
+}
 
 /**
  * Buyer-scoped back-in-stock state. Async results may only update their originating session,
@@ -76,11 +107,12 @@ const errorMessage = (cause: unknown, fallback: string) => {
  */
 export function BackInStockProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const { translate } = useLocalisation();
   const userId = user?.id ?? null;
   const [subscriptions, setSubscriptions] = useState<BackInStockSubscription[]>([]);
   const [optimisticVariantIds, setOptimisticVariantIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorStateValue, setErrorStateValue] = useState<BackInStockErrorState | null>(null);
   const subscriptionsRef = useRef<BackInStockSubscription[]>([]);
   const optimisticVariantIdsRef = useRef<number[]>([]);
   const stateVersionRef = useRef(0);
@@ -122,7 +154,7 @@ export function BackInStockProvider({ children }: { children: ReactNode }) {
     const controller = new AbortController();
     controllerRef.current = controller;
     setLoading(true);
-    setError(null);
+    setErrorStateValue(null);
     refreshInFlightRef.current += 1;
     effectsSinceRefreshRef.current = [];
     try {
@@ -141,7 +173,7 @@ export function BackInStockProvider({ children }: { children: ReactNode }) {
         controller.signal.aborted
       )
         return false;
-      setError(errorMessage(cause, 'Unable to load your back-in-stock alerts.'));
+      setErrorStateValue(errorState(cause, 'product.unableLoadAlerts'));
       return false;
     } finally {
       refreshInFlightRef.current -= 1;
@@ -162,7 +194,7 @@ export function BackInStockProvider({ children }: { children: ReactNode }) {
       applySubscriptions([]);
       applyOptimisticVariantIds([]);
       setLoading(false);
-      setError(null);
+      setErrorStateValue(null);
       return;
     }
     void refresh();
@@ -203,7 +235,7 @@ export function BackInStockProvider({ children }: { children: ReactNode }) {
         );
         if (existing) return existing;
         applyOptimisticVariantIds([...optimisticVariantIdsRef.current, variantId]);
-        setError(null);
+        setErrorStateValue(null);
         try {
           const created = await backInStockApi.createBackInStockSubscription({ variantId });
           if (!isCurrentSession(sessionVersion, userId)) return false;
@@ -224,7 +256,7 @@ export function BackInStockProvider({ children }: { children: ReactNode }) {
           applyOptimisticVariantIds(
             optimisticVariantIdsRef.current.filter((id) => id !== variantId),
           );
-          setError(errorMessage(cause, 'Unable to create a back-in-stock alert.'));
+          setErrorStateValue(errorState(cause, 'product.unableCreateAlert'));
           return false;
         }
       });
@@ -254,7 +286,7 @@ export function BackInStockProvider({ children }: { children: ReactNode }) {
           subscriptionsRef.current.filter((item) => item.subscriptionId !== subscriptionId),
         );
         recordEffect(effect);
-        setError(null);
+        setErrorStateValue(null);
         try {
           await backInStockApi.cancelBackInStockSubscription(subscriptionId);
           if (!isCurrentSession(sessionVersion, userId)) return false;
@@ -265,7 +297,7 @@ export function BackInStockProvider({ children }: { children: ReactNode }) {
           forgetEffect(effect);
           if (!subscriptionsRef.current.some((item) => item.subscriptionId === subscriptionId))
             applySubscriptions([...subscriptionsRef.current, removed]);
-          setError(errorMessage(cause, 'Unable to cancel this back-in-stock alert.'));
+          setErrorStateValue(errorState(cause, 'product.unableCancelAlert'));
           return false;
         }
       });
@@ -279,9 +311,22 @@ export function BackInStockProvider({ children }: { children: ReactNode }) {
     return ids;
   }, [optimisticVariantIds, subscriptions]);
 
+  const error = useMemo(
+    () => localizeBackInStockError(errorStateValue, translate),
+    [errorStateValue, translate],
+  );
   const value = useMemo(
-    () => ({ subscriptions, pendingVariantIds, loading, error, refresh, subscribe, cancel }),
-    [cancel, error, loading, pendingVariantIds, refresh, subscribe, subscriptions],
+    () => ({
+      subscriptions,
+      pendingVariantIds,
+      loading,
+      error,
+      errorState: errorStateValue,
+      refresh,
+      subscribe,
+      cancel,
+    }),
+    [cancel, error, errorStateValue, loading, pendingVariantIds, refresh, subscribe, subscriptions],
   );
 
   return <BackInStockContext.Provider value={value}>{children}</BackInStockContext.Provider>;

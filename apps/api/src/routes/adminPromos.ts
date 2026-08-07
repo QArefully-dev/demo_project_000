@@ -21,7 +21,7 @@ import {
 } from '../features/promos/promoAdminService.js';
 import type { PromoRecord } from '../features/promos/promoRepository.js';
 import { requireAdmin } from '../plugins/auth.js';
-import { sendBadRequest, sendConflict, sendNotFound } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 export interface AdminPromosRouteServices {
   sessions: SessionService;
   promoAdmin: PromoAdminService;
@@ -31,11 +31,16 @@ const context = (userId: number, requestId: string, standingCountry: Country): A
   requestId,
   standingCountry,
 });
-function sendError(reply: Parameters<typeof sendBadRequest>[0], e: PromoAdminServiceError) {
-  if (e.code === 'NOT_FOUND') return sendNotFound(reply, 'Promo code');
-  if (e.code === 'DUPLICATE' || e.code === 'ACTIVE_RESERVATIONS')
-    return sendConflict(reply, e.message);
-  sendBadRequest(reply, e.message);
+function sendError(
+  request: Parameters<typeof sendPublicError>[0],
+  reply: Parameters<typeof sendPublicError>[1],
+  e: PromoAdminServiceError,
+) {
+  if (e.code === 'NOT_FOUND') return sendPublicError(request, reply, 404, 'PROMO_NOT_FOUND');
+  if (e.code === 'DUPLICATE') return sendPublicError(request, reply, 409, 'DUPLICATE');
+  if (e.code === 'ACTIVE_RESERVATIONS')
+    return sendPublicError(request, reply, 409, 'ACTIVE_RESERVATIONS');
+  return sendPublicError(request, reply, 400, 'INVALID_INPUT');
 }
 function categoryScope(value: string | null): AdminCatalogCategory | null {
   if (value === null) return null;
@@ -59,7 +64,7 @@ export default function adminPromosRoutes(
   app: FastifyInstance,
   { services }: { services: AdminPromosRouteServices },
 ): void {
-  app.addHook('onRequest', requireAdmin(services.sessions));
+  app.addHook('preValidation', requireAdmin(services.sessions));
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
   typed.get(
     '/api/admin/promos',
@@ -96,7 +101,7 @@ export default function adminPromosRoutes(
       try {
         return map(services.promoAdmin.get(r.params.code, r.resolvedCountry));
       } catch (e) {
-        if (e instanceof PromoAdminServiceError) return sendError(reply, e);
+        if (e instanceof PromoAdminServiceError) return sendError(r, reply, e);
         throw e;
       }
     },
@@ -127,7 +132,7 @@ export default function adminPromosRoutes(
           ),
         );
       } catch (e) {
-        if (e instanceof PromoAdminServiceError) return sendError(reply, e);
+        if (e instanceof PromoAdminServiceError) return sendError(r, reply, e);
         throw e;
       }
     },
@@ -160,7 +165,7 @@ export default function adminPromosRoutes(
           ),
         );
       } catch (e) {
-        if (e instanceof PromoAdminServiceError) return sendError(reply, e);
+        if (e instanceof PromoAdminServiceError) return sendError(r, reply, e);
         throw e;
       }
     },
@@ -193,7 +198,7 @@ export default function adminPromosRoutes(
           ),
         );
       } catch (e) {
-        if (e instanceof PromoAdminServiceError) return sendError(reply, e);
+        if (e instanceof PromoAdminServiceError) return sendError(r, reply, e);
         throw e;
       }
     },

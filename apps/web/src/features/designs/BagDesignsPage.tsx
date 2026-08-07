@@ -3,6 +3,8 @@ import { ProductGrid } from '@/components/ProductGrid';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { productMessages } from '@shop/localisation/messages/product';
+import { useLocalisation } from '@/i18n/LocaleContext';
 
 const designs: ReadonlyArray<{
   option: string;
@@ -28,16 +30,21 @@ const artworkProps = {
 } as const;
 
 export function BagDesignsPage() {
+  const { translate, formatDisplayMoney } = useLocalisation();
+  const t = <K extends keyof typeof productMessages>(
+    key: K,
+    params?: Record<string, string | number>,
+  ) => translate(productMessages, key, params);
   return (
     <div className="space-y-8 pb-12">
       <header className="max-w-3xl space-y-3">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-          Packaging study
+          {t('product.packagingStudy')}
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Locked design: C2-D</h1>
-        <p className="text-muted-foreground">
-          Broad paper bag, coloured label, paired material forms, and the restrained sprinkle field.
-        </p>
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          {t('product.lockedDesign', { option: 'C2-D' })}
+        </h1>
+        <p className="text-muted-foreground">{t('product.designDescription')}</p>
       </header>
 
       <ProductGrid className="items-start">
@@ -48,8 +55,10 @@ export function BagDesignsPage() {
                 {design.option}
               </span>
               <div>
-                <h2 className="font-semibold">{design.title}</h2>
-                <p className="text-xs leading-relaxed text-muted-foreground">{design.note}</p>
+                <h2 className="font-semibold">{t('product.designTitle')}</h2>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {t('product.designNote')}
+                </p>
               </div>
             </div>
 
@@ -61,7 +70,7 @@ export function BagDesignsPage() {
                     variant="secondary"
                     className="border-primary/10 bg-background/95 px-2.5 text-primary shadow-sm"
                   >
-                    Bestseller
+                    {t('product.bestseller')}
                   </Badge>
                 </div>
               </div>
@@ -72,13 +81,15 @@ export function BagDesignsPage() {
                 <h3 className="min-h-11 text-base font-semibold leading-[1.35] tracking-tight">
                   Protein Powder
                 </h3>
-                <p className="text-xs text-muted-foreground">Pack: 1kg</p>
+                <p className="text-xs text-muted-foreground">
+                  {t('product.pack', { quantity: '1kg' })}
+                </p>
                 <div className="mt-auto pt-2">
-                  <span className="price-current">$34.95</span>
+                  <span className="price-current">{formatDisplayMoney(3495)}</span>
                 </div>
               </CardContent>
               <CardFooter className="border-t-0 bg-transparent p-4 pt-0 sm:px-5 sm:pb-5">
-                <Button className="w-full">Add to cart</Button>
+                <Button className="w-full">{t('product.addToCart')}</Button>
               </CardFooter>
             </Card>
           </article>
@@ -86,8 +97,7 @@ export function BagDesignsPage() {
       </ProductGrid>
 
       <aside className="rounded-2xl border bg-surface-raised p-5 text-sm text-muted-foreground">
-        C2-D is now the shared live SVG artwork used by product cards and product pages. Product
-        data controls the copy and colours without writing image files.
+        {t('product.designAside')}
       </aside>
     </div>
   );

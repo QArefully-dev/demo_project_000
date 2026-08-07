@@ -1,23 +1,18 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { deleteAccount } from '@/api/accountDeletion';
-import { ApiError } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/AuthContext';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { identityAccountMessages } from '@shop/localisation/messages/identityAccount';
+import { localizeAccountError } from './accountError';
 
 const CONFIRMATION = 'delete my account';
-
-function messageFor(error: unknown): string {
-  if (error instanceof ApiError && error.status === 409) {
-    return 'You own a company. Transfer company ownership before deleting this account.';
-  }
-  if (error instanceof ApiError) return error.response?.error ?? error.message;
-  return error instanceof Error && error.message ? error.message : 'Unable to delete your account';
-}
 
 export function DeleteAccountSection() {
   const { logout } = useAuth();
   const navigate = useNavigate();
+  const { translate } = useLocalisation();
   const [currentPassword, setCurrentPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -27,18 +22,18 @@ export function DeleteAccountSection() {
     event.preventDefault();
     setError(null);
     if (!currentPassword) {
-      setError('Current password is required');
+      setError(translate(identityAccountMessages, 'account.delete.validationPassword'));
       return;
     }
     if (confirmation !== CONFIRMATION) {
-      setError(`Type "${CONFIRMATION}" to confirm`);
+      setError(translate(identityAccountMessages, 'account.delete.validationConfirmation'));
       return;
     }
     setSubmitting(true);
     try {
       await deleteAccount({ currentPassword });
     } catch (deleteError) {
-      setError(messageFor(deleteError));
+      setError(localizeAccountError(deleteError, translate, 'account.delete.error'));
       setSubmitting(false);
       return;
     }
@@ -58,10 +53,10 @@ export function DeleteAccountSection() {
       className="mt-6 rounded-lg border border-destructive/40 p-6"
     >
       <h2 id="delete-account-heading" className="text-base font-medium">
-        Delete account
+        {translate(identityAccountMessages, 'account.delete.title')}
       </h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        This permanently removes your account profile and signs you out.
+        {translate(identityAccountMessages, 'account.delete.description')}
       </p>
       <form className="mt-4 space-y-4" onSubmit={(event) => void submit(event)}>
         {error && (
@@ -71,7 +66,7 @@ export function DeleteAccountSection() {
         )}
         <div>
           <label htmlFor="delete-account-password" className="block text-sm font-medium">
-            Current password
+            {translate(identityAccountMessages, 'account.delete.currentPassword')}
           </label>
           <input
             id="delete-account-password"
@@ -84,7 +79,7 @@ export function DeleteAccountSection() {
         </div>
         <div>
           <label htmlFor="delete-account-confirmation" className="block text-sm font-medium">
-            Type “delete my account” to confirm
+            {translate(identityAccountMessages, 'account.delete.confirmationLabel')}
           </label>
           <input
             id="delete-account-confirmation"
@@ -94,7 +89,9 @@ export function DeleteAccountSection() {
           />
         </div>
         <Button type="submit" variant="destructive" disabled={submitting}>
-          {submitting ? 'Deleting account…' : 'Delete account'}
+          {submitting
+            ? translate(identityAccountMessages, 'account.delete.submitting')
+            : translate(identityAccountMessages, 'account.delete.submit')}
         </Button>
       </form>
     </section>

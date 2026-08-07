@@ -17,6 +17,13 @@ import { getSavedLists } from '@/api/savedLists';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Button } from '@/components/ui/button';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { apiErrors } from '@shop/localisation/messages/apiErrors';
+import { repeatBuyingMessages } from '@shop/localisation/messages/repeatBuying';
+import {
+  tradeAsyncMessages,
+  type TradeAsyncMessageKey,
+} from '@shop/localisation/messages/tradeAsync';
 import {
   STANDING_ORDER_CADENCES,
   standingOrderCadenceLabel,
@@ -31,29 +38,37 @@ type Data = {
   lists: Awaited<ReturnType<typeof getSavedLists>>;
   sourceOrders: Awaited<ReturnType<typeof getOrders>>['items'];
 };
-const date = (value: string) =>
-  new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(
-    new Date(value),
-  );
 function History({ id, runs }: { id: string; runs?: StandingOrderRun[] }) {
+  const { translate, formatInstant } = useLocalisation();
+  const t = <K extends TradeAsyncMessageKey>(
+    key: K,
+    params?: Readonly<Record<string, string | number | bigint>>,
+  ) => translate(tradeAsyncMessages, key, params);
+  const repeatT = (
+    key: keyof typeof repeatBuyingMessages,
+    params?: Readonly<Record<string, string | number | bigint>>,
+  ) => translate(repeatBuyingMessages, key, params);
   return !runs ? null : (
-    <section className="mt-4" aria-label={`Run history for ${id}`}>
-      <h3 className="font-medium">Run history</h3>
+    <section className="mt-4" aria-label={t('standing.historyAria', { id })}>
+      <h3 className="font-medium">{t('standing.history')}</h3>
       {runs.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No runs yet.</p>
+        <p className="text-sm text-muted-foreground">{t('standing.noRuns')}</p>
       ) : (
         <ul className="mt-2 space-y-2">
           {runs.map((run) => (
             <li className="rounded border p-3 text-sm" key={run.id}>
               <p className="font-medium">
-                {date(run.runAt)} · {run.status}
+                {formatInstant(run.runAt)} ·{' '}
+                {t(`standing.status.${run.status}` as TradeAsyncMessageKey)}
               </p>
-              <p className="text-muted-foreground">{standingOrderRunSummary(run)}</p>
+              <p className="text-muted-foreground">{standingOrderRunSummary(run, t)}</p>
               {run.outcomes?.map((x) => (
                 <p key={x.orderLineItemId}>
-                  <span className="font-medium">{standingOrderOutcomeLabel(x)}</span>{' '}
+                  <span className="font-medium">{standingOrderOutcomeLabel(x, repeatT)}</span>{' '}
                   {x.status === 'skipped' && (
-                    <span className="text-muted-foreground">{standingOrderSkipReasonLabel(x)}</span>
+                    <span className="text-muted-foreground">
+                      {standingOrderSkipReasonLabel(x, repeatT)}
+                    </span>
                   )}
                 </p>
               ))}
@@ -66,6 +81,13 @@ function History({ id, runs }: { id: string; runs?: StandingOrderRun[] }) {
 }
 /** Buyer schedules show server-provided timestamps; browser never calculates next runs. */
 export function StandingOrdersPage() {
+  const { translate, formatInstant } = useLocalisation();
+  const t = <K extends TradeAsyncMessageKey>(
+    key: K,
+    params?: Readonly<Record<string, string | number | bigint>>,
+  ) => translate(tradeAsyncMessages, key, params);
+  const apiT = (key: string, params?: Readonly<Record<string, string | number | bigint>>) =>
+    translate(apiErrors, key, params);
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +120,7 @@ export function StandingOrdersPage() {
       ]);
       if (current === generation.current) setData({ orders, lists, sourceOrders: source.items });
     } catch (cause) {
-      if (current === generation.current) setError(standingOrderErrorMessage(cause));
+      if (current === generation.current) setError(standingOrderErrorMessage(cause, t, apiT));
     } finally {
       if (current === generation.current) setLoading(false);
     }
@@ -131,7 +153,7 @@ export function StandingOrdersPage() {
         setName('');
       }
     } catch (cause) {
-      if (isCurrent()) setError(standingOrderErrorMessage(cause));
+      if (isCurrent()) setError(standingOrderErrorMessage(cause, t, apiT));
     } finally {
       if (isCurrent()) setCreating(false);
     }
@@ -150,7 +172,7 @@ export function StandingOrdersPage() {
           (old) => old && { ...old, orders: old.orders.map((x) => (x.id === next.id ? next : x)) },
         );
     } catch (cause) {
-      if (isCurrent()) setError(standingOrderErrorMessage(cause));
+      if (isCurrent()) setError(standingOrderErrorMessage(cause, t, apiT));
     }
   }
   async function history(id: string) {
@@ -160,7 +182,7 @@ export function StandingOrdersPage() {
       const value = await getStandingOrderRuns(id);
       if (isCurrent()) setRuns((old) => ({ ...old, [id]: value }));
     } catch (cause) {
-      if (isCurrent()) setError(standingOrderErrorMessage(cause));
+      if (isCurrent()) setError(standingOrderErrorMessage(cause, t, apiT));
     }
   }
   async function run(order: StandingOrder) {
@@ -181,7 +203,7 @@ export function StandingOrdersPage() {
       }));
       await load();
     } catch (cause) {
-      if (isCurrent()) setError(standingOrderErrorMessage(cause));
+      if (isCurrent()) setError(standingOrderErrorMessage(cause, t, apiT));
     } finally {
       setRunning((current) => (current === order.id ? null : current));
     }
@@ -195,18 +217,18 @@ export function StandingOrdersPage() {
       if (isCurrent())
         setData((old) => old && { ...old, orders: old.orders.filter((x) => x.id !== order.id) });
     } catch (cause) {
-      if (isCurrent()) setError(standingOrderErrorMessage(cause));
+      if (isCurrent()) setError(standingOrderErrorMessage(cause, t, apiT));
     }
   }
   if (loading && !data) return <LoadingSpinner />;
   if (error && !data) return <ErrorMessage message={error} onRetry={() => void load()} />;
   if (!data)
-    return <ErrorMessage message="Standing orders are unavailable." onRetry={() => void load()} />;
+    return <ErrorMessage message={t('standing.error.unavailable')} onRetry={() => void load()} />;
   return (
     <div className="mx-auto max-w-3xl space-y-6 pb-12">
       <header>
-        <p className="section-eyebrow">Standing orders</p>
-        <h1 className="section-heading mt-2">Schedule a regular restock</h1>
+        <p className="section-eyebrow">{t('standing.title')}</p>
+        <h1 className="section-heading mt-2">{t('standing.heading')}</h1>
       </header>
       {error && (
         <p role="alert" className="rounded-md border border-destructive/40 p-3 text-destructive">
@@ -214,9 +236,9 @@ export function StandingOrdersPage() {
         </p>
       )}
       <form className="space-y-3 rounded-lg border p-4" onSubmit={(e) => void create(e)}>
-        <h2 className="font-medium">New standing order</h2>
+        <h2 className="font-medium">{t('standing.new')}</h2>
         <label htmlFor="standing-order-name">
-          Name
+          {t('standing.name')}
           <input
             id="standing-order-name"
             className="ml-2 h-9 rounded border bg-background px-2"
@@ -225,19 +247,19 @@ export function StandingOrdersPage() {
           />
         </label>
         <label htmlFor="standing-order-kind">
-          Repeat from
+          {t('standing.repeatFrom')}
           <select
             id="standing-order-kind"
             className="ml-2 h-9 rounded border bg-background px-2"
             value={kind}
             onChange={(e) => setKind(e.target.value as Kind)}
           >
-            <option value="saved_list">Saved list</option>
-            <option value="order">Past order</option>
+            <option value="saved_list">{t('standing.savedList')}</option>
+            <option value="order">{t('standing.pastOrder')}</option>
           </select>
         </label>
         <label htmlFor="standing-order-source">
-          Source
+          {t('standing.source')}
           <select
             id="standing-order-source"
             className="ml-2 h-9 rounded border bg-background px-2"
@@ -252,13 +274,13 @@ export function StandingOrdersPage() {
                 ))
               : orderOptions.map((x) => (
                   <option key={x.id} value={x.id}>
-                    Order #{x.id}
+                    {t('standing.order', { id: x.id })}
                   </option>
                 ))}
           </select>
         </label>
         <label htmlFor="standing-order-cadence">
-          Cadence
+          {t('standing.cadence')}
           <select
             id="standing-order-cadence"
             className="ml-2 h-9 rounded border bg-background px-2"
@@ -267,31 +289,32 @@ export function StandingOrdersPage() {
           >
             {STANDING_ORDER_CADENCES.map((x) => (
               <option key={x} value={x}>
-                {standingOrderCadenceLabel(x)}
+                {standingOrderCadenceLabel(x, t)}
               </option>
             ))}
           </select>
         </label>
         <Button type="submit" disabled={creating || !name.trim() || !sourceId}>
-          {creating ? 'Creating…' : 'Create standing order'}
+          {creating ? t('standing.creating') : t('standing.create')}
         </Button>
       </form>
       {data.orders.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-8 text-center">
-          No standing orders yet.
-        </div>
+        <div className="rounded-lg border border-dashed p-8 text-center">{t('standing.empty')}</div>
       ) : (
-        <ul aria-label="Standing orders" className="space-y-3">
+        <ul aria-label={t('standing.title')} className="space-y-3">
           {data.orders.map((order) => (
             <li key={order.id} className="rounded-lg border p-4">
               <div className="flex flex-wrap justify-between gap-3">
                 <div>
                   <h2 className="font-medium">{order.name}</h2>
                   <p className="text-sm text-muted-foreground">
-                    {standingOrderCadenceLabel(order.cadence)} · Next run: {date(order.nextRunAt)}
+                    {t('standing.nextRun', {
+                      cadence: standingOrderCadenceLabel(order.cadence, t),
+                      date: formatInstant(order.nextRunAt),
+                    })}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {order.active ? 'Active' : 'Paused'}
+                    {order.active ? t('standing.active') : t('standing.paused')}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -300,7 +323,7 @@ export function StandingOrdersPage() {
                     size="sm"
                     onClick={() => void update(order, { active: !order.active })}
                   >
-                    {order.active ? 'Pause' : 'Resume'}
+                    {order.active ? t('standing.pause') : t('standing.resume')}
                   </Button>
                   <Button
                     variant="ghost"
@@ -308,19 +331,19 @@ export function StandingOrdersPage() {
                     disabled={running !== null}
                     onClick={() => void remove(order)}
                   >
-                    Delete
+                    {t('standing.delete')}
                   </Button>
                   <Button
                     size="sm"
                     disabled={!order.active || running !== null}
                     onClick={() => void run(order)}
                   >
-                    {running === order.id ? 'Running…' : 'Run now'}
+                    {running === order.id ? t('standing.running') : t('standing.runNow')}
                   </Button>
                 </div>
               </div>
               <label className="mt-3 block" htmlFor={`cadence-${order.id}`}>
-                Cadence
+                {t('standing.cadence')}
                 <select
                   id={`cadence-${order.id}`}
                   className="ml-2 h-8 rounded border bg-background px-2"
@@ -331,7 +354,7 @@ export function StandingOrdersPage() {
                 >
                   {STANDING_ORDER_CADENCES.map((x) => (
                     <option key={x} value={x}>
-                      {standingOrderCadenceLabel(x)}
+                      {standingOrderCadenceLabel(x, t)}
                     </option>
                   ))}
                 </select>
@@ -342,7 +365,7 @@ export function StandingOrdersPage() {
                 size="sm"
                 onClick={() => void history(order.id)}
               >
-                Show run history
+                {t('standing.showHistory')}
               </Button>
               <History id={order.id} runs={runs[order.id]} />
             </li>

@@ -5,41 +5,46 @@ import {
   AdminRefundBody,
   AdminReturnListQuery,
   AdminReturnListResponse,
-  ReturnErrorResponse,
   ReturnIdParam,
   ReturnRequest,
 } from '@shop/contracts/returns';
+import { ErrorResponse } from '@shop/contracts/common';
 import type { Country } from '@shop/contracts/country';
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../app.js';
 import type { AuditContext } from '../features/audit/auditEvent.js';
 import { ReturnDomainError } from '../features/returns/returnErrors.js';
 import { requireAdmin } from '../plugins/auth.js';
-import { sendConflict, sendNotFound } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 
 function auditContext(userId: number, requestId: string, standingCountry: Country): AuditContext {
   return { actor: { type: 'user' as const, userId }, requestId, standingCountry };
 }
 
 function sendReturnError(
-  reply: Parameters<typeof sendConflict>[0],
+  request: Parameters<typeof sendPublicError>[0],
+  reply: Parameters<typeof sendPublicError>[1],
   error: ReturnDomainError,
 ): void {
   switch (error.code) {
     case 'RETURN_NOT_FOUND':
-      sendNotFound(reply, 'Return');
+      sendPublicError(request, reply, 404, 'RETURN_NOT_FOUND');
       return;
     case 'RETURN_NOT_ELIGIBLE':
     case 'RETURN_WINDOW_EXPIRED':
+      sendPublicError(request, reply, 422, error.code);
+      return;
     case 'QUANTITY_UNAVAILABLE':
-      reply.code(422).send({ error: error.message, code: error.code });
+      // ReturnDomainError currently carries no available-quantity snapshot. Keep the 422 result
+      // without fabricating metadata at this boundary.
+      sendPublicError(request, reply, 422, 'RETURN_NOT_ELIGIBLE');
       return;
     case 'INVALID_TRANSITION':
     case 'STALE_VERSION':
     case 'IDEMPOTENCY_CONFLICT':
     case 'PAYMENT_NOT_REFUNDABLE':
     case 'RETURN_DATA_CORRUPT':
-      sendConflict(reply, error.message);
+      sendPublicError(request, reply, 409, error.code);
       return;
   }
 }
@@ -55,8 +60,8 @@ export default function adminReturnsRoutes(app: FastifyInstance, { services }: A
         querystring: AdminReturnListQuery,
         response: {
           200: AdminReturnListResponse,
-          401: ReturnErrorResponse,
-          403: ReturnErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
         },
       },
     },
@@ -78,11 +83,11 @@ export default function adminReturnsRoutes(app: FastifyInstance, { services }: A
         body: AdminDecisionBody,
         response: {
           200: ReturnRequest,
-          401: ReturnErrorResponse,
-          403: ReturnErrorResponse,
-          404: ReturnErrorResponse,
-          409: ReturnErrorResponse,
-          422: ReturnErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+          422: ErrorResponse,
         },
       },
     },
@@ -99,7 +104,7 @@ export default function adminReturnsRoutes(app: FastifyInstance, { services }: A
         });
       } catch (error) {
         if (error instanceof ReturnDomainError) {
-          sendReturnError(reply, error);
+          sendReturnError(request, reply, error);
           return;
         }
         throw error;
@@ -116,10 +121,10 @@ export default function adminReturnsRoutes(app: FastifyInstance, { services }: A
         body: AdminReceiveBody,
         response: {
           200: ReturnRequest,
-          401: ReturnErrorResponse,
-          403: ReturnErrorResponse,
-          404: ReturnErrorResponse,
-          409: ReturnErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
         },
       },
     },
@@ -135,7 +140,7 @@ export default function adminReturnsRoutes(app: FastifyInstance, { services }: A
         });
       } catch (error) {
         if (error instanceof ReturnDomainError) {
-          sendReturnError(reply, error);
+          sendReturnError(request, reply, error);
           return;
         }
         throw error;
@@ -152,11 +157,11 @@ export default function adminReturnsRoutes(app: FastifyInstance, { services }: A
         body: AdminRefundBody,
         response: {
           200: ReturnRequest,
-          401: ReturnErrorResponse,
-          403: ReturnErrorResponse,
-          404: ReturnErrorResponse,
-          409: ReturnErrorResponse,
-          422: ReturnErrorResponse,
+          401: ErrorResponse,
+          403: ErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
+          422: ErrorResponse,
         },
       },
     },
@@ -172,7 +177,7 @@ export default function adminReturnsRoutes(app: FastifyInstance, { services }: A
         });
       } catch (error) {
         if (error instanceof ReturnDomainError) {
-          sendReturnError(reply, error);
+          sendReturnError(request, reply, error);
           return;
         }
         throw error;

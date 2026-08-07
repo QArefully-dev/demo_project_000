@@ -449,12 +449,8 @@ void test('catalog read paths enforce category and product country exclusions', 
       });
       assert.equal(cnAdd.statusCode, 400);
       assert.equal(missingAdd.statusCode, 400);
-      assert.deepEqual(cnAdd.json(), {
-        error: `Product ${BLOCKED_PRODUCT_ID} has no active variants.`,
-      });
-      assert.deepEqual(missingAdd.json(), {
-        error: 'Product 919999999 has no active variants.',
-      });
+      assert.equal(cnAdd.json<{ code: string }>().code, 'VARIANT_NOT_FOUND');
+      assert.equal(missingAdd.json<{ code: string }>().code, 'VARIANT_NOT_FOUND');
 
       const usAdd = await app.inject({
         method: 'POST',
@@ -536,10 +532,14 @@ void test('catalog read paths enforce category and product country exclusions', 
         payload: { bundleId: String(TEST_BUNDLE_ID) },
       });
       assert.equal(cnAdd.statusCode, 409);
-      assert.deepEqual(cnAdd.json(), {
+      const cnBundleBody = cnAdd.json<{
+        error: string;
+        code: string;
+        meta?: { variantIds?: string[] };
+      }>();
+      assert.deepEqual(cnBundleBody, {
+        error: '请求无法处理，请重试。',
         code: 'BUNDLE_UNAVAILABLE',
-        error: 'One or more bundle components are unavailable',
-        productIds: [String(blockedVariantId)],
       });
 
       const usCart = (

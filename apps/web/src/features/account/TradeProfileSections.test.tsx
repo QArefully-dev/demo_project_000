@@ -402,11 +402,11 @@ describe('DeliverySitesSection', () => {
     await renderHarness();
 
     const section = deliverySection();
-    expect(await within(section).findByText('Sites unavailable')).toBeInTheDocument();
+    expect(await within(section).findByText('Unable to load delivery sites')).toBeInTheDocument();
     await user.click(within(section).getByRole('button', { name: 'Try again' }));
 
     await waitFor(() => expect(within(section).getByText('Main yard')).toBeInTheDocument());
-    expect(within(section).queryByText('Sites unavailable')).not.toBeInTheDocument();
+    expect(within(section).queryByText('Unable to load delivery sites')).not.toBeInTheDocument();
   });
 
   it('surfaces a row action failure without clearing the list', async () => {
@@ -419,7 +419,7 @@ describe('DeliverySitesSection', () => {
     const section = deliverySection();
     await user.click(await within(section).findByRole('button', { name: 'Remove Main yard' }));
 
-    expect(await within(section).findByText('Site is on an open order')).toBeInTheDocument();
+    expect(await within(section).findByText('Action failed')).toBeInTheDocument();
     expect(within(section).getByText('Main yard')).toBeInTheDocument();
   });
 
@@ -652,7 +652,7 @@ describe('BillingEntitiesSection', () => {
     await renderHarness();
 
     const section = billingSection();
-    expect(await within(section).findByText('Billing unavailable')).toBeInTheDocument();
+    expect(await within(section).findByText('Unable to load billing details')).toBeInTheDocument();
     await user.click(within(section).getByRole('button', { name: 'Try again' }));
 
     await waitFor(() =>
@@ -672,9 +672,7 @@ describe('BillingEntitiesSection', () => {
       await within(section).findByRole('button', { name: 'Remove Northgate Builders Ltd' }),
     );
 
-    expect(
-      await within(section).findByText('Billing party is on an open invoice'),
-    ).toBeInTheDocument();
+    expect(await within(section).findByText('Action failed')).toBeInTheDocument();
     expect(within(section).getByText('Northgate Builders Ltd')).toBeInTheDocument();
   });
 

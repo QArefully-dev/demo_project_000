@@ -5,6 +5,11 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/AuthContext';
 import { useSavedLists } from '@/hooks/useSavedLists';
 import { cn } from '@/lib/utils';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import {
+  repeatBuyingMessages,
+  type RepeatBuyingMessageKey,
+} from '@shop/localisation/messages/repeatBuying';
 
 /** Default-list heart control for a concrete purchasable variant. */
 export function SaveToListButton({
@@ -15,12 +20,13 @@ export function SaveToListButton({
   quantity?: number;
 }) {
   const { user } = useAuth();
-  const { savedVariantIds, toggleDefaultSave, loading, error } = useSavedLists();
+  const { savedVariantIds, toggleDefaultSave, loading } = useSavedLists();
+  const { translate } = useLocalisation();
   const navigate = useNavigate();
   const location = useLocation();
   const saved = variantId !== undefined && savedVariantIds.has(variantId);
   const [pending, setPending] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<RepeatBuyingMessageKey | null>(null);
 
   const onClick = async () => {
     if (!user) {
@@ -31,8 +37,7 @@ export function SaveToListButton({
     setPending(true);
     setSaveError(null);
     const succeeded = await toggleDefaultSave(variantId, quantity);
-    if (!succeeded)
-      setSaveError(error ?? 'Unable to update the default saved list. Please try again.');
+    if (!succeeded) setSaveError('repeatBuying.error.savedListMutation');
     setPending(false);
   };
 
@@ -44,13 +49,17 @@ export function SaveToListButton({
         size="icon"
         disabled={variantId === undefined || loading || pending}
         onClick={() => void onClick()}
-        aria-label={saved ? 'Remove from default saved list' : 'Save to default list'}
+        aria-label={
+          saved
+            ? translate(repeatBuyingMessages, 'repeatBuying.removeFromDefaultList')
+            : translate(repeatBuyingMessages, 'repeatBuying.saveToDefaultList')
+        }
       >
         <Heart className={cn('size-5', saved && 'fill-red-500 text-red-500')} />
       </Button>
       {saveError && (
         <p className="sr-only" role="alert">
-          {saveError}
+          {translate(repeatBuyingMessages, saveError)}
         </p>
       )}
     </div>

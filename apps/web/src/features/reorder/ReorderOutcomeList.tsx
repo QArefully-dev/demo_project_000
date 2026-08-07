@@ -1,4 +1,10 @@
 import { Link } from 'react-router-dom';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import {
+  repeatBuyingMessages,
+  type RepeatBuyingMessageKey,
+} from '@shop/localisation/messages/repeatBuying';
+import type { MessageParams } from '@shop/localisation';
 import {
   outcomeLineLabel,
   priceChangeMessage,
@@ -15,31 +21,46 @@ type Props = {
   state: BuyAgainState;
 };
 
-function ResultBody({ orderId, response }: { orderId: string; response: ReorderResponse }) {
+function ResultBody({
+  orderId,
+  response,
+  t,
+  formatDisplayMoney,
+}: {
+  orderId: string;
+  response: ReorderResponse;
+  t: (key: RepeatBuyingMessageKey, params?: MessageParams) => string;
+  formatDisplayMoney: (pence: number) => string;
+}) {
   const skipped = skippedOutcomes(response);
   const repriced = repricedOutcomes(response);
   const nothingAdded = response.addedLineCount === 0;
 
   return (
     <div className="space-y-2">
-      <p className="font-medium">{reorderSummaryMessage(response)}</p>
+      <p className="font-medium">{reorderSummaryMessage(response, t)}</p>
       {repriced.length > 0 && (
-        <ul className="space-y-1" aria-label={`Price changes on order #${orderId}`}>
+        <ul className="space-y-1" aria-label={t('repeatBuying.priceChangesOnOrder', { orderId })}>
           {repriced.map((outcome) => (
             <li key={outcome.orderLineItemId}>
-              <span className="font-medium">{outcomeLineLabel(outcome)}</span>{' '}
-              <span className="text-muted-foreground">{priceChangeMessage(outcome)}</span>
+              <span className="font-medium">{outcomeLineLabel(outcome, t)}</span>{' '}
+              <span className="text-muted-foreground">
+                {priceChangeMessage(outcome, t, formatDisplayMoney)}
+              </span>
             </li>
           ))}
         </ul>
       )}
       {skipped.length > 0 && (
-        <ul className="space-y-1" aria-label={`Items not added from order #${orderId}`}>
+        <ul
+          className="space-y-1"
+          aria-label={t('repeatBuying.itemsNotAddedFromOrder', { orderId })}
+        >
           {skipped.map((outcome) => (
             <li key={outcome.orderLineItemId}>
-              <span className="font-medium">{outcomeLineLabel(outcome)}</span>{' '}
+              <span className="font-medium">{outcomeLineLabel(outcome, t)}</span>{' '}
               <span className="text-muted-foreground">
-                {outcome.reason === null ? '' : skipReasonMessage(outcome.reason)}
+                {outcome.reason === null ? '' : skipReasonMessage(outcome.reason, t)}
               </span>
             </li>
           ))}
@@ -47,7 +68,7 @@ function ResultBody({ orderId, response }: { orderId: string; response: ReorderR
       )}
       {!nothingAdded && (
         <Link className="inline-block font-medium underline underline-offset-4" to="/cart">
-          View cart
+          {t('repeatBuying.viewCart')}
         </Link>
       )}
     </div>
@@ -68,22 +89,35 @@ function ResultBody({ orderId, response }: { orderId: string; response: ReorderR
  * error — only a request that never landed is styled and announced as a failure.
  */
 export function ReorderOutcomeList({ orderId, state }: Props) {
+  const { translate, formatDisplayMoney, formatCount } = useLocalisation();
+  const t = Object.assign(
+    (key: RepeatBuyingMessageKey, params?: MessageParams) =>
+      translate(repeatBuyingMessages, key, params),
+    { formatCount },
+  );
   return (
     <div
       role="status"
       aria-live="polite"
-      aria-label={`Buy again result for order #${orderId}`}
+      aria-label={t('repeatBuying.buyAgainResult', { orderId })}
       className="text-sm empty:hidden"
     >
       {state.kind === 'pending' && (
-        <p className="text-muted-foreground">Adding this order to your cart…</p>
+        <p className="text-muted-foreground">{t('repeatBuying.reorderAdding')}</p>
       )}
       {state.kind === 'error' && (
         <p className="rounded-md border border-destructive/40 p-3 text-destructive">
-          {state.message}
+          {state.messageKey ? t(state.messageKey, state.params) : state.message}
         </p>
       )}
-      {state.kind === 'result' && <ResultBody orderId={orderId} response={state.response} />}
+      {state.kind === 'result' && (
+        <ResultBody
+          orderId={orderId}
+          response={state.response}
+          t={t}
+          formatDisplayMoney={formatDisplayMoney}
+        />
+      )}
     </div>
   );
 }

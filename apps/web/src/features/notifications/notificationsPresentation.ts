@@ -1,13 +1,30 @@
 import type { NotificationKind } from '@shop/contracts/notifications';
+import {
+  translateTradeAsync,
+  type TradeAsyncMessageKey,
+} from '@shop/localisation/messages/tradeAsync';
 
-const presentation: Record<NotificationKind, { label: string; icon: string }> = {
-  'order.placed': { label: 'Order placed', icon: 'Receipt' },
-  'order.shipped': { label: 'Order shipped', icon: 'Truck' },
-  'order.cancelled': { label: 'Order cancelled', icon: 'CircleX' },
-  'standing_order.run_completed': { label: 'Standing order completed', icon: 'CalendarCheck' },
-  'standing_order.run_failed': { label: 'Standing order needs attention', icon: 'CalendarX' },
-  'payment.webhook_settled': { label: 'Payment settled', icon: 'CreditCard' },
-  'back_in_stock.available': { label: 'Back in stock', icon: 'BellRing' },
+const presentation: Record<NotificationKind, { key: TradeAsyncMessageKey; icon: string }> = {
+  'order.placed': { key: 'notifications.kind.orderPlaced', icon: 'Receipt' },
+  'order.shipped': { key: 'notifications.kind.orderShipped', icon: 'Truck' },
+  'order.cancelled': { key: 'notifications.kind.orderCancelled', icon: 'CircleX' },
+  'standing_order.run_completed': {
+    key: 'notifications.kind.standingCompleted',
+    icon: 'CalendarCheck',
+  },
+  'standing_order.run_failed': { key: 'notifications.kind.standingFailed', icon: 'CalendarX' },
+  'payment.webhook_settled': { key: 'notifications.kind.paymentSettled', icon: 'CreditCard' },
+  'back_in_stock.available': { key: 'notifications.kind.backInStock', icon: 'BellRing' },
 };
 
-export const notificationPresentation = (kind: NotificationKind) => presentation[kind];
+export type NotificationTranslator = (key: TradeAsyncMessageKey) => string;
+
+const defaultTranslate: NotificationTranslator = (key) => translateTradeAsync('UK', key);
+
+export const notificationPresentation = (
+  kind: NotificationKind,
+  translate: NotificationTranslator = defaultTranslate,
+) => {
+  const item = presentation[kind];
+  return { label: translate(item.key), icon: item.icon };
+};

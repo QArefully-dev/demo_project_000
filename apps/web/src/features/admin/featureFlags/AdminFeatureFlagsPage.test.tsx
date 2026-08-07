@@ -36,7 +36,7 @@ describe('AdminFeatureFlagsPage', () => {
     render(<AdminFeatureFlagsPage />);
     expect(await screen.findByText('checkout.new')).toBeInTheDocument();
     await events.type(screen.getByLabelText('Flag key'), 'orders.beta');
-    await events.type(screen.getByLabelText('Flag description'), 'Order beta rollout');
+    await events.type(screen.getByLabelText('Description'), 'Order beta rollout');
     await events.click(screen.getByRole('button', { name: 'Create flag' }));
     expect(api.createAdminFeatureFlag).toHaveBeenCalledWith({
       key: 'orders.beta',

@@ -19,7 +19,9 @@ export function countryContextPlugin(_sessions: SessionService) {
   void _sessions;
   return (app: FastifyInstance, _opts: unknown, done: () => void): void => {
     app.decorateRequest('resolvedCountry', null as unknown as Country);
-    app.addHook('preHandler', (request, _reply, next) => {
+    // Authentication's preValidation hook is registered first by the composition root. Resolve
+    // country in the same phase so schema validation and its localized errors see the final value.
+    app.addHook('preValidation', (request, _reply, next) => {
       const user = request.authenticatedUser;
       const headerCountry = supportedCountry(request.headers['x-shop-country']);
 

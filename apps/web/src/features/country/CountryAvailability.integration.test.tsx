@@ -12,6 +12,7 @@ import { CountryBanner } from '@/components/CountryBanner';
 import { AuthProvider } from '@/hooks/AuthContext';
 import { CartProvider, useCartContext } from '@/hooks/CartContext';
 import { CountryProvider } from '@/hooks/CountryContext';
+import { LocaleProvider } from '@/i18n/LocaleContext';
 import { setCartId, setCartStorage, type CartStorage } from '@/lib/cartStorage';
 import { COUNTRY_STORAGE_KEY } from '@/lib/countryStorage';
 
@@ -66,7 +67,9 @@ function renderWithCountry(children: React.ReactNode) {
   return render(
     <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
-        <CountryProvider storage={storage}>{children}</CountryProvider>
+        <CountryProvider storage={storage}>
+          <LocaleProvider>{children}</LocaleProvider>
+        </CountryProvider>
       </AuthProvider>
     </MemoryRouter>,
   );
@@ -106,7 +109,7 @@ describe('Country availability buyer experience', () => {
     const { unmount } = renderWithCountry(<CountryBanner />);
     expect(
       screen.getByText(
-        'Ordering for Spain: availability and delivery options reflect local requirements.',
+        'Pedidos para España: la disponibilidad y las opciones de entrega reflejan los requisitos locales.',
       ),
     ).toBeInTheDocument();
     unmount();
@@ -150,7 +153,7 @@ describe('Country availability buyer experience', () => {
     await user.click(addButton);
 
     const message = await screen.findByRole('alert');
-    expect(message).toHaveTextContent('This item cannot be ordered in your country.');
+    expect(message).toHaveTextContent('此商品无法在您所在的国家/地区订购。');
     expect(message).not.toHaveTextContent(/stock|retir|no longer sell/i);
   });
 });

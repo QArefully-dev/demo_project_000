@@ -1,9 +1,8 @@
 import { CUSTOM_BLEND_FEE_CENTS } from '@shop/contracts/pricing';
-import { formatMoney } from '@/lib/formatMoney';
 import { defineHelpArticle, type HelpArticle } from './helpContentTypes';
 
-/** Derived from the pricing contract so the published fee cannot drift from the charged one. */
-const BLENDING_FEE = formatMoney(CUSTOM_BLEND_FEE_CENTS);
+/** Keep the authoritative fee available to the render-time materializer. */
+export const BLENDING_FEE_CENTS = CUSTOM_BLEND_FEE_CENTS;
 
 export const shippingArticle = defineHelpArticle({
   id: 'shipping',
@@ -327,7 +326,7 @@ export const customBlendArticle = defineHelpArticle({
       paragraphs: [
         {
           id: 'custom-blend-pricing-fee',
-          text: `A flat blending fee of ${BLENDING_FEE} is added once per blend line. It is charged per line rather than per sack, so raising the quantity on a blend does not multiply the fee.`,
+          text: 'A flat blending fee of {blendFee} is added once per blend line. It is charged per line rather than per sack, so raising the quantity on a blend does not multiply the fee.',
         },
         {
           id: 'custom-blend-pricing-discounts',

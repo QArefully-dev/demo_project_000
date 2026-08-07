@@ -1,7 +1,8 @@
 # Country Localisation Handoff (high-level plan item 10)
 
-Status: stages 1 and 2 landed (2026-08-03 and 2026-08-05). Stage 3 is not implemented; no coding plan has been written for it yet.
-Audience: agent writing the coding plan for item 10, stage 3.
+Status: stages 1-3 complete (2026-08-03, 2026-08-05, 2026-08-07). Migration head: `034`.
+E30AA (2026-08-07): Node v22.23.1/npm 10.9.8; format, lint, all-workspace typecheck, and localisation guard pass (879 source files, 0 findings); reset pass; integration pass (web 18 files/54 tests, API 293 subtests/434 tests); verify pass in 322s, including all-workspace tests/builds. R30 High closed; follow-up format and stale postcode consumer fixes have focused evidence; no re-review per rule. Final completion.
+Audience: implementation and review agents; retained product decision record.
 Source: grilling session against `plans/demo_project_high_level_plan.md` item 10. Decisions are user's, recorded verbatim in intent.
 
 ## Scope Shift vs Plan Text
@@ -25,13 +26,7 @@ All existing data migrates to: `UK`.
 - conversion is display-only, applied at last moment before render.
 - nothing stored, charged, refunded, or snapshotted changes currency. Order records stay pence.
 - checkout and receipt show real `£` total alongside converted figure.
-
-Existing defect this must resolve (stage 3): money formatting is forked ~8 ways today.
-- `apps/web/src/lib/formatMoney.ts` -> formats `en-US` / `USD` while shop displays `£`.
-- six components hand-roll own `en-GB`/`GBP` `Intl.NumberFormat` (e.g. `features/bundles/BundleCard.tsx:6`, `features/approvals/ApproverInbox.tsx:5`, `features/admin/orders/AdminOrdersPage.tsx:12`).
-- two hardcode bare `£` in strings (`features/company/ThresholdSection.tsx`, `AdminOrdersPage.tsx`).
-- API hardcodes `currency: 'USD'` (`features/payments/paymentGateway.ts:4`, `features/checkout/checkoutService.ts:556`). No currency persisted on orders.
-- dates equally forked: `en-GB` x5, `en-US` (`features/orders/orderPresentation.ts:20`), browser-default (`features/returns/ReturnPanel.tsx:415`).
+- Stage 3 result: `@shop/localisation` owns translation and number/date/money formatters. Fixed profile rates convert display values only. Gateway and settlement use GBP; receipts render canonical order facts at read time. No formatter forks or ambient browser locale remain.
 
 ## Identity
 
@@ -84,11 +79,12 @@ Promotions stay in DATABASE. Existing `/admin` promo screens gain a country-targ
 - every piece of shop's own wording moves behind lookup key: buttons, menus, error messages, policy pages, banners.
 - translated for all seven countries.
 - product names and descriptions stay ENGLISH. Catalog data is not translated.
-- cost: every existing screen must stop hardcoding text -> widest surface in the item.
+- `@shop/localisation` owns exhaustive seven-country message bundles and render-time lookup.
 
 ## Seed and Migration
 
 - migration assigns `UK` to all existing users, orders, carts, saved lists, company accounts, products.
+- migration `034` adds typed mailbox template and order-receipt storage without persisting converted money.
 - required fixtures:
   - same email registered in `UK` and `DE` -> different passwords, different carts. Primary demo of the feature.
   - one category blocked in one country (sports drinks precedent).
@@ -101,7 +97,7 @@ Promotions stay in DATABASE. Existing `/admin` promo screens gain a country-targ
 Three stages, each independently shippable and testable.
 1. country exists: login dropdown, top-bar picker, migration, everything -> `UK`, `US` default. No other visible behaviour change. **Stage 1: landed 2026-08-03.**
 2. behaviour: blocking (category + product), banners, country-targeted promos, cross-border delivery refusal, postcode rules, time-zone delivery cut-off. Security tests live here. **Stage 2: landed 2026-08-05.**
-3. sweep: translation lookup layer, formatting consolidation, money/date formatter defork.
+3. sweep: translation lookup layer, formatting consolidation, money/date formatter defork. **Stage 3: landed 2026-08-07.**
 
 Rejected: single big branch. Surface is too wide (login, every screen, catalog, cart, checkout, 9 admin sections, migration).
 
@@ -126,4 +122,4 @@ DONE 2026-08-03. `plans/demo_project_high_level_plan.md` rewritten to match this
 - "Landed 8 and 15 constrain later work" -> corrected. One shared stock pool means country availability never writes stock and never raises a stock-change event, so item 10 does NOT call `StockChangeObserver`. Prior text assumed it might.
 - "Landed 9 constrains later work" -> corrected. Per-country profile is a checked-in file, not admin data; only promo country targeting and the country-scoped shell are administered.
 
-No open decisions remain. Stage 2 is landed 2026-08-05; stage 3 remains (translation lookup and formatting/money defork).
+No open decisions remain. Stage 3 is landed 2026-08-07. R30 High is closed with no re-review per rule. Country-aware demo behavior, display-only rates, GBP settlement/receipts, and migration head `034` are current implementation facts.

@@ -239,10 +239,10 @@ describe('ProductPurchasePanel', () => {
 
     await user.click(screen.getByRole('radio', { name: /25 kg Sack/i }));
 
-    expect(screen.getAllByText('Clearance price $99.99').length).toBeGreaterThan(0);
-    expect(screen.getAllByLabelText('Clearance ends 1 Aug 2026').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Clearance price $124.99').length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('Clearance ends 7/31/26').length).toBeGreaterThan(0);
     expect(
-      screen.getAllByText('$129.99').some((element) => element.classList.contains('line-through')),
+      screen.getAllByText('$162.49').some((element) => element.classList.contains('line-through')),
     ).toBe(true);
   });
 
@@ -421,7 +421,7 @@ describe('ProductPurchasePanel', () => {
     await user.click(screen.getByRole('radio'));
     expect(screen.getAllByText(/SKU: PW-001/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('8 pallets available')).toBeInTheDocument();
-    expect(screen.getAllByText('$129.99').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('$162.49').length).toBeGreaterThanOrEqual(1);
   });
 
   it('renders API-supplied pack, tonne, MOQ, tier, and freight details', async () => {
@@ -445,11 +445,11 @@ describe('ProductPurchasePanel', () => {
     });
 
     await user.click(screen.getByRole('radio', { name: /1,000 kg Pallet/i }));
-    expect(screen.getAllByText('Pack price $4,100.00').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('$4,100.00 / tonne')).toBeInTheDocument();
+    expect(screen.getAllByText('Pack price $5,125.00').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('$5,125.00 / tonne')).toBeInTheDocument();
     expect(screen.getByText('Minimum order: 1 × 1,000 kg Pallet.')).toBeInTheDocument();
     expect(screen.getByText('Total weight')).toBeInTheDocument();
-    expect(screen.getByLabelText('Volume pricing tiers')).toHaveTextContent('5 tonnes: 5% off');
+    expect(screen.getByLabelText('Volume pricing')).toHaveTextContent('5 tonnes: 5% off');
     expect(screen.getAllByText(/Pallet freight.*lead time 7 days/i).length).toBeGreaterThanOrEqual(
       1,
     );

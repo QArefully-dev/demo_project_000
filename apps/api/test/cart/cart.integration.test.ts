@@ -340,7 +340,8 @@ void test('cart HTTP enforces MOQ and defaults omitted add quantity to its floor
   assert.equal(below.statusCode, 400);
   assert.deepEqual(below.json(), {
     code: 'BELOW_MOQ',
-    error: 'Quantity does not meet this variant minimum order quantity.',
+    error: `Quantity must be at least ${minimumQuantity}.`,
+    meta: { minQuantity: minimumQuantity },
   });
 });
 

@@ -1,15 +1,34 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import type { JobAttemptOutcome, JobStatus } from '@shop/contracts/jobs';
 import { getAdminJob, retryAdminJob } from '@/api/adminJobs';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { useLocalisation, useMessages } from '@/i18n/LocaleContext';
+import {
+  adminDiagnosticsMessages,
+  localizeAdminDiagnosticsError,
+  type AdminDiagnosticsMessageKey,
+} from '@shop/localisation/messages/adminDiagnostics';
 
-const messageFor = (error: unknown, fallback: string) =>
-  error instanceof Error && error.message ? error.message : fallback;
+const JOB_STATUS_LABELS: Record<JobStatus, AdminDiagnosticsMessageKey> = {
+  pending: 'admin.jobs.status.pending',
+  running: 'admin.jobs.status.running',
+  succeeded: 'admin.jobs.status.succeeded',
+  failed: 'admin.jobs.status.failed',
+  dead: 'admin.jobs.status.dead',
+};
+const JOB_OUTCOME_LABELS: Record<JobAttemptOutcome, AdminDiagnosticsMessageKey> = {
+  succeeded: 'admin.jobs.outcome.succeeded',
+  failed: 'admin.jobs.outcome.failed',
+  abandoned: 'admin.jobs.outcome.abandoned',
+};
 
 export function AdminJobDetailPage() {
+  const { country, formatCount, formatInstant } = useLocalisation();
+  const t = useMessages(adminDiagnosticsMessages);
   const { jobId } = useParams();
   const [job, setJob] = useState<Awaited<ReturnType<typeof getAdminJob>> | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +67,9 @@ export function AdminJobDetailPage() {
       })
       .catch((requestError: unknown) => {
         if (current && !controller.signal.aborted)
-          setError(messageFor(requestError, 'Unable to load job detail.'));
+          setError(
+            localizeAdminDiagnosticsError(requestError, country, 'admin.jobs.detailLoadError'),
+          );
       })
       .finally(() => {
         if (current && !controller.signal.aborted) setLoading(false);
@@ -57,7 +78,7 @@ export function AdminJobDetailPage() {
       current = false;
       controller.abort();
     };
-  }, [jobId, reloadVersion]);
+  }, [country, jobId, reloadVersion]);
   useEffect(() => {
     if (job && focusAfterReload.current) {
       focusAfterReload.current = false;
@@ -79,7 +100,7 @@ export function AdminJobDetailPage() {
       await retryAdminJob(jobId, { idempotencyKey: key }, controller.signal);
       if (generation !== retryGeneration.current || currentJobId.current !== jobId) return;
       focusAfterReload.current = true;
-      setNotice('Job queued for retry.');
+      setNotice(t('admin.jobs.retryNotice'));
       refresh();
     } catch (requestError) {
       if (
@@ -87,7 +108,7 @@ export function AdminJobDetailPage() {
         currentJobId.current === jobId &&
         !controller.signal.aborted
       ) {
-        setError(messageFor(requestError, 'Unable to retry this job.'));
+        setError(localizeAdminDiagnosticsError(requestError, country, 'admin.jobs.retryError'));
       }
     } finally {
       if (generation === retryGeneration.current && currentJobId.current === jobId) {
@@ -95,21 +116,40 @@ export function AdminJobDetailPage() {
         setRetrying(false);
       }
     }
-  }, [job?.status, jobId, refresh, retrying]);
+  }, [country, job?.status, jobId, refresh, retrying, t]);
 
-  if (!jobId) return <ErrorMessage message="Job identifier is required" onRetry={refresh} />;
+  if (!jobId)
+    return (
+      <ErrorMessage
+        message={t('admin.common.identifierRequired', {
+          resource: t('admin.jobs.identifierResource'),
+        })}
+        onRetry={refresh}
+      />
+    );
   if (loading && !job) return <LoadingSpinner />;
   if (error && !job) return <ErrorMessage message={error} onRetry={refresh} />;
-  if (!job) return <ErrorMessage message="Job is unavailable" onRetry={refresh} />;
+  if (!job)
+    return (
+      <ErrorMessage
+        message={t('admin.common.unavailable', {
+          resource: t('admin.jobs.unavailableResource'),
+        })}
+        onRetry={refresh}
+      />
+    );
   return (
     <section className="mx-auto max-w-4xl space-y-6" aria-labelledby="admin-job-heading">
       <div>
-        <p className="section-eyebrow">Administration</p>
+        <p className="section-eyebrow">{t('admin.common.administration')}</p>
         <h1 ref={headingRef} tabIndex={-1} id="admin-job-heading" className="section-heading mt-2">
-          Job #{job.id}
+          {t('admin.jobs.detailHeading', { id: job.id })}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {job.kind} · {job.status}
+          {t('admin.jobs.summary', {
+            kind: job.kind,
+            status: t(JOB_STATUS_LABELS[job.status]),
+          })}
         </p>
       </div>
       {error && (
@@ -122,14 +162,17 @@ export function AdminJobDetailPage() {
       </p>
       <Card>
         <CardContent className="space-y-2 py-5">
-          <h2 className="font-semibold">Queue details</h2>
+          <h2 className="font-semibold">{t('admin.jobs.queueDetails')}</h2>
           <p>
-            Attempts: {job.attempts} of {job.maxAttempts}
+            {t('admin.jobs.attemptsLabel', {
+              attempts: formatCount(job.attempts),
+              maxAttempts: formatCount(job.maxAttempts),
+            })}
           </p>
-          <p>Scheduled: {job.runAt}</p>
+          <p>{t('admin.jobs.scheduled', { value: formatInstant(job.runAt) })}</p>
           {job.lastError && (
             <p role="alert" className="whitespace-pre-wrap text-sm text-destructive">
-              Last error: {job.lastError}
+              {t('admin.jobs.lastError', { value: job.lastError })}
             </p>
           )}
           <Button
@@ -137,24 +180,32 @@ export function AdminJobDetailPage() {
             disabled={retrying || job.status !== 'dead'}
             onClick={() => void retry()}
           >
-            {retrying ? 'Retrying…' : 'Retry dead job'}
+            {retrying ? t('admin.jobs.retrying') : t('admin.jobs.retryDead')}
           </Button>
         </CardContent>
       </Card>
       <Card>
         <CardContent className="space-y-3 py-5">
-          <h2 className="font-semibold">Attempt ledger</h2>
+          <h2 className="font-semibold">{t('admin.jobs.attemptLedger')}</h2>
           {job.attemptsLedger.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No attempts recorded.</p>
+            <p className="text-sm text-muted-foreground">{t('admin.jobs.noAttempts')}</p>
           ) : (
             <ol className="space-y-3">
               {job.attemptsLedger.map((attempt) => (
                 <li key={attempt.id} className="rounded-md border border-border p-3">
                   <p className="font-medium">
-                    Attempt {attempt.attemptNumber}: {attempt.outcome}
+                    {t('admin.jobs.attemptSummary', {
+                      attemptNumber: formatCount(attempt.attemptNumber),
+                      outcome: t(JOB_OUTCOME_LABELS[attempt.outcome]),
+                    })}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Started {attempt.startedAt}; finished {attempt.finishedAt ?? 'in progress'}
+                    {t('admin.jobs.startedFinished', {
+                      started: formatInstant(attempt.startedAt),
+                      finished: attempt.finishedAt
+                        ? formatInstant(attempt.finishedAt)
+                        : t('admin.jobs.inProgress'),
+                    })}
                   </p>
                   {attempt.error && (
                     <p className="mt-1 whitespace-pre-wrap text-sm text-destructive">

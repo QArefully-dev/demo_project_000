@@ -89,7 +89,7 @@ describe('StandingOrdersPage', () => {
       .mockResolvedValueOnce([order()]);
     vi.mocked(standingOrdersApi.updateStandingOrder).mockResolvedValue(order({ active: false }));
     setup();
-    await user.click(await screen.findByRole('button', { name: 'Try Again' }));
+    await user.click(await screen.findByRole('button', { name: 'Try again' }));
     await user.click(await screen.findByRole('button', { name: 'Pause' }));
     await waitFor(() =>
       expect(standingOrdersApi.updateStandingOrder).toHaveBeenCalledWith('1', { active: false }),

@@ -42,6 +42,7 @@ const customer = {
   role: 'customer' as const,
   displayName: 'Buyer',
   email: 'buyer@example.com',
+  country: 'US' as const,
 };
 const admin = { ...customer, role: 'admin' as const };
 

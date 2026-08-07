@@ -1,74 +1,84 @@
 import type { CategoryFacts } from '@shop/contracts/products';
+import { productMessages } from '@shop/localisation/messages/product';
+import { useLocalisation } from '@/i18n/LocaleContext';
 
 interface ProductDetailsProps {
   description: string;
   categoryFacts: CategoryFacts;
 }
 
-function formatFactValue(value: unknown): string {
-  if (value === null || value === undefined) return 'Not specified';
+function formatFactValue(value: unknown, notSpecified = 'Not specified'): string {
+  if (value === null || value === undefined) return notSpecified;
   if (typeof value === 'number') return String(value);
   if (typeof value === 'string') return value;
-  if (Array.isArray(value)) return value.map(formatFactValue).join(', ');
+  if (Array.isArray(value))
+    return value.map((entry) => formatFactValue(entry, notSpecified)).join(', ');
   if (typeof value === 'object') {
     return Object.entries(value as Record<string, unknown>)
-      .map(([k, v]) => `${k}: ${formatFactValue(v)}`)
+      .map(([k, v]) => `${k}: ${formatFactValue(v, notSpecified)}`)
       .join('\u00A0\u00B7 ');
   }
   if (typeof value === 'boolean' || typeof value === 'bigint' || typeof value === 'symbol') {
     return value.toString();
   }
-  return 'Not specified';
+  return notSpecified;
 }
 
-function factDisplayPairs(facts: CategoryFacts): { label: string; value: string }[] {
+function factDisplayPairs(
+  facts: CategoryFacts,
+  labelFor: (key: keyof typeof productMessages) => string,
+  notSpecified: string,
+): { label: string; value: string }[] {
   const pairs: { label: string; value: string }[] = [];
 
-  const baseKeys: { key: string; label: string }[] = [
-    { key: 'texture', label: 'Texture' },
-    { key: 'colour', label: 'Colour' },
-    { key: 'source', label: 'Source' },
-    { key: 'intendedUse', label: 'Intended use' },
-    { key: 'storage', label: 'Storage' },
+  const baseKeys: { key: string; labelKey: keyof typeof productMessages }[] = [
+    { key: 'texture', labelKey: 'product.texture' },
+    { key: 'colour', labelKey: 'product.colour' },
+    { key: 'source', labelKey: 'product.source' },
+    { key: 'intendedUse', labelKey: 'product.intendedUse' },
+    { key: 'storage', labelKey: 'product.storage' },
   ];
 
-  for (const { key, label } of baseKeys) {
+  for (const { key, labelKey } of baseKeys) {
     if (key in facts) {
-      pairs.push({ label, value: formatFactValue((facts as Record<string, unknown>)[key]) });
+      pairs.push({
+        label: labelFor(labelKey),
+        value: formatFactValue((facts as Record<string, unknown>)[key], notSpecified),
+      });
     }
   }
 
-  const extensionKeys: { key: string; label: string }[] = [
-    { key: 'ingredients', label: 'Ingredients' },
-    { key: 'allergens', label: 'Allergens' },
-    { key: 'nutrition', label: 'Nutrition' },
-    { key: 'servingSize', label: 'Serving size' },
-    { key: 'dietaryAttributes', label: 'Dietary attributes' },
-    { key: 'flavour', label: 'Flavour' },
-    { key: 'servings', label: 'Servings' },
-    { key: 'proteinPerServing', label: 'Protein per serving' },
-    { key: 'carbsPerServing', label: 'Carbs per serving' },
-    { key: 'npk', label: 'NPK' },
-    { key: 'coverage', label: 'Coverage' },
-    { key: 'application', label: 'Application' },
-    { key: 'handling', label: 'Handling' },
-    { key: 'surfaces', label: 'Surfaces' },
-    { key: 'dosage', label: 'Dosage' },
-    { key: 'hazardStatement', label: 'Hazard statement' },
-    { key: 'composition', label: 'Composition' },
-    { key: 'waterRatio', label: 'Water ratio' },
-    { key: 'settingTime', label: 'Setting time' },
-    { key: 'ppe', label: 'PPE' },
-    { key: 'approvedApplication', label: 'Approved application' },
-    { key: 'cleanup', label: 'Cleanup' },
-    { key: 'colourProfile', label: 'Colour profile' },
-    { key: 'particleAppearance', label: 'Particle appearance' },
+  const extensionKeys: { key: string; labelKey: keyof typeof productMessages }[] = [
+    { key: 'ingredients', labelKey: 'product.ingredients' },
+    { key: 'allergens', labelKey: 'product.allergens' },
+    { key: 'nutrition', labelKey: 'product.nutrition' },
+    { key: 'servingSize', labelKey: 'product.servingSize' },
+    { key: 'dietaryAttributes', labelKey: 'product.dietaryAttributes' },
+    { key: 'flavour', labelKey: 'product.flavour' },
+    { key: 'servings', labelKey: 'product.servings' },
+    { key: 'proteinPerServing', labelKey: 'product.proteinPerServing' },
+    { key: 'carbsPerServing', labelKey: 'product.carbsPerServing' },
+    { key: 'npk', labelKey: 'product.npk' },
+    { key: 'coverage', labelKey: 'product.coverage' },
+    { key: 'application', labelKey: 'product.application' },
+    { key: 'handling', labelKey: 'product.handlingFact' },
+    { key: 'surfaces', labelKey: 'product.surfaces' },
+    { key: 'dosage', labelKey: 'product.dosage' },
+    { key: 'hazardStatement', labelKey: 'product.hazardStatement' },
+    { key: 'composition', labelKey: 'product.composition' },
+    { key: 'waterRatio', labelKey: 'product.waterRatio' },
+    { key: 'settingTime', labelKey: 'product.settingTime' },
+    { key: 'ppe', labelKey: 'product.ppe' },
+    { key: 'approvedApplication', labelKey: 'product.approvedApplication' },
+    { key: 'cleanup', labelKey: 'product.cleanup' },
+    { key: 'colourProfile', labelKey: 'product.colourProfile' },
+    { key: 'particleAppearance', labelKey: 'product.particleAppearance' },
   ];
 
-  for (const { key, label } of extensionKeys) {
+  for (const { key, labelKey } of extensionKeys) {
     if (key in facts) {
       const val = (facts as Record<string, unknown>)[key];
-      pairs.push({ label, value: formatFactValue(val) });
+      pairs.push({ label: labelFor(labelKey), value: formatFactValue(val, notSpecified) });
     }
   }
 
@@ -76,16 +86,22 @@ function factDisplayPairs(facts: CategoryFacts): { label: string; value: string 
 }
 
 export function ProductDetails({ description, categoryFacts }: ProductDetailsProps) {
-  const factPairs = factDisplayPairs(categoryFacts);
+  const { translate } = useLocalisation();
+  const notSpecified = translate(productMessages, 'product.notSpecified');
+  const factPairs = factDisplayPairs(
+    categoryFacts,
+    (key) => translate(productMessages, key),
+    notSpecified,
+  );
 
   return (
     <section
       aria-labelledby="product-details-heading"
       className="rounded-2xl border bg-surface-raised p-6 sm:p-8"
     >
-      <p className="section-eyebrow">Material facts</p>
+      <p className="section-eyebrow">{translate(productMessages, 'product.materialFacts')}</p>
       <h2 id="product-details-heading" className="mt-2 text-2xl font-semibold tracking-tight">
-        What this material contains
+        {translate(productMessages, 'product.whatContains')}
       </h2>
       {description.trim() && (
         <p className="mt-4 max-w-3xl leading-7 text-muted-foreground">{description}</p>

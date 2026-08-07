@@ -102,16 +102,20 @@ void test('notification routes enforce auth, ownership, pagination, and read-all
     ).statusCode,
     400,
   );
-  assert.equal(
-    (
-      await app.inject({
-        method: 'POST',
-        url: `/api/notifications/${first.id}/read`,
-        headers: { cookie: otherCookie },
-      })
-    ).statusCode,
-    403,
-  );
+  const forbidden = await app.inject({
+    method: 'POST',
+    url: `/api/notifications/${first.id}/read`,
+    headers: { cookie: otherCookie },
+  });
+  assert.equal(forbidden.statusCode, 403);
+  assert.equal(forbidden.json<{ code: string }>().code, 'FORBIDDEN');
+  const missing = await app.inject({
+    method: 'POST',
+    url: '/api/notifications/999999/read',
+    headers: { cookie: ownerCookie },
+  });
+  assert.equal(missing.statusCode, 404);
+  assert.equal(missing.json<{ code: string }>().code, 'NOTIFICATION_NOT_FOUND');
   const read = await app.inject({
     method: 'POST',
     url: `/api/notifications/${first.id}/read`,

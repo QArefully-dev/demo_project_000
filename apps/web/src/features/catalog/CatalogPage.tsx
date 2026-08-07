@@ -15,8 +15,14 @@ import { CatalogSidebar } from './CatalogSidebar';
 import { CatalogToolbar } from './CatalogToolbar';
 import { PAGE_SIZES, SORT_OPTIONS } from './catalogOptions';
 import { useCatalogParams } from './useCatalogParams';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { discoveryMessages } from '@shop/localisation/messages/discovery';
+import { commonMessages } from '@shop/localisation/messages/common';
 
 export function CatalogPage() {
+  const { translate, formatCount } = useLocalisation();
+  const t = (key: keyof typeof discoveryMessages, params?: Record<string, string | number>) =>
+    translate(discoveryMessages, key, params);
   const {
     q,
     category,
@@ -128,28 +134,41 @@ export function CatalogPage() {
   const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const end = Math.min(page * pageSize, total);
   const resultSummary =
-    total === 0 ? 'No materials' : `${total} ${total === 1 ? 'material' : 'materials'}`;
-  const title = category ?? (q ? `Results for “${q}”` : 'Shop all products');
-
+    total === 0
+      ? t('catalog.noMaterials')
+      : t('catalog.materialCount', { count: total, displayCount: formatCount(total) });
   const catalogTitle =
-    category ??
-    (q ? `Material search results: ${q}` : title.replace('Shop all products', 'All materials'));
+    category ?? (q ? t('catalog.searchTitle', { query: q }) : t('catalog.title'));
+  const sortOptions = SORT_OPTIONS.map((option) => ({
+    ...option,
+    label: t(
+      option.value === 'newest'
+        ? 'catalog.sort.newest'
+        : option.value === 'oldest'
+          ? 'catalog.sort.oldest'
+          : option.value === 'name_asc'
+            ? 'catalog.sort.nameAsc'
+            : option.value === 'price_asc'
+              ? 'catalog.sort.priceAsc'
+              : option.value === 'price_desc'
+                ? 'catalog.sort.priceDesc'
+                : 'catalog.sort.bestselling',
+    ),
+  }));
 
   return (
     <div className="pb-12">
       <header className="mb-7 max-w-3xl">
-        <p className="section-eyebrow">The materials catalogue</p>
+        <p className="section-eyebrow">{t('catalog.eyebrow')}</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">{catalogTitle}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          All materials are clearly labelled for bulk and pallet order.
-        </p>
+        <p className="mt-2 text-sm text-muted-foreground">{t('catalog.description')}</p>
       </header>
       <CatalogToolbar
         localQuery={localQ}
         onQueryChange={updateSearch}
         resultSummary={resultSummary}
         sort={sort}
-        sortOptions={SORT_OPTIONS}
+        sortOptions={sortOptions}
         onSortChange={(value) => setCatalogParam('sort', value ?? null)}
       />
       {cartError && (
@@ -159,7 +178,7 @@ export function CatalogPage() {
         >
           <p className="text-sm text-destructive">{cartError}</p>
           <Button variant="outline" size="sm" onClick={() => void retryCart()}>
-            Retry cart
+            {translate(commonMessages, 'common.retry')}
           </Button>
         </div>
       )}
@@ -221,8 +240,12 @@ export function CatalogPage() {
           ) : (
             <div className="transition-opacity" aria-busy={isLoading} aria-live="polite">
               <p className="mb-4 text-sm text-muted-foreground">
-                Showing {start}–{end} of {total}
-                {isLoading && <span className="ml-2">Updating results…</span>}
+                {t('catalog.showing', {
+                  start: formatCount(start),
+                  end: formatCount(end),
+                  total: formatCount(total),
+                })}
+                {isLoading && <span className="ml-2">{t('catalog.updating')}</span>}
               </p>
               <ProductGrid className={isLoading ? 'opacity-60' : undefined}>
                 {products.map((product) => (
@@ -242,7 +265,7 @@ export function CatalogPage() {
           )}
           {totalPages > 1 && products.length > 0 && (
             <nav
-              aria-label="Catalog pagination"
+              aria-label={t('catalog.pagination')}
               className="mt-10 flex flex-wrap items-center justify-center gap-2"
             >
               <Button
@@ -251,10 +274,13 @@ export function CatalogPage() {
                 disabled={page <= 1}
                 onClick={() => setCatalogParam('page', String(page - 1))}
               >
-                Previous
+                {t('catalog.previous')}
               </Button>
               <span className="px-3 text-sm text-muted-foreground">
-                Page {page} of {totalPages}
+                {t('catalog.pageOf', {
+                  page: formatCount(page),
+                  totalPages: formatCount(totalPages),
+                })}
               </span>
               <Button
                 variant="outline"
@@ -262,10 +288,10 @@ export function CatalogPage() {
                 disabled={page >= totalPages}
                 onClick={() => setCatalogParam('page', String(page + 1))}
               >
-                Next
+                {t('catalog.next')}
               </Button>
               <label htmlFor="page-size" className="ml-3 text-sm text-muted-foreground">
-                Per page
+                {t('catalog.perPage')}
               </label>
               <select
                 id="page-size"
@@ -292,16 +318,18 @@ function CatalogEmptyState({
   hasFilters: boolean;
   onClearFilters: () => void;
 }) {
+  const { translate } = useLocalisation();
+  const t = (key: keyof typeof discoveryMessages) => translate(discoveryMessages, key);
   return (
     <div className="rounded-2xl border bg-surface-raised px-6 py-16 text-center">
-      <h2 className="text-xl font-semibold">No materials match those filters</h2>
+      <h2 className="text-xl font-semibold">{t('catalog.noMaterials')}</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-        Try another material, category, or return to the full catalogue.
+        {t('catalog.noMaterialsDescription')}
       </p>
       <div className="mt-6 flex flex-wrap justify-center gap-3">
-        {hasFilters && <Button onClick={onClearFilters}>Clear filters</Button>}
+        {hasFilters && <Button onClick={onClearFilters}>{t('catalog.clearAll')}</Button>}
         <Button variant="outline" nativeButton={false} render={<Link to="/catalog" />}>
-          Browse all materials
+          {t('catalog.browseAll')}
         </Button>
       </div>
     </div>
@@ -309,8 +337,12 @@ function CatalogEmptyState({
 }
 
 function CatalogSkeleton() {
+  const { translate } = useLocalisation();
   return (
-    <ProductGrid aria-label="Loading materials" aria-busy="true">
+    <ProductGrid
+      aria-label={translate(discoveryMessages, 'catalog.loadingMaterials')}
+      aria-busy="true"
+    >
       {Array.from({ length: 8 }, (_, index) => (
         <div key={index} className="overflow-hidden rounded-xl border bg-surface-raised p-4 sm:p-5">
           <div className="aspect-4/5 animate-pulse rounded-xl bg-muted" />

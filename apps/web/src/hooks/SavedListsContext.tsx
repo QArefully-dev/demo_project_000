@@ -15,8 +15,14 @@ import type {
   SavedListSummary,
   UpdateSavedListItemBody,
 } from '@shop/contracts/saved-lists';
+import type { PublicErrorCode } from '@shop/contracts/public-errors';
 import * as savedListsApi from '@/api/savedLists';
 import { ApiError } from '@/api/client';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import {
+  repeatBuyingMessages,
+  type RepeatBuyingMessageKey,
+} from '@shop/localisation/messages/repeatBuying';
 import { useAuth } from './AuthContext';
 
 type SavedListsContextValue = {
@@ -48,29 +54,48 @@ type SavedListsContextValue = {
 
 const SavedListsContext = createContext<SavedListsContextValue | null>(null);
 
-const SAVED_LIST_ERROR_MESSAGES: Readonly<Record<string, string>> = {
-  NAME_TAKEN: 'A saved list with this name already exists. Choose a different name.',
-  LIST_LIMIT_REACHED:
-    'You have reached the saved-list limit. Remove a list before creating another.',
+type SavedListErrorState = {
+  readonly messageKey: RepeatBuyingMessageKey;
+  readonly params?: Readonly<Record<string, string | number | bigint>>;
 };
 
-const errorMessage = (error: unknown, fallback: string) => {
-  if (error instanceof ApiError) {
-    const code = (error.response as { code?: unknown } | null)?.code;
-    if (typeof code === 'string' && code in SAVED_LIST_ERROR_MESSAGES)
-      return SAVED_LIST_ERROR_MESSAGES[code]!;
-  }
-  return error instanceof Error ? error.message : fallback;
+const SAVED_LIST_ERROR_KEYS: Readonly<Partial<Record<PublicErrorCode, RepeatBuyingMessageKey>>> = {
+  NAME_TAKEN: 'repeatBuying.error.nameTaken',
+  LIST_LIMIT_REACHED: 'repeatBuying.error.listLimit',
+  NAME_INVALID: 'repeatBuying.error.invalidName',
+  ITEM_LIMIT_REACHED: 'repeatBuying.error.itemLimit',
+  VARIANT_NOT_FOUND: 'repeatBuying.error.itemUnavailable',
+  DEFAULT_LIST_IMMUTABLE: 'repeatBuying.error.defaultListImmutable',
+  CART_EMPTY: 'repeatBuying.error.cartEmpty',
+  CART_NOT_FOUND: 'repeatBuying.error.cartUnavailable',
+  CART_RESERVED: 'repeatBuying.error.cartReserved',
+  ORDER_NOT_FOUND: 'repeatBuying.error.orderNotFound',
+  LIST_NOT_FOUND: 'repeatBuying.error.savedListNotFound',
+  ITEM_NOT_FOUND: 'repeatBuying.error.savedListItem',
+};
+
+function errorCode(error: unknown): PublicErrorCode | null {
+  if (!(error instanceof ApiError)) return null;
+  if (error.code) return error.code;
+  const candidate = error.response && 'code' in error.response ? error.response.code : null;
+  return typeof candidate === 'string' ? candidate : null;
+}
+
+const errorMessage = (error: unknown, fallback: RepeatBuyingMessageKey): SavedListErrorState => {
+  const code = errorCode(error);
+  if (code && SAVED_LIST_ERROR_KEYS[code]) return { messageKey: SAVED_LIST_ERROR_KEYS[code] };
+  return { messageKey: fallback };
 };
 
 /** Shared saved-list state. Anonymous buyers never request saved-list data. */
 export function SavedListsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const { translate } = useLocalisation();
   const [lists, setLists] = useState<SavedListSummary[]>([]);
   const [defaultList, setDefaultList] = useState<SavedListDetail | null>(null);
   const [savedVariantIds, setSavedVariantIds] = useState<ReadonlySet<number>>(new Set());
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorState, setErrorState] = useState<SavedListErrorState | null>(null);
   const defaultListRef = useRef<SavedListDetail | null>(null);
   const listsRef = useRef<SavedListSummary[]>([]);
   const savedVariantIdsRef = useRef<ReadonlySet<number>>(new Set());
@@ -126,7 +151,7 @@ export function SavedListsProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async (): Promise<boolean> => {
     if (!user) return false;
     setLoading(true);
-    setError(null);
+    setErrorState(null);
     try {
       const nextLists = await savedListsApi.getSavedLists();
       const defaultSummary = nextLists.find((list) => list.isDefault);
@@ -137,7 +162,7 @@ export function SavedListsProvider({ children }: { children: ReactNode }) {
       applyDefault(detail);
       return true;
     } catch (cause) {
-      setError(errorMessage(cause, 'Unable to load saved lists.'));
+      setErrorState(errorMessage(cause, 'repeatBuying.error.savedListMutation'));
       return false;
     } finally {
       if (mountedRef.current) setLoading(false);
@@ -150,7 +175,7 @@ export function SavedListsProvider({ children }: { children: ReactNode }) {
       mutationQueueRef.current = Promise.resolve();
       applyLists([]);
       applyDefault(null);
-      setError(null);
+      setErrorState(null);
       setLoading(false);
       return;
     }
@@ -168,7 +193,7 @@ export function SavedListsProvider({ children }: { children: ReactNode }) {
         mergeDetail(detail);
         return detail;
       } catch (cause) {
-        setError(errorMessage(cause, 'Unable to load saved list.'));
+        setErrorState(errorMessage(cause, 'repeatBuying.error.savedListLoad'));
         return false;
       }
     },
@@ -202,7 +227,7 @@ export function SavedListsProvider({ children }: { children: ReactNode }) {
         } catch (cause) {
           // `current` is the last confirmed server snapshot: restoring it is an optimistic rollback.
           applyDefault(current);
-          setError(errorMessage(cause, 'Unable to update saved item.'));
+          setErrorState(errorMessage(cause, 'repeatBuying.error.savedListItem'));
           return false;
         }
       });
@@ -223,7 +248,7 @@ export function SavedListsProvider({ children }: { children: ReactNode }) {
         mergeDetail(detail);
         return detail;
       } catch (cause) {
-        setError(errorMessage(cause, 'Unable to create saved list.'));
+        setErrorState(errorMessage(cause, 'repeatBuying.error.savedListCreate'));
         return false;
       }
     },
@@ -237,7 +262,7 @@ export function SavedListsProvider({ children }: { children: ReactNode }) {
         mergeDetail(detail);
         return detail;
       } catch (cause) {
-        setError(errorMessage(cause, 'Unable to rename saved list.'));
+        setErrorState(errorMessage(cause, 'repeatBuying.error.savedListMutation'));
         return false;
       }
     },
@@ -252,7 +277,7 @@ export function SavedListsProvider({ children }: { children: ReactNode }) {
         if (defaultListRef.current?.listId === listId) applyDefault(null);
         return true;
       } catch (cause) {
-        setError(errorMessage(cause, 'Unable to delete saved list.'));
+        setErrorState(errorMessage(cause, 'repeatBuying.error.savedListDelete'));
         return false;
       }
     },
@@ -266,7 +291,7 @@ export function SavedListsProvider({ children }: { children: ReactNode }) {
         mergeDetail(detail);
         return detail;
       } catch (cause) {
-        setError(errorMessage(cause, 'Unable to add saved item.'));
+        setErrorState(errorMessage(cause, 'repeatBuying.error.savedListItem'));
         return false;
       }
     },
@@ -280,7 +305,7 @@ export function SavedListsProvider({ children }: { children: ReactNode }) {
         mergeDetail(detail);
         return detail;
       } catch (cause) {
-        setError(errorMessage(cause, 'Unable to update saved item.'));
+        setErrorState(errorMessage(cause, 'repeatBuying.error.savedListItem'));
         return false;
       }
     },
@@ -299,12 +324,16 @@ export function SavedListsProvider({ children }: { children: ReactNode }) {
           });
         return true;
       } catch (cause) {
-        setError(errorMessage(cause, 'Unable to remove saved item.'));
+        setErrorState(errorMessage(cause, 'repeatBuying.error.savedListItem'));
         return false;
       }
     },
     [mergeDetail, user],
   );
+
+  const error = errorState
+    ? translate(repeatBuyingMessages, errorState.messageKey, errorState.params)
+    : null;
 
   return (
     <SavedListsContext.Provider

@@ -1,11 +1,17 @@
 import type { CountryProfile } from './types.js';
 
 export const US_COUNTRY_PROFILE = {
+  language: 'en',
+  numberLocale: 'en-US',
+  dateLocale: 'en-US',
+  displayCurrency: 'USD',
+  exchangeRate: { numerator: 5, denominator: 4 },
   blockedCategories: [],
   blockedProductSlugs: [],
+  bannerMessageKey: undefined,
   postcode: {
     pattern: '^[0-9]{5}$',
-    label: 'ZIP',
+    labelMessageKey: 'postcode.label',
     example: '10001',
   },
   deliveryCountryCodes: ['US'],

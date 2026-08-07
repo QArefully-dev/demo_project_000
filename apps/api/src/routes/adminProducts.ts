@@ -21,7 +21,7 @@ import {
 } from '../features/catalog/productAdminService.js';
 import type { ProductRow } from '../features/catalog/productRepository.js';
 import { requireAdmin } from '../plugins/auth.js';
-import { sendBadRequest, sendConflict, sendNotFound } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 
 export interface AdminProductsRouteServices {
   sessions: SessionService;
@@ -105,16 +105,24 @@ const AdminProductWithCountryListResponse = Type.Object(
   { items: Type.Array(AdminProductWithCountry) },
   { additionalProperties: false },
 );
-function sendError(reply: Parameters<typeof sendBadRequest>[0], error: ProductAdminError) {
-  if (error.code === 'PRODUCT_NOT_FOUND') return sendNotFound(reply, 'Product');
-  if (error.code === 'DUPLICATE_SLUG') return sendConflict(reply, error.message);
-  sendBadRequest(reply, error.message);
+function sendError(
+  request: Parameters<typeof sendPublicError>[0],
+  reply: Parameters<typeof sendPublicError>[1],
+  error: ProductAdminError,
+) {
+  if (error.code === 'PRODUCT_NOT_FOUND')
+    return sendPublicError(request, reply, 404, 'PRODUCT_NOT_FOUND');
+  if (error.code === 'DUPLICATE_SLUG')
+    return sendPublicError(request, reply, 409, 'DUPLICATE_SLUG');
+  if (error.code === 'INVALID_MIXING_GROUP')
+    return sendPublicError(request, reply, 400, 'INVALID_MIXING_GROUP');
+  return sendPublicError(request, reply, 400, 'INVALID_INPUT');
 }
 export default function adminProductsRoutes(
   app: FastifyInstance,
   { services }: { services: AdminProductsRouteServices },
 ): void {
-  app.addHook('onRequest', requireAdmin(services.sessions));
+  app.addHook('preValidation', requireAdmin(services.sessions));
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
   typed.get(
     '/api/admin/products',
@@ -155,7 +163,7 @@ export default function adminProductsRoutes(
         Number(request.params.productId),
         request.resolvedCountry,
       );
-      if (!product) return sendNotFound(reply, 'Product');
+      if (!product) return sendPublicError(request, reply, 404, 'PRODUCT_NOT_FOUND');
       return mapWithCountry(product);
     },
   );
@@ -184,7 +192,7 @@ export default function adminProductsRoutes(
           ),
         );
       } catch (e) {
-        if (e instanceof ProductAdminError) return sendError(reply, e);
+        if (e instanceof ProductAdminError) return sendError(request, reply, e);
         throw e;
       }
     },
@@ -216,7 +224,7 @@ export default function adminProductsRoutes(
           ),
         );
       } catch (e) {
-        if (e instanceof ProductAdminError) return sendError(reply, e);
+        if (e instanceof ProductAdminError) return sendError(request, reply, e);
         throw e;
       }
     },
@@ -239,7 +247,7 @@ export default function adminProductsRoutes(
           ),
         );
       } catch (e) {
-        if (e instanceof ProductAdminError) return sendError(reply, e);
+        if (e instanceof ProductAdminError) return sendError(request, reply, e);
         throw e;
       }
     },

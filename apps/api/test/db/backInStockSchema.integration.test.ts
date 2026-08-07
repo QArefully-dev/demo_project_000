@@ -48,7 +48,7 @@ void test('migration 031 creates constrained back-in-stock subscription schema',
   const { directory, db } = openMigratedSeededDatabase('shop-back-in-stock-schema-');
 
   try {
-    assert.equal(migrations.at(-1)?.version, '033');
+    assert.equal(migrations.at(-1)?.version, '034');
 
     const columns = (
       db.pragma('table_info(back_in_stock_subscriptions)') as { name: string; notnull: number }[]

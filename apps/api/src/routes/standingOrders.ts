@@ -10,26 +10,14 @@ import {
   type StandingOrder as StandingOrderResponse,
   type StandingOrderRun as StandingOrderRunResponse,
 } from '@shop/contracts/standing-orders';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AppContext } from '../app.js';
 import type { StandingOrderErrorCode } from '../features/standingOrders/standingOrderErrors.js';
 import { requireAuth } from '../plugins/auth.js';
+import { sendPublicError } from '../utils/errors.js';
 
 const StandingOrderIdParam = Type.Object(
   { standingOrderId: Type.String({ pattern: '^[1-9][0-9]*$' }) },
-  { additionalProperties: false },
-);
-const StandingOrderErrorResponse = Type.Object(
-  {
-    code: Type.Union([
-      Type.Literal('NOT_FOUND'),
-      Type.Literal('INACTIVE'),
-      Type.Literal('SOURCE_NOT_FOUND'),
-      Type.Literal('CART_RESERVED'),
-      Type.Literal('CART_NOT_FOUND'),
-    ]),
-    error: Type.String({ minLength: 1, maxLength: 500 }),
-  },
   { additionalProperties: false },
 );
 const errorStatus: Readonly<Record<StandingOrderErrorCode, 400 | 404 | 409>> = {
@@ -38,13 +26,6 @@ const errorStatus: Readonly<Record<StandingOrderErrorCode, 400 | 404 | 409>> = {
   SOURCE_NOT_FOUND: 404,
   CART_RESERVED: 409,
   CART_NOT_FOUND: 404,
-};
-const errorMessage: Readonly<Record<StandingOrderErrorCode, string>> = {
-  NOT_FOUND: 'Standing order not found',
-  INACTIVE: 'Standing order is inactive',
-  SOURCE_NOT_FOUND: 'Standing order source not found',
-  CART_RESERVED: 'Cart is reserved for checkout',
-  CART_NOT_FOUND: 'Cart not found',
 };
 const context = (userId: number, requestId: string) => ({
   actor: { type: 'user' as const, userId },
@@ -64,10 +45,11 @@ export default function standingOrderRoutes(app: FastifyInstance, { services }: 
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
   const auth = [requireAuth(services.sessions)];
   const sendError = (
-    reply: { code(status: 400 | 404 | 409): { send(body: unknown): void } },
+    request: FastifyRequest,
+    reply: FastifyReply,
     code: StandingOrderErrorCode,
   ) => {
-    reply.code(errorStatus[code]).send({ code, error: errorMessage[code] });
+    sendPublicError(request, reply, errorStatus[code], code);
   };
 
   typed.get(
@@ -86,10 +68,10 @@ export default function standingOrderRoutes(app: FastifyInstance, { services }: 
         body: CreateStandingOrderBody,
         response: {
           201: StandingOrder,
-          400: Type.Union([StandingOrderErrorResponse, ErrorResponse]),
+          400: ErrorResponse,
           401: ErrorResponse,
-          404: StandingOrderErrorResponse,
-          409: StandingOrderErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
         },
       },
     },
@@ -101,7 +83,7 @@ export default function standingOrderRoutes(app: FastifyInstance, { services }: 
         context(userId, request.id),
       );
       if (!result.ok) {
-        sendError(reply, result.code);
+        sendError(request, reply, result.code);
         return;
       }
       reply.code(201);
@@ -117,10 +99,10 @@ export default function standingOrderRoutes(app: FastifyInstance, { services }: 
         body: UpdateStandingOrderBody,
         response: {
           200: StandingOrder,
-          400: Type.Union([StandingOrderErrorResponse, ErrorResponse]),
+          400: ErrorResponse,
           401: ErrorResponse,
-          404: StandingOrderErrorResponse,
-          409: StandingOrderErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
         },
       },
     },
@@ -133,7 +115,7 @@ export default function standingOrderRoutes(app: FastifyInstance, { services }: 
         context(userId, request.id),
       );
       if (!result.ok) {
-        sendError(reply, result.code);
+        sendError(request, reply, result.code);
         return;
       }
       return transport(result.value);
@@ -149,8 +131,8 @@ export default function standingOrderRoutes(app: FastifyInstance, { services }: 
           200: SuccessResponse,
           400: ErrorResponse,
           401: ErrorResponse,
-          404: StandingOrderErrorResponse,
-          409: StandingOrderErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
         },
       },
     },
@@ -162,7 +144,7 @@ export default function standingOrderRoutes(app: FastifyInstance, { services }: 
         context(userId, request.id),
       );
       if (!result.ok) {
-        sendError(reply, result.code);
+        sendError(request, reply, result.code);
         return;
       }
       return { success: true as const };
@@ -178,7 +160,7 @@ export default function standingOrderRoutes(app: FastifyInstance, { services }: 
           200: StandingOrderRunListResponse,
           400: ErrorResponse,
           401: ErrorResponse,
-          404: StandingOrderErrorResponse,
+          404: ErrorResponse,
         },
       },
     },
@@ -190,7 +172,7 @@ export default function standingOrderRoutes(app: FastifyInstance, { services }: 
           .list(userId)
           .some((standingOrder) => standingOrder.id === String(standingOrderId))
       ) {
-        reply.code(404).send({ code: 'NOT_FOUND', error: errorMessage.NOT_FOUND });
+        sendPublicError(request, reply, 404, 'NOT_FOUND');
         return;
       }
       return services.standingOrders.listRuns(userId, standingOrderId).map(transportRun);
@@ -204,10 +186,10 @@ export default function standingOrderRoutes(app: FastifyInstance, { services }: 
         params: StandingOrderIdParam,
         response: {
           200: StandingOrderRun,
-          400: Type.Union([StandingOrderErrorResponse, ErrorResponse]),
+          400: ErrorResponse,
           401: ErrorResponse,
-          404: StandingOrderErrorResponse,
-          409: StandingOrderErrorResponse,
+          404: ErrorResponse,
+          409: ErrorResponse,
         },
       },
     },
@@ -219,7 +201,7 @@ export default function standingOrderRoutes(app: FastifyInstance, { services }: 
         context(userId, request.id),
       );
       if (!result.ok) {
-        sendError(reply, result.code);
+        sendError(request, reply, result.code);
         return;
       }
       return transportRun(result.value);

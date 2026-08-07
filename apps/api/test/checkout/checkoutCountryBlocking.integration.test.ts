@@ -181,7 +181,8 @@ void test('the payment route maps BLOCKED_IN_COUNTRY to a 409 pre-gateway confli
   });
   assert.equal(response.statusCode, 409, response.body);
   assert.deepEqual(response.json(), {
-    error: 'BLOCKED_IN_COUNTRY',
-    productIds: [String(variant.product_id)],
+    error: 'This item is not available in your country.',
+    code: 'BLOCKED_IN_COUNTRY',
+    meta: { productIds: [String(variant.product_id)] },
   });
 });

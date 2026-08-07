@@ -34,9 +34,9 @@ describe('CountryPicker', () => {
     renderPicker();
     const select = screen.getByTestId('country-picker');
     expect(select).toHaveValue('US');
-    expect(screen.getByText('UK')).toBeInTheDocument();
-    expect(screen.getByText('DE')).toBeInTheDocument();
-    expect(screen.getByText('FR')).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'United Kingdom' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Germany' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'France' })).toBeInTheDocument();
   });
 
   it('calls onChange with the selected country', async () => {

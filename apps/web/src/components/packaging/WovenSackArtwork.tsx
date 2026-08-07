@@ -2,6 +2,8 @@ import { useId } from 'react';
 
 import { cond, condWidth, ghs, lab, MONO_FONT } from './svgText';
 import type { VesselArtworkProps } from './packagingSpec';
+import { productMessages } from '@shop/localisation/messages/product';
+import { useLocalisation } from '@/i18n/LocaleContext';
 
 const EDGE = '#3f3d36';
 const PAPER = '#f4f2ec';
@@ -19,14 +21,23 @@ const BODY_PATH =
  * rules for mutable module state, so ids here are scoped with `useId` and unique per instance.
  */
 export function WovenSackArtwork({ name, spec, ariaLabel, className }: VesselArtworkProps) {
+  const { translate } = useLocalisation();
   const rawId = useId().replace(/:/g, '');
   const weaveId = `weave-${rawId}`;
   const hatchId = `hatch-${rawId}`;
   const bodyId = `body-${rawId}`;
   const { ink, alert } = spec.ink;
+  const hazard =
+    spec.hazard === 'Not for consumption'
+      ? translate(productMessages, 'product.notForConsumption')
+      : spec.hazard === 'Caution -- handle with protective equipment'
+        ? translate(productMessages, 'product.cautionHandling')
+        : spec.hazard;
   const [line1 = '', line2] = spec.titleLines;
   const decorative = ariaLabel === '';
-  const label = decorative ? undefined : (ariaLabel ?? `${name} woven sack`);
+  const label = decorative
+    ? undefined
+    : (ariaLabel ?? translate(productMessages, 'product.wovenSackAria', { name }));
 
   const zStep = (Z_END - Z_START) / Z_TEETH;
   let zig = `M${Z_START} 196`;
@@ -107,11 +118,15 @@ export function WovenSackArtwork({ name, spec, ariaLabel, className }: VesselArt
         <circle cx="536" cy="456" r="10" fill={spec.pigment} stroke={ink} strokeWidth="1.5" />
       </g>
 
-      {lab(186, 460, 'NET WEIGHT', 9.5, ink, 1.4, { opacity: 0.7 })}
+      {lab(186, 460, translate(productMessages, 'product.netWeight'), 9.5, ink, 1.4, {
+        opacity: 0.7,
+      })}
       {spec.netWeight &&
         cond(184, 512, spec.netWeight, 62, condWidth(spec.netWeight, 20, 50, 128), ink)}
       <path d="M336 442V522" stroke={ink} strokeWidth="1.5" opacity="0.35" />
-      {lab(356, 460, 'LOT', 9.5, ink, 1.4, { opacity: 0.7 })}
+      {lab(356, 460, translate(productMessages, 'product.lot'), 9.5, ink, 1.4, {
+        opacity: 0.7,
+      })}
       <text x="356" y="486" fontFamily={MONO_FONT} fontSize="15" fontWeight="700" fill={ink}>
         {spec.lot}
       </text>
@@ -124,14 +139,16 @@ export function WovenSackArtwork({ name, spec, ariaLabel, className }: VesselArt
         })}
 
       {ghs(226, 590, 24, alert, PAPER)}
-      {spec.hazard &&
-        lab(262, 586, spec.hazard.toUpperCase(), 8.5, ink, 0.8, {
+      {hazard &&
+        lab(262, 586, hazard.toUpperCase(), 8.5, ink, 0.8, {
           // `hazard` here is `GardenFacts.handling` (contract max 500 chars, real catalog worst
           // case ~180 chars) -- width-constrained to the remaining canvas width right of the GHS
           // pictogram per R4-F1.
-          width: condWidth(spec.hazard, 5, 40, 420),
+          width: condWidth(hazard, 5, 40, 420),
         })}
-      {lab(262, 602, 'PPE REQUIRED -- SEE SAFETY DATA SHEET', 7.5, ink, 0.7, { opacity: 0.7 })}
+      {lab(262, 602, translate(productMessages, 'product.ppeRequiredSee'), 7.5, ink, 0.7, {
+        opacity: 0.7,
+      })}
     </svg>
   );
 }

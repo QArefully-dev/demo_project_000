@@ -14,18 +14,40 @@ import {
 } from '@/api/companyAccounts';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { apiErrors } from '@shop/localisation/messages/apiErrors';
+import {
+  tradeAsyncMessages,
+  type TradeAsyncMessageKey,
+} from '@shop/localisation/messages/tradeAsync';
 import { InvitesSection } from './InvitesSection';
 import { MembersSection } from './MembersSection';
 import { ThresholdSection } from './ThresholdSection';
 
 type Account = { company: Company; membership: CompanyMembership } | null;
-function errorText(error: unknown) {
-  return error instanceof ApiError
-    ? (error.response?.error ?? error.message)
-    : 'Unable to update company details.';
-}
 
 export function CompanyPage() {
+  const { translate } = useLocalisation();
+  const t = <K extends TradeAsyncMessageKey>(
+    key: K,
+    params?: Record<string, string | number | bigint>,
+  ) => translate(tradeAsyncMessages, key, params);
+  const errorText = (error: unknown, fallback: TradeAsyncMessageKey) => {
+    if (error instanceof ApiError && error.code !== null) {
+      const params = Object.fromEntries(
+        Object.entries(error.meta ?? {}).filter(
+          ([, value]) =>
+            typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint',
+        ),
+      ) as Record<string, string | number | bigint>;
+      try {
+        return translate(apiErrors, error.code, params);
+      } catch {
+        // Unknown metadata shape falls through to safe feature copy.
+      }
+    }
+    return t(fallback);
+  };
   const [account, setAccount] = useState<Account>(null);
   const [members, setMembers] = useState<CompanyMembership[]>([]);
   const [invites, setInvites] = useState<CompanyInvite[]>([]);
@@ -51,7 +73,7 @@ export function CompanyPage() {
         setInvites([]);
       }
     } catch (error) {
-      setError(errorText(error));
+      setError(errorText(error, 'company.error.load'));
     } finally {
       setLoading(false);
     }
@@ -68,17 +90,15 @@ export function CompanyPage() {
       setName('');
       await load();
     } catch (error) {
-      setError(errorText(error));
+      setError(errorText(error, 'company.error.update'));
     }
   }
   if (loading) return <LoadingSpinner />;
   if (!account)
     return (
       <main className="mx-auto max-w-xl py-12">
-        <h1 className="text-2xl font-bold">Company account</h1>
-        <p className="mt-2 text-muted-foreground">
-          Create a company to invite buyers and approvers.
-        </p>
+        <h1 className="text-2xl font-bold">{t('company.title')}</h1>
+        <p className="mt-2 text-muted-foreground">{t('company.createDescription')}</p>
         {error && (
           <p role="alert" className="mt-4 text-sm text-destructive">
             {error}
@@ -86,7 +106,7 @@ export function CompanyPage() {
         )}
         <form onSubmit={(event) => void create(event)} className="mt-6 rounded-lg border p-5">
           <label htmlFor="company-name" className="block text-sm font-medium">
-            Company name
+            {t('company.name')}
           </label>
           <input
             id="company-name"
@@ -97,7 +117,7 @@ export function CompanyPage() {
             className="mt-2 w-full rounded-md border px-3 py-2"
           />
           <Button type="submit" className="mt-3">
-            Create company
+            {t('company.create')}
           </Button>
         </form>
       </main>
@@ -109,7 +129,7 @@ export function CompanyPage() {
       await work();
       await load();
     } catch (error) {
-      setError(errorText(error));
+      setError(errorText(error, 'company.error.update'));
     } finally {
       setBusyId(null);
     }
@@ -118,7 +138,9 @@ export function CompanyPage() {
     <main className="mx-auto max-w-3xl py-12">
       <h1 className="text-2xl font-bold">{account.company.name}</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Your company role: <span className="capitalize">{account.membership.role}</span>
+        {t('company.role', {
+          role: t(`company.role.${account.membership.role}` as TradeAsyncMessageKey),
+        })}
       </p>
       {error && (
         <p role="alert" className="mt-4 text-sm text-destructive">

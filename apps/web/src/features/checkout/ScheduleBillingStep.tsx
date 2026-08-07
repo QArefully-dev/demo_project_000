@@ -3,12 +3,14 @@ import type { BillingEntity } from '@shop/contracts/trade-account';
 import { formatPostalAddress } from '@shop/contracts/address';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { formatDeliverySlot } from '@/features/orders/orderPresentation';
 import {
   PostalAddressFields,
   type PostalAddressDraft,
   type PostalAddressFieldErrors,
 } from '@/features/account/PostalAddressFields';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { checkoutMessages } from '@shop/localisation/messages/checkout';
+import { translateValidationError } from './checkoutCopy';
 import { slotKey, type CheckoutBilling, type CheckoutSchedule, type Field } from './checkoutState';
 
 interface ScheduleBillingStepProps {
@@ -54,32 +56,46 @@ export function ScheduleBillingStep({
   onContinue,
   disabled,
 }: ScheduleBillingStepProps) {
-  const slotError = fieldError('deliverySlot');
-  const entityError = fieldError('billingEntityId');
-  const legalNameError = fieldError('billingLegalName');
-  const registrationError = fieldError('billingRegistrationNumber');
-  const vatError = fieldError('billingVatNumber');
-  const purchaseOrderError = fieldError('purchaseOrderReference');
+  const { translate, formatCivilDate } = useLocalisation();
+  const t = (key: keyof typeof checkoutMessages, params?: Record<string, string | number>) =>
+    translate(checkoutMessages, key, params);
+  const errorFor = (field: Field) => {
+    const error = fieldError(field);
+    return error ? translateValidationError(error, t) : undefined;
+  };
+  const slotError = errorFor('deliverySlot');
+  const entityError = errorFor('billingEntityId');
+  const legalNameError = errorFor('billingLegalName');
+  const registrationError = errorFor('billingRegistrationNumber');
+  const vatError = errorFor('billingVatNumber');
+  const purchaseOrderError = errorFor('purchaseOrderReference');
   const selectedSlotKey = schedule.slot ? slotKey(schedule.slot) : null;
   const showSavedEntities = canUseSavedBillingEntities && billingEntities.length > 0;
+  const leadTimeReason = slotOptions
+    ? slotOptions.delivery.mode === 'freight'
+      ? t('checkout.freightReason', { days: slotOptions.leadTime.businessDays })
+      : t('checkout.parcelReason')
+    : null;
 
   return (
     <section aria-labelledby="schedule-step-title" className="space-y-6">
       <div>
         <h2 id="schedule-step-title" className="text-lg font-semibold">
-          Schedule and billing
+          {t('checkout.step.schedule')}
         </h2>
-        <p className="text-sm text-muted-foreground">Step 2 of 3</p>
+        <p className="text-sm text-muted-foreground">{t('checkout.stepLabel', { step: 2 })}</p>
       </div>
 
       <fieldset className="space-y-2 border-0 p-0">
-        <legend className="text-sm font-medium">Delivery slot</legend>
-        {slotOptions && (
+        <legend className="text-sm font-medium">{t('checkout.deliverySlot')}</legend>
+        {leadTimeReason && (
           <p className="text-sm text-muted-foreground" data-testid="lead-time-reason">
-            {slotOptions.leadTime.reason}
+            {leadTimeReason}
           </p>
         )}
-        {slotsLoading && <p className="text-sm text-muted-foreground">Loading delivery slots...</p>}
+        {slotsLoading && (
+          <p className="text-sm text-muted-foreground">{t('checkout.loadingDeliverySlots')}</p>
+        )}
         {slotsError && (
           <div
             role="alert"
@@ -87,14 +103,12 @@ export function ScheduleBillingStep({
           >
             <span>{slotsError}</span>
             <Button type="button" variant="outline" size="sm" onClick={onReloadSlots}>
-              Retry delivery slots
+              {t('checkout.retryDeliverySlots')}
             </Button>
           </div>
         )}
         {slotOptions && slotOptions.slots.length === 0 && !slotsLoading && (
-          <p className="text-sm text-muted-foreground">
-            No delivery slots are currently offered for this consignment.
-          </p>
+          <p className="text-sm text-muted-foreground">{t('checkout.noDeliverySlots')}</p>
         )}
         <div className="max-h-64 space-y-1 overflow-y-auto">
           {slotOptions?.slots.map((slot) => {
@@ -112,7 +126,8 @@ export function ScheduleBillingStep({
                   onBlur={() => onBlur('deliverySlot')}
                 />
                 <label htmlFor={inputId} className="text-sm">
-                  {formatDeliverySlot(slot)}
+                  {formatCivilDate(slot.date, 'long')} ·{' '}
+                  {t(slot.window === 'am' ? 'checkout.slotMorning' : 'checkout.slotAfternoon')}
                 </label>
               </div>
             );
@@ -126,9 +141,9 @@ export function ScheduleBillingStep({
       </fieldset>
 
       <fieldset className="space-y-3 border-0 p-0">
-        <legend className="text-sm font-medium">Billing details</legend>
+        <legend className="text-sm font-medium">{t('checkout.billingDetails')}</legend>
         {canUseSavedBillingEntities && billingEntitiesLoading && (
-          <p className="text-sm text-muted-foreground">Loading your billing accounts...</p>
+          <p className="text-sm text-muted-foreground">{t('checkout.loadingBilling')}</p>
         )}
         {canUseSavedBillingEntities && billingEntitiesError && (
           <div
@@ -137,7 +152,7 @@ export function ScheduleBillingStep({
           >
             <span>{billingEntitiesError}</span>
             <Button type="button" variant="outline" size="sm" onClick={onReloadBillingEntities}>
-              Retry billing accounts
+              {t('checkout.retryBilling')}
             </Button>
           </div>
         )}
@@ -164,7 +179,9 @@ export function ScheduleBillingStep({
                   <label htmlFor={inputId} className="text-sm">
                     <span className="font-medium">{entity.legalName}</span>
                     {entity.isDefault && (
-                      <span className="ml-2 text-xs text-muted-foreground">Default</span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {t('checkout.default')}
+                      </span>
                     )}
                     <span className="block text-xs text-muted-foreground">
                       {formatPostalAddress(entity.address)}
@@ -184,7 +201,7 @@ export function ScheduleBillingStep({
                 onBlur={() => onBlur('billingEntityId')}
               />
               <label htmlFor="billing-entity-adhoc" className="text-sm font-medium">
-                Bill a different entity
+                {t('checkout.differentBilling')}
               </label>
             </div>
             {entityError && (
@@ -199,7 +216,7 @@ export function ScheduleBillingStep({
           <div className="space-y-3">
             <div className="space-y-1.5">
               <label htmlFor="billingLegalName" className="text-sm font-medium">
-                Legal entity name
+                {t('checkout.legalName')}
               </label>
               <Input
                 id="billingLegalName"
@@ -220,8 +237,10 @@ export function ScheduleBillingStep({
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <label htmlFor="billingRegistrationNumber" className="text-sm font-medium">
-                  Registration number
-                  <span className="ml-1 font-normal text-muted-foreground">(optional)</span>
+                  {t('checkout.registrationNumber')}
+                  <span className="ml-1 font-normal text-muted-foreground">
+                    {t('checkout.optional')}
+                  </span>
                 </label>
                 <Input
                   id="billingRegistrationNumber"
@@ -246,8 +265,10 @@ export function ScheduleBillingStep({
               </div>
               <div className="space-y-1.5">
                 <label htmlFor="billingVatNumber" className="text-sm font-medium">
-                  VAT number
-                  <span className="ml-1 font-normal text-muted-foreground">(optional)</span>
+                  {t('checkout.vatNumber')}
+                  <span className="ml-1 font-normal text-muted-foreground">
+                    {t('checkout.optional')}
+                  </span>
                 </label>
                 <Input
                   id="billingVatNumber"
@@ -267,7 +288,7 @@ export function ScheduleBillingStep({
             </div>
             <PostalAddressFields
               idPrefix="checkout-billing"
-              legend="Billing address"
+              legend={t('checkout.billingAddress')}
               value={billing.address}
               errors={addressErrors}
               onChange={(address: PostalAddressDraft) => onBillingChange({ address })}
@@ -279,8 +300,8 @@ export function ScheduleBillingStep({
 
       <div className="space-y-1.5">
         <label htmlFor="purchaseOrderReference" className="text-sm font-medium">
-          Purchase order reference
-          <span className="ml-1 font-normal text-muted-foreground">(optional)</span>
+          {t('checkout.purchaseOrderReference')}
+          <span className="ml-1 font-normal text-muted-foreground">{t('checkout.optional')}</span>
         </label>
         <Input
           id="purchaseOrderReference"
@@ -300,10 +321,10 @@ export function ScheduleBillingStep({
 
       <div className="flex gap-3">
         <Button type="button" variant="outline" className="flex-1" onClick={onBack}>
-          Back to delivery
+          {t('checkout.backDelivery')}
         </Button>
         <Button type="button" className="flex-1" disabled={disabled} onClick={onContinue}>
-          Continue to payment
+          {t('checkout.continuePayment')}
         </Button>
       </div>
     </section>

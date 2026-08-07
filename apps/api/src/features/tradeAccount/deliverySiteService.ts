@@ -94,10 +94,7 @@ export function createDeliverySiteService({
     if (!country) return tradeAccountError<AddressColumns>('SITE_NOT_FOUND');
     const profile = countryProfile(country);
     if (!validatePostcodeForCountry(profile, normalized.postcode)) {
-      return tradeAccountError<AddressColumns>(
-        'INVALID_POSTCODE',
-        `Enter a valid ${profile.postcode.label}, for example ${profile.postcode.example}.`,
-      );
+      return tradeAccountError<AddressColumns>('INVALID_POSTCODE');
     }
     if (!isDeliverableCountryCode(profile, normalized.countryCode)) {
       return tradeAccountError<AddressColumns>(

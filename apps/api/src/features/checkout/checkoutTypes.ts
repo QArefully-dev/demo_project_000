@@ -68,13 +68,17 @@ export type CheckoutResult =
         | 'APPROVAL_REJECTED'
         | 'APPROVAL_EXPIRED'
         | 'APPROVAL_TOTAL_DRIFT'
+        | 'BELOW_MOQ'
       >;
       promoError?: string;
       promoErrorCode?: string;
+      /** Canonical GBP pence threshold for a failed MIN_SUBTOTAL promotion gate. */
+      minSubtotalCents?: number;
     }
   | { success: false; error: 'RESERVATION_EXPIRED'; reservationExpiresAt: string }
   | { success: false; error: 'INSUFFICIENT_STOCK'; productIds: string[] }
   | { success: false; error: 'BLOCKED_IN_COUNTRY'; productIds: string[] }
+  | { success: false; error: 'BELOW_MOQ'; minQuantity: number }
   | { success: false; error: 'PENDING_APPROVAL'; approvalRequestId: string }
   | { success: false; error: 'APPROVAL_REJECTED' | 'APPROVAL_EXPIRED' | 'APPROVAL_TOTAL_DRIFT' }
   /** Carries the freshly derived earliest bookable date so the buyer can rebook without a round trip. */

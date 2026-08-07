@@ -1,20 +1,24 @@
 import { useEffect, useState } from 'react';
 import type { UserPreferences } from '@shop/contracts/account-depth';
-import { ApiError } from '@/api/client';
 import { getAccountPreferences, updateAccountPreferences } from '@/api/accountPreferences';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { identityAccountMessages } from '@shop/localisation/messages/identityAccount';
+import { localizeAccountError } from './accountError';
 
-const preferenceLabels: Array<{ key: keyof UserPreferences; label: string }> = [
-  { key: 'orderUpdatesEmail', label: 'Order updates by email' },
-  { key: 'marketingEmail', label: 'Product and offer emails' },
-  { key: 'approvalRequestEmail', label: 'Approval request emails' },
+const preferenceLabels: Array<{
+  key: keyof UserPreferences;
+  message:
+    | 'account.preferences.orderUpdates'
+    | 'account.preferences.marketing'
+    | 'account.preferences.approval';
+}> = [
+  { key: 'orderUpdatesEmail', message: 'account.preferences.orderUpdates' },
+  { key: 'marketingEmail', message: 'account.preferences.marketing' },
+  { key: 'approvalRequestEmail', message: 'account.preferences.approval' },
 ];
 
-function messageFor(error: unknown): string {
-  if (error instanceof ApiError) return error.response?.error ?? error.message;
-  return error instanceof Error && error.message ? error.message : 'Unable to save preferences';
-}
-
 export function PreferencesSection() {
+  const { translate } = useLocalisation();
   const [preferences, setPreferences] = useState<UserPreferences | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -26,7 +30,9 @@ export function PreferencesSection() {
         if (active) setPreferences(result);
       })
       .catch((loadError: unknown) => {
-        if (active) setError(messageFor(loadError));
+        if (active) {
+          setError(localizeAccountError(loadError, translate, 'account.preferences.saveError'));
+        }
       });
     return () => {
       active = false;
@@ -43,7 +49,7 @@ export function PreferencesSection() {
       setPreferences(await updateAccountPreferences({ [key]: checked }));
     } catch (saveError) {
       setPreferences(previous);
-      setError(messageFor(saveError));
+      setError(localizeAccountError(saveError, translate, 'account.preferences.saveError'));
     } finally {
       setSaving(false);
     }
@@ -52,19 +58,23 @@ export function PreferencesSection() {
   return (
     <section aria-labelledby="preferences-heading" className="mt-6 rounded-lg border p-6">
       <h2 id="preferences-heading" className="text-base font-medium">
-        Email preferences
+        {translate(identityAccountMessages, 'account.preferences.title')}
       </h2>
-      <p className="mt-1 text-sm text-muted-foreground">Choose the emails you want to receive.</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {translate(identityAccountMessages, 'account.preferences.description')}
+      </p>
       {error && (
         <p role="alert" className="mt-3 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
           {error}
         </p>
       )}
       {!preferences ? (
-        <p className="mt-4 text-sm text-muted-foreground">Loading preferences…</p>
+        <p className="mt-4 text-sm text-muted-foreground">
+          {translate(identityAccountMessages, 'account.preferences.loading')}
+        </p>
       ) : (
         <div className="mt-4 space-y-3">
-          {preferenceLabels.map(({ key, label }) => (
+          {preferenceLabels.map(({ key, message }) => (
             <label key={key} className="flex items-center gap-3 text-sm">
               <input
                 type="checkbox"
@@ -72,7 +82,7 @@ export function PreferencesSection() {
                 disabled={saving}
                 onChange={(event) => void changePreference(key, event.target.checked)}
               />
-              {label}
+              {translate(identityAccountMessages, message)}
             </label>
           ))}
         </div>

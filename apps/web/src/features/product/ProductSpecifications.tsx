@@ -1,4 +1,6 @@
 import type { Product, ProductSpecification } from '@shop/contracts/products';
+import { productMessages } from '@shop/localisation/messages/product';
+import { useLocalisation } from '@/i18n/LocaleContext';
 
 interface ProductSpecificationsProps {
   specificationGroups: Product['specificationGroups'];
@@ -9,6 +11,7 @@ function hasDisplayValue(specification: ProductSpecification): boolean {
 }
 
 export function ProductSpecifications({ specificationGroups }: ProductSpecificationsProps) {
+  const { translate } = useLocalisation();
   const groups = specificationGroups
     .map((group) => ({
       ...group,
@@ -24,7 +27,7 @@ export function ProductSpecifications({ specificationGroups }: ProductSpecificat
       className="rounded-2xl border bg-surface-raised p-6 sm:p-8"
     >
       <h2 id="product-specifications-heading" className="text-2xl font-semibold tracking-tight">
-        Specifications
+        {translate(productMessages, 'product.specifications')}
       </h2>
       <div className="mt-6 grid gap-8">
         {groups.map((group) => (

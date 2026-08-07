@@ -2,9 +2,10 @@ import Fastify, { type FastifyError } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import fastifyCookie from '@fastify/cookie';
 import type Database from 'better-sqlite3';
-import type { ErrorResponse } from '@shop/contracts/common';
+import type { Country } from '@shop/contracts/country';
 import { authPlugin } from './plugins/auth.js';
 import { countryContextPlugin } from './plugins/countryContext.js';
+import { sendPublicError } from './utils/errors.js';
 import productsRoutes from './routes/products.js';
 import cartRoutes from './routes/cart.js';
 import promoRoutes from './routes/promo.js';
@@ -318,6 +319,9 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     stockObserver: backInStockTrigger,
   });
   const users = createUserRepository(dependencies.db);
+  // Background notifications must use persisted account country, never request/browser state.
+  const countryForUser = (userId: number): Country | undefined =>
+    users.findCredentialsById(userId)?.country as Country | undefined;
   const sessions = createSessionService({
     sessions: sessionRepository,
     clock,
@@ -440,6 +444,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     unitOfWork,
     clock,
     faults: featureFlagResolver,
+    countryForUser,
   });
   registry.register(
     'notification.deliver',
@@ -450,6 +455,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       audit,
       clock,
       faults: featureFlagResolver,
+      countryForUser,
     }),
   );
   registry.register(
@@ -461,6 +467,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       audit,
       clock,
       faults: featureFlagResolver,
+      countryForUser,
     }),
   );
   registry.register(
@@ -656,29 +663,36 @@ export async function buildApp(dependencies: AppDependencies) {
   }).withTypeProvider<TypeBoxTypeProvider>();
   const context: AppContext = { services: createAppServices(dependencies) };
 
-  app.setErrorHandler((error: FastifyError, _request, reply) => {
-    if (error.validation) {
-      reply.code(400).send({
-        error: error.message,
-        details: error.validation instanceof Array ? error.validation : undefined,
-      });
+  app.setErrorHandler((error: FastifyError, request, reply) => {
+    // Fastify parses JSON before preValidation; malformed bodies therefore bypass the
+    // validation flag. Keep parser failures on the same public, localized 400 contract.
+    if (error.validation || error.code === 'FST_ERR_CTP_INVALID_JSON_BODY') {
+      sendPublicError(request, reply, 400, 'REQUEST_INVALID');
       return;
     }
     if (error.statusCode === 404) {
-      reply.code(404).send({ error: error.message });
+      sendPublicError(request, reply, 404, 'NOT_FOUND');
       return;
     }
-    reply.code(error.statusCode || 500).send({ error: error.message || 'Internal server error' });
+    // Do not reflect exception text (or a framework-generated message) to callers. Preserve an
+    // explicitly selected HTTP status for compatibility, while the public identity stays generic.
+    const statusCode =
+      typeof error.statusCode === 'number' && error.statusCode >= 400 && error.statusCode <= 599
+        ? error.statusCode
+        : 500;
+    sendPublicError(request, reply, statusCode, 'INTERNAL_ERROR');
   });
 
   app.setNotFoundHandler((request, reply) => {
-    const body: ErrorResponse = { error: `Route ${request.method} ${request.url} not found` };
-    reply.code(404).send(body);
+    // Route/method details disclose implementation surface and are not useful to the buyer.
+    sendPublicError(request, reply, 404, 'NOT_FOUND');
   });
 
   app.get('/health', () => ({ status: 'ok' }));
 
   await app.register(fastifyCookie);
+  // Both plugins resolve request-local state in preValidation; registration order is the
+  // dependency that guarantees country sees the authenticated account before schema validation.
   authPlugin(context.services.sessions)(app, {}, () => undefined);
   countryContextPlugin(context.services.sessions)(app, {}, () => undefined);
   await app.register(productsRoutes, context);

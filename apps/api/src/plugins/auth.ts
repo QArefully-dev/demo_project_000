@@ -3,7 +3,7 @@ import type { SessionService } from '../features/auth/sessionService.js';
 import type { SessionUser } from '../features/auth/sessionRepository.js';
 import type { AuditContext } from '../features/audit/auditEvent.js';
 import type { SessionAuditDetails } from '../features/auth/sessionService.js';
-import { sendForbidden, sendUnauthorized } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 
 export type AuthenticatedUser = SessionUser;
 
@@ -46,49 +46,61 @@ export function getAuthenticatedUser(
   return token ? sessions.getUser(token) : null;
 }
 
+/** Resolve admin identity from the parent hook, with a direct-route harness fallback. */
+function resolveAdminUser(
+  sessions: SessionService,
+  request: FastifyRequest,
+): AuthenticatedUser | null {
+  const resolved = request.authenticatedUser as AuthenticatedUser | null | undefined;
+  if (resolved !== undefined) return resolved;
+
+  const user = getAuthenticatedUser(sessions, request);
+  request.authenticatedUser = user;
+  return user;
+}
+
 export function requireAuth(sessions: SessionService) {
   return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    const user = getAuthenticatedUser(sessions, request);
+    // Authentication is resolved once, in the application preValidation hook. Keeping this
+    // guard read-only avoids a second session lookup after request validation has run and makes
+    // the identity available to validation-time hooks and handlers alike.
+    void sessions;
+    const user = request.authenticatedUser;
     if (!user) {
-      sendUnauthorized(reply);
+      sendPublicError(request, reply, 401, 'UNAUTHORIZED');
       return;
     }
-    request.authenticatedUser = user;
-    request.sessionToken = request.cookies?.sid ?? null;
   };
 }
 
 /** Require a valid session whose user has the administrator role. */
 export function requireAdmin(sessions: SessionService) {
   return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    const user = getAuthenticatedUser(sessions, request);
+    const user = resolveAdminUser(sessions, request);
     if (!user) {
-      sendUnauthorized(reply);
+      sendPublicError(request, reply, 401, 'UNAUTHORIZED');
       return;
     }
     if (user.role !== 'admin') {
-      sendForbidden(reply);
+      sendPublicError(request, reply, 403, 'FORBIDDEN');
       return;
     }
-    request.authenticatedUser = user;
-    request.sessionToken = request.cookies?.sid ?? null;
   };
 }
 
 /** Require a valid session whose user has the customer role. */
 export function requireCustomer(sessions: SessionService) {
   return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    const user = getAuthenticatedUser(sessions, request);
+    void sessions;
+    const user = request.authenticatedUser;
     if (!user) {
-      sendUnauthorized(reply);
+      sendPublicError(request, reply, 401, 'UNAUTHORIZED');
       return;
     }
     if (user.role !== 'customer') {
-      sendForbidden(reply);
+      sendPublicError(request, reply, 403, 'FORBIDDEN');
       return;
     }
-    request.authenticatedUser = user;
-    request.sessionToken = request.cookies?.sid ?? null;
   };
 }
 
@@ -97,11 +109,21 @@ export function authPlugin(sessions: SessionService) {
   return (app: FastifyInstance, _opts: unknown, done: () => void): void => {
     app.decorateRequest('authenticatedUser', null);
     app.decorateRequest('sessionToken', null);
-    app.addHook('preHandler', (request, _reply, next) => {
+    // Resolve identity before schema validation. This hook is intentionally read-only: invalid
+    // requests must not mutate session state, while later route guards can reuse the same lookup.
+    app.addHook('preValidation', (request, _reply, next) => {
       const user = getAuthenticatedUser(sessions, request);
       request.authenticatedUser = user;
+      request.sessionToken = user ? (request.cookies?.sid ?? null) : null;
+      next();
+    });
+    // Last-seen is the sole auth mutation and runs only after validation succeeds. The global hook
+    // is registered once, so a route-level requireAuth/requireAdmin/requireCustomer cannot double
+    // the write.
+    app.addHook('preHandler', (request, _reply, next) => {
       const token = request.cookies?.sid;
-      if (user && token) sessions.updateLastSeen(token);
+      if (request.authenticatedUser && token && request.sessionToken === token)
+        sessions.updateLastSeen(token);
       next();
     });
     done();

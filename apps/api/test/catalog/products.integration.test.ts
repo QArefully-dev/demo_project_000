@@ -217,7 +217,7 @@ void test('catalog query validation reports deterministic 400 responses and expo
   ]) {
     const response = await app.inject({ method: 'GET', url });
     assert.equal(response.statusCode, 400, url);
-    assert.equal(typeof response.json<{ error?: unknown }>().error, 'string');
+    assert.equal(response.json<{ code?: unknown }>().code, 'INVALID_QUERY');
   }
 });
 

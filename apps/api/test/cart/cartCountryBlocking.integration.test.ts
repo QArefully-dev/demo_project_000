@@ -249,8 +249,7 @@ void test('cart writes enforce the persisted country without leaking lower-prece
       for (const response of [noHeader, spoofedHeader]) {
         assert.deepEqual(response.json(), {
           code: 'BUNDLE_UNAVAILABLE',
-          error: 'One or more bundle components are unavailable',
-          productIds: [String(activeBlocked.id)],
+          error: 'One or more bundle components are unavailable.',
         });
       }
       assert.equal(

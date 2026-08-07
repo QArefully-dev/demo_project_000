@@ -151,7 +151,7 @@ describe('Saved lists journey', () => {
     );
     await user.click(await screen.findByRole('link', { name: 'View list' }));
     await screen.findByRole('heading', { name: 'Depot restock' });
-    await user.click(screen.getByRole('button', { name: 'Add list to cart' }));
+    await user.click(screen.getByRole('button', { name: 'Add to cart' }));
 
     const result = await screen.findByRole('status', { name: 'Saved list cart result' });
     expect(result).toHaveTextContent('1 item added to your cart. 1 item could not be added.');

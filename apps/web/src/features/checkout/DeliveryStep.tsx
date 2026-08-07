@@ -7,6 +7,9 @@ import {
   type PostalAddressDraft,
   type PostalAddressFieldErrors,
 } from '@/features/account/PostalAddressFields';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { checkoutMessages } from '@shop/localisation/messages/checkout';
+import { translateValidationError } from './checkoutCopy';
 import type { CheckoutDelivery, ContactField, Field } from './checkoutState';
 
 interface DeliveryStepProps {
@@ -26,15 +29,14 @@ interface DeliveryStepProps {
   onContinue: () => void;
   disabled: boolean;
 }
-
 const contactInputs: Array<{
   id: ContactField;
-  label: string;
+  labelKey: 'checkout.fullName' | 'checkout.email';
   type?: 'email';
   autoComplete: string;
 }> = [
-  { id: 'customerName', label: 'Full name', autoComplete: 'name' },
-  { id: 'customerEmail', label: 'Email', type: 'email', autoComplete: 'email' },
+  { id: 'customerName', labelKey: 'checkout.fullName', autoComplete: 'name' },
+  { id: 'customerEmail', labelKey: 'checkout.email', type: 'email', autoComplete: 'email' },
 ];
 
 export function DeliveryStep({
@@ -53,24 +55,31 @@ export function DeliveryStep({
   onContinue,
   disabled,
 }: DeliveryStepProps) {
-  const siteError = fieldError('deliverySiteId');
+  const { translate } = useLocalisation();
+  const t = (key: keyof typeof checkoutMessages, params?: Record<string, string | number>) =>
+    translate(checkoutMessages, key, params);
+  const errorFor = (field: Field) => {
+    const error = fieldError(field);
+    return error ? translateValidationError(error, t) : undefined;
+  };
+  const siteError = errorFor('deliverySiteId');
   const showSavedSites = canUseSavedSites && savedSites.length > 0;
 
   return (
     <section aria-labelledby="delivery-step-title" className="space-y-5">
       <div>
         <h2 id="delivery-step-title" className="text-lg font-semibold">
-          Delivery
+          {t('checkout.step.delivery')}
         </h2>
-        <p className="text-sm text-muted-foreground">Step 1 of 3</p>
+        <p className="text-sm text-muted-foreground">{t('checkout.stepLabel', { step: 1 })}</p>
       </div>
 
       {contactInputs.map((field) => {
-        const error = fieldError(field.id);
+        const error = errorFor(field.id);
         return (
           <div key={field.id} className="space-y-1.5">
             <label htmlFor={field.id} className="text-sm font-medium">
-              {field.label}
+              {t(field.labelKey)}
             </label>
             <Input
               id={field.id}
@@ -92,7 +101,7 @@ export function DeliveryStep({
       })}
 
       {canUseSavedSites && savedSitesLoading && (
-        <p className="text-sm text-muted-foreground">Loading your delivery sites...</p>
+        <p className="text-sm text-muted-foreground">{t('checkout.loadingDeliverySites')}</p>
       )}
       {canUseSavedSites && savedSitesError && (
         <div
@@ -101,14 +110,14 @@ export function DeliveryStep({
         >
           <span>{savedSitesError}</span>
           <Button type="button" variant="outline" size="sm" onClick={onReloadSavedSites}>
-            Retry delivery sites
+            {t('checkout.retryDeliverySites')}
           </Button>
         </div>
       )}
 
       {showSavedSites && (
         <fieldset className="space-y-2 border-0 p-0">
-          <legend className="text-sm font-medium">Delivery site</legend>
+          <legend className="text-sm font-medium">{t('checkout.deliverySite')}</legend>
           {savedSites.map((site) => {
             const inputId = `delivery-site-${site.id}`;
             return (
@@ -130,7 +139,9 @@ export function DeliveryStep({
                 <label htmlFor={inputId} className="text-sm">
                   <span className="font-medium">{site.label}</span>
                   {site.isDefault && (
-                    <span className="ml-2 text-xs text-muted-foreground">Default</span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {t('checkout.default')}
+                    </span>
                   )}
                   <span className="block text-xs text-muted-foreground">
                     {formatPostalAddress(site.address)}
@@ -150,7 +161,7 @@ export function DeliveryStep({
               onBlur={() => onBlur('deliverySiteId')}
             />
             <label htmlFor="delivery-site-adhoc" className="text-sm font-medium">
-              Deliver to a different address
+              {t('checkout.differentAddress')}
             </label>
           </div>
           {siteError && (
@@ -164,7 +175,7 @@ export function DeliveryStep({
       {delivery.destinationKind === 'adhoc' && (
         <PostalAddressFields
           idPrefix="checkout-delivery"
-          legend="Delivery address"
+          legend={t('checkout.deliveryAddress')}
           value={delivery.address}
           errors={addressErrors}
           onChange={(address: PostalAddressDraft) => onDeliveryChange({ address })}
@@ -173,7 +184,7 @@ export function DeliveryStep({
       )}
 
       <Button type="button" size="lg" className="w-full" disabled={disabled} onClick={onContinue}>
-        Continue to schedule
+        {t('checkout.continueSchedule')}
       </Button>
     </section>
   );

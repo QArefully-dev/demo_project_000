@@ -6,7 +6,8 @@ import { Type, type Static } from '@sinclair/typebox';
  * which is an ISO-3166-1 alpha-2 marker for physical delivery routing.
  *
  * Country ≠ CountryCode. `'GB'` is valid for `PostalAddress.countryCode` and invalid
- * for `Country`. No currency, timezone, availability, or display-format meaning is attached.
+ * for `Country`. Display, availability, delivery, and currency settings are attached through
+ * the checked-in country profile rather than inferred from a postal destination.
  */
 export const Country = Type.Union([
   Type.Literal('UK'),

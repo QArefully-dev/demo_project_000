@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { ErrorResponse } from '@shop/contracts/common';
 import { DeliverySlotOptionsQuery, DeliverySlotOptionsResponse } from '@shop/contracts/delivery';
-import { sendNotFound } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 import type { AppContext } from '../app.js';
 
 /**
@@ -31,7 +31,7 @@ export default function deliverySlotRoutes(app: FastifyInstance, { services }: A
     async (request, reply) => {
       const result = services.deliverySlots.optionsForCart(request.query.cartId);
       if (result === 'CART_NOT_FOUND') {
-        sendNotFound(reply, 'Cart');
+        sendPublicError(request, reply, 404, 'CART_NOT_FOUND');
         return;
       }
       reply.code(200).send(result);

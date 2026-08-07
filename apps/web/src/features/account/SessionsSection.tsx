@@ -1,22 +1,28 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { SessionSummary } from '@shop/contracts/account-depth';
-import { ApiError } from '@/api/client';
 import { listAccountSessions, revokeAccountSession } from '@/api/accountSessions';
 import { Button } from '@/components/ui/button';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { identityAccountMessages } from '@shop/localisation/messages/identityAccount';
+import { localizeAccountError } from './accountError';
 
-function errorMessage(error: unknown, fallback: string): string {
-  if (error instanceof ApiError) return error.response?.error ?? error.message;
-  return error instanceof Error && error.message ? error.message : fallback;
-}
-
-function describeSession(session: SessionSummary): string {
-  const agent = session.userAgent ?? 'Unknown device';
+function describeSession(
+  session: SessionSummary,
+  translate: ReturnType<typeof useLocalisation>['translate'],
+  formatInstant: ReturnType<typeof useLocalisation>['formatInstant'],
+): string {
+  const agent =
+    session.userAgent ?? translate(identityAccountMessages, 'account.sessions.unknownDevice');
   const seen = session.lastSeenAt ?? session.createdAt;
-  return `${agent} · Last active ${new Date(seen).toLocaleString()}`;
+  return translate(identityAccountMessages, 'account.sessions.lastActive', {
+    device: agent,
+    instant: formatInstant(seen),
+  });
 }
 
 /** Buyer-owned session list. A successful revoke is reconciled against a fresh server list. */
 export function SessionsSection() {
+  const { translate, formatInstant } = useLocalisation();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +34,7 @@ export function SessionsSection() {
     try {
       setSessions(await listAccountSessions());
     } catch (loadError) {
-      setError(errorMessage(loadError, 'Unable to load signed-in sessions'));
+      setError(localizeAccountError(loadError, translate, 'account.sessions.loadError'));
     } finally {
       setLoading(false);
     }
@@ -50,7 +56,7 @@ export function SessionsSection() {
       await load();
     } catch (revokeError) {
       if (!revokeCommitted) setSessions(previous);
-      setError(errorMessage(revokeError, 'Unable to sign out this session'));
+      setError(localizeAccountError(revokeError, translate, 'account.sessions.revokeError'));
     } finally {
       setRevoking(false);
     }
@@ -59,10 +65,10 @@ export function SessionsSection() {
   return (
     <section aria-labelledby="sessions-heading" className="mt-6 rounded-lg border p-6">
       <h2 id="sessions-heading" className="text-base font-medium">
-        Signed-in sessions
+        {translate(identityAccountMessages, 'account.sessions.title')}
       </h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Review devices currently signed in to your account.
+        {translate(identityAccountMessages, 'account.sessions.description')}
       </p>
       {error && (
         <p role="alert" className="mt-3 text-sm text-destructive">
@@ -70,7 +76,9 @@ export function SessionsSection() {
         </p>
       )}
       {loading ? (
-        <p className="mt-4 text-sm text-muted-foreground">Loading sessions…</p>
+        <p className="mt-4 text-sm text-muted-foreground">
+          {translate(identityAccountMessages, 'account.sessions.loading')}
+        </p>
       ) : (
         <ul className="mt-4 space-y-3">
           {sessions.map((session) => (
@@ -80,9 +88,13 @@ export function SessionsSection() {
             >
               <div>
                 <p className="font-medium">
-                  {session.isCurrent ? 'Current session' : 'Signed-in session'}
+                  {session.isCurrent
+                    ? translate(identityAccountMessages, 'account.sessions.current')
+                    : translate(identityAccountMessages, 'account.sessions.signedIn')}
                 </p>
-                <p className="mt-1 text-sm text-muted-foreground">{describeSession(session)}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {describeSession(session, translate, formatInstant)}
+                </p>
               </div>
               <div>
                 <Button
@@ -95,11 +107,13 @@ export function SessionsSection() {
                   }
                   onClick={() => void revoke(session)}
                 >
-                  {revoking ? 'Signing out…' : 'Sign out this session'}
+                  {revoking
+                    ? translate(identityAccountMessages, 'account.sessions.signingOut')
+                    : translate(identityAccountMessages, 'account.sessions.signOut')}
                 </Button>
                 {session.isCurrent && (
                   <p id={`current-session-${session.sessionId}`} className="sr-only">
-                    This is your current session and cannot be signed out here.
+                    {translate(identityAccountMessages, 'account.sessions.currentDescription')}
                   </p>
                 )}
               </div>
@@ -108,7 +122,9 @@ export function SessionsSection() {
         </ul>
       )}
       {!loading && sessions.length === 0 && (
-        <p className="mt-4 text-sm text-muted-foreground">No signed-in sessions found.</p>
+        <p className="mt-4 text-sm text-muted-foreground">
+          {translate(identityAccountMessages, 'account.sessions.none')}
+        </p>
       )}
     </section>
   );

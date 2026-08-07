@@ -199,8 +199,9 @@ void test('country stage 2 composes availability, checkout, delivery, and promo 
     });
     assert.equal(blockedPayment.statusCode, 409, blockedPayment.body);
     assert.deepEqual(blockedPayment.json(), {
-      error: 'BLOCKED_IN_COUNTRY',
-      productIds: [String(blockedLot.product_id)],
+      error: 'This item is not available in your country.',
+      code: 'BLOCKED_IN_COUNTRY',
+      meta: { productIds: [String(blockedLot.product_id)] },
     });
   });
 
@@ -232,7 +233,8 @@ void test('country stage 2 composes availability, checkout, delivery, and promo 
       });
       assert.equal(crossBorderPayment.statusCode, 400, crossBorderPayment.body);
       assert.deepEqual(crossBorderPayment.json(), {
-        error: 'Selected delivery country is not available',
+        error: 'Delivery is only available within your country.',
+        code: 'DELIVERY_COUNTRY_NOT_ALLOWED',
       });
 
       const ukPromoCart = await createCart(app, 'UK');
@@ -258,7 +260,6 @@ void test('country stage 2 composes availability, checkout, delivery, and promo 
       assert.equal(usPromo.body, unknownPromo.body);
       assert.deepEqual(usPromo.json(), {
         valid: false,
-        error: 'Promo code not found or inactive',
         errorCode: 'INVALID',
       });
     },

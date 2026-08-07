@@ -5,6 +5,9 @@ import { PackagingArtwork } from '@/components/packaging/PackagingArtwork';
 import { NEUTRAL_PACKAGING_SCHEME, type PackagingSpec } from '@/components/packaging/packagingSpec';
 import { INKS, titleLines } from '@/components/packaging/svgText';
 import { Button } from '@/components/ui/button';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { webMessages } from '@shop/localisation/messages/webShell';
+import { commonMessages } from '@shop/localisation/messages/common';
 
 interface TileArtwork {
   name: string;
@@ -124,22 +127,24 @@ interface CategoryTilesProps {
 }
 
 export function CategoryTiles({ categories, isLoading, error, onRetry }: CategoryTilesProps) {
+  const { translate } = useLocalisation();
+  const t = (key: keyof typeof webMessages) => translate(webMessages, key);
   return (
     <section aria-labelledby="category-heading">
-      <p className="section-eyebrow">Choose your material</p>
+      <p className="section-eyebrow">{t('home.chooseMaterial')}</p>
       <h2 id="category-heading" className="section-heading mt-2">
-        Shop by category
+        {t('home.shopByCategory')}
       </h2>
       {error ? (
         <div role="status" className="mt-6 rounded-2xl border bg-surface-raised p-5 text-sm">
-          <p className="text-muted-foreground">Categories are temporarily unavailable.</p>
+          <p className="text-muted-foreground">{t('home.categoriesUnavailable')}</p>
           <Button variant="outline" size="sm" className="mt-3" onClick={onRetry}>
-            Try again
+            {translate(commonMessages, 'common.retry')}
           </Button>
         </div>
       ) : isLoading ? (
         <div
-          aria-label="Loading categories"
+          aria-label={t('home.loadingCategories')}
           className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
         >
           {Array.from({ length: 4 }, (_, index) => (

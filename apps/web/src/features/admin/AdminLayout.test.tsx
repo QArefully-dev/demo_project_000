@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { AdminRoute } from '@/components/AdminRoute';
+import { LocaleProvider } from '@/i18n/LocaleContext';
 import { AdminIndexPage } from './AdminIndexPage';
 import { AdminLayout } from './AdminLayout';
 
@@ -37,7 +38,9 @@ describe('AdminLayout', () => {
             path="/admin"
             element={
               <AdminRoute>
-                <AdminLayout />
+                <LocaleProvider>
+                  <AdminLayout />
+                </LocaleProvider>
               </AdminRoute>
             }
           >
@@ -49,25 +52,28 @@ describe('AdminLayout', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('heading', { name: 'Administration overview' })).toBeInTheDocument();
-    expect(screen.getByTestId('admin-standing-country')).toHaveTextContent('Standing country: DE');
+    expect(screen.getByRole('heading', { name: 'Administrationsübersicht' })).toBeInTheDocument();
+    expect(screen.getByTestId('admin-standing-country')).toHaveTextContent('Aktuelles Land: DE');
     expect(
-      screen.getByText('Jobs, webhooks, and feature flags are global sections.'),
+      screen.getByText('Jobs, Webhooks und Feature-Flags sind globale Bereiche.'),
     ).toBeInTheDocument();
     const navigation = screen.getByRole('navigation', { name: 'Administration' });
-    expect(navigation).toHaveTextContent('Products');
-    expect(navigation).toHaveTextContent('Variants');
-    expect(navigation).toHaveTextContent('Promotions');
-    expect(navigation).toHaveTextContent('Users');
-    expect(navigation).toHaveTextContent('Orders');
-    expect(navigation).toHaveTextContent('Feature flags');
-    expect(navigation).toHaveTextContent('Review moderation');
+    expect(navigation).toHaveTextContent('Übersicht');
+    expect(navigation).toHaveTextContent('Produkte');
+    expect(navigation).toHaveTextContent('Varianten');
+    expect(navigation).toHaveTextContent('Aktionen');
+    expect(navigation).toHaveTextContent('Benutzer');
+    expect(navigation).toHaveTextContent('Bestellungen');
+    expect(navigation).toHaveTextContent('Jobs');
+    expect(navigation).toHaveTextContent('Webhooks');
+    expect(navigation).toHaveTextContent('Feature-Flags');
+    expect(navigation).toHaveTextContent('Bewertungsmoderation');
 
-    expect(within(navigation).getByRole('link', { name: 'Products' })).toHaveAttribute(
+    expect(within(navigation).getByRole('link', { name: 'Produkte' })).toHaveAttribute(
       'href',
       '/admin/products',
     );
-    expect(within(navigation).getByRole('link', { name: 'Review moderation' })).toHaveAttribute(
+    expect(within(navigation).getByRole('link', { name: 'Bewertungsmoderation' })).toHaveAttribute(
       'href',
       '/admin/reviews',
     );

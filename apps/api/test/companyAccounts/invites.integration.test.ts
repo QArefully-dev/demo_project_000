@@ -6,6 +6,7 @@ import test from 'node:test';
 import fastifyCookie from '@fastify/cookie';
 import Fastify from 'fastify';
 import type { CompanyAccountResponse, CompanyInvite } from '@shop/contracts/company-accounts';
+import type { Country } from '@shop/contracts/country';
 import { closeDatabase, openDatabase } from '../../src/db/index.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
@@ -45,20 +46,21 @@ void test('invites are mailed, accepted once, scoped to owners, and do not discl
     closeDatabase(db);
     rmSync(directory, { recursive: true, force: true });
   });
-  const addUser = (email: string) =>
+  const addUser = (email: string, country: Country = 'UK') =>
     Number(
       (
         db
           .prepare(
-            "INSERT INTO users (email, display_name, password_hash, password_salt, role) VALUES (?, 'User', 'hash', 'salt', 'customer') RETURNING id",
+            "INSERT INTO users (email, display_name, password_hash, password_salt, role, country) VALUES (?, 'User', 'hash', 'salt', 'customer', ?) RETURNING id",
           )
-          .get(email) as { id: number }
+          .get(email, country) as { id: number }
       ).id,
     );
   const ownerId = addUser('owner@example.test');
   const buyerId = addUser('buyer@example.test');
   const otherOwnerId = addUser('other-owner@example.test');
   const inviteeId = addUser('invitee@example.test');
+  const foreignInviteeId = addUser('foreign-invitee@example.test', 'DE');
   const outsiderId = addUser('outsider@example.test');
   const headers = (id: number) => ({ cookie: `sid=${sessions.create(id).token}` });
   assert.equal(
@@ -106,7 +108,7 @@ void test('invites are mailed, accepted once, scoped to owners, and do not discl
   );
   assert.match(
     (
-      db.prepare("SELECT body FROM dev_mailbox WHERE kind = 'company-invite'").get() as {
+      db.prepare("SELECT body FROM dev_mailbox WHERE template_key = 'company_invite'").get() as {
         body: string;
       }
     ).body,
@@ -131,6 +133,24 @@ void test('invites are mailed, accepted once, scoped to owners, and do not discl
       })
     ).statusCode,
     404,
+  );
+  const foreignAcceptance = await app.inject({
+    method: 'POST',
+    url: '/api/company/invites/accept',
+    headers: headers(foreignInviteeId),
+    payload: { token: 'invite-token' },
+  });
+  assert.equal(foreignAcceptance.statusCode, 404);
+  assert.equal(foreignAcceptance.json<{ code: string }>().code, 'INVITE_NOT_FOUND');
+  assert.deepEqual(
+    db.prepare('SELECT status FROM company_invites WHERE id = ?').get(Number(invite.id)),
+    { status: 'pending' },
+  );
+  assert.deepEqual(
+    db
+      .prepare('SELECT COUNT(*) AS count FROM company_memberships WHERE user_id = ? AND active = 1')
+      .get(foreignInviteeId),
+    { count: 0 },
   );
   const accepted = await app.inject({
     method: 'POST',

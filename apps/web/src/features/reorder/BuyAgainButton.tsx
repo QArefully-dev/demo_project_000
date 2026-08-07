@@ -2,7 +2,13 @@ import { useCallback, useState } from 'react';
 import type { ReorderResponse } from '@shop/contracts/reorder';
 import { Button } from '@/components/ui/button';
 import { useCartContext } from '@/hooks/CartContext';
-import { BUY_AGAIN_FAILURE_MESSAGE, type BuyAgainState } from './reorderPresentation';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { repeatBuyingMessages } from '@shop/localisation/messages/repeatBuying';
+import {
+  BUY_AGAIN_FAILURE_KEY,
+  BUY_AGAIN_FAILURE_MESSAGE,
+  type BuyAgainState,
+} from './reorderPresentation';
 
 /**
  * Cart pending identity for a reorder, mirroring the key `useCart` registers for the action. Buy
@@ -58,7 +64,11 @@ export function useBuyAgain() {
       const attempt = attempts[orderId];
       if (!attempt) return { kind: 'idle' };
       if (attempt.outcome === 'reported') return { kind: 'result', response: attempt.response };
-      return { kind: 'error', message: BUY_AGAIN_FAILURE_MESSAGE };
+      return {
+        kind: 'error',
+        message: BUY_AGAIN_FAILURE_MESSAGE,
+        messageKey: BUY_AGAIN_FAILURE_KEY,
+      };
     },
     [attempts, isActionPending],
   );
@@ -75,13 +85,21 @@ type Props = {
 
 /** The Buy Again control for one past order. Names its order so rows stay distinguishable. */
 export function BuyAgainButton({ orderId, isPending, onActivate, className }: Props) {
-  const label = isPending ? 'Adding to cart…' : 'Buy again';
+  const { translate } = useLocalisation();
+  const label = isPending
+    ? translate(repeatBuyingMessages, 'repeatBuying.addingForOrder')
+    : translate(repeatBuyingMessages, 'repeatBuying.buyAgain');
+  const orderContext = translate(
+    repeatBuyingMessages,
+    isPending ? 'repeatBuying.forOrder' : 'repeatBuying.fromOrder',
+    { orderId },
+  );
   return (
     <Button
       variant="outline"
       className={className}
       disabled={isPending}
-      aria-label={`${label} ${isPending ? 'for' : 'from'} order #${orderId}`}
+      aria-label={`${label} ${orderContext}`}
       onClick={onActivate}
     >
       {label}

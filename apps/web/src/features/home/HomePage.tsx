@@ -8,6 +8,8 @@ import { ProductShelf } from '@/components/home/ProductShelf';
 import { PromoBanner } from '@/components/home/PromoBanner';
 import { useCartContext } from '@/hooks/CartContext';
 import type { Product } from '@shop/contracts/products';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { webMessages } from '@shop/localisation/messages/webShell';
 
 interface ShelfState {
   products: Product[];
@@ -22,6 +24,8 @@ export function withoutProducts(products: Product[], excludedIds: ReadonlySet<st
 
 export function HomePage() {
   const { addItem, isCartAvailable, isActionPending } = useCartContext();
+  const { translate } = useLocalisation();
+  const t = (key: keyof typeof webMessages) => translate(webMessages, key);
   const [bestsellers, setBestsellers] = useState<ShelfState>(initialShelf);
   const [newest, setNewest] = useState<ShelfState>(initialShelf);
   const [categories, setCategories] = useState<string[]>([]);
@@ -31,8 +35,8 @@ export function HomePage() {
   const [newestRetry, setNewestRetry] = useState(0);
   const [categoriesRetry, setCategoriesRetry] = useState(0);
 
-  const message = (reason: unknown) =>
-    reason instanceof Error ? reason.message : 'Unable to load this collection';
+  // Async state keeps a stable lookup key; rendering resolves it for the active country.
+  const message = () => 'home.collectionUnavailable';
 
   useEffect(() => {
     let cancelled = false;
@@ -43,8 +47,8 @@ export function HomePage() {
         if (!cancelled)
           setBestsellers({ products: products.slice(0, 5), isLoading: false, error: null });
       })
-      .catch((reason: unknown) => {
-        if (!cancelled) setBestsellers({ products: [], isLoading: false, error: message(reason) });
+      .catch(() => {
+        if (!cancelled) setBestsellers({ products: [], isLoading: false, error: message() });
       });
 
     return () => {
@@ -60,8 +64,8 @@ export function HomePage() {
       .then((response) => {
         if (!cancelled) setNewest({ products: response.items, isLoading: false, error: null });
       })
-      .catch((reason: unknown) => {
-        if (!cancelled) setNewest({ products: [], isLoading: false, error: message(reason) });
+      .catch(() => {
+        if (!cancelled) setNewest({ products: [], isLoading: false, error: message() });
       });
 
     return () => {
@@ -78,8 +82,8 @@ export function HomePage() {
       .then((result) => {
         if (!cancelled) setCategories(result);
       })
-      .catch((reason: unknown) => {
-        if (!cancelled) setCategoriesError(message(reason));
+      .catch(() => {
+        if (!cancelled) setCategoriesError(message());
       })
       .finally(() => {
         if (!cancelled) setIsCategoriesLoading(false);
@@ -105,22 +109,20 @@ export function HomePage() {
       <CustomBlendBanner />
       <BundleBanner />
       <section
-        aria-label="Store assurances"
+        aria-label={t('home.storeAssurances')}
         className="grid divide-y rounded-2xl border bg-surface-raised text-center shadow-sm sm:grid-cols-3 sm:divide-x sm:divide-y-0"
       >
         <p className="p-4 text-sm">
-          <strong className="block text-foreground">Clear product data</strong>
-          <span className="text-muted-foreground">
-            Specifications and pack formats in one place
-          </span>
+          <strong className="block text-foreground">{t('home.clearProductData')}</strong>
+          <span className="text-muted-foreground">{t('home.specificationsAndPacks')}</span>
         </p>
         <p className="p-4 text-sm">
-          <strong className="block text-foreground">Supply-ready catalogue</strong>
-          <span className="text-muted-foreground">Availability signals for practical sourcing</span>
+          <strong className="block text-foreground">{t('home.supplyReadyCatalogue')}</strong>
+          <span className="text-muted-foreground">{t('home.availabilitySignals')}</span>
         </p>
         <p className="p-4 text-sm">
-          <strong className="block text-foreground">Demo ordering</strong>
-          <span className="text-muted-foreground">No real payment is processed</span>
+          <strong className="block text-foreground">{t('home.demoOrdering')}</strong>
+          <span className="text-muted-foreground">{t('home.noRealPayment')}</span>
         </p>
       </section>
       <CategoryTiles
@@ -130,8 +132,8 @@ export function HomePage() {
         onRetry={() => setCategoriesRetry((attempt) => attempt + 1)}
       />
       <ProductShelf
-        eyebrow="Most requested by name"
-        title="Bestsellers"
+        eyebrow={t('home.mostRequested')}
+        title={t('home.bestsellers')}
         href="/catalog?sort=bestselling"
         products={bestsellers.products}
         isLoading={bestsellers.isLoading}
@@ -143,8 +145,8 @@ export function HomePage() {
       />
       <PromoBanner />
       <ProductShelf
-        eyebrow="Recent batches"
-        title="Just in"
+        eyebrow={t('home.recentBatches')}
+        title={t('home.justIn')}
         href="/catalog?sort=newest"
         products={newArrivals}
         isLoading={newest.isLoading}

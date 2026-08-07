@@ -1,6 +1,6 @@
-# QArefully Powder Co.
+# QArefully Materials Exchange
 
-QArefully Powder Co. is a local, non-live powder shop built for QA education and repository-scale engineering exercises. Browse credible sports nutrition, baking, drinks, household, garden, and trade powders. Every customer journey runs without external services.
+QArefully Materials Exchange is a local, non-live bulk-materials wholesale portal built for QA education and repository-scale engineering exercises. Trade buyers browse and order materials by sack or pallet, from sugar to cement. Every customer journey runs without external services.
 
 ## Prerequisites
 
@@ -18,7 +18,7 @@ npm run dev
 
 Open [http://127.0.0.1:5173](http://127.0.0.1:5173) in your browser.
 
-`npm ci` installs the locked dependencies and builds the shared contracts and catalog packages automatically.
+`npm ci` installs the locked dependencies and builds the shared contracts, catalog, and localisation packages automatically.
 
 ## What's Running
 
@@ -51,15 +51,16 @@ SQLite database is created automatically on first `npm run dev` at `data/shop.db
 | `npm run lint`       | Run ESLint checks                                                                                     |
 | `npm run format`     | Check formatting with Prettier                                                                      |
 | `npm run format:fix` | Auto-fix formatting with Prettier                                                                   |
+| `npm run check:localisation` | Check translation, formatter, and public-error surfaces                           |
 | `npm run verify`     | Run format, typecheck, lint, tests, and every workspace build                                       |
 
 All scripts run via `npm run` — no separate shell scripts directory needed.
 
 ## Architecture
 
-Dependencies flow one way: `@shop/contracts` owns shared request and response schemas, `@shop/catalog` owns canonical catalog and packaging data, the API owns persistence and workflows, and the web app consumes API contracts only. The browser validates every successful API response against its shared schema before feature code receives it. Packages and scripts cannot import app-private source; the web app cannot import API source.
+Dependencies flow one way: `@shop/contracts` owns shared request and response schemas, `@shop/catalog` owns canonical catalog and packaging data, `@shop/localisation` owns country-aware translation and number/date/money presentation, the API owns persistence and workflows, and the web app consumes API contracts only. The browser validates every successful API response against its shared schema before feature code receives it. Packages and scripts cannot import app-private source; the web app cannot import API source.
 
-Checkout is a server-owned payment-intent workflow. The API validates the cart, promo, customer details, and card before it reserves the cart and promo capacity, persists an immutable quote, and calls the simulated gateway with that quote total. Finalization creates the order from the saved quote, so later cart changes cannot alter an authorized payment.
+Checkout is a server-owned payment-intent workflow. The API validates the cart, promo, customer details, and card before it reserves the cart and promo capacity, persists an immutable quote, and calls the simulated GBP gateway with that quote total. Finalization creates the order from the saved quote, so later cart changes cannot alter an authorized payment. Country rates convert display figures only; settlement, persistence, refunds, and receipts remain authoritative integer GBP pence.
 
 Each checkout request includes an idempotency key. Retrying the same key with the same request replays a completed outcome or safely resumes an authorized finalization; using the same key with different checkout data returns a conflict. Card numbers and CVC values are not stored in quotes, fingerprints, or payment responses.
 
@@ -128,7 +129,9 @@ The same email exists once per country as separate accounts with separate passwo
 
 UK Alice has a pre-seeded default Favourites list with 3 products. Her `Monthly restock` list demonstrates all four whole-list add outcomes after `npm run reset`: an ordinary added line, a quantity raised to the 4-sack MOQ, a retired variant skipped, and an insufficient-stock variant skipped.
 
-Country behaviour demos are seeded for stage 2. China blocks the `Sports Nutrition` category server-side, so a CN visitor cannot browse, open, add, or check out those lots; UK can access the same lots. Spain alone shows the country banner. `LOC-UK-DE-10` applies in UK and DE carts but is rejected in US carts. Delivery remains country-bound: UK carts accept `GB` destinations, while DE carts accept `DE` destinations only.
+Country behaviour demos cover all three localisation stages. Seven country profiles (`UK`, `US`, `CN`, `PL`, `ES`, `DE`, `FR`) drive account selection, server-side availability, postcode rules, delivery cut-offs, translated shop copy, and locale-owned number/date formatting. China blocks the `Sports Nutrition` category server-side, so a CN visitor cannot browse, open, add, or check out those lots; UK can access the same lots. Spain alone shows the country banner. `LOC-UK-DE-10` applies in UK and DE carts but is rejected in US carts. Delivery remains country-bound: UK carts accept `GB` destinations, while DE carts accept `DE` destinations only.
+
+Display currency conversion uses fixed checked-in rates and happens only at render time. Checkout, order confirmation, mailbox receipts, payment, refund, and persisted commerce values remain GBP-authoritative; non-UK checkout and receipts show local display plus the GBP total. No converted amount is stored, charged, refunded, or snapshotted. Migration head is `034`.
 
 ### Local Administration
 

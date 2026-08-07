@@ -13,6 +13,31 @@ export default tseslint.config(
     },
   },
   {
+    files: [
+      'scripts/localisation-fixtures/error-setter.tsx',
+      'scripts/localisation-fixtures/jsx-text.tsx',
+      'scripts/localisation-fixtures/visible-prop.tsx',
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: './scripts/tsconfig.eslint.json',
+        projectService: false,
+      },
+    },
+  },
+  {
+    files: [
+      'packages/localisation/test/api-errors.test.ts',
+      'packages/localisation/test/localisation.test.ts',
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: './packages/localisation/tsconfig.eslint.json',
+        projectService: false,
+      },
+    },
+  },
+  {
     ...tseslint.configs.disableTypeChecked,
     files: ['scripts/**/*.{ts,mjs}'],
     languageOptions: {

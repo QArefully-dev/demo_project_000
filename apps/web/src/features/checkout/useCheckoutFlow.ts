@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useReducer } from 'react';
 import type { DeliverySlot } from '@shop/contracts/delivery';
 import { useCartContext } from '@/hooks/CartContext';
 import { useAuth } from '@/hooks/AuthContext';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { checkoutMessages } from '@shop/localisation/messages/checkout';
 import { useTradeProfile } from '@/features/account/useTradeProfile';
 import { isEligibleForPromo } from './cartValidation';
 import {
@@ -32,11 +34,13 @@ import { useCheckoutNavigation } from './useCheckoutNavigation';
 import { useDeliverySlots } from './useDeliverySlots';
 import { usePaymentSubmission } from './usePaymentSubmission';
 import { usePromoQuote } from './usePromoQuote';
+import { localizeCheckoutError } from './checkoutCopy';
 
 /** CheckoutPage compatibility facade. Feature concerns live in focused modules. */
 export function useCheckoutFlow() {
-  const { cart, cartId, clearCart, retryCart } = useCartContext();
+  const { cart, cartId, cartGeneration, clearCart, retryCart } = useCartContext();
   const { user } = useAuth();
+  const { translate } = useLocalisation();
   const isAuthenticated = user !== null;
   const [state, dispatch] = useReducer(checkoutReducer, undefined, initialCheckoutState);
   const quoteKey = createCartQuoteKey(cart);
@@ -116,6 +120,7 @@ export function useCheckoutFlow() {
   });
   const submitPayment = usePaymentSubmission({
     cartId,
+    cartGeneration,
     cartPresent: Boolean(cart),
     state,
     stepsAreValid: deliveryIsValid && scheduleIsValid,
@@ -196,6 +201,9 @@ export function useCheckoutFlow() {
     : {};
   const billingAddressErrors = state.touched.billingEntityId ? billingValidation.addressErrors : {};
 
+  const paymentError = localizeCheckoutError(state.paymentErrorState, translate);
+  const promoError = localizeCheckoutError(state.promoErrorState, translate);
+
   const destinationSummary = useMemo(() => {
     if (state.delivery.destinationKind === 'saved') {
       return savedSites.find((site) => site.id === state.delivery.deliverySiteId)?.label ?? null;
@@ -252,12 +260,19 @@ export function useCheckoutFlow() {
     discountBaseCents,
     promoCategoryScope,
     totalCents,
-    promoError: state.promoError,
+    promoError:
+      promoError ??
+      (state.promoError ? translate(checkoutMessages, 'checkout.promoError.invalid') : null),
+    promoErrorState: state.promoErrorState,
     promoErrorCode: state.promoErrorCode,
+    promoMinSubtotalCents: state.promoMinSubtotalCents,
     promoValidating: state.promoValidating,
     isPromoEligible: cart ? isEligibleForPromo(cart.totalItems) : false,
     submitting: state.submitting,
-    paymentError: state.paymentError,
+    paymentError:
+      paymentError ??
+      (state.paymentError ? translate(checkoutMessages, 'checkout.error.generic') : null),
+    paymentErrorState: state.paymentErrorState,
     conflict: state.conflict,
     cartRecoveryMessage: state.cartRecoveryMessage,
     fieldError,

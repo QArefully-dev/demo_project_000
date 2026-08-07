@@ -1,5 +1,7 @@
 import { X } from 'lucide-react';
 import type { ProductFilterOptionsResponse } from '@shop/contracts/products';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { discoveryMessages } from '@shop/localisation/messages/discovery';
 import type { Availability } from './catalogSidebarTypes';
 
 type CatalogActiveFiltersProps = {
@@ -47,6 +49,9 @@ export function CatalogActiveFilters({
   onTagChange,
   onSpecChange,
 }: CatalogActiveFiltersProps) {
+  const { translate, formatCivilDate, formatCount } = useLocalisation();
+  const t = (key: keyof typeof discoveryMessages, params?: Record<string, string | number>) =>
+    translate(discoveryMessages, key, params);
   const tagByKey = new Map(filterOptions?.tags.map((tag) => [tag.key, tag]));
   const knownSpecificationTokens = new Set(
     (filterOptions?.specificationGroups ?? []).flatMap((group) =>
@@ -57,33 +62,36 @@ export function CatalogActiveFilters({
   );
 
   return (
-    <div className="flex flex-wrap gap-2" aria-label="Active filters">
-      {query && <FilterChip label={`Search: ${query}`} onClick={onQueryClear} />}
+    <div className="flex flex-wrap gap-2" aria-label={t('catalog.activeFilters')}>
+      {query && <FilterChip label={t('catalog.searchFilter', { query })} onClick={onQueryClear} />}
       {category && (
-        <FilterChip label={`Type: ${category}`} onClick={() => onCategoryChange(undefined)} />
+        <FilterChip
+          label={t('catalog.typeFilter', { category })}
+          onClick={() => onCategoryChange(undefined)}
+        />
       )}
-      {onSale && <FilterChip label="On sale" onClick={() => onSaleChange(false)} />}
+      {onSale && <FilterChip label={t('catalog.onSale')} onClick={() => onSaleChange(false)} />}
       {minPriceCents !== undefined && (
         <FilterChip
-          label={`Minimum price: ${minPriceCents} cents`}
+          label={t('catalog.minimumFilter', { value: formatCount(minPriceCents) })}
           onClick={() => onPriceRangeChange(undefined, maxPriceCents)}
         />
       )}
       {maxPriceCents !== undefined && (
         <FilterChip
-          label={`Maximum price: ${maxPriceCents} cents`}
+          label={t('catalog.maximumFilter', { value: formatCount(maxPriceCents) })}
           onClick={() => onPriceRangeChange(minPriceCents, undefined)}
         />
       )}
       {addedFrom && (
         <FilterChip
-          label={`Added from: ${addedFrom}`}
+          label={t('catalog.addedFromFilter', { date: formatCivilDate(addedFrom) })}
           onClick={() => onDateRangeChange(undefined, addedTo)}
         />
       )}
       {addedTo && (
         <FilterChip
-          label={`Added to: ${addedTo}`}
+          label={t('catalog.addedToFilter', { date: formatCivilDate(addedTo) })}
           onClick={() => onDateRangeChange(addedFrom, undefined)}
         />
       )}
@@ -91,10 +99,10 @@ export function CatalogActiveFilters({
         <FilterChip
           label={
             availability === 'available'
-              ? 'In stock'
+              ? t('catalog.inStock')
               : availability === 'backorder'
-                ? 'Backorder available'
-                : 'Out of stock'
+                ? t('catalog.backorder')
+                : t('catalog.outOfStock')
           }
           onClick={() => onAvailabilityChange(undefined)}
         />
@@ -104,7 +112,7 @@ export function CatalogActiveFilters({
         return (
           <FilterChip
             key={tagKey}
-            label={`Tag: ${tag?.label ?? tagKey}`}
+            label={t('catalog.tagFilter', { tag: tag?.label ?? tagKey })}
             onClick={() => onTagChange(tagKey, false)}
           />
         );
@@ -130,7 +138,7 @@ export function CatalogActiveFilters({
         .map((token) => (
           <FilterChip
             key={token}
-            label={`Specification: ${token}`}
+            label={t('catalog.specificationFilter', { specification: token })}
             onClick={() => onSpecChange(token.slice(0, token.indexOf(':')), undefined)}
           />
         ))}
@@ -139,16 +147,18 @@ export function CatalogActiveFilters({
 }
 
 function FilterChip({ label, onClick }: { label: string; onClick: () => void }) {
+  const { translate } = useLocalisation();
+  const removeLabel = translate(discoveryMessages, 'catalog.removeFilter', { label });
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={`Remove ${label} filter`}
+      aria-label={removeLabel}
       className="flex items-center gap-1 rounded-full bg-secondary px-3 py-1.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       {label}
       <X className="size-3" aria-hidden="true" />
-      <span className="sr-only">Remove {label} filter</span>
+      <span className="sr-only">{removeLabel}</span>
     </button>
   );
 }

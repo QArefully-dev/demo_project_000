@@ -27,7 +27,13 @@ export interface ValidPromo {
 
 export type PromoValidation =
   | { valid: true; promoCode: ValidPromo }
-  | { valid: false; error: string; errorCode: PromoValidationError };
+  | {
+      valid: false;
+      error: string;
+      errorCode: PromoValidationError;
+      /** Canonical GBP pence threshold for the MIN_SUBTOTAL gate. */
+      minSubtotalCents?: number;
+    };
 
 export interface PromoService {
   validate(params: {
@@ -48,8 +54,12 @@ export function createPromoService(dependencies: {
   };
 }
 
-function invalid(error: string, errorCode: PromoValidationError): PromoValidation {
-  return { valid: false, error, errorCode };
+function invalid(
+  error: string,
+  errorCode: PromoValidationError,
+  metadata?: Pick<Extract<PromoValidation, { valid: false }>, 'minSubtotalCents'>,
+): PromoValidation {
+  return { valid: false, error, errorCode, ...metadata };
 }
 
 function asValidPromo(promo: PromoRecord): ValidPromo {
@@ -157,10 +167,9 @@ export function validatePromo(
   // Eligibility and discount both read the discountable subtotal: Custom Blend blending fees are
   // a service charge, never merchandise, so they can neither unlock nor be reduced by a promotion.
   if (promo.minSubtotalCents !== null && scope.discountBaseCents < promo.minSubtotalCents)
-    return invalid(
-      `Minimum subtotal of $${(promo.minSubtotalCents / 100).toFixed(2)} required`,
-      'MIN_SUBTOTAL',
-    );
+    return invalid('Minimum qualifying subtotal required', 'MIN_SUBTOTAL', {
+      minSubtotalCents: promo.minSubtotalCents,
+    });
   return { valid: true, promoCode: validPromo };
 }
 

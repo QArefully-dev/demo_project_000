@@ -1,5 +1,8 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { checkoutMessages } from '@shop/localisation/messages/checkout';
+import { translateValidationError } from './checkoutCopy';
 
 type CardField = 'cardNumber' | 'cardExpiry' | 'cardCvc';
 
@@ -13,7 +16,6 @@ interface PaymentDetailsStepProps {
   submitting: boolean;
   disabled: boolean;
 }
-
 export function PaymentDetailsStep({
   card,
   fieldError,
@@ -24,23 +26,28 @@ export function PaymentDetailsStep({
   submitting,
   disabled,
 }: PaymentDetailsStepProps) {
-  const cardNumberError = fieldError('cardNumber');
-  const cardExpiryError = fieldError('cardExpiry');
-  const cardCvcError = fieldError('cardCvc');
+  const { translate } = useLocalisation();
+  const t = (key: keyof typeof checkoutMessages, params?: Record<string, string | number>) =>
+    translate(checkoutMessages, key, params);
+  const errorFor = (field: CardField) => {
+    const error = fieldError(field);
+    return error ? translateValidationError(error, t) : undefined;
+  };
+  const cardNumberError = errorFor('cardNumber');
+  const cardExpiryError = errorFor('cardExpiry');
+  const cardCvcError = errorFor('cardCvc');
 
   return (
     <section aria-labelledby="payment-step-title" className="space-y-4">
       <div>
         <h2 id="payment-step-title" className="text-lg font-semibold">
-          Test card details
+          {t('checkout.step.payment')}
         </h2>
-        <p className="text-sm text-muted-foreground">
-          Step 3 of 3. Card details stay in this page only.
-        </p>
+        <p className="text-sm text-muted-foreground">{t('checkout.cardPageOnly')}</p>
       </div>
       <div className="space-y-1.5">
         <label htmlFor="cardNumber" className="text-sm font-medium">
-          Card number
+          {t('checkout.cardNumber')}
         </label>
         <Input
           id="cardNumber"
@@ -62,7 +69,7 @@ export function PaymentDetailsStep({
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <label htmlFor="cardExpiry" className="text-sm font-medium">
-            Expiry (MM/YY)
+            {t('checkout.expiry')}
           </label>
           <Input
             id="cardExpiry"
@@ -83,7 +90,7 @@ export function PaymentDetailsStep({
         </div>
         <div className="space-y-1.5">
           <label htmlFor="cardCvc" className="text-sm font-medium">
-            CVC
+            {t('checkout.cvc')}
           </label>
           <Input
             id="cardCvc"
@@ -105,10 +112,10 @@ export function PaymentDetailsStep({
       </div>
       <div className="flex gap-3">
         <Button type="button" variant="outline" className="flex-1" onClick={onBack}>
-          Back to schedule
+          {t('checkout.backSchedule')}
         </Button>
         <Button type="button" className="flex-1" disabled={disabled} onClick={onSubmit}>
-          {submitting ? 'Processing payment...' : 'Simulate payment'}
+          {submitting ? t('checkout.processingPayment') : t('checkout.simulatePayment')}
         </Button>
       </div>
     </section>

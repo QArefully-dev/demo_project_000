@@ -145,9 +145,7 @@ export function AdminPromosPage() {
         <h1 id="admin-promos-heading" className="section-heading">
           {t('adminCatalog.promos.heading')}
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {t('adminCatalog.promos.description')}
-        </p>
+        <p className="mt-2 text-sm text-muted-foreground">{t('adminCatalog.promos.description')}</p>
       </div>
       {error && (
         <p role="alert" className="text-sm text-destructive">

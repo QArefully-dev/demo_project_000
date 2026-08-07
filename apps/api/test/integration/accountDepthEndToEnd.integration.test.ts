@@ -167,10 +167,15 @@ void test('account depth composes self-service, company approval, and deletion r
     payload: approvedPayload,
   });
   assert.equal(pending.statusCode, 409);
-  const pendingBody = responseBody<{ error: string; approvalRequestId?: string }>(pending);
-  assert.equal(pendingBody.error, 'PENDING_APPROVAL', pending.body);
-  assert.ok(pendingBody.approvalRequestId, pending.body);
-  const approvalRequestId = pendingBody.approvalRequestId;
+  const pendingBody = responseBody<{
+    error: string;
+    code: string;
+    meta?: { approvalRequestId?: string };
+  }>(pending);
+  assert.equal(pendingBody.code, 'PENDING_APPROVAL', pending.body);
+  const approvalRequestId = pendingBody.meta?.approvalRequestId;
+  assert.ok(approvalRequestId, pending.body);
+  assert.equal(pendingBody.error, `Approval is required (request ${approvalRequestId}).`);
   const approve = await app.inject({
     method: 'POST',
     url: `/api/approvals/${approvalRequestId}/decision`,
@@ -195,9 +200,15 @@ void test('account depth composes self-service, company approval, and deletion r
     payload: rejectedPayload,
   });
   assert.equal(rejectedPending.statusCode, 409);
-  const rejectedRequestId = responseBody<{ approvalRequestId: string }>(
-    rejectedPending,
-  ).approvalRequestId;
+  const rejectedPendingBody = responseBody<{
+    error: string;
+    code: string;
+    meta?: { approvalRequestId?: string };
+  }>(rejectedPending);
+  assert.equal(rejectedPendingBody.code, 'PENDING_APPROVAL', rejectedPending.body);
+  const rejectedRequestId = rejectedPendingBody.meta?.approvalRequestId;
+  assert.ok(rejectedRequestId, rejectedPending.body);
+  assert.equal(rejectedPendingBody.error, `Approval is required (request ${rejectedRequestId}).`);
   const reject = await app.inject({
     method: 'POST',
     url: `/api/approvals/${rejectedRequestId}/decision`,
@@ -212,7 +223,10 @@ void test('account depth composes self-service, company approval, and deletion r
     payload: rejectedPayload,
   });
   assert.equal(rejectedRetry.statusCode, 409);
-  assert.equal(responseBody<{ error: string }>(rejectedRetry).error, 'APPROVAL_REJECTED');
+  assert.deepEqual(responseBody(rejectedRetry), {
+    error: 'The approval request was rejected.',
+    code: 'APPROVAL_REJECTED',
+  });
 
   const deletionUserId = Number(
     db.prepare("SELECT id FROM users WHERE email = 'buyer@example.com'").pluck().get(),

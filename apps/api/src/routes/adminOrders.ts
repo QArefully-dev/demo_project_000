@@ -14,18 +14,22 @@ import type { AppContext } from '../app.js';
 import type { AuditContext } from '../features/audit/auditEvent.js';
 import { OrderDomainError } from '../features/orders/orderErrors.js';
 import { requireAdmin } from '../plugins/auth.js';
-import { sendConflict, sendNotFound } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 
 function contextFor(userId: number, requestId: string, standingCountry: Country): AuditContext {
   return { actor: { type: 'user' as const, userId }, requestId, standingCountry };
 }
 
-function sendOrderError(reply: Parameters<typeof sendConflict>[0], error: OrderDomainError): void {
+function sendOrderError(
+  request: Parameters<typeof sendPublicError>[0],
+  reply: Parameters<typeof sendPublicError>[1],
+  error: OrderDomainError,
+): void {
   if (error.code === 'ORDER_NOT_FOUND' || error.code === 'ORDER_FORBIDDEN') {
-    sendNotFound(reply, 'Order');
+    sendPublicError(request, reply, 404, 'ORDER_NOT_FOUND');
     return;
   }
-  sendConflict(reply, error.message);
+  sendPublicError(request, reply, 409, error.code);
 }
 
 /** Narrow administrator lifecycle commands; there is intentionally no operations UI. */
@@ -60,7 +64,7 @@ export default function adminOrdersRoutes(app: FastifyInstance, { services }: Ap
         });
       } catch (error) {
         if (error instanceof OrderDomainError) {
-          sendOrderError(reply, error);
+          sendOrderError(request, reply, error);
           return;
         }
         throw error;
@@ -96,7 +100,7 @@ export default function adminOrdersRoutes(app: FastifyInstance, { services }: Ap
         });
       } catch (error) {
         if (error instanceof OrderDomainError) {
-          sendOrderError(reply, error);
+          sendOrderError(request, reply, error);
           return;
         }
         throw error;
@@ -135,7 +139,7 @@ export default function adminOrdersRoutes(app: FastifyInstance, { services }: Ap
         });
       } catch (error) {
         if (error instanceof OrderDomainError) {
-          sendOrderError(reply, error);
+          sendOrderError(request, reply, error);
           return;
         }
         throw error;

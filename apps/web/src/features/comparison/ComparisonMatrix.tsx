@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom';
 import type { Product, ProductSpecification, PriceRange } from '@shop/contracts/products';
 import { ProductMedia } from '@/components/ProductMedia';
-import { formatMoney } from '@/lib/formatMoney';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { discoveryMessages } from '@shop/localisation/messages/discovery';
 
 interface MatrixProduct extends Product {
   priceRange?: PriceRange;
@@ -69,37 +70,35 @@ function buildRows(products: readonly MatrixProduct[]): MatrixRow[] {
     );
 }
 
-function priceLabel(p: MatrixProduct): string {
-  if (p.priceRange) {
-    if (p.priceRange.min !== p.priceRange.max) {
-      return `From ${formatMoney(p.priceRange.min)}`;
-    }
-    return formatMoney(p.priceRange.min);
-  }
-  return formatMoney(p.priceCents);
-}
-
-function availabilityLabel(p: MatrixProduct): string {
-  const base = p.baseAvailability;
-  if (base === 'in_stock' || base === 'low_stock') return 'Available';
-  if (base === 'backorder') return 'Backorder';
-  if (base === 'out_of_stock') return 'Out of stock';
-  return p.available ? 'Available' : 'Out of stock';
-}
-
 export function ComparisonMatrix({ products, onRemove }: ComparisonMatrixProps) {
+  const { translate, formatDisplayMoney } = useLocalisation();
+  const t = (key: keyof typeof discoveryMessages, params?: Record<string, string | number>) =>
+    translate(discoveryMessages, key, params);
+  const priceLabel = (product: MatrixProduct) => {
+    const range = product.priceRange;
+    if (range && range.min !== range.max)
+      return t('product.from', { price: formatDisplayMoney(range.min) });
+    return formatDisplayMoney(range?.min ?? product.priceCents);
+  };
+  const availabilityLabel = (product: MatrixProduct) => {
+    const base = product.baseAvailability;
+    if (base === 'in_stock' || base === 'low_stock') return t('comparison.available');
+    if (base === 'backorder') return t('comparison.backorder');
+    if (base === 'out_of_stock') return t('comparison.outOfStock');
+    return product.available ? t('comparison.available') : t('comparison.outOfStock');
+  };
   const rows = buildRows(products);
 
   return (
     <div className="overflow-x-auto rounded-2xl border bg-surface-raised focus-within:ring-2 focus-within:ring-ring">
       <table className="min-w-full border-collapse text-left text-sm">
         <caption className="p-5 text-left text-base font-semibold">
-          Product specifications comparison
+          {t('comparison.tableCaption')}
         </caption>
         <thead className="border-y bg-surface-soft align-top">
           <tr>
             <th scope="col" className="min-w-44 p-4 font-semibold">
-              Specification
+              {t('comparison.specification')}
             </th>
             {products.map((product) => (
               <th key={product.id} scope="col" className="min-w-56 p-4 font-normal">
@@ -116,20 +115,20 @@ export function ComparisonMatrix({ products, onRemove }: ComparisonMatrixProps) 
                   </Link>
                   <dl className="space-y-1 text-xs text-muted-foreground">
                     <div>
-                      <dt className="sr-only">Price</dt>
+                      <dt className="sr-only">{t('comparison.price')}</dt>
                       <dd>{priceLabel(product)}</dd>
                     </div>
                     <div>
-                      <dt className="sr-only">Category</dt>
+                      <dt className="sr-only">{t('comparison.category')}</dt>
                       <dd>{product.category}</dd>
                     </div>
                     <div>
-                      <dt className="sr-only">Availability</dt>
+                      <dt className="sr-only">{t('comparison.availability')}</dt>
                       <dd>{availabilityLabel(product)}</dd>
                     </div>
                     {product.consumptionClassification && (
                       <div>
-                        <dt className="sr-only">Classification</dt>
+                        <dt className="sr-only">{t('comparison.classification')}</dt>
                         <dd>{product.consumptionClassification}</dd>
                       </div>
                     )}
@@ -139,7 +138,7 @@ export function ComparisonMatrix({ products, onRemove }: ComparisonMatrixProps) 
                     onClick={() => onRemove(product.id)}
                     className="rounded-sm text-xs font-medium text-muted-foreground underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    Remove {product.name}
+                    {t('comparison.remove', { name: product.name })}
                   </button>
                 </div>
               </th>
@@ -160,7 +159,7 @@ export function ComparisonMatrix({ products, onRemove }: ComparisonMatrixProps) 
                   key={`${row.key}:${products[index]!.id}`}
                   className="border-t p-4 text-muted-foreground"
                 >
-                  {value?.value ?? 'Not specified'}
+                  {value?.value ?? t('comparison.notSpecified')}
                 </td>
               ))}
             </tr>

@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { Country } from '@shop/contracts/country';
 import type { Cart } from '@shop/contracts/cart';
+import type { PublicErrorCode } from '@shop/contracts/public-errors';
+import { translateUnchecked, type MessageParams } from '@shop/localisation';
+import { cartMessages, type CartMessageKey } from '@shop/localisation/messages/cart';
 import * as api from '../api/cart';
 import * as bundlesApi from '../api/bundles';
 import * as customBlendsApi from '../api/customBlends';
 import * as quickOrderApi from '../api/quickOrder';
 import * as reorderApi from '../api/reorder';
 import * as savedListsApi from '../api/savedLists';
-import { ApiError, isMissingCartError } from '../api/client';
+import { ApiError, type ApiErrorMeta } from '../api/client';
 import { clearCartId, getCartId } from '../lib/cartStorage';
 import { createCartClient } from './cartClient';
 import { useOptionalCountry } from './CountryContext';
@@ -29,12 +32,26 @@ export type CartAction =
 
 const QUICK_ORDER_PENDING_KEY = 'quick-order';
 
+export type CartClearTarget = {
+  readonly country: Country;
+  readonly cartId: string;
+  readonly generation?: string | number;
+};
+
 type CartStatus = 'initializing' | 'ready' | 'refreshing' | 'error';
+
+/** Stable cart failure identity. Copy resolves during render for the active country. */
+export type CartErrorState = {
+  readonly code: PublicErrorCode | null;
+  readonly meta: ApiErrorMeta | null;
+  readonly key: CartMessageKey;
+  readonly params?: MessageParams;
+};
 
 type CartState = {
   cart: Cart | null;
   cartId: string | null;
-  error: string | null;
+  error: CartErrorState | null;
   pendingActions: Readonly<Record<string, CartAction>>;
   status: CartStatus;
 };
@@ -42,7 +59,7 @@ type CartState = {
 type CartEvent =
   | { type: 'start'; status: 'initializing' | 'refreshing' }
   | { type: 'cart-loaded'; cart: Cart }
-  | { type: 'failed'; error: string }
+  | { type: 'failed'; error: CartErrorState }
   | { type: 'action-started'; pendingKey: string; action: CartAction }
   | { type: 'action-finished'; pendingKey: string }
   | { type: 'country-changed'; cartId: string | null }
@@ -82,32 +99,53 @@ function cartReducer(state: CartState, event: CartEvent): CartState {
   }
 }
 
-/**
- * Buyer-readable text for domain error codes the API returns. Raw server wording stays the
- * fallback; only codes a buyer can act on are translated here.
- */
-const ERROR_MESSAGE_BY_CODE: Readonly<Record<string, string>> = {
-  BELOW_MOQ: 'Minimum order quantity not met. Adjust pallet quantity and try again.',
-  BLOCKED_IN_COUNTRY: 'This item cannot be ordered in your country.',
-  NO_INPUT_LINES: 'Enter at least one line before submitting your quick order.',
-  ORDER_NOT_FOUND: 'That order is no longer available. Refresh your order history and try again.',
-  TOO_MANY_LINES:
-    'Your quick order has too many lines. Split it into smaller submissions and try again.',
-  CART_RESERVED:
-    'Your cart is reserved for checkout and cannot be changed. Finish or cancel that checkout, then try again.',
+const ERROR_MESSAGE_KEY_BY_CODE: Partial<Record<PublicErrorCode, CartMessageKey>> = {
+  BELOW_MOQ: 'cart.errorBelowMoq',
+  BLOCKED_IN_COUNTRY: 'cart.errorBlockedCountry',
+  NO_INPUT_LINES: 'cart.errorNoInputLines',
+  ORDER_NOT_FOUND: 'cart.errorOrderNotFound',
+  TOO_MANY_LINES: 'cart.errorTooManyLines',
+  CART_RESERVED: 'cart.errorCartReserved',
+  CART_NOT_FOUND: 'cart.errorCartNotFound',
 };
 
-function getErrorMessage(error: unknown, fallback: string): string {
+/** Internal signal for workflow failures that have no API response but have known copy. */
+class CartMessageError extends Error {
+  readonly messageKey: CartMessageKey;
+
+  constructor(messageKey: CartMessageKey) {
+    super(messageKey);
+    this.name = 'CartMessageError';
+    this.messageKey = messageKey;
+  }
+}
+
+function cartErrorState(error: unknown, fallbackKey: CartMessageKey): CartErrorState {
+  if (error instanceof CartMessageError) {
+    return { code: null, meta: null, key: error.messageKey };
+  }
   if (error instanceof ApiError && error.isNetworkError) {
-    return 'Unable to reach the shop server. Check that it is running and try again.';
+    return { code: null, meta: null, key: 'cart.errorNetwork' };
   }
-  if (error instanceof ApiError) {
-    const code = (error.response as { code?: unknown } | null)?.code;
-    if (typeof code === 'string' && code in ERROR_MESSAGE_BY_CODE) {
-      return ERROR_MESSAGE_BY_CODE[code]!;
-    }
+  if (error instanceof ApiError && error.code !== null) {
+    return {
+      code: error.code,
+      meta: error.meta,
+      key: ERROR_MESSAGE_KEY_BY_CODE[error.code] ?? fallbackKey,
+    };
   }
-  return error instanceof Error ? error.message : fallback;
+  // API prose is deliberately not stored or rendered. A legacy response without a code gets the
+  // same safe, country-aware fallback as an unknown exception.
+  return { code: null, meta: null, key: fallbackKey };
+}
+
+/** Missing-cart recovery keeps legacy message compatibility while rejecting unrelated 404s. */
+function isMissingCartFailure(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 404 &&
+    (error.code === 'CART_NOT_FOUND' || (error.code === null && error.message === 'Cart not found'))
+  );
 }
 
 /**
@@ -154,6 +192,16 @@ export function useCart() {
     status: 'initializing',
   });
 
+  // Errors retain only a stable code/key. Resolve copy against active country on every render so
+  // a country switch never leaves stale wording in cart state.
+  const localizedError = useMemo(
+    () =>
+      state.error === null
+        ? null
+        : translateUnchecked(cartMessages, activeCountry, state.error.key, state.error.params),
+    [activeCountry, state.error],
+  );
+
   const cartClient = useMemo(() => createCartClient(activeCountry), [activeCountry]);
   const cartClientRef = useRef(cartClient);
   cartClientRef.current = cartClient;
@@ -164,6 +212,7 @@ export function useCart() {
   const committedMutationSequenceRef = useRef(0);
   const mountedRef = useRef(false);
   const cartIdRef = useRef<string | null>(getCartId(activeCountry));
+  const cartGenerationRef = useRef(0);
   const renderedCountryRef = useRef<Country>(activeCountry);
 
   if (renderedCountryRef.current !== activeCountry) {
@@ -171,6 +220,7 @@ export function useCart() {
     // effect must already target the new country's stored cart, never the previous one.
     renderedCountryRef.current = activeCountry;
     cartIdRef.current = getCartId(activeCountry);
+    cartGenerationRef.current += 1;
     // The previous country's shared in-flight requests are not cleared here: they own a
     // `finally` that would then clear the new country's slot and defeat the dedupe. They carry
     // their owning country instead, so `loadCart`/`recoverCart` below ignore them.
@@ -179,6 +229,7 @@ export function useCart() {
 
   const applyCart = useCallback((cart: Cart) => {
     cartIdRef.current = cart.id;
+    cartGenerationRef.current += 1;
     if (mountedRef.current) dispatch({ type: 'cart-loaded', cart });
   }, []);
 
@@ -229,7 +280,10 @@ export function useCart() {
   );
 
   const initializeCart = useCallback(
-    async (status: 'initializing' | 'refreshing', fallback: string): Promise<boolean> => {
+    async (
+      status: 'initializing' | 'refreshing',
+      fallbackKey: CartMessageKey,
+    ): Promise<boolean> => {
       const requestCountry = countryRef.current;
       if (mountedRef.current) dispatch({ type: 'start', status });
       try {
@@ -242,7 +296,7 @@ export function useCart() {
       } catch (error) {
         if (countryRef.current !== requestCountry) return false;
         if (mountedRef.current)
-          dispatch({ type: 'failed', error: getErrorMessage(error, fallback) });
+          dispatch({ type: 'failed', error: cartErrorState(error, fallbackKey) });
         return false;
       }
     },
@@ -251,7 +305,7 @@ export function useCart() {
 
   useEffect(() => {
     mountedRef.current = true;
-    void initializeCart('initializing', 'Failed to initialize cart');
+    void initializeCart('initializing', 'cart.errorInitialize');
     return () => {
       mountedRef.current = false;
     };
@@ -260,12 +314,12 @@ export function useCart() {
   }, [activeCountry, initializeCart]);
 
   const retryCart = useCallback(
-    () => initializeCart(cartIdRef.current ? 'refreshing' : 'initializing', 'Failed to load cart'),
+    () => initializeCart(cartIdRef.current ? 'refreshing' : 'initializing', 'cart.errorLoad'),
     [initializeCart],
   );
 
   const refreshCart = useCallback(
-    () => initializeCart('refreshing', 'Failed to refresh cart'),
+    () => initializeCart('refreshing', 'cart.errorRefresh'),
     [initializeCart],
   );
 
@@ -290,6 +344,7 @@ export function useCart() {
         let activeCartId = cartIdRef.current;
         if (!activeCartId) {
           const cart = await loadCart();
+          if (countryRef.current !== mutationCountry) return false;
           activeCartId = cart.id;
           applyCart(cart);
         }
@@ -302,29 +357,36 @@ export function useCart() {
           if (countryRef.current === mutationCountry) applyMutationCart(cart, mutationSequence);
           return result;
         } catch (error) {
-          if (!isMissingCartError(error)) throw error;
+          if (!isMissingCartFailure(error)) throw error;
+          // A country switch owns the replacement workflow for its new cart. Do not recover or
+          // replay a stale mutation against that country.
+          if (countryRef.current !== mutationCountry) return false;
 
           const replacementCart = await recoverCart(activeCartId);
+          if (countryRef.current !== mutationCountry) return false;
           applyCart(replacementCart);
           if (!retryAfterRecovery) {
-            throw new Error('Your previous cart was no longer available. A new cart is ready.');
+            throw new CartMessageError('cart.errorCartNotFound');
           }
 
+          if (countryRef.current !== mutationCountry) return false;
           const result = await operation(replacementCart.id);
           const cart = selectCart(result);
           if (countryRef.current === mutationCountry) applyMutationCart(cart, mutationSequence);
           return result;
         }
       } catch (error) {
-        if (mountedRef.current) {
+        if (mountedRef.current && countryRef.current === mutationCountry) {
           dispatch({
             type: 'failed',
-            error: getErrorMessage(error, `Failed to ${action} cart item`),
+            error: cartErrorState(error, 'cart.errorAction'),
           });
         }
         return false;
       } finally {
-        if (mountedRef.current) dispatch({ type: 'action-finished', pendingKey });
+        if (mountedRef.current && countryRef.current === mutationCountry) {
+          dispatch({ type: 'action-finished', pendingKey });
+        }
       }
     },
     [applyCart, applyMutationCart, loadCart, recoverCart],
@@ -468,13 +530,26 @@ export function useCart() {
     [runCartMutation],
   );
 
-  const clearCart = useCallback(() => {
-    clearCartId(countryRef.current);
-    cartIdRef.current = null;
-    if (!mountedRef.current) return;
-    dispatch({ type: 'cleared' });
-    void initializeCart('initializing', 'Failed to initialize cart');
-  }, [initializeCart]);
+  const clearCart = useCallback(
+    (target?: CartClearTarget): boolean => {
+      const country = countryRef.current;
+      if (target) {
+        if (target.country !== country || target.cartId !== cartIdRef.current) return false;
+        if (target.generation !== undefined && target.generation !== cartGenerationRef.current)
+          return false;
+        // Storage can be replaced by a newer cart while payment was pending. Never remove it.
+        if (getCartId(target.country) !== target.cartId) return false;
+      }
+      clearCartId(target?.country ?? country);
+      cartIdRef.current = null;
+      cartGenerationRef.current += 1;
+      if (!mountedRef.current) return true;
+      dispatch({ type: 'cleared' });
+      void initializeCart('initializing', 'cart.errorInitialize');
+      return true;
+    },
+    [initializeCart],
+  );
 
   const isActionPending = useCallback(
     (productId: string, action?: CartAction, variantId?: number, configKey?: string) => {
@@ -488,11 +563,15 @@ export function useCart() {
   return {
     cart: state.cart,
     cartId: state.cartId,
+    cartGeneration: cartGenerationRef.current,
     isCartAvailable:
       state.cart !== null && state.cartId !== null && state.status !== 'initializing',
     isLoading: state.status === 'refreshing',
     isInitializing: state.status === 'initializing',
-    error: state.error,
+    error: localizedError,
+    /** Stable identity for callers that need code-based branching without prose matching. */
+    errorCode: state.error?.code ?? null,
+    errorState: state.error,
     pendingActions: state.pendingActions,
     isActionPending,
     addItem,

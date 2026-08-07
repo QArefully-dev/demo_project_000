@@ -11,10 +11,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useLocalisation, useMessages } from '@/i18n/LocaleContext';
-import {
-  adminCatalogMessages,
-  localizeAdminError,
-} from '@shop/localisation/messages/adminCatalog';
+import { adminCatalogMessages, localizeAdminError } from '@shop/localisation/messages/adminCatalog';
 
 const categories = [
   'Sports Nutrition',
@@ -325,9 +322,7 @@ export function AdminProductsPage() {
                     </Button>
                   ))}
               </div>
-              {confirming && (
-                <p className="text-sm">{t('adminCatalog.products.retiringNotice')}</p>
-              )}
+              {confirming && <p className="text-sm">{t('adminCatalog.products.retiringNotice')}</p>}
             </form>
           </CardContent>
         </Card>

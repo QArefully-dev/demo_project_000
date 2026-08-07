@@ -3,6 +3,8 @@ import { useId, useState } from 'react';
 import type { CustomBlendOption } from '@shop/contracts/custom-blends';
 
 import { resolveCatalogPackagingPalette } from '@/components/packaging/catalogPackagingPalettes';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { customBlendMessages } from '@shop/localisation/messages/customBlend';
 
 export type MixPart = Pick<CustomBlendOption, 'productId' | 'productName' | 'category'> & {
   percentage: number;
@@ -61,6 +63,7 @@ export function MixVisualization({
   base: MixPart;
   ingredients: readonly MixPart[];
 }) {
+  const { translate, formatCount } = useLocalisation();
   const rawId = useId().replace(/:/g, '');
   const clipId = `custom-blend-vessel-${rawId}`;
   const [activeProductId, setActiveProductId] = useState<string | null>(null);
@@ -73,16 +76,16 @@ export function MixVisualization({
     >
       <div>
         <h2 id={`mix-visualization-heading-${rawId}`} className="text-base font-semibold">
-          Mix profile
+          {translate(customBlendMessages, 'customBlend.mixProfile')}
         </h2>
         <p className="text-xs text-muted-foreground">
-          Colour proportions reflect the selected materials.
+          {translate(customBlendMessages, 'customBlend.mixProportions')}
         </p>
       </div>
       <svg
         viewBox="0 0 720 720"
         role="img"
-        aria-label="Custom blend composition vessel"
+        aria-label={translate(customBlendMessages, 'customBlend.compositionVessel')}
         className="w-full"
       >
         <defs>
@@ -108,14 +111,22 @@ export function MixVisualization({
                 fill={segment.colour}
                 opacity={activeProductId !== null && !isActive ? 0.45 : 1}
                 role="img"
-                aria-label={`${segment.productName}: ${segment.percentage}%`}
+                aria-label={translate(customBlendMessages, 'customBlend.segment', {
+                  name: segment.productName,
+                  percentageLabel: formatCount(segment.percentage),
+                })}
                 tabIndex={0}
                 onMouseEnter={() => setActiveProductId(segment.productId)}
                 onMouseLeave={() => setActiveProductId(null)}
                 onFocus={() => setActiveProductId(segment.productId)}
                 onBlur={() => setActiveProductId(null)}
               >
-                <title>{`${segment.productName}: ${segment.percentage}%`}</title>
+                <title>
+                  {translate(customBlendMessages, 'customBlend.segment', {
+                    name: segment.productName,
+                    percentageLabel: formatCount(segment.percentage),
+                  })}
+                </title>
               </rect>
             );
           })}
@@ -129,7 +140,10 @@ export function MixVisualization({
           strokeLinejoin="round"
         />
       </svg>
-      <ul className="grid gap-1 text-sm" aria-label="Mix composition legend">
+      <ul
+        className="grid gap-1 text-sm"
+        aria-label={translate(customBlendMessages, 'customBlend.mixLegend')}
+      >
         {segments.map((segment) => (
           <li key={segment.productId}>
             <button
@@ -147,7 +161,7 @@ export function MixVisualization({
                 style={{ backgroundColor: segment.colour }}
               />
               {segment.productName}{' '}
-              <span className="text-muted-foreground">{segment.percentage}%</span>
+              <span className="text-muted-foreground">{formatCount(segment.percentage)}%</span>
             </button>
           </li>
         ))}

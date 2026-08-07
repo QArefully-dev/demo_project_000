@@ -10,7 +10,7 @@ import { US_COUNTRY_PROFILE } from './us.js';
 
 export * from './types.js';
 
-/** Complete checked-in stage-2 profile lookup for every supported identity country. */
+/** Complete checked-in display/business profile lookup for every supported identity country. */
 export const COUNTRY_PROFILES: Readonly<Record<Country, CountryProfile>> = {
   UK: UK_COUNTRY_PROFILE,
   US: US_COUNTRY_PROFILE,
@@ -21,7 +21,7 @@ export const COUNTRY_PROFILES: Readonly<Record<Country, CountryProfile>> = {
   FR: FR_COUNTRY_PROFILE,
 };
 
-/** Returns the stage-2 profile for a supported identity country. */
+/** Returns the profile for a supported identity country. */
 export function countryProfile(country: Country): CountryProfile {
   return COUNTRY_PROFILES[country];
 }

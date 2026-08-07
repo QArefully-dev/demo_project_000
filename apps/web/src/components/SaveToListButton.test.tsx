@@ -60,9 +60,7 @@ describe('SaveToListButton', () => {
         <SaveToListButton variantId={4} quantity={7} />
       </MemoryRouter>,
     );
-    await userEvent
-      .setup()
-      .click(screen.getByRole('button', { name: 'Remove from default saved list' }));
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Remove from default list' }));
     expect(state.toggle).toHaveBeenCalledWith(4, 7);
   });
 
@@ -81,12 +79,14 @@ describe('SaveToListButton', () => {
       </MemoryRouter>,
     );
 
-    const button = screen.getByRole('button', { name: 'Remove from default saved list' });
+    const button = screen.getByRole('button', { name: 'Remove from default list' });
     await user.click(button);
     expect(button).toBeDisabled();
     await user.click(button);
     expect(state.toggle).toHaveBeenCalledOnce();
     resolveToggle(false);
-    expect(await screen.findByRole('alert')).toHaveTextContent('Saved list is unavailable.');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Unable to update the saved list. Please try again.',
+    );
   });
 });

@@ -3,7 +3,14 @@ import type { ReactNode } from 'react';
 import type { Cart } from '@shop/contracts/cart';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as cartApi from '@/api/cart';
-import { clearCartId, setCartId, setCartStorage, type CartStorage } from '@/lib/cartStorage';
+import { ApiError } from '@/api/client';
+import {
+  clearCartId,
+  getCartId,
+  setCartId,
+  setCartStorage,
+  type CartStorage,
+} from '@/lib/cartStorage';
 import { COUNTRY_STORAGE_KEY } from '@/lib/countryStorage';
 import { CartProvider, useCartContext } from './CartContext';
 import { CountryProvider, useCountry } from './CountryContext';
@@ -18,10 +25,12 @@ vi.mock('@/api/cart', () => ({
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, reject, resolve };
 }
 
 function cart(id: string): Cart {
@@ -77,6 +86,29 @@ afterEach(() => {
 });
 
 describe('useCart country switching', () => {
+  it('stores error codes and resolves their copy in the active country', async () => {
+    vi.mocked(cartApi.getCart).mockImplementation((id: string) => Promise.resolve(cart(id)));
+    vi.mocked(cartApi.updateCartItem).mockRejectedValueOnce(
+      new ApiError('legacy prose must not become cart state', 400, {
+        error: 'legacy prose must not become cart state',
+        code: 'BELOW_MOQ',
+      } as never),
+    );
+
+    const { result } = renderCountryCart();
+    await waitFor(() => expect(result.current.cart.cartId).toBe('cart-us'));
+
+    act(() => result.current.country.selectCountry('DE'));
+    await waitFor(() => expect(result.current.cart.cartId).toBe('cart-de'));
+
+    await act(async () => {
+      await result.current.cart.updateQuantity('cement', 1);
+    });
+    expect(result.current.cart.errorCode).toBe('BELOW_MOQ');
+    expect(result.current.cart.errorState?.key).toBe('cart.errorBelowMoq');
+    expect(result.current.cart.error).toContain('Mindestbestellmenge');
+  });
+
   it('re-resolves the cart id from the newly selected country', async () => {
     vi.mocked(cartApi.getCart).mockImplementation((id: string) => Promise.resolve(cart(id)));
 
@@ -164,6 +196,59 @@ describe('useCart country switching', () => {
       await result.current.cart.addItem('sand');
     });
     expect(cartApi.addToCart).toHaveBeenLastCalledWith('cart-de', 'sand', undefined);
+  });
+
+  it('does not recover a delayed missing-cart mutation or clear a same-key new-country action', async () => {
+    const stale404 = deferred<Cart>();
+    const currentAdd = deferred<Cart>();
+    vi.mocked(cartApi.getCart).mockImplementation((id: string) => Promise.resolve(cart(id)));
+    vi.mocked(cartApi.addToCart)
+      .mockReturnValueOnce(stale404.promise)
+      .mockReturnValueOnce(currentAdd.promise)
+      .mockResolvedValue(cart('cart-de'));
+
+    const { result } = renderCountryCart();
+    await waitFor(() => expect(result.current.cart.cartId).toBe('cart-us'));
+
+    let stalePending!: Promise<boolean>;
+    act(() => {
+      stalePending = result.current.cart.addItem('cement');
+    });
+    await waitFor(() =>
+      expect(cartApi.addToCart).toHaveBeenCalledWith('cart-us', 'cement', undefined),
+    );
+
+    act(() => result.current.country.selectCountry('DE'));
+    await waitFor(() => expect(result.current.cart.cartId).toBe('cart-de'));
+
+    let currentPending!: Promise<boolean>;
+    act(() => {
+      currentPending = result.current.cart.addItem('cement');
+    });
+    await waitFor(() =>
+      expect(cartApi.addToCart).toHaveBeenCalledWith('cart-de', 'cement', undefined),
+    );
+    expect(result.current.cart.isActionPending('cement', 'add')).toBe(true);
+
+    await act(async () => {
+      stale404.reject(new ApiError('Cart not found', 404));
+      await stalePending;
+    });
+
+    expect(result.current.cart.cartId).toBe('cart-de');
+    expect(result.current.cart.isActionPending('cement', 'add')).toBe(true);
+    expect(cartApi.getCart).toHaveBeenCalledTimes(2);
+    expect(cartApi.addToCart).toHaveBeenCalledTimes(2);
+    expect(result.current.cart.error).toBeNull();
+
+    await act(async () => {
+      currentAdd.resolve(cart('cart-de'));
+      await currentPending;
+    });
+
+    expect(result.current.cart.isActionPending('cement', 'add')).toBe(false);
+    expect(getCartId('US')).toBe('cart-us');
+    expect(getCartId('DE')).toBe('cart-de');
   });
 
   it('creates only one cart when the previous country load settles during a switch', async () => {

@@ -9,6 +9,13 @@ import {
 } from 'react';
 import type { Notification } from '@shop/contracts/notifications';
 import * as notificationsApi from '@/api/notifications';
+import { ApiError } from '@/api/client';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { apiErrors } from '@shop/localisation/messages/apiErrors';
+import {
+  tradeAsyncMessages,
+  type TradeAsyncMessageKey,
+} from '@shop/localisation/messages/tradeAsync';
 import { useAuth } from './AuthContext';
 
 type NotificationsContextValue = {
@@ -22,12 +29,29 @@ type NotificationsContextValue = {
 };
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
-const errorMessage = (cause: unknown, fallback: string) =>
-  cause instanceof Error && cause.message ? cause.message : fallback;
-
 /** Buyer-scoped inbox state. Async results may only update their originating session. */
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const { translate } = useLocalisation();
+  const errorMessage = useCallback(
+    (cause: unknown, fallback: TradeAsyncMessageKey): string => {
+      if (cause instanceof ApiError && cause.code !== null) {
+        const params = Object.fromEntries(
+          Object.entries(cause.meta ?? {}).filter(
+            ([, value]) =>
+              typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint',
+          ),
+        ) as Record<string, string | number | bigint>;
+        try {
+          return translate(apiErrors, cause.code, params);
+        } catch {
+          // Safe feature fallback for malformed/legacy metadata.
+        }
+      }
+      return translate(tradeAsyncMessages, fallback);
+    },
+    [translate],
+  );
   const userId = user?.id ?? null;
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -87,7 +111,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         controller.signal.aborted
       )
         return false;
-      setError(errorMessage(cause, 'Unable to load notifications.'));
+      setError(errorMessage(cause, 'notifications.error.load'));
       return false;
     } finally {
       if (
@@ -97,7 +121,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       )
         setLoading(false);
     }
-  }, [applyNotifications, applyUnreadCount, isCurrentSession, userId]);
+  }, [applyNotifications, applyUnreadCount, errorMessage, isCurrentSession, userId]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -152,12 +176,12 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           if (!isCurrentSession(sessionVersion, userId)) return false;
           applyNotifications(confirmed);
           applyUnreadCount(confirmedUnread);
-          setError(errorMessage(cause, 'Unable to mark notification as read.'));
+          setError(errorMessage(cause, 'notifications.error.read'));
           return false;
         }
       });
     },
-    [applyNotifications, applyUnreadCount, enqueueMutation, isCurrentSession, userId],
+    [applyNotifications, applyUnreadCount, enqueueMutation, errorMessage, isCurrentSession, userId],
   );
 
   const markAllRead = useCallback((): Promise<{ affectedCount: number } | false> => {
@@ -183,11 +207,18 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         if (!isCurrentSession(sessionVersion, userId)) return false;
         applyNotifications(confirmed);
         applyUnreadCount(confirmedUnread);
-        setError(errorMessage(cause, 'Unable to mark notifications as read.'));
+        setError(errorMessage(cause, 'notifications.error.readAll'));
         return false;
       }
     });
-  }, [applyNotifications, applyUnreadCount, enqueueMutation, isCurrentSession, userId]);
+  }, [
+    applyNotifications,
+    applyUnreadCount,
+    enqueueMutation,
+    errorMessage,
+    isCurrentSession,
+    userId,
+  ]);
 
   return (
     <NotificationsContext.Provider

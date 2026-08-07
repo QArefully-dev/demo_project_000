@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import type { Product, ProductComparisonResponse } from '@shop/contracts/products';
@@ -7,7 +7,12 @@ import { ComparisonPage } from './ComparisonPage';
 import { ComparisonSelectionProvider, useComparisonSelection } from './ComparisonSelectionContext';
 
 const api = vi.hoisted(() => ({ getProductComparison: vi.fn() }));
+const countryState = vi.hoisted(() => ({ activeCountry: 'US' }));
 vi.mock('@/api/products', () => api);
+vi.mock('@/hooks/CountryContext', () => ({
+  useOptionalCountry: () => ({ activeCountry: countryState.activeCountry }),
+  useCountry: () => ({ activeCountry: countryState.activeCountry }),
+}));
 
 function product(id: string, name = `Powder ${id}`): Product {
   return {
@@ -36,6 +41,14 @@ function response(...products: Product[]): ProductComparisonResponse {
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 function Location() {
   return <output data-testid="location">{useLocation().search}</output>;
 }
@@ -45,8 +58,8 @@ function Selection() {
   return <output data-testid="selection">{selectedIds.join(',')}</output>;
 }
 
-function renderPage(path: string) {
-  return render(
+function page(path: string) {
+  return (
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route
@@ -60,13 +73,18 @@ function renderPage(path: string) {
           }
         />
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+}
+
+function renderPage(path: string) {
+  return render(page(path));
 }
 
 describe('ComparisonPage', () => {
   beforeEach(() => {
     api.getProductComparison.mockReset();
+    countryState.activeCountry = 'US';
     window.localStorage.clear();
   });
 
@@ -123,6 +141,36 @@ describe('ComparisonPage', () => {
     expect(await screen.findByText(/Not enough active products/)).toBeInTheDocument();
     expect(screen.getByText(/no longer active/)).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  it('reloads for a country switch and ignores the prior-country response', async () => {
+    const oldResponse = deferred<ProductComparisonResponse>();
+    const currentResponse = deferred<ProductComparisonResponse>();
+    api.getProductComparison
+      .mockReturnValueOnce(oldResponse.promise)
+      .mockReturnValueOnce(currentResponse.promise);
+    const view = renderPage('/compare?ids=1,2');
+
+    await waitFor(() => expect(api.getProductComparison).toHaveBeenCalledOnce());
+    const oldSignal = api.getProductComparison.mock.calls[0]?.[1] as AbortSignal | undefined;
+
+    countryState.activeCountry = 'DE';
+    view.rerender(page('/compare?ids=1,2'));
+    await waitFor(() => expect(api.getProductComparison).toHaveBeenCalledTimes(2));
+    expect(oldSignal?.aborted).toBe(true);
+
+    await act(async () => {
+      currentResponse.resolve(response(product('1', 'DE one'), product('2', 'DE two')));
+      await currentResponse.promise;
+    });
+    await act(async () => {
+      oldResponse.resolve(response(product('1', 'US one'), product('2', 'US two')));
+      await oldResponse.promise;
+    });
+
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /DE one/ })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: /US one/ })).not.toBeInTheDocument();
   });
 
   it('clears the comparison after a removal leaves fewer than two products', async () => {

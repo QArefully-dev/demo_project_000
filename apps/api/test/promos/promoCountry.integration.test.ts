@@ -62,6 +62,31 @@ void test('omitting countries on admin update preserves targeting and opaque rej
   assert.equal(deCart.statusCode, 201, deCart.body);
   const cartId = deCart.json<{ cartId: string }>().cartId;
 
+  const threshold = await app.inject({
+    method: 'POST',
+    url: '/api/admin/promos',
+    headers: { cookie: adminCookie },
+    payload: {
+      code: 'THRESHOLD10',
+      ...promoFields,
+      minSubtotalCents: 12_345,
+    },
+  });
+  assert.equal(threshold.statusCode, 201, threshold.body);
+  const thresholdResult = await app.inject({
+    method: 'POST',
+    url: '/api/promo/validate',
+    payload: { cartId, promoCode: 'THRESHOLD10' },
+  });
+  assert.equal(thresholdResult.statusCode, 200, thresholdResult.body);
+  assert.deepEqual(thresholdResult.json(), {
+    valid: false,
+    errorCode: 'MIN_SUBTOTAL',
+    minSubtotalCents: 12_345,
+  });
+  assert.equal('error' in thresholdResult.json(), false);
+  assert.doesNotMatch(thresholdResult.body, /[$£€]/);
+
   const update = await app.inject({
     method: 'PUT',
     url: '/api/admin/promos/COUNTRY10',
@@ -85,7 +110,6 @@ void test('omitting countries on admin update preserves targeting and opaque rej
   assert.equal(outside.body, unknown.body);
   assert.deepEqual(outside.json(), {
     valid: false,
-    error: 'Promo code not found or inactive',
     errorCode: 'INVALID',
   });
   assert.deepEqual(update.json<{ countries: string[] }>().countries, ['UK']);
@@ -100,6 +124,17 @@ void test('omitting countries on admin update preserves targeting and opaque rej
       .all('COUNTRY10'),
     [{ country: 'UK' }],
   );
+
+  const missingCart = await app.inject({
+    method: 'POST',
+    url: '/api/promo/validate',
+    payload: {
+      cartId: '00000000-0000-4000-8000-000000000000',
+      promoCode: 'THRESHOLD10',
+    },
+  });
+  assert.equal(missingCart.statusCode, 404);
+  assert.equal(missingCart.json<{ code: string }>().code, 'CART_NOT_FOUND');
 });
 
 void test('explicit empty countries on admin update clears targeting globally', async (t) => {
@@ -251,7 +286,6 @@ void test('country-targeted promos apply, reject opaquely, and replace targeting
   assert.equal(outside.body, unknown.body);
   assert.deepEqual(outside.json(), {
     valid: false,
-    error: 'Promo code not found or inactive',
     errorCode: 'INVALID',
   });
 

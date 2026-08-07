@@ -112,7 +112,7 @@ describe('Help pages', () => {
 
     // Flat fee, stated as a per-line charge and tied to the pricing contract value.
     expect(screen.getByRole('heading', { level: 2, name: 'Blending fee' })).toBeInTheDocument();
-    expect(screen.getByText(/flat blending fee of \$25\.00/)).toBeInTheDocument();
+    expect(screen.getByText(/flat blending fee of \$31\.25/)).toBeInTheDocument();
     expect(screen.getByText(/per line rather than per sack/)).toBeInTheDocument();
 
     // Ingredient stock asymmetry: sold-out ingredients stay selectable, the base does not.

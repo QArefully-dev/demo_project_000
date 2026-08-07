@@ -9,11 +9,21 @@ import { ErrorMessage } from '@/components/ErrorMessage';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { useLocalisation, useMessages } from '@/i18n/LocaleContext';
+import {
+  adminDiagnosticsMessages,
+  localizeAdminDiagnosticsError,
+  type AdminDiagnosticsMessageKey,
+} from '@shop/localisation/messages/adminDiagnostics';
 
 const PAGE_SIZE = 10;
 const statuses: CapturedWebhookStatus[] = ['captured', 'processed', 'ignored_stale', 'rejected'];
-const messageFor = (error: unknown, fallback: string) =>
-  error instanceof Error && error.message ? error.message : fallback;
+const WEBHOOK_STATUS_LABELS: Record<CapturedWebhookStatus, AdminDiagnosticsMessageKey> = {
+  captured: 'admin.webhooks.status.captured',
+  processed: 'admin.webhooks.status.processed',
+  ignored_stale: 'admin.webhooks.status.ignored_stale',
+  rejected: 'admin.webhooks.status.rejected',
+};
 const readPage = (value: string | null) => {
   const page = Number(value);
   return Number.isInteger(page) && page > 0 ? page : 1;
@@ -25,6 +35,8 @@ type QueryUpdate = Omit<Partial<AdminCapturedWebhookListQuery>, 'status'> & {
 };
 
 export function AdminWebhooksPage() {
+  const { country, formatCount } = useLocalisation();
+  const t = useMessages(adminDiagnosticsMessages);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const status = readStatus(searchParams.get('status'));
@@ -62,7 +74,9 @@ export function AdminWebhooksPage() {
       })
       .catch((requestError: unknown) => {
         if (current && !controller.signal.aborted)
-          setError(messageFor(requestError, 'Unable to load webhooks.'));
+          setError(
+            localizeAdminDiagnosticsError(requestError, country, 'admin.webhooks.loadError'),
+          );
       })
       .finally(() => {
         if (current && !controller.signal.aborted) setLoading(false);
@@ -71,7 +85,7 @@ export function AdminWebhooksPage() {
       current = false;
       controller.abort();
     };
-  }, [page, reloadVersion, status, updateParams]);
+  }, [country, page, reloadVersion, status, updateParams]);
   useEffect(() => {
     if (result && focusAfterReload.current) {
       focusAfterReload.current = false;
@@ -80,23 +94,21 @@ export function AdminWebhooksPage() {
   }, [result]);
   if (loading && !result) return <LoadingSpinner />;
   if (error && !result) return <ErrorMessage message={error} onRetry={refresh} />;
-  if (!result) return <ErrorMessage message="Webhook inspector is unavailable" onRetry={refresh} />;
+  if (!result) return <ErrorMessage message={t('admin.webhooks.unavailable')} onRetry={refresh} />;
   const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
   return (
     <section className="mx-auto max-w-4xl space-y-6" aria-labelledby="admin-webhooks-heading">
       <div>
-        <p className="section-eyebrow">Administration</p>
+        <p className="section-eyebrow">{t('admin.common.administration')}</p>
         <h1
           ref={headingRef}
           id="admin-webhooks-heading"
           tabIndex={-1}
           className="section-heading mt-2"
         >
-          Captured webhooks
+          {t('admin.webhooks.heading')}
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Inspect simulated payment processor deliveries.
-        </p>
+        <p className="mt-2 text-sm text-muted-foreground">{t('admin.webhooks.description')}</p>
       </div>
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -104,26 +116,26 @@ export function AdminWebhooksPage() {
         </p>
       )}
       <label className="text-sm font-medium">
-        Status{' '}
+        {t('admin.webhooks.statusLabel')}{' '}
         <select
-          aria-label="Webhook status"
+          aria-label={t('admin.webhooks.statusLabel')}
           className="ml-2 rounded-md border border-input bg-background px-2 py-1"
           value={status ?? ''}
           onChange={(event) =>
             updateParams({ status: readStatus(event.target.value) ?? null, page: 1 })
           }
         >
-          <option value="">All</option>
+          <option value="">{t('admin.common.all')}</option>
           {statuses.map((item) => (
             <option key={item} value={item}>
-              {item}
+              {t(WEBHOOK_STATUS_LABELS[item])}
             </option>
           ))}
         </select>
       </label>
       {result.items.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center">No webhooks match this filter.</CardContent>
+          <CardContent className="py-12 text-center">{t('admin.webhooks.empty')}</CardContent>
         </Card>
       ) : (
         <div className="space-y-3" aria-busy={loading}>
@@ -134,7 +146,7 @@ export function AdminWebhooksPage() {
                   <div>
                     <h2 className="font-semibold">{webhook.eventType}</h2>
                     <p className="text-sm text-muted-foreground">
-                      #{webhook.id} · {webhook.status} · {webhook.eventId}
+                      #{webhook.id} · {t(WEBHOOK_STATUS_LABELS[webhook.status])} · {webhook.eventId}
                     </p>
                   </div>
                   <Button
@@ -142,7 +154,7 @@ export function AdminWebhooksPage() {
                     variant="outline"
                     onClick={() => navigate(`/admin/webhooks/${webhook.id}`)}
                   >
-                    View detail
+                    {t('admin.common.viewDetail')}
                   </Button>
                 </CardContent>
               </Card>
@@ -150,17 +162,20 @@ export function AdminWebhooksPage() {
           ))}
         </div>
       )}
-      <nav className="flex items-center justify-between" aria-label="Webhook pages">
+      <nav className="flex items-center justify-between" aria-label={t('admin.webhooks.pages')}>
         <Button
           type="button"
           variant="outline"
           disabled={page <= 1 || loading}
           onClick={() => updateParams({ page: page - 1 })}
         >
-          Previous
+          {t('admin.common.previous')}
         </Button>
         <span className="text-sm text-muted-foreground">
-          Page {result.page} of {totalPages}
+          {t('admin.common.page', {
+            page: formatCount(result.page),
+            totalPages: formatCount(totalPages),
+          })}
         </span>
         <Button
           type="button"
@@ -168,7 +183,7 @@ export function AdminWebhooksPage() {
           disabled={page >= totalPages || loading}
           onClick={() => updateParams({ page: page + 1 })}
         >
-          Next
+          {t('admin.common.next')}
         </Button>
       </nav>
     </section>

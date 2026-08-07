@@ -157,9 +157,7 @@ export function AdminVariantsPage() {
         <h1 id="admin-variants-heading" className="section-heading">
           {t('adminCatalog.lots.heading')}
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {t('adminCatalog.lots.description')}
-        </p>
+        <p className="mt-2 text-sm text-muted-foreground">{t('adminCatalog.lots.description')}</p>
       </div>
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -167,7 +165,7 @@ export function AdminVariantsPage() {
         </p>
       )}
       <label className="text-sm">
-        {t('adminCatalog.lots.productId)}{' '}
+        {t('adminCatalog.lots.productId')}{' '}
         <input
           aria-label={t('adminCatalog.lots.productId')}
           value={productId}
@@ -397,9 +395,7 @@ export function AdminVariantsPage() {
                       {t('adminCatalog.lots.retire')}
                     </Button>
                   )}
-                  {confirming && (
-                    <p className="text-sm">{t('adminCatalog.confirmRetirement')}</p>
-                  )}
+                  {confirming && <p className="text-sm">{t('adminCatalog.confirmRetirement')}</p>}
                 </div>
               )}
             </CardContent>

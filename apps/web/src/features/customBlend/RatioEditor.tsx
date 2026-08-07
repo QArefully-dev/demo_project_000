@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import type { CustomBlendOption } from '@shop/contracts/custom-blends';
 import { MAX_INGREDIENT_PERCENTAGE, MIN_INGREDIENT_PERCENTAGE } from './customBlendState';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { customBlendMessages } from '@shop/localisation/messages/customBlend';
 
 export function RatioEditor({
   options,
@@ -15,6 +17,7 @@ export function RatioEditor({
   onPercentageChange: (variantId: number, percentage: number) => void;
   onBalanceEvenly: () => void;
 }) {
+  const { translate, formatCount } = useLocalisation();
   const selected = options.filter((option) =>
     selectedVariantIds.includes(option.variant.variantId),
   );
@@ -58,18 +61,21 @@ export function RatioEditor({
   return (
     <section aria-labelledby="custom-blend-ratios-heading" className="grid gap-3">
       <h2 id="custom-blend-ratios-heading" className="text-xl font-semibold">
-        3. Ratios
+        {translate(customBlendMessages, 'customBlend.ratiosStep')}
       </h2>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground" aria-live="polite" aria-atomic="true">
-          Ingredients total {totalPercentage}% of the 50% budget. {remainingBudget}% remaining.
+          {translate(customBlendMessages, 'customBlend.ratioBudget', {
+            totalLabel: formatCount(totalPercentage),
+            remainingLabel: formatCount(remainingBudget),
+          })}
         </p>
         <button
           type="button"
           className="rounded-md border px-3 py-1.5 text-sm"
           onClick={onBalanceEvenly}
         >
-          Balance evenly
+          {translate(customBlendMessages, 'customBlend.balanceEvenly')}
         </button>
       </div>
       <ul className="grid gap-3">
@@ -81,11 +87,15 @@ export function RatioEditor({
               className="custom-blend-surface flex items-center gap-2 rounded-xl px-4 py-3"
             >
               <label htmlFor={id} className="min-w-32 text-sm">
-                {option.productName} percentage
+                {translate(customBlendMessages, 'customBlend.percentage', {
+                  name: option.productName,
+                })}
               </label>
               <input
                 type="range"
-                aria-label={`${option.productName} percentage slider`}
+                aria-label={translate(customBlendMessages, 'customBlend.percentageSlider', {
+                  name: option.productName,
+                })}
                 min={MIN_INGREDIENT_PERCENTAGE}
                 max={MAX_INGREDIENT_PERCENTAGE}
                 step={1}
@@ -96,7 +106,9 @@ export function RatioEditor({
               />
               <button
                 type="button"
-                aria-label={`Decrease ${option.productName} percentage`}
+                aria-label={translate(customBlendMessages, 'customBlend.decreasePercentage', {
+                  name: option.productName,
+                })}
                 className="rounded border px-2"
                 onClick={() =>
                   changePercentage(
@@ -122,7 +134,9 @@ export function RatioEditor({
               />
               <button
                 type="button"
-                aria-label={`Increase ${option.productName} percentage`}
+                aria-label={translate(customBlendMessages, 'customBlend.increasePercentage', {
+                  name: option.productName,
+                })}
                 className="rounded border px-2"
                 onClick={() =>
                   changePercentage(

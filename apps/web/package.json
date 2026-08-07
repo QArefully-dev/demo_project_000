@@ -8,7 +8,7 @@
     "build": "tsc && vite build --configLoader runner",
     "typecheck": "tsc --noEmit",
     "test": "npm run test:unit",
-    "test:unit": "tsx --test src/features/checkout/cartValidation.test.ts && vitest run --configLoader runner --exclude 'src/features/checkout/cartValidation.test.ts' --exclude 'src/**/*.integration.test.{ts,tsx}'",
+    "test:unit": "tsx --test src/features/checkout/cartValidation.node-test.ts && vitest run --configLoader runner --exclude 'src/**/*.integration.test.{ts,tsx}'",
     "test:integration": "vitest run --configLoader runner --config vitest.integration.config.ts --passWithNoTests"
   },
   "dependencies": {
@@ -19,6 +19,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.23.0",
+    "@shop/localisation": "*",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "react-router-dom": "^6.30.4",

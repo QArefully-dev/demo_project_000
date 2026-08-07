@@ -25,7 +25,7 @@ describe('CategoryNav', () => {
   it('links All Materials to the unfiltered catalogue and marks it current only there', () => {
     renderNav('/catalog');
 
-    const allMaterials = screen.getByRole('link', { name: 'All Materials' });
+    const allMaterials = screen.getByRole('link', { name: 'All materials' });
     expect(allMaterials).toHaveAttribute('href', '/catalog');
     expect(allMaterials).toHaveAttribute('aria-current', 'page');
   });
@@ -37,7 +37,7 @@ describe('CategoryNav', () => {
       'aria-current',
       'page',
     );
-    expect(screen.getByRole('link', { name: 'All Materials' })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('link', { name: 'All materials' })).not.toHaveAttribute('aria-current');
     expect(screen.getByRole('link', { name: 'Sports Nutrition' })).not.toHaveAttribute(
       'aria-current',
     );

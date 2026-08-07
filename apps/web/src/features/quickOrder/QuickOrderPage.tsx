@@ -1,14 +1,17 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { useCartContext } from '@/hooks/CartContext';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { repeatBuyingMessages } from '@shop/localisation/messages/repeatBuying';
 import { QuickOrderOutcomeList } from './QuickOrderOutcomeList';
-import { QUICK_ORDER_FAILURE_MESSAGE, type QuickOrderState } from './quickOrderPresentation';
+import { QUICK_ORDER_FAILURE_KEY, type QuickOrderState } from './quickOrderPresentation';
 
 const EXAMPLE_LINES = 'BKP-0001-001, 4\nGDN-1043-001, 6';
 
 /** Paste-to-cart entry point for buyers who already know the material codes they need. */
 export function QuickOrderPage() {
   const { isCartAvailable, isActionPending, quickOrder } = useCartContext();
+  const { translate } = useLocalisation();
   const [text, setText] = useState('');
   const [state, setState] = useState<QuickOrderState>({ kind: 'idle' });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -28,7 +31,11 @@ export function QuickOrderPage() {
       setState(
         response
           ? { kind: 'result', response }
-          : { kind: 'error', message: QUICK_ORDER_FAILURE_MESSAGE },
+          : {
+              kind: 'error',
+              message: translate(repeatBuyingMessages, QUICK_ORDER_FAILURE_KEY),
+              messageKey: QUICK_ORDER_FAILURE_KEY,
+            },
       );
     } finally {
       submissionInFlightRef.current = false;
@@ -36,26 +43,34 @@ export function QuickOrderPage() {
     }
   }
 
-  const errorMessage = state.kind === 'error' ? state.message : null;
+  const errorMessage =
+    state.kind === 'error'
+      ? state.messageKey
+        ? translate(repeatBuyingMessages, state.messageKey, state.params)
+        : state.message
+      : null;
 
   return (
     <div className="mx-auto max-w-2xl pb-12">
       <header className="mb-7 max-w-xl">
-        <p className="section-eyebrow">Quick order</p>
-        <h1 className="section-heading mt-2">Add materials by item code</h1>
+        <p className="section-eyebrow">
+          {translate(repeatBuyingMessages, 'repeatBuying.quickOrder')}
+        </p>
+        <h1 className="section-heading mt-2">
+          {translate(repeatBuyingMessages, 'repeatBuying.quickOrderHeading')}
+        </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Paste one material and amount per line. We will check each line and add the available
-          materials to your cart.
+          {translate(repeatBuyingMessages, 'repeatBuying.quickOrderDescription')}
         </p>
       </header>
 
       <form className="space-y-4" onSubmit={(event) => void handleSubmit(event)}>
         <div className="space-y-2">
           <label htmlFor="quick-order-lines" className="text-sm font-medium">
-            Item codes and amounts
+            {translate(repeatBuyingMessages, 'repeatBuying.itemCodesAndAmounts')}
           </label>
           <p id="quick-order-format" className="text-xs text-muted-foreground">
-            Use one line per material in the format item code, quantity.
+            {translate(repeatBuyingMessages, 'repeatBuying.quickOrderFormat')}
           </p>
           <textarea
             id="quick-order-lines"
@@ -80,7 +95,9 @@ export function QuickOrderPage() {
           </div>
         )}
         <Button type="submit" disabled={submitDisabled}>
-          {isPending ? 'Adding to cart...' : 'Add to cart'}
+          {isPending
+            ? translate(repeatBuyingMessages, 'repeatBuying.addMaterialsToCart')
+            : translate(repeatBuyingMessages, 'repeatBuying.addToCart')}
         </Button>
       </form>
 

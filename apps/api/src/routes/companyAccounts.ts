@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { ErrorResponse, SuccessResponse } from '@shop/contracts/common';
 import {
@@ -20,31 +20,30 @@ import type { SessionService } from '../features/auth/sessionService.js';
 import type { CompanyErrorCode } from '../features/companyAccounts/companyErrors.js';
 import type { CompanyService } from '../features/companyAccounts/companyService.js';
 import { requireAuth } from '../plugins/auth.js';
-import { sendBadRequest, sendConflict, sendForbidden, sendNotFound } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 
 export interface CompanyAccountsRouteServices {
   sessions: SessionService;
   companyAccounts: CompanyService;
 }
-const companyErrors: Record<CompanyErrorCode, { status: 400 | 403 | 404 | 409; message: string }> =
-  {
-    NO_ACTIVE_MEMBERSHIP: { status: 404, message: 'Company' },
-    ALREADY_MEMBER: { status: 409, message: 'User already belongs to a company' },
-    NOT_OWNER: { status: 403, message: 'Owner access required' },
-    SOLE_OWNER: { status: 409, message: 'The company owner cannot be removed or changed' },
-    MEMBERSHIP_NOT_FOUND: { status: 404, message: 'Membership' },
-    INVITE_NOT_FOUND: { status: 404, message: 'Invite' },
-    INVITE_EXPIRED: { status: 400, message: 'Invite has expired' },
-    INVITE_ALREADY_USED: { status: 400, message: 'Invite has already been used' },
-    COMPANY_NOT_FOUND: { status: 404, message: 'Company' },
-    INVALID_ROLE: { status: 400, message: 'Invalid company role' },
-  };
-function sendCompanyError(reply: FastifyReply, code: CompanyErrorCode): void {
-  const mapped = companyErrors[code];
-  if (mapped.status === 400) sendBadRequest(reply, mapped.message);
-  else if (mapped.status === 403) sendForbidden(reply, mapped.message);
-  else if (mapped.status === 404) sendNotFound(reply, mapped.message);
-  else sendConflict(reply, mapped.message);
+const COMPANY_ERROR_STATUS: Record<CompanyErrorCode, 400 | 403 | 404 | 409> = {
+  NO_ACTIVE_MEMBERSHIP: 404,
+  ALREADY_MEMBER: 409,
+  NOT_OWNER: 403,
+  SOLE_OWNER: 409,
+  MEMBERSHIP_NOT_FOUND: 404,
+  INVITE_NOT_FOUND: 404,
+  INVITE_EXPIRED: 400,
+  INVITE_ALREADY_USED: 400,
+  COMPANY_NOT_FOUND: 404,
+  INVALID_ROLE: 400,
+};
+function sendCompanyError(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  code: CompanyErrorCode,
+): void {
+  sendPublicError(request, reply, COMPANY_ERROR_STATUS[code], code);
 }
 function context(userId: number, requestId: string) {
   return { actor: { type: 'user' as const, userId }, requestId };
@@ -89,7 +88,7 @@ export default function companyAccountsRoutes(
         context(user.id, request.id),
       );
       if (!result.ok) {
-        sendCompanyError(reply, result.code);
+        sendCompanyError(request, reply, result.code);
         return;
       }
       reply.code(201).send(result.value);
@@ -106,7 +105,7 @@ export default function companyAccountsRoutes(
     async (request, reply) => {
       const result = company.listMembers(request.authenticatedUser!.id);
       if (!result.ok) {
-        sendCompanyError(reply, result.code);
+        sendCompanyError(request, reply, result.code);
         return;
       }
       reply.code(200).send(result.value);
@@ -138,7 +137,7 @@ export default function companyAccountsRoutes(
         context(user.id, request.id),
       );
       if (!result.ok) {
-        sendCompanyError(reply, result.code);
+        sendCompanyError(request, reply, result.code);
         return;
       }
       reply.code(200).send(result.value);
@@ -168,7 +167,7 @@ export default function companyAccountsRoutes(
         context(user.id, request.id),
       );
       if (!result.ok) {
-        sendCompanyError(reply, result.code);
+        sendCompanyError(request, reply, result.code);
         return;
       }
       reply.code(200).send({ success: true });
@@ -190,7 +189,7 @@ export default function companyAccountsRoutes(
     async (request, reply) => {
       const result = company.listInvites(request.authenticatedUser!.id);
       if (!result.ok) {
-        sendCompanyError(reply, result.code);
+        sendCompanyError(request, reply, result.code);
         return;
       }
       reply.code(200).send(result.value);
@@ -221,7 +220,7 @@ export default function companyAccountsRoutes(
         context(user.id, request.id),
       );
       if (!result.ok) {
-        sendCompanyError(reply, result.code);
+        sendCompanyError(request, reply, result.code);
         return;
       }
       reply.code(201).send(result.value);
@@ -249,7 +248,7 @@ export default function companyAccountsRoutes(
         context(user.id, request.id),
       );
       if (!result.ok) {
-        sendCompanyError(reply, result.code);
+        sendCompanyError(request, reply, result.code);
         return;
       }
       reply.code(200).send({ success: true });
@@ -278,7 +277,7 @@ export default function companyAccountsRoutes(
         context(user.id, request.id),
       );
       if (!result.ok) {
-        sendCompanyError(reply, result.code);
+        sendCompanyError(request, reply, result.code);
         return;
       }
       reply.code(200).send(result.value);
@@ -307,7 +306,7 @@ export default function companyAccountsRoutes(
         context(user.id, request.id),
       );
       if (!result.ok) {
-        sendCompanyError(reply, result.code);
+        sendCompanyError(request, reply, result.code);
         return;
       }
       reply.code(200).send(result.value);

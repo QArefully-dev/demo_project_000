@@ -3,6 +3,8 @@ import type { CustomBlendOption } from '@shop/contracts/custom-blends';
 import { PackagingArtwork } from '@/components/packaging/PackagingArtwork';
 import { resolveCatalogPackagingPalette } from '@/components/packaging/catalogPackagingPalettes';
 import { resolvePackagingSpec } from '@/components/packaging/packagingSpec';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { customBlendMessages } from '@shop/localisation/messages/customBlend';
 
 export function IngredientPicker({
   options,
@@ -15,11 +17,12 @@ export function IngredientPicker({
   isLimitReached: boolean;
   onToggle: (variantId: number) => void;
 }) {
+  const { translate, formatCount } = useLocalisation();
   const [query, setQuery] = useState('');
   const groupedOptions = useMemo(() => {
-    const needle = query.trim().toLocaleLowerCase();
+    const needle = query.trim().toLowerCase();
     return options
-      .filter((option) => !needle || option.productName.toLocaleLowerCase().includes(needle))
+      .filter((option) => !needle || option.productName.toLowerCase().includes(needle))
       .reduce<Map<string, CustomBlendOption[]>>((groups, option) => {
         const group = groups.get(option.category) ?? [];
         group.push(option);
@@ -33,10 +36,12 @@ export function IngredientPicker({
       className="grid gap-3 border-none p-0"
       aria-describedby="custom-blend-selection-count"
     >
-      <legend className="text-xl font-semibold">2. Ingredients</legend>
+      <legend className="text-xl font-semibold">
+        {translate(customBlendMessages, 'customBlend.ingredientsStep')}
+      </legend>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <label className="grid gap-1 text-sm">
-          Search ingredients
+          {translate(customBlendMessages, 'customBlend.searchIngredients')}
           <input
             type="search"
             value={query}
@@ -45,22 +50,33 @@ export function IngredientPicker({
           />
         </label>
         <p id="custom-blend-selection-count" className="text-sm text-muted-foreground">
-          {selectedVariantIds.length} of 4 selected / {Math.max(0, 4 - selectedVariantIds.length)}{' '}
-          remaining
+          {translate(customBlendMessages, 'customBlend.selectionCount', {
+            count: selectedVariantIds.length,
+            countLabel: formatCount(selectedVariantIds.length),
+            remainingLabel: formatCount(Math.max(0, 4 - selectedVariantIds.length)),
+          })}
         </p>
       </div>
       {options.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No compatible ingredients are available for this base material.
+          {translate(customBlendMessages, 'customBlend.noCompatibleIngredients')}
         </p>
       ) : !hasMatches ? (
         <p className="text-sm text-muted-foreground" role="status">
-          No ingredients match “{query.trim()}”.
+          {translate(customBlendMessages, 'customBlend.noIngredientsMatch', {
+            query: query.trim(),
+          })}
         </p>
       ) : (
         <div className="grid gap-5">
           {[...groupedOptions].map(([category, categoryOptions]) => (
-            <section key={category} aria-label={`${category} ingredients`} className="grid gap-2">
+            <section
+              key={category}
+              aria-label={translate(customBlendMessages, 'customBlend.categoryIngredients', {
+                category,
+              })}
+              className="grid gap-2"
+            >
               <h3 className="text-sm font-medium text-muted-foreground">{category}</h3>
               <ul className="grid gap-3 sm:grid-cols-2">
                 {categoryOptions.map((option) => {
@@ -70,10 +86,12 @@ export function IngredientPicker({
                   // when their stock count is zero. Only an inactive server-provided variant or the
                   // local selection limit makes a tile ineligible for interaction.
                   const unavailableReason = !option.variant.active
-                    ? 'This ingredient is unavailable'
+                    ? translate(customBlendMessages, 'customBlend.ingredientUnavailable')
                     : null;
                   const limitReason =
-                    isLimitReached && !selected ? 'Ingredient limit reached' : null;
+                    isLimitReached && !selected
+                      ? translate(customBlendMessages, 'customBlend.ingredientLimit')
+                      : null;
                   const reason = unavailableReason ?? limitReason;
                   // An inactive variant must never be removable, even if it was selected
                   // before it became inactive. A selected tile at the local limit remains
@@ -133,7 +151,7 @@ export function IngredientPicker({
                           </span>
                           {option.variant.stockCount === 0 && (
                             <span className="w-fit rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                              Out of stock
+                              {translate(customBlendMessages, 'customBlend.outOfStock')}
                             </span>
                           )}
                           {reason && (

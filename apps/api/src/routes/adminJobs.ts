@@ -15,7 +15,7 @@ import type { SessionService } from '../features/auth/sessionService.js';
 import type { AuditContext } from '../features/audit/auditEvent.js';
 import { JobAdminError, type JobService } from '../features/jobs/jobService.js';
 import { requireAdmin } from '../plugins/auth.js';
-import { sendBadRequest, sendConflict, sendNotFound } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 
 const JobIdParam = Type.Object(
   { jobId: Type.String({ pattern: '^[1-9][0-9]*$' }) },
@@ -39,15 +39,18 @@ const auditContext = (
   standingCountry,
 });
 
-function sendJobError(reply: Parameters<typeof sendBadRequest>[0], error: JobAdminError) {
-  sendBadRequest(reply, error.message);
+function sendJobError(
+  request: Parameters<typeof sendPublicError>[0],
+  reply: Parameters<typeof sendPublicError>[1],
+) {
+  sendPublicError(request, reply, 400, 'INVALID_QUERY');
 }
 
 export default function adminJobsRoutes(
   app: FastifyInstance,
   { services }: { services: AdminJobsRouteServices },
 ): void {
-  app.addHook('onRequest', requireAdmin(services.sessions));
+  app.addHook('preValidation', requireAdmin(services.sessions));
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
   typed.get(
     '/api/admin/jobs',
@@ -62,7 +65,7 @@ export default function adminJobsRoutes(
       try {
         return services.jobs.list(request.query);
       } catch (error) {
-        if (error instanceof JobAdminError) return sendJobError(reply, error);
+        if (error instanceof JobAdminError) return sendJobError(request, reply);
         throw error;
       }
     },
@@ -85,10 +88,10 @@ export default function adminJobsRoutes(
     (request, reply) => {
       try {
         const job = services.jobs.get(Number(request.params.jobId));
-        if (!job) return sendNotFound(reply, 'Job');
+        if (!job) return sendPublicError(request, reply, 404, 'JOB_NOT_FOUND');
         return job;
       } catch (error) {
-        if (error instanceof JobAdminError) return sendJobError(reply, error);
+        if (error instanceof JobAdminError) return sendJobError(request, reply);
         throw error;
       }
     },
@@ -116,13 +119,15 @@ export default function adminJobsRoutes(
           idempotencyKey: request.body.idempotencyKey,
           context: auditContext(request.authenticatedUser!.id, request.id, request.resolvedCountry),
         });
-        if (result.status === 'not_found') return sendNotFound(reply, 'Job');
-        if (result.status === 'not_retryable') return sendConflict(reply, 'Job is not retryable');
+        if (result.status === 'not_found')
+          return sendPublicError(request, reply, 404, 'JOB_NOT_FOUND');
+        if (result.status === 'not_retryable')
+          return sendPublicError(request, reply, 409, 'JOB_NOT_RETRYABLE');
         if (result.status === 'idempotency_conflict')
-          return sendConflict(reply, 'Idempotency key is already used for another job');
+          return sendPublicError(request, reply, 409, 'IDEMPOTENCY_CONFLICT');
         return result.job;
       } catch (error) {
-        if (error instanceof JobAdminError) return sendJobError(reply, error);
+        if (error instanceof JobAdminError) return sendJobError(request, reply);
         throw error;
       }
     },

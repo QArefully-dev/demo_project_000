@@ -1,4 +1,5 @@
 import type { AuditWriter, Clock } from '../audit/auditService.js';
+import type { Country } from '@shop/contracts/country';
 import type { MailboxRepository } from '../mailbox/mailboxRepository.js';
 import type { PreferencesService } from '../preferences/preferencesService.js';
 import type { FaultSwitch } from '../jobs/faultSwitch.js';
@@ -13,6 +14,8 @@ export interface NotificationDeliveryHandlerDependencies {
   audit: AuditWriter;
   clock: Clock;
   faults: FaultSwitch;
+  /** Available for country-aware delivery extensions; notification snapshots remain immutable. */
+  countryForUser?: (userId: number) => Country | undefined;
 }
 
 /** Delivers only the in-app record identified by the queue payload; it never accepts a recipient from a job. */

@@ -1,4 +1,6 @@
 import type { AuditWriter, Clock } from '../audit/auditService.js';
+import type { Country } from '@shop/contracts/country';
+import { paymentSettledCopy } from '@shop/localisation/messages/asyncContent';
 import type { FaultSwitch } from '../jobs/faultSwitch.js';
 import type { JobHandler } from '../jobs/jobHandlerRegistry.js';
 import type { NotificationService } from '../notifications/notificationService.js';
@@ -13,6 +15,8 @@ export interface WebhookProcessingHandlerDependencies {
   audit: AuditWriter;
   clock: Clock;
   faults: FaultSwitch;
+  /** User-account country is authoritative for recipient snapshots. */
+  countryForUser?: (userId: number) => Country | undefined;
 }
 export function createWebhookProcessingHandler(
   d: WebhookProcessingHandlerDependencies,
@@ -88,16 +92,21 @@ export function createWebhookProcessingHandler(
     });
     if (webhook.eventType === 'payment.succeeded' && payment.orderId !== null) {
       const owner = d.repository.findOrderOwner(payment.orderId);
-      if (owner !== null)
+      if (owner !== null) {
+        // Production composition always supplies the persisted user-country lookup. Keep the
+        // legacy direct-handler fixture deterministic while callers migrate to that dependency.
+        const country = d.countryForUser?.(owner) ?? 'UK';
+        const copy = paymentSettledCopy(country, payment.orderId);
         d.notifications.notify({
           userId: owner,
           kind: 'payment.webhook_settled',
-          title: 'Payment update received',
-          body: `Payment update received for order #${payment.orderId}.`,
+          title: copy.title,
+          body: copy.body,
           entityType: 'order',
           entityId: String(payment.orderId),
           context: { actor: { type: 'system', userId: null }, requestId: null },
         });
+      }
     }
     return { ok: true };
   };

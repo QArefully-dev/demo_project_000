@@ -1,4 +1,5 @@
 import type { PostalAddress } from '@shop/contracts/address';
+import type { Country } from '@shop/contracts/country';
 import type { CustomBlendSnapshot } from '@shop/contracts/custom-blends';
 import type { DeliverySlot } from '@shop/contracts/delivery';
 import type { BillingEntitySnapshot } from '@shop/contracts/trade-account';
@@ -20,6 +21,8 @@ export interface CreateOrderLineVariantSnapshot {
 }
 
 export interface CreateOrderParams {
+  /** Identity country captured from the cart/checkout quote; never the admin browsing country. */
+  country: Country;
   customerName: string;
   customerEmail: string;
   shippingAddress: string;

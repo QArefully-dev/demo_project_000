@@ -17,10 +17,12 @@ import type {
   ShipmentStatus,
 } from '@shop/contracts/orders';
 import type { Country } from '@shop/contracts/country';
+import { orderLifecycleTitle } from '@shop/localisation/messages/asyncContent';
 import type { CreateOrderParams, LifecycleEventInput, PersistedShipment } from './orderTypes.js';
 
 interface OrderRow {
   id: number;
+  country: Country;
   promo_code_applied: string | null;
   promo_category_scope: string | null;
   subtotal_cents: number;
@@ -97,6 +99,8 @@ export interface OrderAccessRepository {
 
 export interface OrderRepository extends OrderAccessRepository {
   create(params: CreateOrderParams): number;
+  /** Identity country frozen on the order, independent of the current browsing country. */
+  country(orderId: number): Country | undefined;
   findById(orderId: number): Order | undefined;
   findDetailById(orderId: number, country?: Country): OrderDetailResponse | undefined;
   findOwnedDetail(orderId: number, userId: number): OrderDetailResponse | undefined;
@@ -297,7 +301,7 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
   const loadOrder = (orderId: number, country?: Country): OrderRow | undefined =>
     db
       .prepare(
-        `SELECT id, promo_code_applied, promo_category_scope, subtotal_cents, discount_base_cents, discount_cents, total_cents, created_at,
+        `SELECT id, country, promo_code_applied, promo_category_scope, subtotal_cents, discount_base_cents, discount_cents, total_cents, created_at,
             lifecycle_status, version, cancelled_at, user_id,
             delivery_mode, delivery_charge_cents, delivery_weight_grams,
             delivery_site_id, delivery_address_json, billing_entity_json,
@@ -322,7 +326,7 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
   const loadExportOwned = (userId: number): Order[] => {
     const rows = db
       .prepare(
-        `SELECT id, promo_code_applied, promo_category_scope, subtotal_cents, discount_base_cents,
+        `SELECT id, country, promo_code_applied, promo_category_scope, subtotal_cents, discount_base_cents,
                 discount_cents, total_cents, created_at, lifecycle_status, version, cancelled_at,
                 user_id, delivery_mode, delivery_charge_cents, delivery_weight_grams,
                 delivery_site_id, delivery_address_json, billing_entity_json, delivery_slot_date,
@@ -406,18 +410,23 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
   };
   return {
     create(params) {
+      // Runtime callers compiled against the pre-country shape may still exist in deterministic
+      // seed/export fixtures. The public CreateOrderParams type requires country; this compatibility
+      // default keeps those historical UK rows representable while all checkout paths pass it.
+      const country = params.country ?? 'UK';
       const result = db
         .prepare(
           `INSERT INTO orders
-            (customer_name, customer_email, shipping_address, promo_code_applied, promo_category_scope,
+            (country, customer_name, customer_email, shipping_address, promo_code_applied, promo_category_scope,
              subtotal_cents, discount_base_cents, discount_cents, total_cents,
              delivery_mode, delivery_charge_cents, delivery_weight_grams,
              delivery_site_id, delivery_address_json, billing_entity_json,
              delivery_slot_date, delivery_slot_window, purchase_order_reference,
              user_id, created_at, lifecycle_status, version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0)`,
         )
         .run(
+          country,
           params.customerName,
           params.customerEmail,
           params.shippingAddress,
@@ -466,9 +475,14 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
           item.variantSnapshot?.deliveryClass ?? null,
         );
       db.prepare(
-        `INSERT INTO order_lifecycle_events (order_id, event_type, title, occurred_at) VALUES (?, 'order_created', 'Order created', ?)`,
-      ).run(orderId, params.createdAt);
+        `INSERT INTO order_lifecycle_events (order_id, event_type, title, occurred_at) VALUES (?, 'order_created', ?, ?)`,
+      ).run(orderId, orderLifecycleTitle(country, 'created'), params.createdAt);
       return orderId;
+    },
+    country(orderId) {
+      const row = db.prepare('SELECT country FROM orders WHERE id = ?').get(orderId) as
+        { country?: Country } | undefined;
+      return row?.country;
     },
     findById(orderId) {
       const row = loadOrder(orderId);

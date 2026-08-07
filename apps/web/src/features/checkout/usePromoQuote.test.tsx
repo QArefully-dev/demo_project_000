@@ -1,11 +1,26 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useReducer } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { validatePromo } from '@/api/promo';
+import { ApiError } from '@/api/client';
+import { LocaleProvider, useLocalisation } from '@/i18n/LocaleContext';
 import type { CheckoutEvent } from './checkoutState';
+import { checkoutReducer, initialCheckoutState } from './checkoutState';
+import { localizeCheckoutError } from './checkoutCopy';
 import { usePromoQuote } from './usePromoQuote';
 
 vi.mock('@/api/promo', () => ({ validatePromo: vi.fn() }));
+const countryState = vi.hoisted(() => ({ activeCountry: 'US' }));
+vi.mock('@/hooks/CountryContext', () => ({
+  useOptionalCountry: () => ({ activeCountry: countryState.activeCountry }),
+  useCountry: () => ({
+    activeCountry: countryState.activeCountry,
+    isAccountBound: false,
+    selectCountry: vi.fn(),
+    countryStorage: null,
+  }),
+}));
 
 function PromoHarness({
   quoteKey,
@@ -27,8 +42,33 @@ function PromoHarness({
   return <button onClick={() => void applyPromo()}>Apply</button>;
 }
 
+function PromoErrorHarness() {
+  const [state, dispatch] = useReducer(checkoutReducer, undefined, initialCheckoutState);
+  const { translate } = useLocalisation();
+  const applyPromo = usePromoQuote({
+    cartId: 'cart-1',
+    cartPresent: true,
+    quoteKey: 'quote-a',
+    promoCode: 'SAVE10',
+    dispatch,
+    retryCart: vi.fn().mockResolvedValue(true),
+  });
+  const error = localizeCheckoutError(state.promoErrorState, translate);
+  return (
+    <>
+      <button onClick={() => void applyPromo()}>Apply</button>
+      <output data-testid="promo-error">{error}</output>
+      <output data-testid="promo-error-code">{state.promoErrorState?.code ?? ''}</output>
+      <output data-testid="promo-error-key">{state.promoErrorState?.key ?? ''}</output>
+    </>
+  );
+}
+
 describe('usePromoQuote', () => {
-  beforeEach(() => vi.mocked(validatePromo).mockReset());
+  beforeEach(() => {
+    vi.mocked(validatePromo).mockReset();
+    countryState.activeCountry = 'US';
+  });
 
   it('ignores a response for a cart quote replaced while validation is in flight', async () => {
     let resolvePromo!: (value: Awaited<ReturnType<typeof validatePromo>>) => void;
@@ -86,11 +126,19 @@ describe('usePromoQuote', () => {
     resolveSecond({ valid: false, error: 'New promo invalid' });
     await second;
     await waitFor(() =>
-      expect(dispatch).toHaveBeenCalledWith({
-        type: 'promo-failed',
-        error: 'New promo invalid',
-        errorCode: null,
-      }),
+      expect(dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'promo-failed',
+          error: 'checkout.promoError.invalid',
+          errorState: {
+            code: null,
+            meta: null,
+            key: 'checkout.promoError.invalid',
+          },
+          errorCode: null,
+          minSubtotalCents: null,
+        }),
+      ),
     );
   });
 
@@ -124,11 +172,61 @@ describe('usePromoQuote', () => {
     resolveCurrentA({ valid: false, error: 'Current A invalid' });
     await currentA;
     await waitFor(() =>
-      expect(dispatch).toHaveBeenCalledWith({
-        type: 'promo-failed',
-        error: 'Current A invalid',
-        errorCode: null,
-      }),
+      expect(dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'promo-failed',
+          error: 'checkout.promoError.invalid',
+          errorState: {
+            code: null,
+            meta: null,
+            key: 'checkout.promoError.invalid',
+          },
+          errorCode: null,
+          minSubtotalCents: null,
+        }),
+      ),
     );
+  });
+
+  it.each([
+    {
+      label: 'network',
+      failure: new ApiError('promo backend secret', null),
+      code: '',
+      key: 'checkout.error.network',
+      copy: 'Shop-Server ist nicht erreichbar',
+    },
+    {
+      label: 'unknown',
+      failure: new Error('promo backend secret'),
+      code: '',
+      key: 'checkout.promoError.generic',
+      copy: 'Aktionscode konnte nicht geprüft werden',
+    },
+    {
+      label: 'coded',
+      failure: new ApiError('promo backend secret', 400, {
+        error: 'promo backend secret',
+        code: 'PROMO_EXPIRED',
+      }),
+      code: 'PROMO_EXPIRED',
+      key: 'checkout.promoError.generic',
+      copy: 'Die Anfrage konnte nicht verarbeitet werden',
+    },
+  ])('localizes DE $label failures without API prose', async ({ failure, code, key, copy }) => {
+    countryState.activeCountry = 'DE';
+    vi.mocked(validatePromo).mockRejectedValueOnce(failure);
+    const user = userEvent.setup();
+    render(
+      <LocaleProvider>
+        <PromoErrorHarness />
+      </LocaleProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(await screen.findByTestId('promo-error')).toHaveTextContent(copy);
+    expect(screen.getByTestId('promo-error')).not.toHaveTextContent('promo backend secret');
+    expect(screen.getByTestId('promo-error-code')).toHaveTextContent(code);
+    expect(screen.getByTestId('promo-error-key')).toHaveTextContent(key);
   });
 });

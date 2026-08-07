@@ -1,6 +1,8 @@
 import { Search } from 'lucide-react';
 import type { ProductQuery } from '@shop/contracts/products';
 import { Input } from '@/components/ui/input';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { discoveryMessages } from '@shop/localisation/messages/discovery';
 
 interface CatalogToolbarProps {
   localQuery: string;
@@ -19,14 +21,16 @@ export function CatalogToolbar({
   sortOptions,
   onSortChange,
 }: CatalogToolbarProps) {
+  const { translate } = useLocalisation();
+  const t = (key: keyof typeof discoveryMessages) => translate(discoveryMessages, key);
   return (
     <div className="mb-7 grid gap-3 rounded-2xl border border-border/80 bg-surface-raised p-3 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <div className="relative min-w-0">
         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           type="search"
-          aria-label="Search materials"
-          placeholder="Search protein, campfire, water..."
+          aria-label={t('catalog.searchLabel')}
+          placeholder={t('catalog.searchPlaceholder')}
           className="h-10 rounded-full pl-9"
           value={localQuery}
           onChange={(event) => onQueryChange(event.target.value)}
@@ -38,7 +42,7 @@ export function CatalogToolbar({
           htmlFor="catalog-sort"
           className="flex shrink-0 items-center gap-2 text-sm font-medium"
         >
-          <span className="hidden text-muted-foreground sm:inline">Sort</span>
+          <span className="hidden text-muted-foreground sm:inline">{t('catalog.sort')}</span>
           <select
             id="catalog-sort"
             className="h-10 max-w-44 rounded-lg border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

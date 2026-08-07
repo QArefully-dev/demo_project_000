@@ -17,12 +17,127 @@ const foreignExampleCountry = {
   FR: 'UK',
 } as const satisfies Readonly<Record<Country, Country>>;
 
+const expectedDisplayMetadata = {
+  UK: {
+    language: 'en',
+    numberLocale: 'en-GB',
+    dateLocale: 'en-GB',
+    displayCurrency: 'GBP',
+    exchangeRate: [1, 1],
+    bannerMessageKey: undefined,
+  },
+  US: {
+    language: 'en',
+    numberLocale: 'en-US',
+    dateLocale: 'en-US',
+    displayCurrency: 'USD',
+    exchangeRate: [5, 4],
+    bannerMessageKey: undefined,
+  },
+  CN: {
+    language: 'zh',
+    numberLocale: 'zh-CN',
+    dateLocale: 'zh-CN',
+    displayCurrency: 'CNY',
+    exchangeRate: [9, 1],
+    bannerMessageKey: undefined,
+  },
+  PL: {
+    language: 'pl',
+    numberLocale: 'pl-PL',
+    dateLocale: 'pl-PL',
+    displayCurrency: 'PLN',
+    exchangeRate: [5, 1],
+    bannerMessageKey: undefined,
+  },
+  ES: {
+    language: 'es',
+    numberLocale: 'es-ES',
+    dateLocale: 'es-ES',
+    displayCurrency: 'EUR',
+    exchangeRate: [117, 100],
+    bannerMessageKey: 'country.banner',
+  },
+  DE: {
+    language: 'de',
+    numberLocale: 'de-DE',
+    dateLocale: 'de-DE',
+    displayCurrency: 'EUR',
+    exchangeRate: [117, 100],
+    bannerMessageKey: undefined,
+  },
+  FR: {
+    language: 'fr',
+    numberLocale: 'fr-FR',
+    dateLocale: 'fr-FR',
+    displayCurrency: 'EUR',
+    exchangeRate: [117, 100],
+    bannerMessageKey: undefined,
+  },
+} as const satisfies Readonly<
+  Record<
+    Country,
+    Pick<CountryProfile, 'language' | 'numberLocale' | 'dateLocale' | 'displayCurrency'> & {
+      exchangeRate: readonly [number, number];
+      bannerMessageKey: string | undefined;
+    }
+  >
+>;
+
 void test('profiles are total over supported countries', () => {
   assert.deepStrictEqual(Object.keys(COUNTRY_PROFILES), SUPPORTED_COUNTRIES);
 
   for (const country of SUPPORTED_COUNTRIES) {
     const profile: CountryProfile = countryProfile(country);
     assert.strictEqual(profile, COUNTRY_PROFILES[country]);
+  }
+});
+
+void test('display metadata has the exact seven-country fixtures', () => {
+  for (const country of SUPPORTED_COUNTRIES) {
+    const profile = countryProfile(country);
+    const expected = expectedDisplayMetadata[country];
+
+    assert.deepStrictEqual(
+      {
+        language: profile.language,
+        numberLocale: profile.numberLocale,
+        dateLocale: profile.dateLocale,
+        displayCurrency: profile.displayCurrency,
+        exchangeRate: [profile.exchangeRate.numerator, profile.exchangeRate.denominator],
+        bannerMessageKey: profile.bannerMessageKey,
+      },
+      expected,
+    );
+  }
+});
+
+void test('display metadata has constructible Intl locales/currencies/time zones and positive rates', () => {
+  for (const country of SUPPORTED_COUNTRIES) {
+    const profile = countryProfile(country);
+
+    assert.doesNotThrow(() => new Intl.PluralRules(profile.language), `${country} language`);
+    assert.doesNotThrow(
+      () => new Intl.NumberFormat(profile.numberLocale),
+      `${country} number locale`,
+    );
+    assert.doesNotThrow(
+      () =>
+        new Intl.NumberFormat(profile.numberLocale, {
+          style: 'currency',
+          currency: profile.displayCurrency,
+        }),
+      `${country} display currency`,
+    );
+    assert.doesNotThrow(
+      () => new Intl.DateTimeFormat(profile.dateLocale, { timeZone: profile.timeZone }),
+      `${country} date locale/time zone`,
+    );
+
+    for (const [name, value] of Object.entries(profile.exchangeRate)) {
+      assert.equal(Number.isSafeInteger(value), true, `${country} ${name} integer`);
+      assert.ok(value > 0, `${country} ${name} positive`);
+    }
   }
 });
 
@@ -48,11 +163,12 @@ void test('delivery rules have a destination and a valid local cut-off hour', ()
   }
 });
 
-void test('only ES carries a banner', () => {
-  const countriesWithBanner = SUPPORTED_COUNTRIES.filter(
-    (country) => countryProfile(country).banner !== undefined,
-  );
-  assert.deepStrictEqual(countriesWithBanner, ['ES']);
+void test('country copy uses stable lookup keys', () => {
+  for (const country of SUPPORTED_COUNTRIES) {
+    const profile = countryProfile(country);
+    assert.equal(profile.postcode.labelMessageKey, 'postcode.label');
+  }
+  assert.equal(countryProfile('ES').bannerMessageKey, 'country.banner');
 });
 
 void test('exactly one country blocks one live category', () => {

@@ -1,13 +1,18 @@
 import { Type, type Static } from '@sinclair/typebox';
+import {
+  PublicErrorResponse,
+  type PublicErrorResponse as PublicErrorResponseType,
+} from './publicErrors.js';
 
 /** Monetary value in cents. Safe integer >= 0. */
 export const MoneyCents = Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER });
 
-export const ErrorResponse = Type.Object({
-  error: Type.String({ minLength: 1, maxLength: 500 }),
-  details: Type.Optional(Type.Unknown()),
-});
-export type ErrorResponse = Static<typeof ErrorResponse>;
+/**
+ * Transition-compatible public error response. New producers should set `code` and safe `meta`;
+ * `details` remains an explicitly deprecated legacy field while route packets migrate.
+ */
+export const ErrorResponse = PublicErrorResponse;
+export type ErrorResponse = PublicErrorResponseType;
 
 export const SuccessResponse = Type.Object({
   success: Type.Literal(true),

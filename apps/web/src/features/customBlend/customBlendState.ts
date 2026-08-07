@@ -2,6 +2,13 @@ import type {
   CustomBlendIngredientInput,
   CustomBlendSnapshot,
 } from '@shop/contracts/custom-blends';
+import type { CustomBlendMessageKey } from '@shop/localisation/messages/customBlend';
+
+export type CustomBlendMessageParam = string | number | bigint;
+export type CustomBlendMessage = {
+  key: CustomBlendMessageKey;
+  params?: Readonly<Record<string, CustomBlendMessageParam>>;
+};
 
 /**
  * Configurator draft state and derived blend facts.
@@ -215,7 +222,7 @@ export function balanceEvenlyPercentages(
 
 export type CustomBlendValidation = {
   isValid: boolean;
-  errors: string[];
+  errors: CustomBlendMessage[];
 };
 
 function isWholePercentageInRange(value: number): boolean {
@@ -226,26 +233,41 @@ function isWholePercentageInRange(value: number): boolean {
   );
 }
 
-/** Customer-facing mirror of the server blend rules. Messages are exact and deterministic. */
+/** Customer-facing mirror of server blend rules. Errors retain keys/params until render. */
 export function customBlendValidation(state: CustomBlendState): CustomBlendValidation {
-  const errors: string[] = [];
+  const errors: CustomBlendMessage[] = [];
 
   if (state.baseVariantId === null) {
-    errors.push('Choose a base material to start your blend.');
+    errors.push({ key: 'customBlend.validation.chooseBase' });
   }
   if (state.ingredients.length < MIN_INGREDIENTS) {
-    errors.push('Add at least 1 ingredient.');
+    errors.push({
+      key: 'customBlend.validation.addIngredient',
+      params: { minIngredients: MIN_INGREDIENTS },
+    });
   }
   if (state.ingredients.length > MAX_INGREDIENTS) {
-    errors.push('Use no more than 4 ingredients.');
+    errors.push({
+      key: 'customBlend.validation.tooManyIngredients',
+      params: { maxIngredients: MAX_INGREDIENTS },
+    });
   }
   if (state.ingredients.some((ingredient) => !isWholePercentageInRange(ingredient.percentage))) {
-    errors.push('Each ingredient must be a whole percentage between 5% and 50%.');
+    errors.push({
+      key: 'customBlend.validation.wholePercentage',
+      params: {
+        minPercentage: MIN_INGREDIENT_PERCENTAGE,
+        maxPercentage: MAX_INGREDIENT_PERCENTAGE,
+      },
+    });
   }
 
   const total = ingredientTotalPercentage(state);
   if (total > MAX_INGREDIENT_TOTAL) {
-    errors.push(`Ingredients must total 50% or less. They currently total ${total}%.`);
+    errors.push({
+      key: 'customBlend.validation.ingredientTotal',
+      params: { maxTotal: MAX_INGREDIENT_TOTAL, total },
+    });
   }
 
   const basePercentage = derivedBasePercentage(state);
@@ -253,7 +275,14 @@ export function customBlendValidation(state: CustomBlendState): CustomBlendValid
     errors.length === 0 &&
     (basePercentage < MIN_BASE_PERCENTAGE || basePercentage > MAX_BASE_PERCENTAGE)
   ) {
-    errors.push(`The base must stay between 50% and 95%. It is currently ${basePercentage}%.`);
+    errors.push({
+      key: 'customBlend.validation.baseRange',
+      params: {
+        minBase: MIN_BASE_PERCENTAGE,
+        maxBase: MAX_BASE_PERCENTAGE,
+        base: basePercentage,
+      },
+    });
   }
 
   return { isValid: errors.length === 0, errors };

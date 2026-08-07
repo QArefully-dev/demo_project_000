@@ -11,7 +11,7 @@ Local B2B bulk-materials wholesale codebase (`QArefully Materials Exchange`) for
 - Engineering: realistic rules; strict validation, auth, migrations, transactions, errors
 - Lifecycle: WIP, pre-release. No students, no users, no production instance
 
-Phase note: repo originally B2C powder retail (`QArefully Powder Co.`). Materials Exchange rebrand + gap closure + packaging pigments: complete. Landed brand/copy, sack/pallet unit model, `£/tonne` display, MOQ + qty-break tier engine, heavy-duty vessel artwork, legacy-variant retirement, Custom Small Order placeholder. Current phase: additive expansion per `plans/demo_project_high_level_plan.md`. Reuse catalog/domain foundations; do not rewrite storefront.
+Phase note: repo originally B2C powder retail (`QArefully Powder Co.`). Materials Exchange rebrand + gap closure + packaging pigments: complete. Landed brand/copy, sack/pallet unit model, `£/tonne` display, MOQ + qty-break tier engine, heavy-duty vessel artwork, legacy-variant retirement, Custom Small Order placeholder. Country localisation item 10 stages 1-3: complete; migration head `034`. Current phase: additive expansion per `plans/demo_project_high_level_plan.md`. Reuse catalog/domain foundations; do not rewrite storefront.
 
 ## Context
 
@@ -37,7 +37,7 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
 
 - Default: modular monolith. Split service only for named distributed-behavior demo.
 - Flow: frontend -> API contracts -> domain -> persistence.
-- Backend owns money, inventory, orders, payments, permissions, delivery classification/charge. Money uses integer minor units.
+- Backend owns money, inventory, orders, payments, permissions, delivery classification/charge. Settlement uses integer GBP pence; country conversion is display-only at render. Receipts retain canonical order facts and render local + GBP totals.
 - Purchasable identity is variant/SKU-scoped: base product owns merchandising/reviews/comparison; saved-list items and variants own saved quantities, SKU, pack, price, stock, weight, MOQ, tier ladder, and delivery class. Cart/inventory/order lines key on variant; contracts retain productId for navigation.
 - Unit model: purchase unit = 25 kg sack; 40 sacks = 1 t pallet. `packages/contracts/src/pricing.ts` owns `SACK_WEIGHT_GRAMS`, `PALLET_WEIGHT_GRAMS`, `SACKS_PER_PALLET`, `MOQ_DEFAULT_SACKS`, `TIER_LADDER`. Backend derives `perTonneCents` + tier discount from line weight; tiers never compound; MOQ enforced as line-weight floor.
 - Variant `sortOrder` contract-floor is 1; rows below it are retired (`active = 0`), never deleted (migration `020`). Seeded lots are all `deliveryClass 'freight'`; enum retains `parcel`.
@@ -65,16 +65,17 @@ Stack: npm workspaces; React/Vite/TypeScript web; Fastify/TypeScript API; SQLite
   - `src/app.ts`: composition root; services, plugins, routes
 - `src/routes/`: HTTP schemas, auth gates, transport mapping; `tradeAccount.ts` = saved delivery sites + billing entities, `deliverySlots.ts` = offered delivery slots, `savedLists.ts` = named buyer lists and cart/order saves, `backInStock.ts` = buyer back-in-stock subscriptions; `auth.ts` = login/signup carrying country selection per `packages/contracts/src/country.ts`
 - `src/features/`: domain services, repositories, workflow rules; `tradeAccount/` = delivery site + billing entity rules, shared address normalisation; `savedLists/` = variant-scoped lists that replaced the retired favourites domain; `jobs/`, `notifications/`, `webhooks/`, and `standingOrders/` = deterministic local async queue, buyer inbox delivery, webhook processing, and cart-only repeat schedules; `backInStock/` = sold-out subscription rules plus the stock-change trigger and notify job handler that consume the queue
-  - `src/db/`: database lifecycle, unit of work, migrations (head `033`), seed/reset
+  - `src/db/`: database lifecycle, unit of work, migrations (head `034`), seed/reset
   - `test/`: SQLite and `app.inject()` integration tests grouped by domain
 - `packages/contracts/`: TypeBox transport schemas/types and public subpath exports
+- `packages/localisation/`: country-aware translation and number/date/money presentation; display conversion only
 - `packages/catalog/`: canonical product/category/packaging content plus validation
 - `apps/api/data/`: ignored local SQLite runtime files; default `apps/api/data/shop.db`
 - `plans/`: `demo_project_high_level_plan.md` = current direction; `custom_additives_handoff.md` = item 16 product input; `plans/old/powderizer_removal_coding_plan.md` = completed item 11; `plans/old/` = completed/historical context
 - `.claude/skills/`: repo-local agent skills; load only when task matches. `browser-qa` = required entry point for all browser work (see Quality)
 - root configs: workspaces/scripts in `package.json`; shared TypeScript, ESLint, Prettier configuration
 
-Dependency direction: `packages/contracts` -> `apps/api` + `apps/web`; `packages/catalog` -> `apps/api`; `apps/api` -> HTTP -> `apps/web`.
+Dependency direction: `packages/contracts` -> `packages/localisation` -> `apps/api` + `apps/web`; `packages/catalog` -> `apps/api`; `apps/api` -> HTTP -> `apps/web`.
 
 ## Commands
 
@@ -98,6 +99,7 @@ Node-unavailable protocol: prepend path -> retry. Still unresolved -> locate ins
 - idempotent canonical seed, preserve non-seed rows: `npm run seed`
 - clear all local data then re-seed: `npm run reset`
 - full pre-handoff verification: `npm run verify`
+- localisation surface guard: `npm run check:localisation`
 - fast broad checks: `npm run smoke`
 - individual checks: `npm run format`, `npm run typecheck`, `npm run lint`, `npm test`
 - split suites: `npm run test:unit`, `npm run test:integration`

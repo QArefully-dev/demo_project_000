@@ -1,6 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/hooks/AuthContext';
-import { ApiError } from '@/api/client';
+import { ApiError, type ApiErrorMeta } from '@/api/client';
+import type { Country } from '@shop/contracts/country';
+import type { PublicErrorCode } from '@shop/contracts/public-errors';
+import type { MessageCatalog, MessageParams } from '@shop/localisation';
+import { translateUnchecked } from '@shop/localisation';
+import { apiErrors } from '@shop/localisation/messages/apiErrors';
+import {
+  identityAccountMessages,
+  type IdentityAccountMessageKey,
+} from '@shop/localisation/messages/identityAccount';
+import { useLocalisation } from '@/i18n/LocaleContext';
 import {
   createBillingEntity,
   createDeliverySite,
@@ -19,6 +29,7 @@ import type {
   UpdateBillingEntityBody,
   UpdateDeliverySiteBody,
 } from '@shop/contracts/trade-account';
+import { localizeAccountError } from './accountError';
 
 /** Read state for one trade collection. `items` holds only active records. */
 export interface TradeCollectionState<T> {
@@ -26,6 +37,17 @@ export interface TradeCollectionState<T> {
   loading: boolean;
   /** Buyer-facing load failure. Cleared by a successful reload. */
   error: string | null;
+  /** Stable load-failure identity. Copy is resolved from the active country during render. */
+  errorState: TradeProfileErrorState | null;
+}
+
+export interface TradeProfileErrorState {
+  readonly code: PublicErrorCode | null;
+  readonly meta: ApiErrorMeta | null;
+  readonly key: IdentityAccountMessageKey;
+  readonly params?: MessageParams;
+  /** Coded API errors retain request country; fallback keys follow active country. */
+  readonly country?: Country;
 }
 
 export interface UseTradeProfileResult {
@@ -44,17 +66,53 @@ export interface UseTradeProfileResult {
   setDefaultBillingEntity: (entityId: string) => Promise<void>;
 }
 
-function messageFor(error: unknown, fallback: string): string {
-  if (error instanceof ApiError) return error.response?.error ?? error.message ?? fallback;
-  if (error instanceof Error && error.message) return error.message;
-  return fallback;
-}
-
 function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
 
-const EMPTY_STATE = { items: [], loading: false, error: null } as const;
+const EMPTY_STATE = { items: [], loading: false, error: null, errorState: null } as const;
+
+function safeMessageParams(meta: ApiErrorMeta | null): MessageParams {
+  if (meta === null || typeof meta !== 'object') return {};
+  const params: Record<string, string | number | bigint> = {};
+  for (const [key, value] of Object.entries(meta)) {
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint')
+      params[key] = value;
+  }
+  return params;
+}
+
+function tradeProfileErrorState(
+  cause: unknown,
+  key: IdentityAccountMessageKey,
+): TradeProfileErrorState {
+  if (cause instanceof ApiError && cause.code !== null) {
+    return { code: cause.code, meta: cause.meta, key, country: cause.requestCountry };
+  }
+  // Network, legacy, contract, and unknown failures never retain Error.message.
+  return { code: null, meta: null, key };
+}
+
+function localizeTradeProfileError(
+  state: TradeProfileErrorState | null,
+  activeCountry: Country,
+  translate: (catalog: MessageCatalog, key: string, params?: MessageParams) => string,
+): string | null {
+  if (state === null) return null;
+  if (state.code !== null) {
+    try {
+      return translateUnchecked(
+        apiErrors,
+        state.country ?? activeCountry,
+        state.code,
+        safeMessageParams(state.meta),
+      );
+    } catch {
+      // Malformed/stale coded descriptors use safe account copy.
+    }
+  }
+  return translate(identityAccountMessages, state.key, state.params ?? {});
+}
 
 /**
  * Owns the signed-in buyer's saved delivery sites and billing entities.
@@ -65,6 +123,7 @@ const EMPTY_STATE = { items: [], loading: false, error: null } as const;
  */
 export function useTradeProfile(): UseTradeProfileResult {
   const { user } = useAuth();
+  const { activeCountry, translate } = useLocalisation();
   const userId = user?.id ?? null;
 
   const [deliverySites, setDeliverySites] = useState<TradeCollectionState<DeliverySite>>({
@@ -83,48 +142,50 @@ export function useTradeProfile(): UseTradeProfileResult {
 
   const loadDeliverySites = useCallback(async () => {
     if (!userId) {
-      setDeliverySites({ items: [], loading: false, error: null });
+      setDeliverySites({ items: [], loading: false, error: null, errorState: null });
       return;
     }
     const generation = ++siteGeneration.current;
     siteAbort.current?.abort();
     const controller = new AbortController();
     siteAbort.current = controller;
-    setDeliverySites((prev) => ({ ...prev, loading: true, error: null }));
+    setDeliverySites((prev) => ({ ...prev, loading: true, error: null, errorState: null }));
     try {
       const items = await listDeliverySites({ signal: controller.signal });
       if (generation !== siteGeneration.current) return;
-      setDeliverySites({ items, loading: false, error: null });
+      setDeliverySites({ items, loading: false, error: null, errorState: null });
     } catch (error) {
       if (generation !== siteGeneration.current || isAbort(error)) return;
       setDeliverySites({
         items: [],
         loading: false,
-        error: messageFor(error, 'Unable to load delivery sites'),
+        error: null,
+        errorState: tradeProfileErrorState(error, 'account.delivery.loadError'),
       });
     }
   }, [userId]);
 
   const loadBillingEntities = useCallback(async () => {
     if (!userId) {
-      setBillingEntities({ items: [], loading: false, error: null });
+      setBillingEntities({ items: [], loading: false, error: null, errorState: null });
       return;
     }
     const generation = ++entityGeneration.current;
     entityAbort.current?.abort();
     const controller = new AbortController();
     entityAbort.current = controller;
-    setBillingEntities((prev) => ({ ...prev, loading: true, error: null }));
+    setBillingEntities((prev) => ({ ...prev, loading: true, error: null, errorState: null }));
     try {
       const items = await listBillingEntities({ signal: controller.signal });
       if (generation !== entityGeneration.current) return;
-      setBillingEntities({ items, loading: false, error: null });
+      setBillingEntities({ items, loading: false, error: null, errorState: null });
     } catch (error) {
       if (generation !== entityGeneration.current || isAbort(error)) return;
       setBillingEntities({
         items: [],
         loading: false,
-        error: messageFor(error, 'Unable to load billing details'),
+        error: null,
+        errorState: tradeProfileErrorState(error, 'account.billing.loadError'),
       });
     }
   }, [userId]);
@@ -145,56 +206,73 @@ export function useTradeProfile(): UseTradeProfileResult {
     [loadBillingEntities],
   );
 
-  async function runSiteMutation(action: () => Promise<unknown>, fallback: string): Promise<void> {
+  async function runSiteMutation(
+    action: () => Promise<unknown>,
+    fallback: IdentityAccountMessageKey,
+  ): Promise<void> {
     try {
       await action();
     } catch (error) {
-      throw new Error(messageFor(error, fallback));
+      if (error instanceof ApiError) throw error;
+      throw new Error(localizeAccountError(error, translate, fallback));
     }
     await loadDeliverySites();
   }
 
   async function runEntityMutation(
     action: () => Promise<unknown>,
-    fallback: string,
+    fallback: IdentityAccountMessageKey,
   ): Promise<void> {
     try {
       await action();
     } catch (error) {
-      throw new Error(messageFor(error, fallback));
+      if (error instanceof ApiError) throw error;
+      throw new Error(localizeAccountError(error, translate, fallback));
     }
     await loadBillingEntities();
   }
 
+  const deliverySitesView = useMemo<TradeCollectionState<DeliverySite>>(
+    () => ({
+      ...deliverySites,
+      error: localizeTradeProfileError(deliverySites.errorState, activeCountry, translate),
+    }),
+    [activeCountry, deliverySites, translate],
+  );
+  const billingEntitiesView = useMemo<TradeCollectionState<BillingEntity>>(
+    () => ({
+      ...billingEntities,
+      error: localizeTradeProfileError(billingEntities.errorState, activeCountry, translate),
+    }),
+    [activeCountry, billingEntities, translate],
+  );
+
   return {
-    deliverySites,
-    billingEntities,
+    deliverySites: deliverySitesView,
+    billingEntities: billingEntitiesView,
     reloadDeliverySites,
     reloadBillingEntities,
     addDeliverySite: (body) =>
-      runSiteMutation(() => createDeliverySite(body), 'Unable to save delivery site'),
+      runSiteMutation(() => createDeliverySite(body), 'account.common.saveError'),
     editDeliverySite: (siteId, body) =>
-      runSiteMutation(() => updateDeliverySite(siteId, body), 'Unable to update delivery site'),
+      runSiteMutation(() => updateDeliverySite(siteId, body), 'account.common.saveError'),
     retireSite: (siteId) =>
-      runSiteMutation(() => retireDeliverySite(siteId), 'Unable to remove delivery site'),
+      runSiteMutation(() => retireDeliverySite(siteId), 'account.common.actionFailed'),
     setDefaultDeliverySite: (siteId) =>
       runSiteMutation(
         () => updateDeliverySite(siteId, { isDefault: true }),
-        'Unable to set default delivery site',
+        'account.common.actionFailed',
       ),
     addBillingEntity: (body) =>
-      runEntityMutation(() => createBillingEntity(body), 'Unable to save billing details'),
+      runEntityMutation(() => createBillingEntity(body), 'account.common.saveError'),
     editBillingEntity: (entityId, body) =>
-      runEntityMutation(
-        () => updateBillingEntity(entityId, body),
-        'Unable to update billing details',
-      ),
+      runEntityMutation(() => updateBillingEntity(entityId, body), 'account.common.saveError'),
     retireEntity: (entityId) =>
-      runEntityMutation(() => retireBillingEntity(entityId), 'Unable to remove billing details'),
+      runEntityMutation(() => retireBillingEntity(entityId), 'account.common.actionFailed'),
     setDefaultBillingEntity: (entityId) =>
       runEntityMutation(
         () => updateBillingEntity(entityId, { isDefault: true }),
-        'Unable to set default billing details',
+        'account.common.actionFailed',
       ),
   };
 }

@@ -1,45 +1,83 @@
-import { FastifyReply } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
+import { Value } from '@sinclair/typebox/value';
+import { DEFAULT_GUEST_COUNTRY, SUPPORTED_COUNTRIES, type Country } from '@shop/contracts/country';
+import {
+  PublicErrorMetaByCodeSchema,
+  type PublicErrorArgs,
+  type PublicErrorCode,
+  type PublicErrorResponse,
+} from '@shop/contracts/public-errors';
+import { translate } from '@shop/localisation';
+import { apiErrors } from '@shop/localisation/messages/apiErrors';
 
-/** Send a structured error response with consistent shape. */
-export function sendError(
+function requestCountry(request: FastifyRequest): Country {
+  const value = request.resolvedCountry;
+  if ((SUPPORTED_COUNTRIES as readonly string[]).includes(value)) return value;
+
+  // Body parsing errors run before preValidation resolves account country. Use only the strict
+  // request header at that point; invalid or repeated values fall back to guest country.
+  const header = request.headers['x-shop-country'];
+  if (typeof header === 'string') {
+    const normalized = header.trim().toUpperCase();
+    if ((SUPPORTED_COUNTRIES as readonly string[]).includes(normalized)) {
+      return normalized as Country;
+    }
+  }
+  return DEFAULT_GUEST_COUNTRY;
+}
+
+function localisedErrorMessage(country: Country, code: PublicErrorCode, meta: unknown): string {
+  // Metadata is transport input, so only primitive values are interpolation parameters. Array
+  // metadata is intentionally retained in the response but never interpolated into copy.
+  const params: Record<string, string | number | bigint> = {};
+  if (meta !== undefined && typeof meta === 'object' && meta !== null) {
+    for (const [key, value] of Object.entries(meta)) {
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint') {
+        params[key] = value;
+      }
+    }
+  }
+
+  return translate(apiErrors, country, code, params);
+}
+
+/**
+ * Emit a typed public error at an HTTP boundary. Metadata is checked against the code-specific
+ * schema before it crosses the wire; malformed metadata is omitted rather than reflected.
+ */
+export function sendPublicError<Code extends PublicErrorCode>(
+  request: FastifyRequest,
   reply: FastifyReply,
   statusCode: number,
-  message: string,
-  details?: unknown,
+  ...args: PublicErrorArgs<Code>
 ): void {
-  reply.code(statusCode).send({ error: message, details });
-}
+  const [code, meta] = args;
+  const schema = PublicErrorMetaByCodeSchema[code];
+  const validMeta = meta !== undefined && Value.Check(schema, meta);
+  const safeMeta = validMeta ? meta : undefined;
+  const country = requestCountry(request);
+  let error: string;
+  try {
+    error = localisedErrorMessage(country, code, safeMeta);
+  } catch {
+    // A missing/invalid interpolation must not pair an application code with INTERNAL_ERROR copy.
+    // Collapse the whole response to the generic public identity instead.
+    let fallback = 'Something went wrong. Please try again.';
+    try {
+      fallback = translate(apiErrors, country, 'INTERNAL_ERROR');
+    } catch {
+      // The checked-in catalog is exhaustive; keep a non-sensitive final guard for malformed
+      // runtime catalogs rather than reflecting the translation exception.
+    }
+    const fallbackBody: PublicErrorResponse = { error: fallback, code: 'INTERNAL_ERROR' };
+    reply.code(statusCode).send(fallbackBody);
+    return;
+  }
 
-/** Shorthand for 400 bad-request errors. */
-export function sendBadRequest(reply: FastifyReply, message: string, details?: unknown): void {
-  sendError(reply, 400, message, details);
-}
-
-/** Shorthand for 401 unauthorized errors. */
-export function sendUnauthorized(reply: FastifyReply, message = 'Unauthorized'): void {
-  sendError(reply, 401, message);
-}
-
-/** Shorthand for 403 forbidden errors. */
-export function sendForbidden(reply: FastifyReply, message = 'Forbidden'): void {
-  sendError(reply, 403, message);
-}
-
-/** Shorthand for 402 payment-required errors. */
-export function sendPaymentError(
-  reply: FastifyReply,
-  message: string,
-  failureReason?: 'CARD_DECLINED' | 'GATEWAY_TIMEOUT',
-): void {
-  reply.code(402).send({ error: message, failureReason });
-}
-
-/** Shorthand for 404 resource-not-found errors. */
-export function sendNotFound(reply: FastifyReply, resource: string): void {
-  sendError(reply, 404, `${resource} not found`);
-}
-
-/** Shorthand for 409 conflict errors. */
-export function sendConflict(reply: FastifyReply, message: string): void {
-  sendError(reply, 409, message);
+  const body = {
+    error,
+    code,
+    ...(safeMeta === undefined ? {} : { meta: safeMeta }),
+  };
+  reply.code(statusCode).send(body);
 }

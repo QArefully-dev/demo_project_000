@@ -1,22 +1,28 @@
 import { NavLink } from 'react-router-dom';
+import { useMessages } from '@/i18n/LocaleContext';
+import { adminDiagnosticsMessages } from '@shop/localisation/messages/adminDiagnostics';
 
 const sections = [
-  { label: 'Overview', to: '/admin', global: false },
-  { label: 'Products', to: '/admin/products', global: false },
-  { label: 'Variants', to: '/admin/variants', global: false },
-  { label: 'Promotions', to: '/admin/promos', global: false },
-  { label: 'Users', to: '/admin/users', global: false },
-  { label: 'Orders', to: '/admin/orders', global: false },
-  { label: 'Jobs', to: '/admin/jobs', global: true },
-  { label: 'Webhooks', to: '/admin/webhooks', global: true },
-  { label: 'Feature flags', to: '/admin/feature-flags', global: true },
-  { label: 'Review moderation', to: '/admin/reviews', global: false },
+  { label: 'admin.shell.overview', to: '/admin', global: false },
+  { label: 'admin.shell.products', to: '/admin/products', global: false },
+  { label: 'admin.shell.variants', to: '/admin/variants', global: false },
+  { label: 'admin.shell.promotions', to: '/admin/promos', global: false },
+  { label: 'admin.shell.users', to: '/admin/users', global: false },
+  { label: 'admin.shell.orders', to: '/admin/orders', global: false },
+  { label: 'admin.shell.jobs', to: '/admin/jobs', global: true },
+  { label: 'admin.shell.webhooks', to: '/admin/webhooks', global: true },
+  { label: 'admin.shell.featureFlags', to: '/admin/feature-flags', global: true },
+  { label: 'admin.shell.reviewModeration', to: '/admin/reviews', global: false },
 ] as const;
 
 /** Stable administration navigation shared by all admin routes. */
 export function AdminNav() {
+  const t = useMessages(adminDiagnosticsMessages);
   return (
-    <nav aria-label="Administration" className="rounded-lg border border-border bg-card p-3">
+    <nav
+      aria-label={t('admin.shell.navigationLabel')}
+      className="rounded-lg border border-border bg-card p-3"
+    >
       <ul className="flex flex-wrap gap-1">
         {sections.map(({ label, to, global }) => (
           <li key={to}>
@@ -29,10 +35,10 @@ export function AdminNav() {
                 }`
               }
             >
-              {label}
+              {t(label)}
               {global && (
                 <span className="ml-1 text-[0.65rem] font-semibold uppercase tracking-wide opacity-70">
-                  global
+                  {t('admin.shell.global')}
                 </span>
               )}
             </NavLink>

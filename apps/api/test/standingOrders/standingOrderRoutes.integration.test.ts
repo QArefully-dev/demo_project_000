@@ -73,21 +73,18 @@ void test('standing-order routes enforce auth, source ownership, schedule owners
   const owner = await signup(app, 'standing-route-owner@example.test');
   const other = await signup(app, 'standing-route-other@example.test');
   const ownerList = await createSavedList(app, owner, 'Owner source');
-  assert.equal(
-    (
-      await app.inject({
-        method: 'POST',
-        url: '/api/standing-orders',
-        headers: { cookie: other },
-        payload: {
-          name: 'Foreign source',
-          source: { kind: 'saved_list', listId: ownerList },
-          cadence: 'weekly',
-        },
-      })
-    ).statusCode,
-    404,
-  );
+  const foreignSource = await app.inject({
+    method: 'POST',
+    url: '/api/standing-orders',
+    headers: { cookie: other },
+    payload: {
+      name: 'Foreign source',
+      source: { kind: 'saved_list', listId: ownerList },
+      cadence: 'weekly',
+    },
+  });
+  assert.equal(foreignSource.statusCode, 404);
+  assert.equal(foreignSource.json<{ code: string }>().code, 'SOURCE_NOT_FOUND');
   const createdResponse = await app.inject({
     method: 'POST',
     url: '/api/standing-orders',
@@ -100,37 +97,28 @@ void test('standing-order routes enforce auth, source ownership, schedule owners
   });
   assert.equal(createdResponse.statusCode, 201, createdResponse.body);
   const created = Value.Parse(StandingOrder, createdResponse.json());
-  assert.equal(
-    (
-      await app.inject({
-        method: 'PATCH',
-        url: `/api/standing-orders/${created.id}`,
-        headers: { cookie: other },
-        payload: { name: 'Foreign edit' },
-      })
-    ).statusCode,
-    404,
-  );
-  assert.equal(
-    (
-      await app.inject({
-        method: 'POST',
-        url: `/api/standing-orders/${created.id}/run-now`,
-        headers: { cookie: other },
-      })
-    ).statusCode,
-    404,
-  );
-  assert.equal(
-    (
-      await app.inject({
-        method: 'GET',
-        url: `/api/standing-orders/${created.id}/runs`,
-        headers: { cookie: other },
-      })
-    ).statusCode,
-    404,
-  );
+  const foreignEdit = await app.inject({
+    method: 'PATCH',
+    url: `/api/standing-orders/${created.id}`,
+    headers: { cookie: other },
+    payload: { name: 'Foreign edit' },
+  });
+  assert.equal(foreignEdit.statusCode, 404);
+  assert.equal(foreignEdit.json<{ code: string }>().code, 'NOT_FOUND');
+  const foreignRun = await app.inject({
+    method: 'POST',
+    url: `/api/standing-orders/${created.id}/run-now`,
+    headers: { cookie: other },
+  });
+  assert.equal(foreignRun.statusCode, 404);
+  assert.equal(foreignRun.json<{ code: string }>().code, 'NOT_FOUND');
+  const foreignRuns = await app.inject({
+    method: 'GET',
+    url: `/api/standing-orders/${created.id}/runs`,
+    headers: { cookie: other },
+  });
+  assert.equal(foreignRuns.statusCode, 404);
+  assert.equal(foreignRuns.json<{ code: string }>().code, 'NOT_FOUND');
   const runNow = await app.inject({
     method: 'POST',
     url: `/api/standing-orders/${created.id}/run-now`,

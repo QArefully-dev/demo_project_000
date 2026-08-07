@@ -110,7 +110,7 @@ describe('SessionsSection', () => {
     render(<SessionsSection />);
     await screen.findByText('Signed-in session');
     await user.click(screen.getAllByRole('button', { name: 'Sign out this session' })[0]!);
-    expect(await screen.findByRole('alert')).toHaveTextContent('Session no longer exists');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to sign out this session');
     expect(screen.getByText('Signed-in session')).toBeInTheDocument();
   });
 
@@ -145,8 +145,9 @@ describe('SessionsSection', () => {
       .mockRejectedValueOnce(new Error('Unable to refresh sessions'));
     render(<SessionsSection />);
     await screen.findByText('Signed-in session');
+    expect(screen.getAllByText(/Desktop · Last active/)).toHaveLength(2);
     await user.click(screen.getAllByRole('button', { name: 'Sign out this session' })[0]!);
-    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to refresh sessions');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to load signed-in sessions');
     expect(screen.queryByText('Signed-in session')).not.toBeInTheDocument();
   });
 });
@@ -171,7 +172,7 @@ describe('PreferencesSection', () => {
     render(<PreferencesSection />);
     const checkbox = await screen.findByRole('checkbox', { name: 'Product and offer emails' });
     await user.click(checkbox);
-    expect(await screen.findByRole('alert')).toHaveTextContent('Preferences unavailable');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to save preferences');
     expect(checkbox).not.toBeChecked();
   });
 
@@ -225,7 +226,7 @@ describe('DataExportSection', () => {
     vi.mocked(exportAccountData).mockRejectedValue(new Error('Export unavailable'));
     render(<DataExportSection />);
     await user.click(screen.getByRole('button', { name: 'Download' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Export unavailable');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Unable to download your export');
   });
 });
 
@@ -254,6 +255,7 @@ describe('DeleteAccountSection', () => {
     vi.mocked(deleteAccount).mockRejectedValue(
       new ApiError('Request failed', 409, {
         error: 'Transfer company ownership before deleting this account',
+        code: 'OWNS_COMPANY',
       }),
     );
     render(

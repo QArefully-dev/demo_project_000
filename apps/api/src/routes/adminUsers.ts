@@ -15,7 +15,7 @@ import type { SessionService } from '../features/auth/sessionService.js';
 import type { AuditContext } from '../features/audit/auditEvent.js';
 import { UserAdminServiceError, type UserAdminService } from '../features/auth/userAdminService.js';
 import { requireAdmin } from '../plugins/auth.js';
-import { sendBadRequest, sendConflict, sendNotFound } from '../utils/errors.js';
+import { sendPublicError } from '../utils/errors.js';
 export interface AdminUsersRouteServices {
   sessions: SessionService;
   userAdmin: UserAdminService;
@@ -31,16 +31,20 @@ const map = (u: ReturnType<UserAdminService['get']>): AdminUserView => ({
   suspendedByUserId: u.suspendedByUserId === null ? null : String(u.suspendedByUserId),
   country: u.country as AdminUserView['country'],
 });
-function sendError(reply: Parameters<typeof sendBadRequest>[0], e: UserAdminServiceError) {
-  if (e.code === 'NOT_FOUND') return sendNotFound(reply, 'User');
-  if (e.code === 'LAST_ADMIN') return sendConflict(reply, e.message);
-  sendBadRequest(reply, e.message);
+function sendError(
+  request: Parameters<typeof sendPublicError>[0],
+  reply: Parameters<typeof sendPublicError>[1],
+  e: UserAdminServiceError,
+) {
+  if (e.code === 'NOT_FOUND') return sendPublicError(request, reply, 404, 'NOT_FOUND');
+  if (e.code === 'LAST_ADMIN') return sendPublicError(request, reply, 409, 'LAST_ADMIN');
+  return sendPublicError(request, reply, 400, 'INVALID_INPUT');
 }
 export default function adminUsersRoutes(
   app: FastifyInstance,
   { services }: { services: AdminUsersRouteServices },
 ): void {
-  app.addHook('onRequest', requireAdmin(services.sessions));
+  app.addHook('preValidation', requireAdmin(services.sessions));
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
   typed.get(
     '/api/admin/users',
@@ -77,7 +81,7 @@ export default function adminUsersRoutes(
       try {
         return map(services.userAdmin.get(Number(r.params.userId), r.resolvedCountry));
       } catch (e) {
-        if (e instanceof UserAdminServiceError) return sendError(reply, e);
+        if (e instanceof UserAdminServiceError) return sendError(r, reply, e);
         throw e;
       }
     },
@@ -109,7 +113,7 @@ export default function adminUsersRoutes(
           ),
         );
       } catch (e) {
-        if (e instanceof UserAdminServiceError) return sendError(reply, e);
+        if (e instanceof UserAdminServiceError) return sendError(r, reply, e);
         throw e;
       }
     },
@@ -142,7 +146,7 @@ export default function adminUsersRoutes(
           ),
         );
       } catch (e) {
-        if (e instanceof UserAdminServiceError) return sendError(reply, e);
+        if (e instanceof UserAdminServiceError) return sendError(r, reply, e);
         throw e;
       }
     },
@@ -176,7 +180,7 @@ export default function adminUsersRoutes(
           ),
         );
       } catch (e) {
-        if (e instanceof UserAdminServiceError) return sendError(reply, e);
+        if (e instanceof UserAdminServiceError) return sendError(r, reply, e);
         throw e;
       }
     },
@@ -207,7 +211,7 @@ export default function adminUsersRoutes(
           ),
         );
       } catch (e) {
-        if (e instanceof UserAdminServiceError) return sendError(reply, e);
+        if (e instanceof UserAdminServiceError) return sendError(r, reply, e);
         throw e;
       }
     },

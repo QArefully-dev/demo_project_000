@@ -14,6 +14,10 @@
       "types": "./dist/common.d.ts",
       "import": "./dist/common.js"
     },
+    "./public-errors": {
+      "types": "./dist/publicErrors.d.ts",
+      "import": "./dist/publicErrors.js"
+    },
     "./address": {
       "types": "./dist/address.d.ts",
       "import": "./dist/address.js"

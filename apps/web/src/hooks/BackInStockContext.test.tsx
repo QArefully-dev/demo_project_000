@@ -202,9 +202,7 @@ describe('BackInStockContext', () => {
     });
     expect(result.current.subscriptions).toEqual([]);
     expect([...result.current.pendingVariantIds]).toEqual([]);
-    expect(result.current.error).toBe(
-      'This item is back in stock already. Add it to your order now.',
-    );
+    expect(result.current.error).toBe('The request could not be completed.');
   });
 
   it('rolls back a rejected cancel to the confirmed subscription list', async () => {
@@ -221,7 +219,7 @@ describe('BackInStockContext', () => {
       await expect(result.current.cancel('1')).resolves.toBe(false);
     });
     expect(result.current.subscriptions).toEqual([confirmed]);
-    expect(result.current.error).toBe('Subscription not found');
+    expect(result.current.error).toBe('Unable to cancel this back-in-stock alert.');
   });
 
   it('removes a cancelled subscription on success', async () => {

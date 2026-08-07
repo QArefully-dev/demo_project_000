@@ -1,38 +1,41 @@
 import { Link } from 'react-router-dom';
-import { getArticlesForGroup, helpIndexLink } from '@/features/help/content/helpContentRegistry';
+import {
+  getArticlesForGroup,
+  materializeHelpIndexLink,
+} from '@/features/help/content/helpContentRegistry';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { webMessages } from '@shop/localisation/messages/webShell';
 
-const footerGroups = [
-  {
-    group: 'help',
-    heading: 'Help',
-  },
-  {
-    group: 'policy',
-    heading: 'Policies',
-  },
-] as const;
+const footerGroups = [{ group: 'help' }, { group: 'policy' }] as const;
 
 /** Global discovery links for local demo help and policy content. */
 export function Footer() {
+  const { activeCountry, translate } = useLocalisation();
+  const groupHeading = (group: (typeof footerGroups)[number]['group']) =>
+    translate(webMessages, group === 'help' ? 'shell.help' : 'shell.policies');
+
   return (
     <footer className="border-t border-border bg-surface-raised/60">
       <div className="content-shell py-8 sm:py-10">
-        <nav aria-label="Help and policies" className="space-y-6">
+        <nav aria-label={translate(webMessages, 'shell.helpAndPolicies')} className="space-y-6">
           <p className="text-sm leading-6 text-muted-foreground">
-            Local QA demo guidance and policy information.
+            {translate(webMessages, 'shell.footerDescription')}
           </p>
           <div className="grid gap-6 sm:grid-cols-2">
-            {footerGroups.map(({ group, heading }) => {
+            {footerGroups.map(({ group }) => {
               const headingId = `footer-${group}-heading`;
               const links =
                 group === 'help'
-                  ? [helpIndexLink, ...getArticlesForGroup(group)]
-                  : getArticlesForGroup(group);
+                  ? [
+                      materializeHelpIndexLink(activeCountry),
+                      ...getArticlesForGroup(group, activeCountry),
+                    ]
+                  : getArticlesForGroup(group, activeCountry);
 
               return (
                 <section key={group} aria-labelledby={headingId}>
                   <h2 id={headingId} className="text-sm font-semibold text-foreground">
-                    {heading}
+                    {groupHeading(group)}
                   </h2>
                   <ul className="mt-3 space-y-2">
                     {links.map((link) => (

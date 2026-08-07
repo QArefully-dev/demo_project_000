@@ -3,104 +3,127 @@ import type {
   ReorderResponse,
   ReorderSkipReason,
 } from '@shop/contracts/reorder';
-import { formatMoney } from '@/lib/formatMoney';
+import { formatCount as formatDisplayCount } from '@shop/localisation';
+import {
+  createRepeatBuyingTranslator,
+  type RepeatBuyingMessageKey,
+} from '@shop/localisation/messages/repeatBuying';
+import { formatDisplayMoney } from '@shop/localisation';
+import { countryProfile } from '@shop/contracts/country-profiles';
+import type {
+  RepeatBuyingLocale,
+  RepeatBuyingTranslator,
+} from '@/features/savedLists/savedListsPresentation';
 
-/**
- * What one Buy Again attempt is currently showing on the surface that triggered it. State is keyed
- * by order so a second order's attempt can never be read as this order's result.
- */
+const defaultTranslate = createRepeatBuyingTranslator('UK');
+const resolve = (locale?: RepeatBuyingLocale): RepeatBuyingTranslator =>
+  typeof locale === 'function'
+    ? locale
+    : locale === undefined
+      ? defaultTranslate
+      : createRepeatBuyingTranslator(locale);
+const defaultDisplayMoney = (pence: number) => formatDisplayMoney(pence, countryProfile('US'));
+
+function countFormatter(locale?: RepeatBuyingLocale): (value: number) => string {
+  if (typeof locale === 'string') return (value) => formatDisplayCount(value, locale);
+  if (typeof locale === 'function' && locale.formatCount) return locale.formatCount;
+  return (value) => String(value);
+}
+
 export type BuyAgainState =
   | { kind: 'idle' }
   | { kind: 'pending' }
-  | { kind: 'error'; message: string }
+  | ({ kind: 'error'; message: string } & Partial<{
+      messageKey: RepeatBuyingMessageKey;
+      params: Readonly<Record<string, string | number | bigint>>;
+    }>)
   | { kind: 'result'; response: ReorderResponse };
 
-/**
- * Buyer-facing cause for every reason the server can give for leaving a line out.
- *
- * The record is keyed by the reason union, so adding a reason to the contract fails typecheck here
- * instead of silently falling through to generic copy. Copy carries no internal code and no trade
- * jargon: the shopper must understand the row without documentation.
- */
-const SKIP_REASON_MESSAGE: Readonly<Record<ReorderSkipReason, string>> = {
-  BLOCKED_IN_COUNTRY: 'This item cannot be ordered in your country.',
-  VARIANT_RETIRED: 'We no longer sell this item.',
-  VARIANT_UNRESOLVED: 'We could not find this item in what we sell today.',
-  INSUFFICIENT_STOCK: 'There is not enough in stock to repeat this amount.',
-  BELOW_MOQ: 'This amount is below the smallest amount we can deliver for this item.',
-  INVALID_QUANTITY: 'The amount on the original order can no longer be ordered.',
-  BLEND_UNAVAILABLE: 'This custom blend cannot be made at the moment.',
+const SKIP_REASON_KEY: Readonly<Record<ReorderSkipReason, RepeatBuyingMessageKey>> = {
+  BLOCKED_IN_COUNTRY: 'repeatBuying.reorderSkip.BLOCKED_IN_COUNTRY',
+  VARIANT_RETIRED: 'repeatBuying.reorderSkip.VARIANT_RETIRED',
+  VARIANT_UNRESOLVED: 'repeatBuying.reorderSkip.VARIANT_UNRESOLVED',
+  INSUFFICIENT_STOCK: 'repeatBuying.reorderSkip.INSUFFICIENT_STOCK',
+  BELOW_MOQ: 'repeatBuying.reorderSkip.BELOW_MOQ',
+  INVALID_QUANTITY: 'repeatBuying.reorderSkip.INVALID_QUANTITY',
+  BLEND_UNAVAILABLE: 'repeatBuying.reorderSkip.BLEND_UNAVAILABLE',
 };
 
 /** Plain-language cause shown next to a line the server left out. */
-export function skipReasonMessage(reason: ReorderSkipReason): string {
-  return SKIP_REASON_MESSAGE[reason];
+export function skipReasonMessage(
+  reason: ReorderSkipReason,
+  translate?: RepeatBuyingLocale,
+): string {
+  return resolve(translate)(SKIP_REASON_KEY[reason]);
 }
 
-/**
- * Every reason the contract can send, derived from the copy record rather than hand-listed, so a
- * new reason cannot escape a check that walks this list.
- */
-export const SKIP_REASONS = Object.keys(SKIP_REASON_MESSAGE) as ReorderSkipReason[];
+export const SKIP_REASONS = Object.keys(SKIP_REASON_KEY) as ReorderSkipReason[];
 
-/**
- * Shown when the Buy Again request itself did not land. Deliberately general: the specific cart
- * failure text is global state shared with unrelated cart actions, so it cannot be attributed to
- * one order's attempt without risking a message that belongs to something else.
- */
-export const BUY_AGAIN_FAILURE_MESSAGE =
-  'We could not add this order to your cart. Please try again.';
+export const BUY_AGAIN_FAILURE_KEY = 'repeatBuying.error.buyAgain' as const;
+export const BUY_AGAIN_FAILURE_MESSAGE = defaultTranslate(BUY_AGAIN_FAILURE_KEY);
 
-/** `Cement × 3`. Names the line the way the shopper saw it on the original order. */
-export function outcomeLineLabel(outcome: ReorderLineOutcome): string {
-  return `${outcome.productName} × ${outcome.quantity}`;
+/** `Cement × 3`. Names line as buyer saw it on original order. */
+export function outcomeLineLabel(
+  outcome: ReorderLineOutcome,
+  translate?: RepeatBuyingLocale,
+): string {
+  const formatCount = countFormatter(translate);
+  return resolve(translate)('repeatBuying.savedListOutcomeLabel', {
+    productName: outcome.productName,
+    displayQuantity: formatCount(outcome.quantity),
+  });
 }
 
-/**
- * Old-to-new price sentence for a line whose price moved, or null when it did not. The server owns
- * the comparison; this only renders the two amounts it already reported.
- */
-export function priceChangeMessage(outcome: ReorderLineOutcome): string | null {
+/** Old-to-new price sentence for a line whose price moved. */
+export function priceChangeMessage(
+  outcome: ReorderLineOutcome,
+  translate?: RepeatBuyingLocale,
+  formatDisplayMoney: (pence: number) => string = defaultDisplayMoney,
+): string | null {
   if (!outcome.priceChanged || outcome.currentUnitPriceCents === null) return null;
-  return `Price changed from ${formatMoney(outcome.orderedUnitPriceCents)} to ${formatMoney(
-    outcome.currentUnitPriceCents,
-  )} per item.`;
+  const t = resolve(translate);
+  return t('repeatBuying.priceChanged', {
+    fromPrice: formatDisplayMoney(outcome.orderedUnitPriceCents),
+    toPrice: formatDisplayMoney(outcome.currentUnitPriceCents),
+  });
 }
 
-function itemCount(count: number): string {
-  return `${count} ${count === 1 ? 'item' : 'items'}`;
+function countItems(count: number, translate?: RepeatBuyingLocale): string {
+  return resolve(translate)('repeatBuying.countItems', {
+    count,
+    displayCount: countFormatter(translate)(count),
+  });
 }
 
-/**
- * One sentence describing the whole attempt. Reports the server's counts verbatim; nothing here
- * recomputes eligibility, price or quantity.
- */
-export function reorderSummaryMessage(response: ReorderResponse): string {
+/** One sentence describing whole attempt. Reports server counts verbatim. */
+export function reorderSummaryMessage(
+  response: ReorderResponse,
+  translate?: RepeatBuyingLocale,
+): string {
+  const t = resolve(translate);
+  const formatCount = countFormatter(translate);
   const { addedLineCount, skippedLineCount } = response;
-  if (addedLineCount === 0 && skippedLineCount === 0) {
-    return 'This order has nothing left to add to your cart.';
-  }
-  if (skippedLineCount === 0) {
-    return `${itemCount(addedLineCount)} from this order ${
-      addedLineCount === 1 ? 'was' : 'were'
-    } added to your cart.`;
-  }
-  if (addedLineCount === 0) {
-    return `Nothing was added to your cart. ${itemCount(
-      skippedLineCount,
-    )} from this order cannot be ordered right now.`;
-  }
-  return `${itemCount(addedLineCount)} added to your cart. ${itemCount(
-    skippedLineCount,
-  )} could not be added.`;
+  if (addedLineCount === 0 && skippedLineCount === 0) return t('repeatBuying.reorderSummaryEmpty');
+  if (skippedLineCount === 0)
+    return t('repeatBuying.reorderAddedOnly', {
+      count: addedLineCount,
+      displayCount: formatCount(addedLineCount),
+    });
+  if (addedLineCount === 0)
+    return t('repeatBuying.reorderNoneAdded', {
+      count: skippedLineCount,
+      displayCount: countItems(skippedLineCount, t),
+    });
+  return t('repeatBuying.mixedAdded', {
+    addedCount: countItems(addedLineCount, t),
+    skippedCount: countItems(skippedLineCount, t),
+  });
 }
 
-/** Lines the server left out, in the order it reported them. */
 export function skippedOutcomes(response: ReorderResponse): ReorderLineOutcome[] {
   return response.outcomes.filter((outcome) => outcome.status === 'skipped');
 }
 
-/** Added lines whose price moved since the original order. */
 export function repricedOutcomes(response: ReorderResponse): ReorderLineOutcome[] {
   return response.outcomes.filter(
     (outcome) => outcome.status === 'added' && priceChangeMessage(outcome) !== null,

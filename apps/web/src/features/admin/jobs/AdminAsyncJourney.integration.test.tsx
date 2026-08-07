@@ -51,7 +51,7 @@ describe('admin async journey', () => {
     await user.click(await screen.findByRole('button', { name: 'Retry dead job' }));
     expect(await screen.findByText('Job queued for retry.')).toBeInTheDocument();
     await user.click(screen.getByRole('link', { name: 'Job queue' }));
-    expect(await screen.findByText('#1 · pending · 5/5 attempts')).toBeInTheDocument();
+    expect(await screen.findByText('#1 · Pending · 5/5 attempts')).toBeInTheDocument();
     expect(api.getAdminJobs).toHaveBeenCalled();
   });
 });

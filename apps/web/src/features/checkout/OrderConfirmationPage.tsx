@@ -7,9 +7,14 @@ import { ErrorMessage } from '@/components/ErrorMessage';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { Button } from '@/components/ui/button';
 import { OrderDetailView } from '@/features/orders/OrderDetailView';
+import { useLocalisation } from '@/i18n/LocaleContext';
+import { checkoutMessages } from '@shop/localisation/messages/checkout';
 
 /** Confirmation remains usable for exact-order guest capability cookies. */
 export function OrderConfirmationPage() {
+  const { translate } = useLocalisation();
+  const t = (key: keyof typeof checkoutMessages, params?: Record<string, string | number>) =>
+    translate(checkoutMessages, key, params);
   const { orderId } = useParams<{ orderId: string }>();
   const [order, setOrder] = useState<OrderDetailResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -18,7 +23,7 @@ export function OrderConfirmationPage() {
 
   const fetchOrder = useCallback(async () => {
     if (!orderId) {
-      setError('Order reference is missing.');
+      setError(t('checkout.orderReferenceMissing'));
       setIsLoading(false);
       return;
     }
@@ -32,16 +37,14 @@ export function OrderConfirmationPage() {
       if (currentRequest === requestId.current) {
         setError(
           err instanceof ApiError && err.status === 404
-            ? 'Order not found.'
-            : err instanceof Error
-              ? err.message
-              : 'Failed to load order',
+            ? t('checkout.orderNotFound')
+            : t('checkout.loadOrderFailed'),
         );
       }
     } finally {
       if (currentRequest === requestId.current) setIsLoading(false);
     }
-  }, [orderId]);
+  }, [orderId, translate]);
 
   useEffect(() => {
     void fetchOrder();
@@ -50,21 +53,18 @@ export function OrderConfirmationPage() {
   if (isLoading) return <LoadingSpinner />;
   if (error)
     return <ErrorMessage message={error} onRetry={orderId ? () => void fetchOrder() : undefined} />;
-  if (!order) return <ErrorMessage message="Order not found" />;
+  if (!order) return <ErrorMessage message={t('checkout.orderNotFound')} />;
 
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-6 text-center">
-        <h1 className="text-2xl font-bold text-green-700">Your order is confirmed.</h1>
-        <p className="text-muted-foreground">
-          QArefully Materials Exchange has recorded this simulated order. A receipt is in the Dev
-          Mailbox.
-        </p>
+        <h1 className="text-2xl font-bold text-green-700">{t('checkout.confirmed')}</h1>
+        <p className="text-muted-foreground">{t('checkout.confirmedDescription')}</p>
       </div>
       <OrderDetailView order={order} />
       <div className="mt-6 text-center">
         <Button nativeButton={false} render={<Link to="/catalog" />}>
-          Shop more materials
+          {t('checkout.shopMore')}
         </Button>
       </div>
     </div>

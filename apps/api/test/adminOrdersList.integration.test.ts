@@ -4,17 +4,23 @@ import Fastify from 'fastify';
 import fastifyCookie from '@fastify/cookie';
 import routes from '../src/routes/adminOrdersList.js';
 import { OrderAdminError } from '../src/features/orders/orderAdminService.js';
+import { authPlugin } from '../src/plugins/auth.js';
+import { countryContextPlugin } from '../src/plugins/countryContext.js';
 const admin = { id: 1, email: 'admin@example.test', displayName: 'Admin', role: 'admin' as const };
 const customer = { ...admin, role: 'customer' as const };
 void test('admin order listing invokes service and maps invalid queries', async () => {
   let invoked = false;
   const app = Fastify();
   await app.register(fastifyCookie);
+  const sessions = {
+    getUser: (sid: string) => (sid === 'admin' ? admin : sid === 'customer' ? customer : null),
+    updateLastSeen: () => undefined,
+  };
+  authPlugin(sessions as never)(app, {}, () => undefined);
+  countryContextPlugin(sessions as never)(app, {}, () => undefined);
   await app.register(routes, {
     services: {
-      sessions: {
-        getUser: (sid: string) => (sid === 'admin' ? admin : sid === 'customer' ? customer : null),
-      },
+      sessions,
       orderAdmin: {
         listAdmin: () => {
           invoked = true;
@@ -32,11 +38,19 @@ void test('admin order listing invokes service and maps invalid queries', async 
   const mapped = await app.inject({
     method: 'GET',
     url: '/api/admin/orders?page=1',
-    headers: { cookie: 'sid=admin' },
+    headers: { cookie: 'sid=admin', 'x-shop-country': 'DE' },
   });
   assert.equal(unauthorized.statusCode, 401);
   assert.equal(forbidden.statusCode, 403);
   assert.equal(mapped.statusCode, 400);
+  const body = mapped.json<{ error: string; code: string; meta?: unknown; details?: unknown }>();
+  assert.deepEqual(body, {
+    error: 'Die Anfrage konnte nicht verarbeitet werden. Bitte versuchen Sie es erneut.',
+    code: 'INVALID_QUERY',
+  });
+  assert.equal('meta' in body, false);
+  assert.equal('details' in body, false);
+  assert.notEqual(body.error, 'INVALID_QUERY');
   assert.equal(invoked, true);
   await app.close();
 });
@@ -45,9 +59,15 @@ void test('admin order detail invokes projected detail service and maps missing 
   let invoked = false;
   const app = Fastify();
   await app.register(fastifyCookie);
+  const sessions = {
+    getUser: (sid: string) => (sid === 'admin' ? admin : null),
+    updateLastSeen: () => undefined,
+  };
+  authPlugin(sessions as never)(app, {}, () => undefined);
+  countryContextPlugin(sessions as never)(app, {}, () => undefined);
   await app.register(routes, {
     services: {
-      sessions: { getUser: (sid: string) => (sid === 'admin' ? admin : null) },
+      sessions,
       orderAdmin: {
         getAdminDetail: () => {
           invoked = true;
@@ -59,9 +79,17 @@ void test('admin order detail invokes projected detail service and maps missing 
   const response = await app.inject({
     method: 'GET',
     url: '/api/admin/orders/1',
-    headers: { cookie: 'sid=admin' },
+    headers: { cookie: 'sid=admin', 'x-shop-country': 'DE' },
   });
   assert.equal(response.statusCode, 404);
+  const body = response.json<{ error: string; code: string; meta?: unknown; details?: unknown }>();
+  assert.deepEqual(body, {
+    error: 'Die Anfrage konnte nicht verarbeitet werden. Bitte versuchen Sie es erneut.',
+    code: 'ORDER_NOT_FOUND',
+  });
+  assert.equal('meta' in body, false);
+  assert.equal('details' in body, false);
+  assert.notEqual(body.error, 'ORDER_NOT_FOUND');
   assert.equal(invoked, true);
   await app.close();
 });
@@ -69,9 +97,15 @@ void test('admin order detail invokes projected detail service and maps missing 
 void test('admin order detail serializes captured-payment refund capacity', async () => {
   const app = Fastify();
   await app.register(fastifyCookie);
+  const sessions = {
+    getUser: (sid: string) => (sid === 'admin' ? admin : null),
+    updateLastSeen: () => undefined,
+  };
+  authPlugin(sessions as never)(app, {}, () => undefined);
+  countryContextPlugin(sessions as never)(app, {}, () => undefined);
   await app.register(routes, {
     services: {
-      sessions: { getUser: (sid: string) => (sid === 'admin' ? admin : null) },
+      sessions,
       orderAdmin: {
         getAdminDetail: () => ({
           id: '1',
@@ -94,7 +128,7 @@ void test('admin order detail serializes captured-payment refund capacity', asyn
   const response = await app.inject({
     method: 'GET',
     url: '/api/admin/orders/1',
-    headers: { cookie: 'sid=admin' },
+    headers: { cookie: 'sid=admin', 'x-shop-country': 'DE' },
   });
   assert.equal(response.statusCode, 200);
   const body = response.json<{
