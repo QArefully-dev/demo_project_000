@@ -54,7 +54,7 @@ vi.mock('@/features/notifications/NotificationBell', () => ({
 }));
 
 describe('Header', () => {
-  it('presents QArefully Materials Exchange with trade-supply context', () => {
+  it('presents QArefully Materials Exchange without a category-nav tagline', () => {
     render(
       <MemoryRouter>
         <Header />
@@ -65,7 +65,7 @@ describe('Header', () => {
       'href',
       '/',
     );
-    expect(screen.getByText(/Materials data/)).toBeInTheDocument();
+    expect(screen.queryByText(/Materials data/)).not.toBeInTheDocument();
   });
 
   it('links to saved lists and shows the default-list item count', () => {

@@ -72,9 +72,6 @@ export function Header() {
       <div className="border-t border-border bg-surface-raised/80">
         <div className="content-shell flex h-11 items-center justify-between gap-4 overflow-x-auto [scrollbar-width:none]">
           <CategoryNav />
-          <p className="hidden shrink-0 whitespace-nowrap text-xs font-medium text-muted-foreground xl:block">
-            {t('shell.materialsTagline')}
-          </p>
         </div>
       </div>
     </header>

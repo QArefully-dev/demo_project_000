@@ -111,6 +111,7 @@ describe('CountryPicker', () => {
       'Country is set by your account. Sign out to browse another country.',
     );
     expect(note.className).not.toMatch(/hidden/);
+    expect(note.className).toMatch(/whitespace-normal/);
     expect(select).toHaveAttribute('aria-describedby', note.id);
     expect(select).toHaveAttribute(
       'title',
