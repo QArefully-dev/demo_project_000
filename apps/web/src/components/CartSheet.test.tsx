@@ -194,6 +194,18 @@ describe('CartSheet', () => {
     expect(screen.getByText('$87.50')).toBeInTheDocument();
   });
 
+  it('insets the scrollable cart content and summary from the sheet edges', async () => {
+    const user = userEvent.setup();
+
+    renderSheet(twoBlendCart);
+    await openSheet(user);
+
+    const sheet = document.querySelector('[data-slot="sheet-content"]');
+    expect(sheet).not.toBeNull();
+    expect(sheet?.querySelector('.flex-1.overflow-y-auto')).toHaveClass('px-4');
+    expect(sheet?.querySelector('.border-t')).toHaveClass('px-4', 'pb-4');
+  });
+
   it('formats non-US counts, tier values, and semantic weights', async () => {
     const user = userEvent.setup();
     renderSheet(
