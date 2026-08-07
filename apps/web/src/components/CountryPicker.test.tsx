@@ -49,7 +49,13 @@ describe('CountryPicker', () => {
 
   it('disables the select when disabled prop is true', () => {
     renderPicker('UK', vi.fn(), true);
-    expect(screen.getByTestId('country-picker')).toBeDisabled();
+    const picker = screen.getByTestId('country-picker');
+    expect(picker).toBeDisabled();
+    expect(picker).toHaveClass(
+      'disabled:bg-muted',
+      'disabled:text-muted-foreground',
+      'disabled:opacity-100',
+    );
   });
 
   it('shows "Account country" label when disabled', () => {

@@ -57,7 +57,7 @@ export function CountryPicker({ value, onChange, disabled }: CountryPickerProps)
           value={value}
           onChange={handleChange}
           disabled={disabled}
-          className="h-10 max-w-44 rounded-lg border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-10 max-w-44 rounded-lg border bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:border-muted disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
         >
           {SUPPORTED_COUNTRIES.map((c) => (
             <option key={c} value={c}>
