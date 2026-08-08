@@ -1,7 +1,4 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import {
   createCheckoutService,
@@ -9,7 +6,6 @@ import {
 } from '../../src/features/checkout/checkoutService.js';
 import { createCartRepository } from '../../src/features/cart/cartRepository.js';
 import { addItem, createCart, getCart } from '../../src/features/cart/cartService.js';
-import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
 import { createPromoRepository } from '../../src/features/promos/promoRepository.js';
 import { createPaymentRepository } from '../../src/features/payments/paymentRepository.js';
 import { createOrderRepository } from '../../src/features/orders/orderRepository.js';
@@ -27,6 +23,7 @@ import {
   bookableSlot,
   checkoutDepthDependencies,
 } from './checkoutDepthFixtures.js';
+import { openSeededDatabase } from '../support/seededDatabase.js';
 
 function checkoutService(db: import('better-sqlite3').Database, now?: () => Date) {
   const carts = createCartRepository(db);
@@ -104,23 +101,20 @@ function getVariantInfo(db: import('better-sqlite3').Database, variantId: number
 }
 
 void test('checkout delivery integration', async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'shop-delivery-'));
-  const dbPath = join(dir, 'shop.db');
-  const db = openDatabase({ path: dbPath });
-  const carts = createCartRepository(db);
+  let fixture = openSeededDatabase();
+  let db = fixture.db;
+  let carts = createCartRepository(db);
+  t.after(() => fixture.cleanup());
 
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  const setupFresh = () => {
-    resetDatabase(db);
-    seedDatabase(db);
+  const setupFresh = async () => {
+    await fixture.cleanup();
+    fixture = openSeededDatabase();
+    db = fixture.db;
+    carts = createCartRepository(db);
   };
 
   await t.test('parcel order under 100kg has zero delivery charge', async () => {
-    setupFresh();
+    await setupFresh();
     const cartId = createCart(carts).cartId;
     const vId = getVariantId(db, 1);
     db.prepare(
@@ -142,7 +136,7 @@ void test('checkout delivery integration', async (t) => {
   });
 
   await t.test('freight delivery charge of 999c added to total', async () => {
-    setupFresh();
+    await setupFresh();
     const cartId = createCart(carts).cartId;
 
     // Find all active parcel variants and add enough to cross 100kg threshold
@@ -185,7 +179,7 @@ void test('checkout delivery integration', async (t) => {
   });
 
   await t.test('idempotent payment replay preserves delivery totals', async () => {
-    setupFresh();
+    await setupFresh();
     const cartId = createCart(carts).cartId;
     const vId = getVariantId(db, 1);
     addItem(carts, cartId, String(vId));
@@ -208,7 +202,7 @@ void test('checkout delivery integration', async (t) => {
   });
 
   await t.test('SAVE10 promo discount excludes delivery from discount base', async () => {
-    setupFresh();
+    await setupFresh();
     const cartId = createCart(carts).cartId;
     // Add 5 items to qualify for SAVE10 (min 5 items)
     const vIds = [
@@ -242,7 +236,7 @@ void test('checkout delivery integration', async (t) => {
   });
 
   await t.test('order lines have variant snapshots', async () => {
-    setupFresh();
+    await setupFresh();
     const cartId = createCart(carts).cartId;
     const vId = getVariantId(db, 1);
     const variant = getVariantInfo(db, vId)!;
@@ -265,7 +259,7 @@ void test('checkout delivery integration', async (t) => {
   });
 
   await t.test('order has delivery fields recorded', async () => {
-    setupFresh();
+    await setupFresh();
     const cartId = createCart(carts).cartId;
     const vId = getVariantId(db, 1);
     addItem(carts, cartId, String(vId));

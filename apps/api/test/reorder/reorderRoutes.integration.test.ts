@@ -1,17 +1,14 @@
 ﻿import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import type Database from 'better-sqlite3';
 import { Value } from '@sinclair/typebox/value';
 import { Cart, CreateCartResponse } from '@shop/contracts/cart';
 import { ReorderResponse } from '@shop/contracts/reorder';
 import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import { createCartRepository } from '../../src/features/cart/cartRepository.js';
 import { createOrderRepository } from '../../src/features/orders/orderRepository.js';
 import type { CreateOrderParams } from '../../src/features/orders/orderTypes.js';
+import { createSeededFixture } from '../support/seededDatabase.js';
 
 const NOW = new Date('2026-07-31T12:00:00.000Z');
 const ALICE = 'alice@example.com';
@@ -31,19 +28,14 @@ interface Fixture {
 }
 
 async function openFixture(name: string): Promise<Fixture> {
-  const directory = mkdtempSync(join(tmpdir(), `shop-${name}-`));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test', clock: { now: () => NOW } });
+  void name;
+  const seeded = await createSeededFixture({ app: { clock: { now: () => NOW } } });
+  const { db, app } = seeded;
   return {
     db,
     app,
     orders: createOrderRepository(db),
-    cleanup: async () => {
-      await app.close();
-      closeDatabase(db);
-      rmSync(directory, { recursive: true, force: true });
-    },
+    cleanup: seeded.cleanup,
   };
 }
 

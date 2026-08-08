@@ -21,14 +21,14 @@ describe('AddToListMenu', () => {
     state.user = { id: 'buyer' };
     const user = userEvent.setup();
     const { rerender } = render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AddToListMenu variantId={null} quantity={6} />
       </MemoryRouter>,
     );
     expect(screen.getByRole('button', { name: 'Save to list' })).toBeDisabled();
 
     rerender(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AddToListMenu variantId={44} quantity={6} />
       </MemoryRouter>,
     );
@@ -40,7 +40,10 @@ describe('AddToListMenu', () => {
     state.user = null;
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/products/cement?pack=sack']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/products/cement?pack=sack']}
+      >
         <Routes>
           <Route path="*" element={<AddToListMenu variantId={44} />} />
           <Route path="/login" element={<LocationState />} />

@@ -1,12 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import { createOrderRepository } from '../../src/features/orders/orderRepository.js';
 import { adhocBilling, adhocDestination, bookableSlot } from '../checkout/checkoutDepthFixtures.js';
+import { createSeededFixture } from '../support/seededDatabase.js';
 
 function cookieValue(response: { headers: Record<string, string | string[] | undefined> }): string {
   const header = response.headers['set-cookie'];
@@ -54,19 +51,11 @@ function createOrder(
 }
 
 void test('order routes enforce customer ownership and admin lifecycle authority', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-order-routes-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
+  const { db, app } = await createSeededFixture(t);
   const repository = createOrderRepository(db);
   const aliceOrderId = createOrder(repository, 1);
   const bobOrderId = createOrder(repository, 2);
   const lifecycleOrderId = createOrder(repository, 2);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
 
   const aliceCookie = await login(app, 'alice@example.com');
   const bobCookie = await login(app, 'bob@example.com');
@@ -257,20 +246,13 @@ void test('order routes enforce customer ownership and admin lifecycle authority
 });
 
 void test('guest payment grants an exact-order, expiring capability cookie', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-guest-order-routes-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
   let now = new Date('2026-07-19T12:00:00.000Z');
-  const app = await buildApp({
-    db,
-    resetBaseUrl: 'http://web.test',
-    clock: { now: () => now },
-    orderAccessTokenSource: () => 'deterministic-guest-capability',
-  });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
+  const { db, app } = await createSeededFixture({
+    testContext: t,
+    app: {
+      clock: { now: () => now },
+      orderAccessTokenSource: () => 'deterministic-guest-capability',
+    },
   });
 
   const cart = await app.inject({ method: 'POST', url: '/api/cart' });

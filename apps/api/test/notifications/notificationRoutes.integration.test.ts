@@ -1,12 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import { MarkAllReadResponse, Notification, NotificationPage } from '@shop/contracts/notifications';
 import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededFixture } from '../support/seededDatabase.js';
 
 function cookie(response: { headers: Record<string, string | string[] | undefined> }): string {
   const value = response.headers['set-cookie'];
@@ -26,15 +23,7 @@ async function signup(app: Awaited<ReturnType<typeof buildApp>>, email: string):
 }
 
 void test('notification routes enforce auth, ownership, pagination, and read-all counts', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-notification-routes-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = await createSeededFixture(t);
 
   for (const request of [
     { method: 'GET' as const, url: '/api/notifications' },

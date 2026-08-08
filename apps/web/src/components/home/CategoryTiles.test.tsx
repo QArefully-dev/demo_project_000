@@ -7,7 +7,7 @@ import { CategoryTiles } from './CategoryTiles';
 describe('CategoryTiles', () => {
   it('keeps six category links with representative artwork', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <CategoryTiles
           categories={[
             'Sports Nutrition',

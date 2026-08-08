@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import type { ReviewMutationResponse } from '@shop/contracts/reviews';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededFixture } from '../support/seededDatabase.js';
 
 const body = 'This is a sufficiently detailed customer review body.';
 
@@ -23,25 +19,16 @@ function responseJson<T>(response: { body: string }): T {
 }
 
 void test('review routes enforce public visibility, roles, ownership, moderation, and strict bodies', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-review-routes-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
+  const { db, app } = await createSeededFixture({
+    testContext: t,
+    app: { clock: { now: () => new Date('2026-07-18T12:00:00.000Z') } },
+  });
   db.exec(`
     DELETE FROM review_reports;
     DELETE FROM review_helpful_votes;
     DELETE FROM reviews;
     DELETE FROM review_rating_aggregates;
   `);
-  const app = await buildApp({
-    db,
-    resetBaseUrl: 'http://web.test',
-    clock: { now: () => new Date('2026-07-18T12:00:00.000Z') },
-  });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
 
   const login = async (email: string) =>
     cookieHeader(
@@ -216,25 +203,16 @@ void test('review routes enforce public visibility, roles, ownership, moderation
 });
 
 void test('engagement and moderation routes enforce roles and return current state', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-review-engagement-routes-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
+  const { db, app } = await createSeededFixture({
+    testContext: t,
+    app: { clock: { now: () => new Date('2026-07-18T12:00:00.000Z') } },
+  });
   db.exec(`
     DELETE FROM review_reports;
     DELETE FROM review_helpful_votes;
     DELETE FROM reviews;
     DELETE FROM review_rating_aggregates;
   `);
-  const app = await buildApp({
-    db,
-    resetBaseUrl: 'http://web.test',
-    clock: { now: () => new Date('2026-07-18T12:00:00.000Z') },
-  });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
   const login = async (email: string) =>
     cookieHeader(
       await app.inject({

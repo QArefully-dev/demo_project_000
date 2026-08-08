@@ -1,13 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { Cart, CreateCartResponse } from '@shop/contracts/cart';
 import { COUNTRY_PROFILES } from '@shop/contracts/country-profiles';
 import { Value } from '@sinclair/typebox/value';
 import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 
 interface Lot {
   id: number;
@@ -26,15 +23,8 @@ async function createCart(
 }
 
 void test('cart writes enforce the persisted country without leaking lower-precedence facts', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-country-blocking-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const fixture = await createSeededAppFixture(t);
+  const { db, app } = fixture;
 
   const blockedLots = db
     .prepare(

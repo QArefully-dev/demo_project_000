@@ -114,7 +114,10 @@ const product = (overrides: Partial<ProductWithVariants> = {}): ProductWithVaria
 
 function renderPage(path = '/products/powdered-water') {
   return render(
-    <MemoryRouter initialEntries={[path]}>
+    <MemoryRouter
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      initialEntries={[path]}
+    >
       <ComparisonSelectionProvider storage={comparisonStorage}>
         <Routes>
           <Route path="/products/:id" element={<ProductPage />} />
@@ -329,7 +332,10 @@ describe('ProductPage', () => {
       .mockReturnValueOnce(secondSimilar.promise);
 
     render(
-      <MemoryRouter initialEntries={['/products/first']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/products/first']}
+      >
         <ComparisonSelectionProvider storage={comparisonStorage}>
           <RouteControls />
           <Routes>
@@ -458,7 +464,10 @@ describe('ProductPage', () => {
     productApi.getSimilarProducts.mockResolvedValueOnce([]);
 
     render(
-      <MemoryRouter initialEntries={['/products/1']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/products/1']}
+      >
         <ComparisonSelectionProvider storage={comparisonStorage}>
           <CatalogNavigation />
           <Routes>

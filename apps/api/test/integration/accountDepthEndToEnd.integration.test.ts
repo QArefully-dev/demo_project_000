@@ -1,14 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { FREIGHT_HEAVY_WEIGHT_THRESHOLD_GRAMS } from '@shop/contracts/delivery';
 import { countryProfile } from '@shop/contracts/country-profiles';
 import { SACK_WEIGHT_GRAMS } from '@shop/contracts/pricing';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { seedDatabase } from '../../src/db/index.js';
 import { calculateLeadTime } from '../../src/features/delivery/deliverySlotRules.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 
 function sessionCookie(response: {
   headers: Record<string, string | string[] | undefined>;
@@ -24,20 +21,15 @@ function responseBody<T>(response: { body: string }): T {
 }
 
 void test('account depth composes self-service, company approval, and deletion routes', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-account-depth-e2e-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
   const now = new Date('2026-07-29T12:00:00.000Z');
-  const app = await buildApp({
-    db,
-    resetBaseUrl: 'http://web.example.test/',
-    clock: { now: () => now },
+  const fixture = await createSeededAppFixture({
+    testContext: t,
+    app: {
+      resetBaseUrl: 'http://web.example.test/',
+      clock: { now: () => now },
+    },
   });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = fixture;
 
   const login = async (email: string): Promise<string> => {
     const response = await app.inject({

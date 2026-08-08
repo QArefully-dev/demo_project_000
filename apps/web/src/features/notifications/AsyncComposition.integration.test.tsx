@@ -33,7 +33,10 @@ import App from '@/App';
 
 const renderApp = (path: string) =>
   render(
-    <MemoryRouter initialEntries={[path]}>
+    <MemoryRouter
+      initialEntries={[path]}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <App />
     </MemoryRouter>,
   );

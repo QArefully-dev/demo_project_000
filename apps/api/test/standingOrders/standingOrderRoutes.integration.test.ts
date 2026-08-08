@@ -1,7 +1,4 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import { SavedListDetail } from '@shop/contracts/saved-lists';
@@ -11,7 +8,7 @@ import {
   StandingOrderRunListResponse,
 } from '@shop/contracts/standing-orders';
 import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededFixture } from '../support/seededDatabase.js';
 
 function cookie(response: { headers: Record<string, string | string[] | undefined> }): string {
   const value = response.headers['set-cookie'];
@@ -46,15 +43,7 @@ async function createSavedList(
 }
 
 void test('standing-order routes enforce auth, source ownership, schedule ownership, and run-now queueing', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-standing-order-routes-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = await createSeededFixture(t);
 
   for (const request of [
     { method: 'GET' as const, url: '/api/standing-orders' },

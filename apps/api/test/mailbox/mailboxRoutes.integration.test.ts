@@ -1,18 +1,13 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import type { MailboxMessage } from '@shop/contracts/mailbox';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 import { createMailboxRepository } from '../../src/features/mailbox/mailboxRepository.js';
 import { createOrderRepository } from '../../src/features/orders/orderRepository.js';
 
 void test('mailbox route returns canonical receipt facts and typed templates', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-mailbox-route-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
+  const fixture = await createSeededAppFixture(t);
+  const { db, app } = fixture;
   const mailbox = createMailboxRepository(db);
   const orderId = createOrderRepository(db).create({
     country: 'DE',
@@ -56,13 +51,6 @@ void test('mailbox route returns canonical receipt facts and typed templates', a
     body: 'Legacy body',
     kind: 'plain',
     createdAt: '2026-08-07T10:03:00.000Z',
-  });
-
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.example.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
   });
 
   const response = await app.inject({ method: 'GET', url: '/api/dev/mailbox' });

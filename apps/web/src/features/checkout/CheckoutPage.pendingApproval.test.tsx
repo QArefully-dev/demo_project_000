@@ -46,7 +46,7 @@ function readyPaymentState() {
 describe('CheckoutPage approval response', () => {
   it('keeps checkout visible and links to approval requests', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <CheckoutPage />
       </MemoryRouter>,
     );

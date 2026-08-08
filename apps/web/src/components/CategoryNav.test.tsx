@@ -15,7 +15,10 @@ vi.mock('@/hooks/useCategories', () => ({
 
 function renderNav(path: string) {
   render(
-    <MemoryRouter initialEntries={[path]}>
+    <MemoryRouter
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      initialEntries={[path]}
+    >
       <CategoryNav />
     </MemoryRouter>,
   );

@@ -1,7 +1,4 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import type Database from 'better-sqlite3';
 import { Value } from '@sinclair/typebox/value';
@@ -11,14 +8,13 @@ import {
   QuickOrderResponse,
   type QuickOrderResponse as QuickOrderResponseType,
 } from '@shop/contracts/quick-order';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 import { createCartRepository } from '../../src/features/cart/cartRepository.js';
 
 const NOW = new Date('2026-07-31T12:00:00.000Z');
 const ALICE = 'alice@example.com';
 
-type App = Awaited<ReturnType<typeof buildApp>>;
+type App = Awaited<ReturnType<typeof createSeededAppFixture>>['app'];
 
 interface Fixture {
   db: Database.Database;
@@ -41,19 +37,8 @@ interface SeedLot {
 }
 
 async function openFixture(name: string): Promise<Fixture> {
-  const directory = mkdtempSync(join(tmpdir(), `shop-quick-order-${name}-`));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test', clock: { now: () => NOW } });
-  return {
-    db,
-    app,
-    cleanup: async () => {
-      await app.close();
-      closeDatabase(db);
-      rmSync(directory, { recursive: true, force: true });
-    },
-  };
+  void name;
+  return createSeededAppFixture({ app: { clock: { now: () => NOW } } });
 }
 
 async function createCart(app: App): Promise<string> {

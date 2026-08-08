@@ -42,7 +42,7 @@ const nutrition = (calories: string, withProtein = true): Product['specification
 describe('ComparisonMatrix', () => {
   it('keeps product columns in response order and puts differing values first', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ComparisonMatrix
           products={[
             product('2', 'Second powder', nutrition('200')),
@@ -63,7 +63,7 @@ describe('ComparisonMatrix', () => {
 
   it('marks absent facts as not specified, which counts as a difference', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ComparisonMatrix
           products={[
             product('1', 'One', nutrition('100')),

@@ -91,7 +91,10 @@ describe('ReviewsSection', () => {
     state.reviews = reviewState();
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/products/p1?source=review#write']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/products/p1?source=review#write']}
+      >
         <Routes>
           <Route path="/products/p1" element={<ReviewsSection productId="p1" />} />
           <Route path="/login" element={<Destination />} />
@@ -109,7 +112,7 @@ describe('ReviewsSection', () => {
   it('shows a local retry when public reviews fail', () => {
     state.reviews = { ...reviewState(), list: null, listError: 'offline' };
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ReviewsSection productId="p1" />
       </MemoryRouter>,
     );
@@ -122,7 +125,7 @@ describe('ReviewsSection', () => {
       list: { ...list, summary: { ...list.summary, total: 0 }, items: [] },
     };
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ReviewsSection productId="p1" />
       </MemoryRouter>,
     );
@@ -139,7 +142,7 @@ describe('ReviewsSection', () => {
     };
     state.reviews = { ...reviewState(), ownerError: 'offline' };
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ReviewsSection productId="p1" />
       </MemoryRouter>,
     );

@@ -41,7 +41,10 @@ const detail: SavedListDetail = {
 };
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/lists/7']}>
+    <MemoryRouter
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      initialEntries={['/lists/7']}
+    >
       <Routes>
         <Route path="/lists/:listId" element={<SavedListDetailPage />} />
       </Routes>

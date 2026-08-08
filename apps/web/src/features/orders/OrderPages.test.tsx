@@ -191,7 +191,10 @@ describe('customer order UI', () => {
       .mockResolvedValueOnce({ ...list, items: [], page: 2 });
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/orders']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders']}
+      >
         <Routes>
           <Route path="/orders" element={<OrderHistoryPage />} />
         </Routes>
@@ -212,7 +215,7 @@ describe('customer order UI', () => {
       .mockResolvedValueOnce(list);
     const user = userEvent.setup();
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <OrderHistoryPage />
       </MemoryRouter>,
     );
@@ -229,7 +232,7 @@ describe('customer order UI', () => {
       items: [{ ...list.items[0]!, purchaseOrderReference: 'PO-55120' }],
     });
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <OrderHistoryPage />
       </MemoryRouter>,
     );
@@ -241,7 +244,7 @@ describe('customer order UI', () => {
   it('renders a legacy history row with no purchase order reference markup', async () => {
     vi.mocked(getOrders).mockResolvedValue(list);
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <OrderHistoryPage />
       </MemoryRouter>,
     );
@@ -259,7 +262,10 @@ describe('customer order UI', () => {
     });
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/orders/12']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders/12']}
+      >
         <Routes>
           <Route path="/orders/:orderId" element={<OrderDetailPage />} />
         </Routes>
@@ -324,7 +330,10 @@ describe('customer order UI', () => {
       ],
     });
     render(
-      <MemoryRouter initialEntries={['/orders/12']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders/12']}
+      >
         <Routes>
           <Route path="/orders/:orderId" element={<OrderDetailPage />} />
         </Routes>
@@ -372,7 +381,10 @@ describe('customer order UI', () => {
       ],
     });
     render(
-      <MemoryRouter initialEntries={['/orders/12']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders/12']}
+      >
         <Routes>
           <Route path="/orders/:orderId" element={<OrderDetailPage />} />
         </Routes>
@@ -403,7 +415,10 @@ describe('customer order UI', () => {
       ],
     });
     render(
-      <MemoryRouter initialEntries={['/orders/12']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders/12']}
+      >
         <Routes>
           <Route path="/orders/:orderId" element={<OrderDetailPage />} />
         </Routes>
@@ -421,7 +436,10 @@ describe('customer order UI', () => {
     vi.mocked(cancelOrder).mockRejectedValue(new ApiError('Stale version', 409));
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/orders/12']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders/12']}
+      >
         <Routes>
           <Route path="/orders/:orderId" element={<OrderDetailPage />} />
         </Routes>
@@ -443,7 +461,10 @@ describe('customer order UI', () => {
     vi.mocked(getOrder).mockResolvedValue(detail);
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/orders/12']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders/12']}
+      >
         <Routes>
           <Route path="/orders/:orderId" element={<OrderDetailPage />} />
         </Routes>
@@ -472,7 +493,10 @@ describe('customer order UI', () => {
       .mockResolvedValueOnce({ ...detail, id: '13' });
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/order-confirmation/12']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/order-confirmation/12']}
+      >
         <ConfirmationRoutes />
       </MemoryRouter>,
     );
@@ -489,7 +513,10 @@ describe('customer order UI', () => {
   it('shows foreign or expired guest confirmation as safe not-found', async () => {
     vi.mocked(getOrder).mockRejectedValue(new ApiError('Order', 404));
     render(
-      <MemoryRouter initialEntries={['/order-confirmation/12']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/order-confirmation/12']}
+      >
         <Routes>
           <Route path="/order-confirmation/:orderId" element={<OrderConfirmationPage />} />
         </Routes>
@@ -530,7 +557,10 @@ describe('customer order UI', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/orders/12']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders/12']}
+      >
         <Routes>
           <Route path="/orders/:orderId" element={<OrderDetailPage />} />
         </Routes>
@@ -549,7 +579,10 @@ describe('customer order UI', () => {
   it('shows delivery address, booked slot, billing entity, and PO reference on a trade order', async () => {
     vi.mocked(getOrder).mockResolvedValue(tradeDetail);
     render(
-      <MemoryRouter initialEntries={['/orders/12']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders/12']}
+      >
         <Routes>
           <Route path="/orders/:orderId" element={<OrderDetailPage />} />
         </Routes>
@@ -570,7 +603,10 @@ describe('customer order UI', () => {
   it('omits the delivery and billing section entirely for a legacy order', async () => {
     vi.mocked(getOrder).mockResolvedValue(detail);
     render(
-      <MemoryRouter initialEntries={['/orders/12']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders/12']}
+      >
         <Routes>
           <Route path="/orders/:orderId" element={<OrderDetailPage />} />
         </Routes>
@@ -592,7 +628,10 @@ describe('customer order UI', () => {
       purchaseOrderReference: 'PO-77',
     });
     render(
-      <MemoryRouter initialEntries={['/orders/12']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders/12']}
+      >
         <Routes>
           <Route path="/orders/:orderId" element={<OrderDetailPage />} />
         </Routes>
@@ -629,7 +668,7 @@ describe('Buy Again placement on the order surfaces', () => {
       items: [list.items[0]!, { ...list.items[0]!, id: '13' }],
     });
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <OrderHistoryPage />
       </MemoryRouter>,
     );
@@ -652,7 +691,7 @@ describe('Buy Again placement on the order surfaces', () => {
     });
     const user = userEvent.setup();
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <OrderHistoryPage />
       </MemoryRouter>,
     );
@@ -665,7 +704,10 @@ describe('Buy Again placement on the order surfaces', () => {
   it('offers Buy again on order detail alongside the existing cancel surface', async () => {
     vi.mocked(getOrder).mockResolvedValue(detail);
     render(
-      <MemoryRouter initialEntries={['/orders/12']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders/12']}
+      >
         <Routes>
           <Route path="/orders/:orderId" element={<OrderDetailPage />} />
         </Routes>

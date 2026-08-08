@@ -258,7 +258,10 @@ function mockProducts(products: ReturnType<typeof pickerProduct>[]) {
 
 function renderPage(search: string, extra?: React.ReactNode) {
   return render(
-    <MemoryRouter initialEntries={[`/custom-blend${search}`]}>
+    <MemoryRouter
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      initialEntries={[`/custom-blend${search}`]}
+    >
       {extra}
       <CustomBlendPage />
     </MemoryRouter>,
@@ -267,7 +270,10 @@ function renderPage(search: string, extra?: React.ReactNode) {
 
 function countryPage(search: string, extra?: React.ReactNode) {
   return (
-    <MemoryRouter initialEntries={[`/custom-blend${search}`]}>
+    <MemoryRouter
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      initialEntries={[`/custom-blend${search}`]}
+    >
       <LocaleProvider>
         {extra}
         <CustomBlendPage />

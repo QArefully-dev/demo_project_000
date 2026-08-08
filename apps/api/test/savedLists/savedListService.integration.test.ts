@@ -1,9 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
@@ -16,18 +12,13 @@ import { createOrderRepository } from '../../src/features/orders/orderRepository
 import { createOrderService } from '../../src/features/orders/orderService.js';
 import { createSavedListRepository } from '../../src/features/savedLists/savedListRepository.js';
 import { createSavedListService } from '../../src/features/savedLists/savedListService.js';
+import { openSeededDatabase } from '../support/seededDatabase.js';
 
 const now = new Date('2026-01-15T12:00:00.000Z');
 const context = { actor: { type: 'user' as const, userId: 1 }, requestId: 'saved-list-test' };
 
 function fixture(t: test.TestContext) {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-saved-list-service-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const clock = { now: () => now };
   const unitOfWork = createUnitOfWork(db);
   const inventory = createInventoryService({ repository: createInventoryRepository(db) });

@@ -1,20 +1,15 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import {
   ProductComparisonResponse,
   type ProductComparisonResponse as ComparisonResponse,
 } from '@shop/contracts/products';
 import { Value } from '@sinclair/typebox/value';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 
 void test('anonymous comparison preserves requested order and safely reports unavailable rows', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-product-comparison-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
+  const fixture = await createSeededAppFixture(t);
+  const { db, app } = fixture;
   db.prepare('UPDATE products SET active = 0 WHERE id = 2').run();
   db.prepare(
     `INSERT INTO products
@@ -35,13 +30,6 @@ void test('anonymous comparison preserves requested order and safely reports una
     `INSERT INTO product_specifications (product_id, specification_key, value_key, display_value)
      VALUES (99, 'texture', 'fine', 'Fine')`,
   ).run();
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
-
   const response = await app.inject({
     method: 'GET',
     url: '/api/products/compare?ids=99,404,2,1',
@@ -71,15 +59,8 @@ void test('anonymous comparison preserves requested order and safely reports una
 });
 
 void test('comparison accepts bounded selections and rejects malformed or unsafe IDs', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-product-comparison-validation-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const fixture = await createSeededAppFixture(t);
+  const { app } = fixture;
 
   for (const ids of ['1,2', '1,2,3,4']) {
     const response = await app.inject({ method: 'GET', url: `/api/products/compare?ids=${ids}` });

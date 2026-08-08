@@ -117,7 +117,10 @@ function renderPanel(overrides: Partial<ComponentProps<typeof ProductPurchasePan
   const onAddToCart = vi.fn(async () => {});
   const onRetryCart = vi.fn();
   const result = render(
-    <MemoryRouter initialEntries={['/products/powdered-water']}>
+    <MemoryRouter
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      initialEntries={['/products/powdered-water']}
+    >
       <ComparisonSelectionProvider storage={comparisonStorage}>
         <Routes>
           <Route
@@ -161,7 +164,7 @@ describe('ProductPurchasePanel', () => {
     const user = userEvent.setup();
     const onAddToCart = vi.fn(async () => {});
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ComparisonSelectionProvider storage={comparisonStorage}>
           <ProductPurchasePanel
             product={product()}
@@ -198,7 +201,7 @@ describe('ProductPurchasePanel', () => {
 
   it('renders regular price without sale metadata', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ComparisonSelectionProvider storage={comparisonStorage}>
           <ProductPurchasePanel
             product={product({
@@ -267,7 +270,7 @@ describe('ProductPurchasePanel', () => {
     const onAddToCart = vi.fn(async () => {});
     const onRetryCart = vi.fn();
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ComparisonSelectionProvider storage={comparisonStorage}>
           <ProductPurchasePanel
             product={product({
@@ -296,7 +299,7 @@ describe('ProductPurchasePanel', () => {
     expect(onRetryCart).toHaveBeenCalledOnce();
 
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ComparisonSelectionProvider storage={comparisonStorage}>
           <ProductPurchasePanel
             product={product()}
@@ -316,7 +319,7 @@ describe('ProductPurchasePanel', () => {
   it('keeps a backorderable product purchasable without promising an arrival date', async () => {
     const user = userEvent.setup();
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ComparisonSelectionProvider storage={comparisonStorage}>
           <ProductPurchasePanel
             product={product({
@@ -370,7 +373,7 @@ describe('ProductPurchasePanel', () => {
     const user = userEvent.setup();
     const onAddToCart = vi.fn(async () => {});
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ComparisonSelectionProvider storage={comparisonStorage}>
           <ProductPurchasePanel
             product={product({ id: '1' })}
@@ -403,7 +406,7 @@ describe('ProductPurchasePanel', () => {
   it('shows variant details when selected including price, SKU, and stock', async () => {
     const user = userEvent.setup();
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ComparisonSelectionProvider storage={comparisonStorage}>
           <ProductPurchasePanel
             product={product()}

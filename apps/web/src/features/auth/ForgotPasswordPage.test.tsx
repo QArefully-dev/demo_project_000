@@ -18,7 +18,10 @@ vi.mock('@/hooks/CountryContext', () => ({
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={['/forgot-password']}>
+    <MemoryRouter
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      initialEntries={['/forgot-password']}
+    >
       <ForgotPasswordPage />
     </MemoryRouter>,
   );

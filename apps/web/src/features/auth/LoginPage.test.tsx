@@ -35,7 +35,10 @@ function LoginLocation() {
 
 function renderLogin(initialEntry: string | { pathname: string; state?: unknown }) {
   return render(
-    <MemoryRouter initialEntries={[initialEntry]}>
+    <MemoryRouter
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      initialEntries={[initialEntry]}
+    >
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="*" element={<Location />} />
@@ -104,7 +107,10 @@ describe('login return navigation', () => {
     authState.user = null;
     authState.loading = false;
     render(
-      <MemoryRouter initialEntries={['/account?tab=orders#recent']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/account?tab=orders#recent']}
+      >
         <Routes>
           <Route
             path="/account"

@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import { assertProfilesMatchCatalog } from '../../src/features/countryProfile/countryProfileService.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 
 function sessionCookie(response: {
   headers: Record<string, string | string[] | undefined>;
@@ -17,17 +13,9 @@ function sessionCookie(response: {
 }
 
 void test('request country resolution precedence', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-country-resolution-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
+  const fixture = await createSeededAppFixture(t);
+  const { db, app } = fixture;
   app.get('/__test/resolved-country', (request) => ({ country: request.resolvedCountry }));
-
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
 
   async function resolvedCountry(headers?: Record<string, string>): Promise<string> {
     const response = await app.inject({

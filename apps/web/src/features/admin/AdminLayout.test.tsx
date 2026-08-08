@@ -32,7 +32,10 @@ vi.mock('@/hooks/CountryContext', () => ({
 describe('AdminLayout', () => {
   it('renders administration navigation and mounts the index inside AdminRoute', () => {
     render(
-      <MemoryRouter initialEntries={['/admin']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/admin']}
+      >
         <Routes>
           <Route
             path="/admin"

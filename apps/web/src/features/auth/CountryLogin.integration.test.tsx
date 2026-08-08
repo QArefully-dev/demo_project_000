@@ -94,7 +94,10 @@ function Home() {
 
 function renderLoginJourney() {
   return render(
-    <MemoryRouter initialEntries={['/login']}>
+    <MemoryRouter
+      initialEntries={['/login']}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <AuthProvider>
         <CountryProvider storage={storage}>
           <CartProvider>
@@ -112,7 +115,7 @@ function renderLoginJourney() {
 function renderHeader(user: PublicUser | null) {
   vi.mocked(authApi.getMe).mockResolvedValue(user);
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
         <CountryProvider storage={storage}>
           <NotificationsProvider>

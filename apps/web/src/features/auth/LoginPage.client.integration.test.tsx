@@ -71,7 +71,10 @@ describe('LoginPage client-path country error authority', () => {
   it('uses submitted DE copy when active browsing country remains US', async () => {
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/login']}>
+      <MemoryRouter
+        initialEntries={['/login']}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <AuthProvider>
           <CountryProvider storage={storage}>
             <Routes>
@@ -99,7 +102,10 @@ describe('LoginPage client-path country error authority', () => {
   it('relocalizes validation fallback after active browsing-country switch', async () => {
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/login']}>
+      <MemoryRouter
+        initialEntries={['/login']}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <AuthProvider>
           <CountryProvider storage={storage}>
             <Routes>
@@ -146,7 +152,10 @@ describe('LoginPage client-path country error authority', () => {
     );
 
     render(
-      <MemoryRouter initialEntries={['/login']}>
+      <MemoryRouter
+        initialEntries={['/login']}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <AuthProvider>
           <CountryProvider storage={storage}>
             <Routes>

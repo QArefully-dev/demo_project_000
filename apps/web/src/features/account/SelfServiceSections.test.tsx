@@ -234,7 +234,7 @@ describe('DeleteAccountSection', () => {
   it('requires confirmation then logs out after successful deletion', async () => {
     const user = userEvent.setup();
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <DeleteAccountSection />
       </MemoryRouter>,
     );
@@ -259,7 +259,7 @@ describe('DeleteAccountSection', () => {
       }),
     );
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <DeleteAccountSection />
       </MemoryRouter>,
     );
@@ -277,7 +277,10 @@ describe('DeleteAccountSection', () => {
     const user = userEvent.setup();
     logout.mockRejectedValue(new Error('Logout unavailable'));
     render(
-      <MemoryRouter initialEntries={['/account']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/account']}
+      >
         <Routes>
           <Route path="/account" element={<DeleteAccountSection />} />
           <Route path="/" element={<p>Signed out</p>} />

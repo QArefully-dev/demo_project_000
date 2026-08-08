@@ -18,7 +18,10 @@ function Location() {
 
 function renderRoute() {
   return render(
-    <MemoryRouter initialEntries={['/admin/reviews?queue=hidden#item-1']}>
+    <MemoryRouter
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      initialEntries={['/admin/reviews?queue=hidden#item-1']}
+    >
       <Routes>
         <Route
           path="/admin/reviews"

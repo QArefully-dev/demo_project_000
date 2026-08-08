@@ -1,9 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { openSeededDatabase } from '../support/seededDatabase.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
@@ -14,13 +11,7 @@ import { createOrderRepository } from '../../src/features/orders/orderRepository
 import { createOrderService } from '../../src/features/orders/orderService.js';
 
 void test('order lifecycle repository creates initial immutable event', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-order-lifecycle-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const repository = createOrderRepository(db);
   const orderId = repository.create({
     customerName: 'Order Test',
@@ -68,13 +59,7 @@ void test('order lifecycle repository creates initial immutable event', (t) => {
 });
 
 void test('lifecycle snapshots use frozen order country while tracking text stays raw', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-order-localised-lifecycle-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const clock = { now: () => new Date('2026-07-19T12:00:00.000Z') };
   const repository = createOrderRepository(db);
   const service = createOrderService({
@@ -178,13 +163,7 @@ void test('lifecycle snapshots use frozen order country while tracking text stay
 });
 
 void test('lifecycle commands are idempotent, versioned, audited, and transactional', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-order-commands-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const clock = { now: () => new Date('2026-07-19T12:00:00.000Z') };
   const repository = createOrderRepository(db);
   const service = createOrderService({

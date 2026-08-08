@@ -62,7 +62,7 @@ function stubCart(overrides: Partial<CartStub> = {}): CartStub {
 function TwoOrders({ orderIds }: { orderIds: string[] }) {
   const { buyAgain, stateFor } = useBuyAgain();
   return (
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       {orderIds.map((orderId) => {
         const state = stateFor(orderId);
         return (

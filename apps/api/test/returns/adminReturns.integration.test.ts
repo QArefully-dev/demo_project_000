@@ -1,15 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
 import { createAdminRefundService } from '../../src/features/payments/adminRefundService.js';
 import { createRefundGateway } from '../../src/features/returns/refundGateway.js';
+import { createSeededFixture } from '../support/seededDatabase.js';
 
 function cookie(response: { headers: Record<string, string | string[] | undefined> }): string {
   const h = response.headers['set-cookie'];
@@ -85,15 +82,7 @@ async function createReturnForAlice(
 }
 
 void test('admin return routes enforce auth and process lifecycle', async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'shop-admin-returns-'));
-  const db = openDatabase({ path: join(dir, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(dir, { recursive: true, force: true });
-  });
+  const { db, app } = await createSeededFixture(t);
 
   const aliceCookie = await login(app, 'alice@example.com');
   const adminCookie = await login(app, 'admin@example.com');

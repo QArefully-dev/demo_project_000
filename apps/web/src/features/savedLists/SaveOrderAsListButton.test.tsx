@@ -18,7 +18,7 @@ describe('SaveOrderAsListButton', () => {
     );
     const user = userEvent.setup();
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <SaveOrderAsListButton orderId="order-1" />
       </MemoryRouter>,
     );
@@ -40,7 +40,7 @@ describe('SaveOrderAsListButton', () => {
     vi.mocked(saveOrderAsSavedList).mockRejectedValueOnce(nameTaken);
     const user = userEvent.setup();
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <SaveOrderAsListButton orderId="order-1" />
       </MemoryRouter>,
     );

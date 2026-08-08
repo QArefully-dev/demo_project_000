@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import type { BackInStockSubscription } from '@shop/contracts/back-in-stock';
@@ -42,7 +42,10 @@ describe('NotifyWhenAvailableButton', () => {
 
   it('sends anonymous buyers to sign-in without issuing a subscribe request', async () => {
     render(
-      <MemoryRouter initialEntries={['/products/a?source=card']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/products/a?source=card']}
+      >
         <Routes>
           <Route
             path="*"
@@ -66,12 +69,16 @@ describe('NotifyWhenAvailableButton', () => {
   it('subscribes a signed-in buyer and prevents duplicate submissions while pending', async () => {
     state.user = { id: 'u' };
     let resolveSubscribe!: (value: BackInStockSubscription | false) => void;
-    state.subscribe.mockReturnValue(
-      new Promise<BackInStockSubscription | false>((resolve) => (resolveSubscribe = resolve)),
-    );
+    let subscribePromise!: Promise<BackInStockSubscription | false>;
+    state.subscribe.mockImplementation(() => {
+      subscribePromise = new Promise<BackInStockSubscription | false>(
+        (resolve) => (resolveSubscribe = resolve),
+      );
+      return subscribePromise;
+    });
     const user = userEvent.setup();
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <NotifyWhenAvailableButton variantId={3} />
       </MemoryRouter>,
     );
@@ -82,14 +89,17 @@ describe('NotifyWhenAvailableButton', () => {
     await user.click(button);
     expect(state.subscribe).toHaveBeenCalledOnce();
     expect(state.subscribe).toHaveBeenCalledWith(3);
-    resolveSubscribe(false);
+    await act(async () => {
+      resolveSubscribe(false);
+      await subscribePromise;
+    });
   });
 
   it('names the subscribed state distinctly once the buyer is on the waiting list', () => {
     state.user = { id: 'u' };
     state.pendingVariantIds = new Set([3]);
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <NotifyWhenAvailableButton variantId={3} />
       </MemoryRouter>,
     );
@@ -106,7 +116,7 @@ describe('NotifyWhenAvailableButton', () => {
       return Promise.resolve(false);
     });
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <NotifyWhenAvailableButton variantId={3} />
       </MemoryRouter>,
     );
@@ -130,7 +140,7 @@ describe('NotifyWhenAvailableButton', () => {
       });
     const user = userEvent.setup();
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <NotifyWhenAvailableButton variantId={3} />
       </MemoryRouter>,
     );

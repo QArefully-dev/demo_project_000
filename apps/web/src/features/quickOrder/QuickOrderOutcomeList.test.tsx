@@ -78,7 +78,7 @@ function response(outcomes: QuickOrderLineOutcome[]): QuickOrderResponse {
 
 function renderList(state: Parameters<typeof QuickOrderOutcomeList>[0]['state']) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <QuickOrderOutcomeList state={state} />
     </MemoryRouter>,
   );

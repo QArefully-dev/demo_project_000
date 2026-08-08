@@ -38,7 +38,7 @@ const page = (
 });
 function renderInbox() {
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <NotificationsProvider>
         <NotificationsPage />
       </NotificationsProvider>
@@ -55,7 +55,7 @@ function UnreadProbe() {
 }
 function renderInboxWithProbe() {
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <NotificationsProvider>
         <RefreshProbe />
         <UnreadProbe />
@@ -79,7 +79,7 @@ describe('Notifications inbox journey', () => {
     expect(screen.queryByRole('button', { name: 'Mark as read' })).not.toBeInTheDocument();
     auth.user = null;
     rerender(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <NotificationsProvider>
           <NotificationsPage />
         </NotificationsProvider>
@@ -121,7 +121,7 @@ describe('Notifications inbox journey', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Mark as read' }));
     auth.user = null;
     rerender(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <NotificationsProvider>
           <NotificationsPage />
         </NotificationsProvider>
@@ -143,7 +143,7 @@ describe('Notifications inbox journey', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Mark as read' }));
     auth.user = null;
     rerender(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <NotificationsProvider>
           <NotificationsPage />
         </NotificationsProvider>

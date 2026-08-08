@@ -1,12 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import type Database from 'better-sqlite3';
 import { MOQ_DEFAULT_SACKS } from '@shop/contracts/pricing';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
 import { createCartRepository } from '../../src/features/cart/cartRepository.js';
@@ -25,6 +20,7 @@ import { createProductRepository } from '../../src/features/catalog/productRepos
 import { createPromoRepository } from '../../src/features/promos/promoRepository.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { adhocBilling, bookableSlot, checkoutDepthDependencies } from './checkoutDepthFixtures.js';
+import { createSeededAppFixture, openSeededDatabase } from '../support/seededDatabase.js';
 
 const NOW = new Date('2026-08-05T10:00:00.000Z');
 const CLOCK = { now: () => NOW };
@@ -43,13 +39,7 @@ function createFrenchUser(db: Database.Database): number {
 }
 
 void test('checkout refuses saved and ad-hoc destinations outside the persisted cart country', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cross-border-checkout-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
 
   const carts = createCartRepository(db);
   const depth = checkoutDepthDependencies(db, CLOCK);
@@ -149,15 +139,11 @@ void test('checkout refuses saved and ad-hoc destinations outside the persisted 
 });
 
 void test('payment route rejects a delivery address outside the persisted cart country', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cross-border-route-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test', clock: CLOCK });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
+  const fixture = await createSeededAppFixture({
+    testContext: t,
+    app: { clock: CLOCK },
   });
+  const { db, app } = fixture;
 
   const variantId = (
     db

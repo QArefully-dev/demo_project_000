@@ -56,7 +56,7 @@ vi.mock('@/features/notifications/NotificationBell', () => ({
 describe('Header', () => {
   it('presents QArefully Materials Exchange without a category-nav tagline', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Header />
       </MemoryRouter>,
     );
@@ -71,7 +71,7 @@ describe('Header', () => {
   it('links to saved lists and shows the default-list item count', () => {
     savedLists.defaultList = { items: [{}, {}] };
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Header />
       </MemoryRouter>,
     );
@@ -85,7 +85,7 @@ describe('Header', () => {
     countryState.activeCountry = 'DE' as const;
     authState.user = null;
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Header />
       </MemoryRouter>,
     );
@@ -100,7 +100,7 @@ describe('Header', () => {
     countryState.activeCountry = 'UK' as const;
     countryState.isAccountBound = true;
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Header />
       </MemoryRouter>,
     );
@@ -116,7 +116,7 @@ describe('Header', () => {
     countryState.isAccountBound = false;
     countryState.selectCountry.mockClear();
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Header />
       </MemoryRouter>,
     );

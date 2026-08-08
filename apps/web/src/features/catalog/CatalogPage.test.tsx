@@ -124,7 +124,10 @@ function LocationControls() {
 
 function renderCatalog(initialEntry: string) {
   return render(
-    <MemoryRouter initialEntries={[initialEntry]}>
+    <MemoryRouter
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      initialEntries={[initialEntry]}
+    >
       <ComparisonSelectionProvider
         storage={{ getItem: () => null, setItem: () => undefined, removeItem: () => undefined }}
       >

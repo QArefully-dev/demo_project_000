@@ -1,9 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { openSeededDatabase } from '../support/seededDatabase.js';
 import { createCartRepository } from '../../src/features/cart/cartRepository.js';
 import {
   addItem,
@@ -74,13 +71,7 @@ function quote(cartId: string, totalCents = 1200): PersistedCheckoutQuote {
 }
 
 void test('payment intent persistence, cart reservations, and promo reservations', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-payment-intent-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
 
   const carts = createCartRepository(db);
   const payments = createPaymentRepository(db);

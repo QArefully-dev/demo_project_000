@@ -6,7 +6,7 @@ import { HeroSection } from './HeroSection';
 describe('HeroSection', () => {
   it('renders QArefully Materials Exchange CTA and supply overview', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <HeroSection />
       </MemoryRouter>,
     );

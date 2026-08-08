@@ -1,9 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import {
   createProductRepository,
   type ProductRow,
@@ -13,15 +9,10 @@ import {
   normalizeCatalogQuery,
 } from '../../src/features/catalog/catalogQuery.js';
 import { buildCatalogPredicate, catalogOrderBy } from '../../src/features/catalog/catalogSql.js';
+import { openSeededDatabase } from '../support/seededDatabase.js';
 
 void test('product repository owns catalog SQL and variant methods', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-catalog-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const products = createProductRepository(db);
 
   assert.ok(products.listCategories().length >= 4);
@@ -94,13 +85,7 @@ function CATALOG_CATEGORY_FROM_DB(
 }
 
 void test('customer reads hydrate persisted metadata in stable catalog order', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-catalog-hydration-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const products = createProductRepository(db);
   const persistedTag = db
     .prepare(
@@ -172,13 +157,7 @@ void test('customer reads hydrate persisted metadata in stable catalog order', (
 });
 
 void test('advanced catalog predicates are inclusive, composable, and stable', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-catalog-advanced-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const products = createProductRepository(db);
   db.prepare("INSERT INTO catalog_tags (key, label) VALUES ('test-only', 'Test only')").run();
   db.prepare("INSERT INTO product_tags (product_id, tag_key) VALUES (1, 'test-only')").run();
@@ -356,13 +335,7 @@ void test('catalog SQL builder only emits allowlisted identifiers', () => {
 });
 
 void test('reservation-aware availability filters count and paginate against one instant', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-catalog-availability-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const products = createProductRepository(db);
   const now = '2026-07-19T12:00:00.000Z';
   const future = '2026-07-19T12:01:00.000Z';

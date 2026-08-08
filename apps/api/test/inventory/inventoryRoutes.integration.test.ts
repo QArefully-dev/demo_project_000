@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { openDatabase } from '../../src/db/index.js';
 import { createOrderRepository } from '../../src/features/orders/orderRepository.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 
 function cookieValue(response: { headers: Record<string, string | string[] | undefined> }): string {
   const header = response.headers['set-cookie'];
@@ -68,9 +66,11 @@ function createBackorder(
 }
 
 void test('admin receipt authenticates, replays, rejects changed keys, and fulfills FIFO', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-inventory-routes-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
+  const fixture = await createSeededAppFixture({
+    testContext: t,
+    app: { clock: { now: () => new Date('2026-07-19T12:10:00.000Z') } },
+  });
+  const db = fixture.db;
   const variant49 = defaultVariantId(db, 49);
   db.prepare(
     'UPDATE product_variants SET stock_count = 0, backorderable = 1, backorder_lead_days = 14 WHERE id = ?',
@@ -105,16 +105,7 @@ void test('admin receipt authenticates, replays, rejects changed keys, and fulfi
     '2026-07-19T12:01:00.000Z',
     '2026-07-19T12:01:00.000Z',
   );
-  const app = await buildApp({
-    db,
-    resetBaseUrl: 'http://web.test',
-    clock: { now: () => new Date('2026-07-19T12:10:00.000Z') },
-  });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const app = fixture.app;
 
   const customerCookie = await login(app, 'alice@example.com');
   const adminCookie = await login(app, 'admin@example.com');

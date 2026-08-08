@@ -1,9 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { openDatabase } from '../../src/db/index.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter, type AuditWriter } from '../../src/features/audit/auditService.js';
@@ -17,6 +14,7 @@ import { createCart, getCart } from '../../src/features/cart/cartService.js';
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
 import { validateMoq } from '../../src/features/pricing/pricingRules.js';
+import { openSeededDatabase } from '../support/seededDatabase.js';
 
 function defaultVariantId(db: ReturnType<typeof openDatabase>, productId: number): string {
   const row = db
@@ -29,13 +27,7 @@ function defaultVariantId(db: ReturnType<typeof openDatabase>, productId: number
 }
 
 function createFixture(t: test.TestContext, audit?: AuditWriter) {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-curated-bundles-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const carts = createCartRepository(db);
   const service = createBundleService({
     bundles: createBundleRepository(db),

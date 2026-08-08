@@ -84,7 +84,7 @@ function renderCard(
 ) {
   const onAddToCart = props.onAddToCart ?? vi.fn().mockResolvedValue(true);
   render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ProductCard
         product={product(productOverrides)}
         onAddToCart={onAddToCart}
@@ -99,7 +99,7 @@ function renderCard(
 describe('ProductCard', () => {
   it('shows sale pricing and suppresses the compare-at price for regular products', () => {
     const { rerender } = render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ProductCard
           product={product()}
           onAddToCart={vi.fn().mockResolvedValue(true)}
@@ -113,7 +113,7 @@ describe('ProductCard', () => {
     expect(screen.getByText('$124.99')).toBeInTheDocument();
 
     rerender(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ProductCard
           product={product({
             compareAtPriceCents: undefined,
@@ -131,7 +131,7 @@ describe('ProductCard', () => {
 
   it('renders the server-resolved clearance badge only when active', () => {
     const { rerender } = render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ProductCard
           product={product({ hasActiveClearance: true })}
           onAddToCart={vi.fn().mockResolvedValue(true)}
@@ -143,7 +143,7 @@ describe('ProductCard', () => {
     expect(screen.getByText('Clearance')).toBeInTheDocument();
 
     rerender(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ProductCard
           product={product({ hasActiveClearance: false })}
           onAddToCart={vi.fn().mockResolvedValue(true)}
@@ -224,7 +224,7 @@ describe('ProductCard', () => {
 
   it('renders comparison control only when supplied', () => {
     const { rerender } = render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ProductCard
           product={product()}
           onAddToCart={vi.fn().mockResolvedValue(true)}
@@ -235,7 +235,7 @@ describe('ProductCard', () => {
     expect(screen.queryByRole('button', { name: 'Compare' })).not.toBeInTheDocument();
 
     rerender(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ProductCard
           product={product()}
           onAddToCart={vi.fn().mockResolvedValue(true)}
@@ -251,7 +251,7 @@ describe('ProductCard', () => {
     const user = userEvent.setup();
     const onAddToCart = vi.fn().mockResolvedValue(true);
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ComparisonSelectionProvider
           storage={{ getItem: () => null, setItem: () => undefined, removeItem: () => undefined }}
         >

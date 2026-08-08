@@ -108,9 +108,10 @@ Node-unavailable protocol: prepend path -> retry. Still unresolved -> locate ins
 - focused API test: `npm exec -w @shop/api -- tsx --test <path-to-test.ts>`
 - focused web Vitest file: `npm exec -w @shop/web -- vitest run --configLoader runner <path-to-test.tsx>`
 - focused web Node test: `npm exec -w @shop/web -- tsx --test <path-to-test.ts>`
+- profiler self-check: `npm run test:profile`; named timing runs: `node scripts/profile-tests.mjs api-integration --repeat 3 --json`
 - auto-format supported non-Markdown files: `npm run format:fix`
 
-Keep `--configLoader runner` on Vite/Vitest commands. Root scripts already supply required flags. `SHOP_DB_PATH` overrides SQLite path; `SHOP_API_HOST`, `SHOP_API_PORT`, `SHOP_RESET_BASE_URL`, `SHOP_SEED` configure API runtime.
+Keep `--configLoader runner` on Vite/Vitest commands. Root scripts already supply required flags. `SHOP_DB_PATH` overrides SQLite path; `SHOP_API_HOST`, `SHOP_API_PORT`, `SHOP_RESET_BASE_URL`, `SHOP_SEED` configure API runtime. `SHOP_TEST_CONCURRENCY` is a positive-integer diagnostic override for API integration test concurrency (for example, `$env:SHOP_TEST_CONCURRENCY='7'; npm run test:integration -w @shop/api`); an explicit `--test-concurrency` option takes precedence.
 
 ## Change Rules
 

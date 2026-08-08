@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
 import test from 'node:test';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 
 function sessionCookie(response: {
   headers: Record<string, string | string[] | undefined>;
@@ -29,15 +25,8 @@ const promoFields = {
 };
 
 void test('admin audit metadata records the standing country, not account country', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-admin-audit-country-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const fixture = await createSeededAppFixture(t);
+  const { app } = fixture;
 
   const login = await app.inject({
     method: 'POST',

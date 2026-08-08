@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededFixture } from '../support/seededDatabase.js';
 
 function sessionCookie(response: {
   headers: Record<string, string | string[] | undefined>;
@@ -29,15 +25,7 @@ const promoFields = {
 };
 
 void test('omitting countries on admin update preserves targeting and opaque rejection', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-promo-country-preserve-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = await createSeededFixture(t);
 
   const login = await app.inject({
     method: 'POST',
@@ -138,15 +126,7 @@ void test('omitting countries on admin update preserves targeting and opaque rej
 });
 
 void test('explicit empty countries on admin update clears targeting globally', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-promo-country-clear-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = await createSeededFixture(t);
 
   const login = await app.inject({
     method: 'POST',
@@ -199,15 +179,7 @@ void test('explicit empty countries on admin update clears targeting globally', 
 });
 
 void test('country-targeted promos apply, reject opaquely, and replace targeting on admin update', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-promo-country-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = await createSeededFixture(t);
 
   const login = await app.inject({
     method: 'POST',

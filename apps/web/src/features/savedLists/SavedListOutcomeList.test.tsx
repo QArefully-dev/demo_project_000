@@ -50,7 +50,7 @@ const response: SavedListAddToCartResponse = {
 };
 function renderList(state: Parameters<typeof SavedListOutcomeList>[0]['state']) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <SavedListOutcomeList state={state} />
     </MemoryRouter>,
   );
@@ -80,7 +80,7 @@ describe('SavedListOutcomeList', () => {
     const { rerender } = renderList({ kind: 'pending' });
     expect(screen.getByRole('status')).toHaveTextContent(/Adding to cart/);
     rerender(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <SavedListOutcomeList
           state={{
             kind: 'result',

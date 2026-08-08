@@ -117,7 +117,10 @@ function CartStub() {
 
 function renderJourney() {
   return render(
-    <MemoryRouter initialEntries={['/orders']}>
+    <MemoryRouter
+      initialEntries={['/orders']}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <CartProvider>
         <Routes>
           <Route path="/orders" element={<OrderHistoryPage />} />

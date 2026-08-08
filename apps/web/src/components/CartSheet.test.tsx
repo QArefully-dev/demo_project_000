@@ -122,7 +122,7 @@ function renderSheet(
     isActionPending: overrides.isActionPending ?? vi.fn(),
   } as unknown as ReturnType<typeof useCart>);
   const content: ReactNode = (
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <CartSheet />
     </MemoryRouter>
   );

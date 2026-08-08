@@ -1,23 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { Cart, CreateCartResponse } from '@shop/contracts/cart';
 import { Value } from '@sinclair/typebox/value';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 
 void test('Custom Blend cart lines deduplicate, rehydrate, merge edits, and address config keys exactly', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-custom-blend-cart-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = await createSeededAppFixture(t);
 
   const lots = db
     .prepare(
@@ -123,15 +111,7 @@ void test('Custom Blend cart lines deduplicate, rehydrate, merge edits, and addr
 });
 
 void test('Custom Blend below MOQ returns localized guidance and safe metadata', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-custom-blend-cart-moq-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = await createSeededAppFixture(t);
 
   const lots = db
     .prepare(
@@ -179,15 +159,10 @@ void test('Custom Blend below MOQ returns localized guidance and safe metadata',
 });
 
 void test('Custom Blend applies active clearance to material only and preserves its flat fee', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-custom-blend-cart-clearance-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
   const now = new Date('2026-07-28T12:00:00.000Z');
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test', clock: { now: () => now } });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
+  const { db, app } = await createSeededAppFixture({
+    testContext: t,
+    app: { clock: { now: () => now } },
   });
 
   const lots = db
@@ -239,15 +214,7 @@ void test('Custom Blend applies active clearance to material only and preserves 
 });
 
 void test('Custom Blend rejects retired persisted facts and reserved-cart edits', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-custom-blend-cart-invalid-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = await createSeededAppFixture(t);
   const lots = db
     .prepare(
       `SELECT pv.id FROM product_variants pv INNER JOIN products p ON p.id = pv.product_id
@@ -297,15 +264,7 @@ void test('Custom Blend rejects retired persisted facts and reserved-cart edits'
 });
 
 void test('corrupt Custom Blend JSON blocks plain and configured cart mutations without writes', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-custom-blend-cart-corrupt-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = await createSeededAppFixture(t);
 
   const lots = db
     .prepare(

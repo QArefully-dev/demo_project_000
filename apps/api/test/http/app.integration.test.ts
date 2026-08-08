@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { openDatabase } from '../../src/db/index.js';
 import { adhocBilling, adhocDestination, bookableSlot } from '../checkout/checkoutDepthFixtures.js';
+import { createSeededAppFixture, openSeededDatabase } from '../support/seededDatabase.js';
 
 function firstActiveVariantId(db: ReturnType<typeof openDatabase>, productId: number): number {
   const row = db
@@ -27,20 +25,16 @@ function cookieHeader(response: {
 }
 
 void test('app factory injects isolated databases without starting a server', async (t) => {
-  const firstDir = mkdtempSync(join(tmpdir(), 'shop-app-first-'));
-  const secondDir = mkdtempSync(join(tmpdir(), 'shop-app-second-'));
-  const firstDb = openDatabase({ path: join(firstDir, 'shop.db') });
-  const secondDb = openDatabase({ path: join(secondDir, 'shop.db') });
-  seedDatabase(firstDb);
-  seedDatabase(secondDb);
+  const firstFixture = openSeededDatabase();
+  const secondFixture = openSeededDatabase();
+  const firstDb = firstFixture.db;
+  const secondDb = secondFixture.db;
 
   const app = await buildApp({ db: firstDb, resetBaseUrl: 'http://web.test' });
   t.after(async () => {
     await app.close();
-    closeDatabase(firstDb);
-    closeDatabase(secondDb);
-    rmSync(firstDir, { recursive: true, force: true });
-    rmSync(secondDir, { recursive: true, force: true });
+    await firstFixture.cleanup();
+    await secondFixture.cleanup();
   });
 
   const health = await app.inject({ method: 'GET', url: '/health' });
@@ -216,15 +210,8 @@ void test('app factory injects isolated databases without starting a server', as
 });
 
 void test('promo validation exposes a scoped discount base without discounting other categories', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-promo-route-scope-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const fixture = await createSeededAppFixture(t);
+  const { db, app } = fixture;
 
   const cartResponse = await app.inject({ method: 'POST', url: '/api/cart' });
   const { cartId } = cartResponse.json<{ cartId: string }>();

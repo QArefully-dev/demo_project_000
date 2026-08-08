@@ -1,7 +1,4 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import type Database from 'better-sqlite3';
 import { formatPostalAddress } from '@shop/contracts/address';
@@ -14,7 +11,7 @@ import {
 } from '../../src/features/checkout/checkoutService.js';
 import { createCartRepository } from '../../src/features/cart/cartRepository.js';
 import { addItem, createCart } from '../../src/features/cart/cartService.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { openSeededDatabase } from '../support/seededDatabase.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createPromoRepository } from '../../src/features/promos/promoRepository.js';
 import {
@@ -93,13 +90,7 @@ function createUser(db: Database.Database, email: string): number {
 }
 
 void test('checkout depth: destination, billing, slot, and buyer reference', async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'shop-checkout-depth-'));
-  const db = openDatabase({ path: join(dir, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(dir, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
 
   const carts = createCartRepository(db);
   const unitOfWork = createUnitOfWork(db);

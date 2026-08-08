@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 
 function sessionCookie(response: {
   headers: Record<string, string | string[] | undefined>;
@@ -20,20 +16,15 @@ function responseBody<T>(response: { body: string }): T {
 }
 
 void test('country identity composes signup, /me, cart isolation, and cross-country auth', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-country-e2e-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
   const now = new Date('2026-08-03T12:00:00.000Z');
-  const app = await buildApp({
-    db,
-    resetBaseUrl: 'http://web.example.test/',
-    clock: { now: () => now },
+  const fixture = await createSeededAppFixture({
+    testContext: t,
+    app: {
+      resetBaseUrl: 'http://web.example.test/',
+      clock: { now: () => now },
+    },
   });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = fixture;
 
   await t.test('sign up UK user and confirm country identity', async () => {
     const signup = await app.inject({

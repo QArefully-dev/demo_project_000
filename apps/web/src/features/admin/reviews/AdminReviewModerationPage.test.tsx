@@ -62,7 +62,10 @@ function Location() {
 
 function renderPage(initialEntry = '/admin/reviews?queue=reported&sort=oldest') {
   return render(
-    <MemoryRouter initialEntries={[initialEntry]}>
+    <MemoryRouter
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      initialEntries={[initialEntry]}
+    >
       <LocaleProvider>
         <AdminReviewModerationPage />
       </LocaleProvider>

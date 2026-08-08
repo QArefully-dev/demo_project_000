@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
-import { buildApp } from '../../src/app.js';
 import {
   createCheckoutService,
   type CheckoutParams,
@@ -16,7 +12,7 @@ import type {
 } from '../../src/features/payments/paymentGateway.js';
 import { createCartRepository } from '../../src/features/cart/cartRepository.js';
 import { addItem, createCart, getCart } from '../../src/features/cart/cartService.js';
-import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture, openSeededDatabase } from '../support/seededDatabase.js';
 import { createPromoRepository } from '../../src/features/promos/promoRepository.js';
 import {
   createPaymentRepository,
@@ -106,15 +102,7 @@ function spyGateway(result: GatewayResult = { status: 'success' }): {
 }
 
 void test('payment route emits stable localized code for invalid card details', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-payment-route-errors-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = await createSeededAppFixture(t);
 
   const response = await app.inject({
     method: 'POST',
@@ -213,10 +201,13 @@ void test('payment route emits stable localized code for invalid card details', 
 });
 
 void test('atomic checkout orchestration', async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'shop-checkout-'));
-  const dbPath = join(dir, 'shop.db');
-  const db = openDatabase({ path: dbPath });
-  const carts = createCartRepository(db);
+  let db!: import('better-sqlite3').Database;
+  let carts!: ReturnType<typeof createCartRepository>;
+  const startCase = (): void => {
+    const fixture = openSeededDatabase(t);
+    db = fixture.db;
+    carts = createCartRepository(db);
+  };
   // `now` must match the clock the suite runs checkout under: the booked slot is re-validated
   // against a lead time derived from that same instant.
   const payment = (
@@ -241,8 +232,6 @@ void test('atomic checkout orchestration', async (t) => {
     },
   });
   const freshCart = () => {
-    resetDatabase(db);
-    seedDatabase(db);
     const { cartId } = createCart(carts);
     const vId = (
       db
@@ -265,8 +254,6 @@ void test('atomic checkout orchestration', async (t) => {
   }
 
   function freshGardenClearanceCart() {
-    resetDatabase(db);
-    seedDatabase(db);
     const { cartId } = createCart(carts);
     const variant = db
       .prepare(
@@ -281,12 +268,8 @@ void test('atomic checkout orchestration', async (t) => {
     return { cartId, productId: variant.product_id };
   }
 
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(dir, { recursive: true, force: true });
-  });
-
   await t.test('reserves same-key work once and replays its completed order', async () => {
+    startCase();
     const cartId = freshCart();
     const deferred = deferredGateway();
     const params = payment(cartId, 'same-key');
@@ -322,6 +305,7 @@ void test('atomic checkout orchestration', async (t) => {
   await t.test(
     'rejects concurrent same-key changed payload without a duplicate order',
     async () => {
+      startCase();
       const cartId = freshCart();
       const deferred = deferredGateway();
       const params = payment(cartId, 'conflict-key');
@@ -347,6 +331,7 @@ void test('atomic checkout orchestration', async (t) => {
   );
 
   await t.test('rejects same-key changed card expiry without another gateway request', async () => {
+    startCase();
     const cartId = freshCart();
     const gateway = spyGateway();
     const params = payment(cartId, 'expiry-conflict');
@@ -361,6 +346,7 @@ void test('atomic checkout orchestration', async (t) => {
   });
 
   await t.test('replays decline and timeout deterministically', async () => {
+    startCase();
     for (const result of [{ status: 'declined' }, { status: 'timeout' }] as const) {
       const cartId = freshCart();
       const params = payment(cartId, `failure-${result.status}`);
@@ -381,8 +367,7 @@ void test('atomic checkout orchestration', async (t) => {
   });
 
   await t.test('does not call gateway when cart is missing', async () => {
-    resetDatabase(db);
-    seedDatabase(db);
+    startCase();
     const gateway = spyGateway();
 
     const result = await checkout(payment('missing-cart', 'missing-cart'), {
@@ -405,8 +390,7 @@ void test('atomic checkout orchestration', async (t) => {
   });
 
   await t.test('rolls back pre-gateway failure when its audit write fails', async () => {
-    resetDatabase(db);
-    seedDatabase(db);
+    startCase();
     db.exec(
       `CREATE TRIGGER abort_pre_gateway_audit BEFORE INSERT ON audit_events
        WHEN NEW.action = 'payment.pre_gateway_failed'
@@ -430,8 +414,7 @@ void test('atomic checkout orchestration', async (t) => {
   });
 
   await t.test('does not call gateway when cart is empty', async () => {
-    resetDatabase(db);
-    seedDatabase(db);
+    startCase();
     const { cartId } = createCart(carts);
     const gateway = spyGateway();
 
@@ -442,8 +425,7 @@ void test('atomic checkout orchestration', async (t) => {
   });
 
   await t.test('rejects a cart line below its variant MOQ before gateway processing', async () => {
-    resetDatabase(db);
-    seedDatabase(db);
+    startCase();
     const cartId = createCart(carts).cartId;
     const variant = db
       .prepare('SELECT id FROM product_variants WHERE active = 1 ORDER BY id LIMIT 1')
@@ -468,6 +450,7 @@ void test('atomic checkout orchestration', async (t) => {
   });
 
   await t.test('does not call gateway for invalid or ineligible promos', async () => {
+    startCase();
     const invalidCartId = freshCart();
     const invalidGateway = spyGateway();
     const invalid = await checkout(
@@ -508,6 +491,7 @@ void test('atomic checkout orchestration', async (t) => {
   });
 
   await t.test('uses checkout clock at promo expiry boundary', async () => {
+    startCase();
     const cartId = freshCart();
     for (const productId of [2, 3]) addVariantForProduct(cartId, productId);
     const checkoutClock = new Date('2024-12-31T23:59:59.999Z');
@@ -525,6 +509,7 @@ void test('atomic checkout orchestration', async (t) => {
   });
 
   await t.test('charges the persisted server quote total', async () => {
+    startCase();
     const cartId = freshCart();
     const gateway = spyGateway();
     const result = await checkout(payment(cartId, 'quoted-amount'), {
@@ -555,6 +540,7 @@ void test('atomic checkout orchestration', async (t) => {
   await t.test(
     'checks out an active clearance scoped promo, persists its disclosure, and replays one key',
     async () => {
+      startCase();
       const now = new Date('2026-07-28T12:00:00.000Z');
       const { cartId } = freshGardenClearanceCart();
       const gateway = spyGateway();
@@ -612,6 +598,7 @@ void test('atomic checkout orchestration', async (t) => {
   await t.test(
     'rejects a scoped promo after its cart category changes without held reservations',
     async () => {
+      startCase();
       const now = new Date('2026-07-28T12:00:00.000Z');
       const { cartId, productId } = freshGardenClearanceCart();
       db.prepare("UPDATE products SET category = 'Building Materials' WHERE id = ?").run(productId);
@@ -658,6 +645,7 @@ void test('atomic checkout orchestration', async (t) => {
   );
 
   await t.test('locks the quote and promo reservation before the gateway wait', async () => {
+    startCase();
     const cartId = freshCart();
     const deferred = deferredGateway();
     const first = checkout(payment(cartId, 'cart-change'), { db, gateway: deferred.gateway });
@@ -683,6 +671,7 @@ void test('atomic checkout orchestration', async (t) => {
   });
 
   await t.test('expires prepared reservations and rejects late gateway completion', async () => {
+    startCase();
     const cartId = freshCart();
     const deferred = deferredGateway();
     let current = new Date('2026-07-14T10:00:00.000Z');
@@ -713,6 +702,7 @@ void test('atomic checkout orchestration', async (t) => {
   await t.test(
     'terminalizes an expired reservation when gateway success arrives late',
     async () => {
+      startCase();
       const cartId = freshCart();
       const deferred = deferredGateway();
       let current = new Date('2026-07-14T10:00:00.000Z');
@@ -753,6 +743,7 @@ void test('atomic checkout orchestration', async (t) => {
   );
 
   await t.test('rolls back order and redemption writes together', async () => {
+    startCase();
     const cartId = freshCart();
     for (const productId of [2, 3, 4, 5]) addVariantForProduct(cartId, productId);
     db.exec(
@@ -780,6 +771,7 @@ void test('atomic checkout orchestration', async (t) => {
   });
 
   await t.test('keeps gateway-success finalization failure resumable', async () => {
+    startCase();
     const cartId = freshCart();
     db.exec('DROP TRIGGER IF EXISTS abort_checkout_mailbox');
     db.exec(
@@ -810,6 +802,7 @@ void test('atomic checkout orchestration', async (t) => {
   });
 
   await t.test('rolls back audited finalization and appends its events once on retry', async () => {
+    startCase();
     const cartId = freshCart();
     const params = payment(cartId, 'audit-finalize-rollback');
     db.exec(
@@ -850,6 +843,7 @@ void test('atomic checkout orchestration', async (t) => {
   });
 
   await t.test('persists only safe card metadata and fingerprint inputs', async () => {
+    startCase();
     const cartId = freshCart();
     const params = payment(cartId, 'safe-data');
     await checkout(params, { db });

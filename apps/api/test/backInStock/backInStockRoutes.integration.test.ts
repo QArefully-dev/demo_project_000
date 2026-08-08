@@ -1,7 +1,4 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import type Database from 'better-sqlite3';
@@ -10,7 +7,7 @@ import {
   BackInStockSubscriptionListResponse,
 } from '@shop/contracts/back-in-stock';
 import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 
 /** The seeded sold-out lot. Resolved by SKU because surrogate ids shift between seeds. */
 const SOLD_OUT_SKU = 'TCM-0034-002';
@@ -58,15 +55,8 @@ function userIdByEmail(db: Database.Database, email: string): number {
 }
 
 void test('back-in-stock routes enforce auth, map every error code, and isolate ownership', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-back-in-stock-routes-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const fixture = await createSeededAppFixture(t);
+  const { db, app } = fixture;
 
   const soldOutVariantId = variantIdBySku(db, SOLD_OUT_SKU);
 

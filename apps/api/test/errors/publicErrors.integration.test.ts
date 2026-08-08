@@ -1,26 +1,14 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 
 type PublicErrorBody = { error: string; code: string; meta?: unknown; details?: unknown };
 
 void test('generic API errors are coded, localized, and detail-free', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-public-errors-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
+  const fixture = await createSeededAppFixture(t);
+  const { app } = fixture;
   app.get('/__test/public-error-throw', () => {
     throw new Error('database password and stack should never cross the boundary');
-  });
-
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
   });
 
   await t.test('validation removes AJV detail and uses the request country', async () => {

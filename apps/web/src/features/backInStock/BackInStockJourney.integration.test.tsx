@@ -106,7 +106,10 @@ function Path() {
 
 function renderJourney(variants: CatalogVariant[] = [soldOutVariant]) {
   return render(
-    <MemoryRouter initialEntries={['/products/rapid-set-cement']}>
+    <MemoryRouter
+      initialEntries={['/products/rapid-set-cement']}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <BackInStockProvider>
         <ComparisonSelectionProvider storage={comparisonStorage}>
           <Routes>

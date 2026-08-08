@@ -82,7 +82,10 @@ function CartLanding() {
 
 function renderJourney() {
   return render(
-    <MemoryRouter initialEntries={['/lists']}>
+    <MemoryRouter
+      initialEntries={['/lists']}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <CartProvider>
         <SavedListsProvider>
           <Routes>

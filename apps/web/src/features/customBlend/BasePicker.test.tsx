@@ -143,7 +143,7 @@ describe('BasePicker', () => {
     vi.mocked(getProduct).mockResolvedValueOnce(detail(901) as never);
 
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <SearchOwnedPicker />
       </MemoryRouter>,
     );

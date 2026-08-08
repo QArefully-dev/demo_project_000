@@ -92,7 +92,10 @@ describe('admin diagnostics localisation', () => {
 
   it('keeps all nine admin sections reachable while translating shell labels', () => {
     render(
-      <MemoryRouter initialEntries={['/admin']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/admin']}
+      >
         <Routes>
           <Route path="/admin" element={withLocale(<AdminLayout />)}>
             <Route index element={<AdminIndexPage />} />
@@ -123,7 +126,10 @@ describe('admin diagnostics localisation', () => {
     api.retryAdminJob.mockResolvedValue({ ...detail, status: 'pending' });
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/admin/jobs/1']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/admin/jobs/1']}
+      >
         <Routes>
           <Route path="/admin/jobs/:jobId" element={withLocale(<AdminJobDetailPage />)} />
         </Routes>
@@ -143,7 +149,10 @@ describe('admin diagnostics localisation', () => {
   it('translates webhook status/actions and keeps payload and failure text raw', async () => {
     api.getAdminWebhook.mockResolvedValue(webhook);
     render(
-      <MemoryRouter initialEntries={['/admin/webhooks/1']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/admin/webhooks/1']}
+      >
         <Routes>
           <Route
             path="/admin/webhooks/:webhookId"

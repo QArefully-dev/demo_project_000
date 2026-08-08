@@ -18,7 +18,10 @@ describe('SaveCartAsListButton', () => {
     state.user = null;
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/cart?promotion=summer']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/cart?promotion=summer']}
+      >
         <Routes>
           <Route path="*" element={<SaveCartAsListButton cartId="cart-1" excludesBlends />} />
           <Route path="/login" element={<LocationState />} />
@@ -39,7 +42,7 @@ describe('SaveCartAsListButton', () => {
     );
     const user = userEvent.setup();
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <SaveCartAsListButton cartId="cart-1" excludesBlends />
       </MemoryRouter>,
     );
@@ -63,7 +66,7 @@ describe('SaveCartAsListButton', () => {
     vi.mocked(saveCartAsSavedList).mockRejectedValueOnce(cartEmpty);
     const user = userEvent.setup();
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <SaveCartAsListButton cartId="cart-1" excludesBlends={false} />
       </MemoryRouter>,
     );
