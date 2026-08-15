@@ -14,15 +14,6 @@ export const webMessages = defineMessages({
     DE: 'Kundenwerkzeuge',
     FR: 'Outils client',
   },
-  'shell.materialsTagline': {
-    UK: 'Materials data · Available stock · Trade supply',
-    US: 'Materials data · Available stock · Trade supply',
-    CN: '材料数据 · 可用库存 · 贸易供应',
-    PL: 'Dane materiałów · Dostępne zapasy · Dostawy handlowe',
-    ES: 'Datos de materiales · Stock disponible · Suministro comercial',
-    DE: 'Materialdaten · Verfügbarer Bestand · Gewerbliche Versorgung',
-    FR: 'Données matériaux · Stock disponible · Approvisionnement professionnel',
-  },
   'shell.savedLists': {
     UK: 'Saved lists',
     US: 'Saved lists',

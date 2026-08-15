@@ -12,20 +12,11 @@ import {
 import type { ProductWithVariants as ProductWithVariantsType } from '@shop/contracts/products';
 import { Value } from '@sinclair/typebox/value';
 import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
+import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 
 void test('product detail returns variants and persisted facts without packaging', async (t) => {
-  const tempDir = mkdtempSync(join(tmpdir(), 'shop-product-variants-'));
-  const db = openDatabase({ path: join(tempDir, 'shop.db') });
-  resetDatabase(db);
-  seedDatabase(db);
-
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(tempDir, { recursive: true, force: true });
-  });
+  const { app } = await createSeededAppFixture(t);
 
   const response = await app.inject({ method: 'GET', url: '/api/products/1' });
   assert.equal(response.statusCode, 200);
@@ -50,16 +41,8 @@ void test('product detail returns variants and persisted facts without packaging
 });
 
 void test('customer catalog endpoints exclude inactive products', async (t) => {
-  const tempDir = mkdtempSync(join(tmpdir(), 'shop-product-active-'));
-  const db = openDatabase({ path: join(tempDir, 'shop.db') });
-  seedDatabase(db);
+  const { db, app } = await createSeededAppFixture(t);
   db.prepare('UPDATE products SET active = 0 WHERE id = 1').run();
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(tempDir, { recursive: true, force: true });
-  });
 
   assert.equal((await app.inject({ method: 'GET', url: '/api/products/1' })).statusCode, 404);
   assert.equal(
@@ -82,15 +65,7 @@ void test('customer catalog endpoints exclude inactive products', async (t) => {
 });
 
 void test('Trade catalogue list has contract-valid specification keys', async (t) => {
-  const tempDir = mkdtempSync(join(tmpdir(), 'shop-product-trade-list-'));
-  const db = openDatabase({ path: join(tempDir, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(tempDir, { recursive: true, force: true });
-  });
+  const { app } = await createSeededAppFixture(t);
 
   const response = await app.inject({
     method: 'GET',
@@ -103,9 +78,7 @@ void test('Trade catalogue list has contract-valid specification keys', async (t
 });
 
 void test('similar products endpoint is deterministic and related remains its compatibility alias', async (t) => {
-  const tempDir = mkdtempSync(join(tmpdir(), 'shop-product-similar-'));
-  const db = openDatabase({ path: join(tempDir, 'shop.db') });
-  seedDatabase(db);
+  const { db, app } = await createSeededAppFixture(t);
   const candidate = (
     db.prepare('SELECT id FROM products WHERE id != 1 ORDER BY id ASC LIMIT 1').get() as {
       id: number;
@@ -113,14 +86,9 @@ void test('similar products endpoint is deterministic and related remains its co
   ).id;
   db.prepare('UPDATE products SET active = 0 WHERE id NOT IN (?, ?)').run(1, candidate);
   db.prepare(
-    'UPDATE products SET category = (SELECT category FROM products WHERE id = 1), price_cents = (SELECT price_cents FROM products WHERE id = 1), stock_count = 0, active = 1 WHERE id = ?',
+    'UPDATE products SET category = (SELECT category FROM products WHERE id = 1), price_cents = (SELECT price_cents FROM products WHERE id = 1), active = 1 WHERE id = ?',
   ).run(candidate);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(tempDir, { recursive: true, force: true });
-  });
+  db.prepare('UPDATE product_variants SET stock_count = 0 WHERE product_id = ?').run(candidate);
 
   const similar = await app.inject({ method: 'GET', url: '/api/products/1/similar' });
   const repeated = await app.inject({ method: 'GET', url: '/api/products/1/similar' });
@@ -162,16 +130,8 @@ void test('similar products endpoint is deterministic and related remains its co
 });
 
 void test('product API normalizes legacy SQLite creation timestamps for the transport contract', async (t) => {
-  const tempDir = mkdtempSync(join(tmpdir(), 'shop-product-legacy-time-'));
-  const db = openDatabase({ path: join(tempDir, 'shop.db') });
-  seedDatabase(db);
+  const { db, app } = await createSeededAppFixture(t);
   db.prepare("UPDATE products SET created_at = '2024-12-31 23:59:59' WHERE id = 1").run();
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(tempDir, { recursive: true, force: true });
-  });
 
   const response = await app.inject({ method: 'GET', url: '/api/products/1' });
   assert.equal(response.statusCode, 200);
@@ -181,16 +141,8 @@ void test('product API normalizes legacy SQLite creation timestamps for the tran
 });
 
 void test('catalog query validation reports deterministic 400 responses and exposes active filter options', async (t) => {
-  const tempDir = mkdtempSync(join(tmpdir(), 'shop-product-query-'));
-  const db = openDatabase({ path: join(tempDir, 'shop.db') });
-  seedDatabase(db);
+  const { db, app } = await createSeededAppFixture(t);
   db.prepare('UPDATE products SET active = 0 WHERE id = 1').run();
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(tempDir, { recursive: true, force: true });
-  });
 
   const options = await app.inject({ method: 'GET', url: '/api/products/filter-options' });
   assert.equal(options.statusCode, 200);
@@ -222,10 +174,11 @@ void test('catalog query validation reports deterministic 400 responses and expo
 });
 
 void test('catalog onSale includes only a clearance active at the request clock', async (t) => {
-  const tempDir = mkdtempSync(join(tmpdir(), 'shop-product-clearance-filter-'));
-  const db = openDatabase({ path: join(tempDir, 'shop.db') });
-  seedDatabase(db);
   const activeAt = '2037-07-28T12:00:00.000Z';
+  const { db, app } = await createSeededAppFixture({
+    testContext: t,
+    app: { clock: { now: () => new Date(activeAt) } },
+  });
   const insertProduct = db.prepare(`
     INSERT INTO products
       (id, name, description, price_cents, category, stock_count, image_set_id, slug,
@@ -274,17 +227,6 @@ void test('catalog onSale includes only a clearance active at the request clock'
       fixture.endsAt,
     );
   }
-
-  const app = await buildApp({
-    db,
-    resetBaseUrl: 'http://web.test',
-    clock: { now: () => new Date(activeAt) },
-  });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(tempDir, { recursive: true, force: true });
-  });
 
   const response = await app.inject({
     method: 'GET',

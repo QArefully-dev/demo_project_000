@@ -1,11 +1,8 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import Fastify from 'fastify';
 import type { AppContext } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { openSeededDatabase } from '../support/seededDatabase.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
@@ -79,13 +76,7 @@ void test('payment route serializes pending approval request IDs', async (t) => 
 });
 
 void test('approval-gated checkout only re-arms an approved same-key retry for its requesting buyer', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-checkout-approval-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const now = new Date('2026-07-29T12:00:00.000Z');
   const clock = { now: () => now };
   const unitOfWork = createUnitOfWork(db);

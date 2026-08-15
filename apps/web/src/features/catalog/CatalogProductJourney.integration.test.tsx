@@ -278,6 +278,7 @@ describe('catalog to product journey', () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
         initialEntries={[
           '/catalog?q=water&tag=pantry&tag=drink-mix&spec=texture%3Afine&sort=price_desc&page=2&pageSize=24',
         ]}
@@ -329,7 +330,10 @@ describe('catalog to product journey', () => {
     vi.mocked(getProduct).mockResolvedValue(first);
 
     render(
-      <MemoryRouter initialEntries={['/catalog']}>
+      <MemoryRouter
+        initialEntries={['/catalog']}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <ComparisonSelectionProvider
           storage={{ getItem: () => null, setItem: () => undefined, removeItem: () => undefined }}
         >
@@ -406,7 +410,10 @@ describe('catalog to product journey', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/catalog']}>
+      <MemoryRouter
+        initialEntries={['/catalog']}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <ComparisonSelectionProvider
           storage={{ getItem: () => null, setItem: () => undefined, removeItem: () => undefined }}
         >

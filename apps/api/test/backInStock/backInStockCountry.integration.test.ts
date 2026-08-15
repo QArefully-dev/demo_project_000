@@ -4,8 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import Database from 'better-sqlite3';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 import { migrateDatabase } from '../../src/db/migrate.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
@@ -34,15 +33,8 @@ function cookie(response: { headers: Record<string, string | string[] | undefine
 }
 
 void test('a persisted-CN subscriber sees a blocked retired lot as VARIANT_NOT_FOUND', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-bis-country-route-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const fixture = await createSeededAppFixture(t);
+  const { db, app } = fixture;
 
   const signup = await app.inject({
     method: 'POST',

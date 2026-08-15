@@ -1,7 +1,4 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import type { Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
@@ -15,7 +12,7 @@ import { InventoryReceiptResponse } from '@shop/contracts/inventory';
 import { MailboxListResponse } from '@shop/contracts/mailbox';
 import { NotificationPage } from '@shop/contracts/notifications';
 import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 
 /** Resolved by SKU and email: `resetDatabase` does not rewind SQLite AUTOINCREMENT. */
 const SOLD_OUT_SKU = 'TCM-0034-002';
@@ -48,20 +45,12 @@ function variantIdBySku(db: Database.Database, sku: string): number {
 }
 
 void test('a restock above MOQ notifies every waiting buyer exactly once', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-back-in-stock-flow-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
   let now = new Date('2026-08-02T10:00:00.000Z');
-  const app = await buildApp({
-    db,
-    resetBaseUrl: 'http://web.test',
-    clock: { now: () => now },
+  const fixture = await createSeededAppFixture({
+    testContext: t,
+    app: { clock: { now: () => now } },
   });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = fixture;
 
   // Park every pre-seeded async scenario job so drain counts describe only this test's work.
   db.prepare("UPDATE jobs SET run_at='2099-01-01T00:00:00.000Z' WHERE status='pending'").run();
@@ -198,20 +187,12 @@ void test('a restock above MOQ notifies every waiting buyer exactly once', async
 });
 
 void test('a restock below MOQ notifies nobody, and a faulted run recovers on a later drain', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-back-in-stock-moq-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
   let now = new Date('2026-08-02T10:00:00.000Z');
-  const app = await buildApp({
-    db,
-    resetBaseUrl: 'http://web.test',
-    clock: { now: () => now },
+  const fixture = await createSeededAppFixture({
+    testContext: t,
+    app: { clock: { now: () => now } },
   });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = fixture;
 
   db.prepare("UPDATE jobs SET run_at='2099-01-01T00:00:00.000Z' WHERE status='pending'").run();
   const buyer = await login(app, BUYER_EMAIL);

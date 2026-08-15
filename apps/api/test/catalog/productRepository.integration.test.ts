@@ -1,9 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import {
   createProductRepository,
   type ProductRow,
@@ -13,18 +9,18 @@ import {
   normalizeCatalogQuery,
 } from '../../src/features/catalog/catalogQuery.js';
 import { buildCatalogPredicate, catalogOrderBy } from '../../src/features/catalog/catalogSql.js';
+import { openSeededDatabase } from '../support/seededDatabase.js';
 
 void test('product repository owns catalog SQL and variant methods', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-catalog-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const products = createProductRepository(db);
 
   assert.ok(products.listCategories().length >= 4);
+
+  const seededCatalog = products.list({ pageSize: 200 });
+  assert.equal(seededCatalog.total, 100);
+  assert.equal(seededCatalog.items.length, seededCatalog.total);
+  assert.ok(seededCatalog.items.every((product) => (product.available_to_sell ?? 0) > 0));
 
   const searchResult = products.list({ q: 'whey', sort: 'newest' });
   assert.ok(searchResult.items.some((product) => product.name.includes('Whey')));
@@ -89,13 +85,7 @@ function CATALOG_CATEGORY_FROM_DB(
 }
 
 void test('customer reads hydrate persisted metadata in stable catalog order', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-catalog-hydration-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const products = createProductRepository(db);
   const persistedTag = db
     .prepare(
@@ -167,13 +157,7 @@ void test('customer reads hydrate persisted metadata in stable catalog order', (
 });
 
 void test('advanced catalog predicates are inclusive, composable, and stable', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-catalog-advanced-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const products = createProductRepository(db);
   db.prepare("INSERT INTO catalog_tags (key, label) VALUES ('test-only', 'Test only')").run();
   db.prepare("INSERT INTO product_tags (product_id, tag_key) VALUES (1, 'test-only')").run();
@@ -203,8 +187,12 @@ void test('advanced catalog predicates are inclusive, composable, and stable', (
       .get() as { tag_key: string },
   ];
   db.prepare(
-    `UPDATE products SET compare_at_price_cents = price_cents + 100, stock_count = 2,
+    `UPDATE products SET compare_at_price_cents = price_cents + 100,
       created_at = '2025-01-10T00:00:00.000Z' WHERE id = 1`,
+  ).run();
+  db.prepare(
+    `UPDATE product_variants SET stock_count = CASE WHEN sort_order = 1 THEN 2 ELSE 0 END
+     WHERE product_id = 1`,
   ).run();
 
   const combined = products.list({
@@ -225,7 +213,7 @@ void test('advanced catalog predicates are inclusive, composable, and stable', (
     pageSize: 48,
   });
   assert.ok(combined.items.some((row) => row.id === 1));
-  assert.ok(combined.items.every((row) => row.active === 1 && row.stock_count > 0));
+  assert.ok(combined.items.every((row) => row.active === 1 && (row.available_to_sell ?? 0) > 0));
   assert.ok(
     products
       .list({
@@ -247,17 +235,17 @@ void test('advanced catalog predicates are inclusive, composable, and stable', (
       .items.some((row) => row.id === 1),
   );
 
-  db.prepare('UPDATE products SET stock_count = 0 WHERE id = 2').run();
-  db.prepare('UPDATE products SET active = 0, stock_count = 0 WHERE id = 3').run();
+  db.prepare('UPDATE product_variants SET stock_count = 0 WHERE product_id = 2').run();
+  db.prepare('UPDATE products SET active = 0 WHERE id = 3').run();
   assert.ok(
     products
       .list({ availability: 'available', pageSize: 48 })
-      .items.every((row) => row.stock_count > 0),
+      .items.every((row) => (row.available_to_sell ?? 0) > 0),
   );
   assert.ok(
     products
       .list({ availability: 'out_of_stock', pageSize: 48 })
-      .items.every((row) => row.stock_count === 0),
+      .items.every((row) => (row.available_to_sell ?? 0) === 0),
   );
   assert.equal(
     products.list({ availability: 'out_of_stock', pageSize: 48 }).items.some((row) => row.id === 3),
@@ -347,24 +335,11 @@ void test('catalog SQL builder only emits allowlisted identifiers', () => {
 });
 
 void test('reservation-aware availability filters count and paginate against one instant', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-catalog-availability-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const products = createProductRepository(db);
   const now = '2026-07-19T12:00:00.000Z';
   const future = '2026-07-19T12:01:00.000Z';
   const expired = '2026-07-19T11:59:59.000Z';
-  db.prepare(
-    `UPDATE products
-     SET stock_count = CASE id WHEN 1 THEN 1 WHEN 2 THEN 0 WHEN 3 THEN 1 ELSE stock_count END,
-         backorderable = CASE id WHEN 2 THEN 1 ELSE 0 END,
-         backorder_lead_days = CASE id WHEN 2 THEN 14 ELSE NULL END
-     WHERE id IN (1, 2, 3)`,
-  ).run();
   const variant1Id = (
     db.prepare('SELECT id FROM product_variants WHERE product_id = 1 AND sort_order = 1').get() as {
       id: number;
@@ -375,6 +350,17 @@ void test('reservation-aware availability filters count and paginate against one
       id: number;
     }
   ).id;
+  db.prepare('UPDATE product_variants SET stock_count = 0 WHERE product_id IN (1, 2, 3)').run();
+  db.prepare('UPDATE product_variants SET stock_count = 1 WHERE id IN (?, ?)').run(
+    variant1Id,
+    variant3Id,
+  );
+  db.prepare(
+    `UPDATE products
+     SET backorderable = CASE id WHEN 2 THEN 1 ELSE 0 END,
+         backorder_lead_days = CASE id WHEN 2 THEN 14 ELSE NULL END
+     WHERE id IN (1, 2, 3)`,
+  ).run();
   const payment = db.prepare(
     `INSERT INTO payments
       (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand)

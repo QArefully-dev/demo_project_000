@@ -115,7 +115,10 @@ describe('catalog category transitions', () => {
     const user = userEvent.setup();
 
     render(
-      <MemoryRouter initialEntries={['/catalog?category=Baking+%26+Pantry']}>
+      <MemoryRouter
+        initialEntries={['/catalog?category=Baking+%26+Pantry']}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <ComparisonSelectionProvider
           storage={{ getItem: () => null, setItem: () => undefined, removeItem: () => undefined }}
         >

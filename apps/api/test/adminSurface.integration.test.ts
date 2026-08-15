@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { buildApp } from '../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../src/db/index.js';
+import { createSeededAppFixture } from './support/seededDatabase.js';
 
 function sessionCookie(response: {
   headers: Record<string, string | string[] | undefined>;
@@ -31,15 +28,8 @@ async function login(
 }
 
 void test('admin suspension revokes sessions and blocks login until reactivation', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-admin-surface-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const fixture = await createSeededAppFixture(t);
+  const { app, db } = fixture;
 
   const admin = await login(app, 'admin@example.com');
   const alice = await login(app, 'alice@example.com');

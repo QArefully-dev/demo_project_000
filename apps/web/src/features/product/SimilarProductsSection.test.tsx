@@ -35,7 +35,7 @@ const product = (id: string, overrides: Partial<Product> = {}): Product => ({
 function renderSection(productId = 'source') {
   const cart = { onAddToCart: vi.fn().mockResolvedValue(true), isAdding: vi.fn(() => false) };
   const view = render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <SimilarProductsSection
         productId={productId}
         isCartAvailable
@@ -109,7 +109,7 @@ describe('SimilarProductsSection', () => {
     expect(firstCall).toBeDefined();
     const firstSignal = firstCall![1] as AbortSignal;
     rerender(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <SimilarProductsSection
           productId="two"
           isCartAvailable
@@ -134,7 +134,7 @@ describe('SimilarProductsSection', () => {
       isAdding: vi.fn(() => false),
     };
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <SimilarProductsSection
           productId="source"
           isCartAvailable

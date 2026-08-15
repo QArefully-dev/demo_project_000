@@ -71,7 +71,7 @@ function response(outcomes: ReorderLineOutcome[]): ReorderResponse {
 
 function renderList(state: Parameters<typeof ReorderOutcomeList>[0]['state']) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ReorderOutcomeList orderId="12" state={state} />
     </MemoryRouter>,
   );

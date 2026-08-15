@@ -1,12 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { Cart, CreateCartResponse } from '@shop/contracts/cart';
 import { Value } from '@sinclair/typebox/value';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { openDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture, openSeededDatabase } from '../support/seededDatabase.js';
 import { createCartRepository } from '../../src/features/cart/cartRepository.js';
 import {
   addItem,
@@ -46,13 +43,7 @@ function responseStatusCode(response: unknown): number {
 }
 
 void test('cart service coordinates cart repository and promo eligibility', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const carts = createCartRepository(db);
   const variant1 = defaultVariantId(db, 1);
   const { cartId } = createCart(carts);
@@ -70,13 +61,7 @@ void test('cart service coordinates cart repository and promo eligibility', (t) 
 });
 
 void test('cart blocks new inactive selections but retains existing lines', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-inactive-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const carts = createCartRepository(db);
   const variant1 = defaultVariantId(db, 1);
   const { cartId } = createCart(carts);
@@ -87,13 +72,7 @@ void test('cart blocks new inactive selections but retains existing lines', (t) 
 });
 
 void test('cart transports server-resolved default and discounted-tier prices', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-tier-pricing-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const carts = createCartRepository(db);
   const variant = db
     .prepare(
@@ -127,13 +106,7 @@ void test('cart transports server-resolved default and discounted-tier prices', 
 });
 
 void test('cart applies only active clearance as the common tier and per-tonne base', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-clearance-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
 
   const now = new Date('2026-07-28T12:00:00.000Z');
   const carts = createCartRepository(db);
@@ -184,13 +157,7 @@ void test('cart applies only active clearance as the common tier and per-tonne b
 });
 
 void test('cart publishes server-resolved next-tier progress through the top tier', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-next-tier-progress-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
 
   const carts = createCartRepository(db);
   const variant = db
@@ -216,13 +183,7 @@ void test('cart publishes server-resolved next-tier progress through the top tie
 });
 
 void test('cart reads batch available-to-sell and ignores only expired prepared locks', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-availability-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const now = new Date('2026-07-19T12:00:00.000Z');
   const carts = createCartRepository(db);
   const variant1 = defaultVariantId(db, 1);
@@ -270,15 +231,7 @@ void test('cart reads batch available-to-sell and ignores only expired prepared 
 });
 
 void test('cart HTTP response returns product lines with a server-quoted delivery preview', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-http-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = await createSeededAppFixture(t);
   const created = await app.inject({ method: 'POST', url: '/api/cart' });
   const cartId = Value.Parse(CreateCartResponse, created.json()).cartId;
   db.prepare(
@@ -303,15 +256,7 @@ void test('cart HTTP response returns product lines with a server-quoted deliver
 });
 
 void test('cart HTTP enforces MOQ and defaults omitted add quantity to its floor', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-moq-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = await createSeededAppFixture(t);
 
   const variant = db
     .prepare(
@@ -345,16 +290,41 @@ void test('cart HTTP enforces MOQ and defaults omitted add quantity to its floor
   });
 });
 
-void test('cart HTTP validates quantities and targets exact variant cart lines', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-variant-mutation-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
+void test('cart HTTP resolves omitted variant to the product default when variants are ambiguous', async (t) => {
+  const { db, app } = await createSeededAppFixture(t);
+
+  const product = db
+    .prepare(
+      `SELECT p.id AS product_id, p.default_variant_id
+       FROM products p
+       INNER JOIN product_variants v ON v.product_id = p.id AND v.active = 1
+       WHERE p.active = 1 AND p.default_variant_id IS NOT NULL
+       GROUP BY p.id
+       HAVING COUNT(v.id) > 1
+       ORDER BY p.id LIMIT 1`,
+    )
+    .get() as { product_id: number; default_variant_id: number | null } | undefined;
+  if (!product || product.default_variant_id === null) {
+    throw new Error('Expected an active product with multiple variants and a default variant');
+  }
+
+  const create = await app.inject({ method: 'POST', url: '/api/cart' });
+  const cartId = Value.Parse(CreateCartResponse, create.json()).cartId;
+  const added = await app.inject({
+    method: 'POST',
+    url: `/api/cart/${cartId}/items`,
+    payload: { productId: String(product.product_id) },
   });
+
+  assert.equal(added.statusCode, 200);
+  const cart = Value.Parse(Cart, added.json());
+  assert.equal(cart.items.length, 1);
+  assert.equal(cart.items[0]?.productId, String(product.product_id));
+  assert.equal(cart.items[0]?.variantSnap?.variantId, product.default_variant_id);
+});
+
+void test('cart HTTP validates quantities and targets exact variant cart lines', async (t) => {
+  const { db, app } = await createSeededAppFixture(t);
 
   const variants = db
     .prepare<[], { id: number; product_id: number; weight_grams: number; moq_sacks: number }>(
@@ -457,13 +427,7 @@ void test('cart HTTP validates quantities and targets exact variant cart lines',
 });
 
 void test('audited cart mutations emit one allowlisted event per committed change', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-audit-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
 
   const carts = createCartRepository(db);
   const variant1 = defaultVariantId(db, 1);
@@ -544,13 +508,7 @@ void test('audited cart mutations emit one allowlisted event per committed chang
 });
 
 void test('cart audit failure rolls back mutation and cart touch transaction', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-audit-rollback-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
 
   const carts = createCartRepository(db);
   const variant1 = defaultVariantId(db, 1);

@@ -1,8 +1,5 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import {
@@ -11,7 +8,7 @@ import {
   PaymentWebhookAck,
 } from '@shop/contracts/webhooks';
 import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededFixture } from '../support/seededDatabase.js';
 
 function cookie(response: { headers: Record<string, string | string[] | undefined> }): string {
   const header = response.headers['set-cookie'];
@@ -31,15 +28,10 @@ async function login(app: Awaited<ReturnType<typeof buildApp>>, email: string): 
 }
 
 void test('payment webhook preserves signed payload, captures once, and rejects tampering', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-webhook-routes-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
   const secret = 'route-webhook-secret';
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test', webhookSecret: secret });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
+  const { db, app } = await createSeededFixture({
+    testContext: t,
+    app: { webhookSecret: secret },
   });
 
   const body = {
@@ -120,15 +112,7 @@ void test('payment webhook preserves signed payload, captures once, and rejects 
 });
 
 void test('admin webhook surfaces require admin and expose stored payload', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-admin-webhook-routes-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { app } = await createSeededFixture(t);
   const customer = await login(app, 'alice@example.com');
   const admin = await login(app, 'admin@example.com');
   const webhook = app.context.services.webhooks.capture({

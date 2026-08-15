@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { COUNTRY_PROFILES } from '@shop/contracts/country-profiles';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 import { normalizeCatalogQuery } from '../../src/features/catalog/catalogQuery.js';
 import { createProductRepository } from '../../src/features/catalog/productRepository.js';
 import { buildCatalogPredicate } from '../../src/features/catalog/catalogSql.js';
@@ -22,9 +18,8 @@ function countryHeaders(country: 'CN' | 'US'): Record<string, string> {
 }
 
 void test('catalog read paths enforce category and product country exclusions', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-country-catalog-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
+  const fixture = await createSeededAppFixture(t);
+  const { db, app } = fixture;
 
   const seededCategoryProduct = db
     .prepare(
@@ -128,12 +123,8 @@ void test('catalog read paths enforce category and product country exclusions', 
   const initialBlockedSlugCount = cnBlockedSlugs.length;
   cnBlockedSlugs.push(BLOCKED_SLUG);
 
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
+  t.after(() => {
     cnBlockedSlugs.splice(initialBlockedSlugCount);
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
   });
 
   const cn = countryHeaders('CN');

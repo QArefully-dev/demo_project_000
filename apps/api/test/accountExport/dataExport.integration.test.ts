@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import fastifyCookie from '@fastify/cookie';
 import Fastify from 'fastify';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createDataExportService } from '../../src/features/accountExport/dataExportService.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
@@ -28,6 +24,7 @@ import { createSavedListRepository } from '../../src/features/savedLists/savedLi
 import { createSavedListService } from '../../src/features/savedLists/savedListService.js';
 import { authPlugin } from '../../src/plugins/auth.js';
 import accountExportRoutes from '../../src/routes/accountExport.js';
+import { openSeededDatabase } from '../support/seededDatabase.js';
 
 function assertNoSecrets(value: unknown): void {
   if (Array.isArray(value)) {
@@ -42,9 +39,8 @@ function assertNoSecrets(value: unknown): void {
 }
 
 void test('data export is caller-scoped, allowlisted, mailed, and audited', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-data-export-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
+  const database = openSeededDatabase();
+  const db = database.db;
   const clock = { now: () => new Date('2026-07-29T12:00:00.000Z') };
   const unitOfWork = createUnitOfWork(db);
   const audit = createAuditWriter({ repository: createAuditRepository(db), clock });
@@ -96,8 +92,7 @@ void test('data export is caller-scoped, allowlisted, mailed, and audited', asyn
   await app.register(accountExportRoutes, { services: { sessions, dataExport } });
   t.after(async () => {
     await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
+    await database.cleanup();
   });
 
   const callerId = Number(
@@ -368,12 +363,9 @@ void test('data export is caller-scoped, allowlisted, mailed, and audited', asyn
 });
 
 void test('owned export line loading exceeds SQLite variable-list limits without leaking foreign lines', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-data-export-owned-orders-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const database = openSeededDatabase();
+  const db = database.db;
+  t.after(database.cleanup);
 
   const callerId = Number(
     db
@@ -392,6 +384,10 @@ void test('owned export line loading exceeds SQLite variable-list limits without
       .run().lastInsertRowid,
   );
   const ownedOrderCount = 32_768;
+  const firstOwnedOrderId = Number(
+    (db.prepare('SELECT COALESCE(MAX(id), 0) + 1 AS next FROM orders').get() as { next: number })
+      .next,
+  );
 
   db.prepare(
     `WITH RECURSIVE sequence(value) AS (
@@ -433,8 +429,8 @@ void test('owned export line loading exceeds SQLite variable-list limits without
   const exported = createOrderRepository(db).listExportOwned(callerId);
 
   assert.equal(exported.length, ownedOrderCount);
-  assert.equal(exported[0]?.id, '1');
-  assert.equal(exported.at(-1)?.id, String(ownedOrderCount));
+  assert.equal(exported[0]?.id, String(firstOwnedOrderId));
+  assert.equal(exported.at(-1)?.id, String(firstOwnedOrderId + ownedOrderCount - 1));
   assert.ok(exported.every((order) => order.id !== String(foreignOrderId)));
   assert.equal(exported[0]?.items[0]?.productName, 'Export Material');
   assert.equal(exported.at(-1)?.items[0]?.productName, 'Export Material');

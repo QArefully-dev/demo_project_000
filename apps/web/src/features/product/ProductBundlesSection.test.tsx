@@ -46,7 +46,7 @@ function product(id: string, name: string) {
 
 function renderSection(productId = 'product-1') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ProductBundlesSection productId={productId} />
     </MemoryRouter>,
   );
@@ -91,7 +91,7 @@ describe('ProductBundlesSection', () => {
       refetch: vi.fn(),
     });
     rerender(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ProductBundlesSection productId="product-1" />
       </MemoryRouter>,
     );
@@ -107,7 +107,7 @@ describe('ProductBundlesSection', () => {
       refetch,
     });
     rerender(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ProductBundlesSection productId="product-1" />
       </MemoryRouter>,
     );

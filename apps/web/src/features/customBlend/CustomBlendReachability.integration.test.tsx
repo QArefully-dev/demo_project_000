@@ -88,7 +88,10 @@ const options: CustomBlendOptionsResponse = {
 
 function renderApp(initialEntry: string) {
   return render(
-    <MemoryRouter initialEntries={[initialEntry]}>
+    <MemoryRouter
+      initialEntries={[initialEntry]}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <App />
     </MemoryRouter>,
   );

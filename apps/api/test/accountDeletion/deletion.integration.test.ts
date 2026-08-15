@@ -1,12 +1,9 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import fastifyCookie from '@fastify/cookie';
 import Fastify from 'fastify';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { openDatabase } from '../../src/db/index.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createAccountDeletionRepository } from '../../src/features/accountDeletion/deletionRepository.js';
 import { createAccountDeletionService } from '../../src/features/accountDeletion/deletionService.js';
@@ -24,14 +21,14 @@ import { createDeliverySiteRepository } from '../../src/features/tradeAccount/de
 import { authPlugin } from '../../src/plugins/auth.js';
 import accountDeletionRoutes from '../../src/routes/accountDeletion.js';
 import { hashPassword } from '../../src/utils/passwords.js';
+import { openSeededDatabase } from '../support/seededDatabase.js';
 
 const now = '2026-07-29T12:00:00.000Z';
 const clock = { now: () => new Date(now) };
 
 async function createFixture(t: test.TestContext) {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-account-deletion-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
+  const database = openSeededDatabase();
+  const db = database.db;
   const unitOfWork = createUnitOfWork(db);
   const audit = createAuditWriter({ repository: createAuditRepository(db), clock });
   const users = createUserRepository(db);
@@ -65,8 +62,7 @@ async function createFixture(t: test.TestContext) {
   await app.register(accountDeletionRoutes, { services: { sessions, accountDeletion } });
   t.after(async () => {
     await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
+    await database.cleanup();
   });
   return { app, db, sessions, auth, passwordReset, audit };
 }

@@ -1,12 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { openDatabase } from '../../src/db/index.js';
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
 import { InventoryError } from '../../src/features/inventory/inventoryTypes.js';
+import { openSeededDatabase } from '../support/seededDatabase.js';
 
 function defaultVariantId(db: ReturnType<typeof openDatabase>, productId: number): number {
   const row = db
@@ -19,13 +17,7 @@ function defaultVariantId(db: ReturnType<typeof openDatabase>, productId: number
 }
 
 function fixture(t: test.TestContext) {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-inventory-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   return { db, inventory: createInventoryService({ repository: createInventoryRepository(db) }) };
 }
 

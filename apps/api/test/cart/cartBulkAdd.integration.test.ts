@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import type Database from 'better-sqlite3';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter, type AuditWriter } from '../../src/features/audit/auditService.js';
@@ -12,6 +8,7 @@ import { createCartRepository } from '../../src/features/cart/cartRepository.js'
 import { createCartService, type CartService } from '../../src/features/cart/cartService.js';
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
+import { openSeededDatabase } from '../support/seededDatabase.js';
 
 const NOW = new Date('2026-07-31T12:00:00.000Z');
 const CONTEXT = { actor: { type: 'anonymous' as const, userId: null }, requestId: 'bulk-add' };
@@ -22,10 +19,13 @@ interface Fixture {
   carts: ReturnType<typeof createCartRepository>;
 }
 
-function openFixture(name: string, audit?: AuditWriter): Fixture & { cleanup: () => void } {
-  const directory = mkdtempSync(join(tmpdir(), `shop-${name}-`));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
+function openFixture(
+  name: string,
+  audit?: AuditWriter,
+): Fixture & { cleanup: () => Promise<void> } {
+  void name;
+  const database = openSeededDatabase();
+  const db = database.db;
   const carts = createCartRepository(db);
   const service = createCartService(
     carts,
@@ -44,9 +44,8 @@ function openFixture(name: string, audit?: AuditWriter): Fixture & { cleanup: ()
     db,
     service,
     carts,
-    cleanup: () => {
-      closeDatabase(db);
-      rmSync(directory, { recursive: true, force: true });
+    cleanup: async () => {
+      await database.cleanup();
     },
   };
 }

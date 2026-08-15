@@ -6,7 +6,7 @@ import { CustomBlendBanner } from './CustomBlendBanner';
 describe('CustomBlendBanner', () => {
   it('links buyers to the Custom Blend configurator', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <CustomBlendBanner />
       </MemoryRouter>,
     );
@@ -23,7 +23,7 @@ describe('CustomBlendBanner', () => {
 
   it('uses the shared motion token for the CTA hover transition', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <CustomBlendBanner />
       </MemoryRouter>,
     );

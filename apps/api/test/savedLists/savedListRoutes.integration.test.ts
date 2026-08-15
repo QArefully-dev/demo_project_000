@@ -1,7 +1,4 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import {
@@ -10,7 +7,7 @@ import {
 } from '@shop/contracts/cart';
 import { SavedListDetail, SavedListsResponse } from '@shop/contracts/saved-lists';
 import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededFixture } from '../support/seededDatabase.js';
 
 function cookie(response: { headers: Record<string, string | string[] | undefined> }): string {
   const value = response.headers['set-cookie'];
@@ -47,15 +44,7 @@ async function createCart(app: Awaited<ReturnType<typeof buildApp>>): Promise<st
 }
 
 void test('saved-list routes require auth and preserve CRUD ownership boundaries', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-saved-list-routes-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = await createSeededFixture(t);
 
   const anonymous = [
     { method: 'GET' as const, url: '/api/saved-lists' },
@@ -172,15 +161,7 @@ void test('saved-list routes require auth and preserve CRUD ownership boundaries
 });
 
 void test('saved-list routes expose caps, default protection, and cart/order source statuses', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-saved-list-route-statuses-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = await createSeededFixture(t);
 
   const alice = await login(app, 'alice@example.com');
   const aliceLists = Value.Parse(

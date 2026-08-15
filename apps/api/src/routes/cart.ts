@@ -98,14 +98,19 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
         sendPublicError(request, reply, 404, 'CART_NOT_FOUND');
         return;
       }
+      const variants = services.products.listVariants(Number(productId), cartCountry);
       let resolvedVariantId: string | null | undefined;
       if (variantId !== undefined) {
         resolvedVariantId = String(variantId);
       } else {
-        const active = services.products
-          .listVariants(Number(productId), cartCountry)
-          .filter((v) => v.active === 1);
-        if (active.length === 1) {
+        const active = variants.filter((v) => v.active === 1);
+        const product = services.products.findCustomerProductById(Number(productId), cartCountry);
+        const defaultVariant = product?.default_variant_id
+          ? active.find((variant) => variant.id === product.default_variant_id)
+          : undefined;
+        if (defaultVariant) {
+          resolvedVariantId = String(defaultVariant.id);
+        } else if (active.length === 1) {
           resolvedVariantId = String(active[0]!.id);
         } else if (active.length === 0) {
           resolvedVariantId = undefined;
@@ -123,9 +128,7 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
         return;
       }
 
-      const selectedVariant = services.products
-        .listVariants(Number(productId), cartCountry)
-        .find((variant) => variant.id === Number(resolvedVariantId));
+      const selectedVariant = variants.find((variant) => variant.id === Number(resolvedVariantId));
       const requestedQuantity =
         quantity ??
         (selectedVariant

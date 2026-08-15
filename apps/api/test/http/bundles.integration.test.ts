@@ -1,21 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 
 void test('bundle HTTP routes validate input, expose current bundles, and audit anonymous adds', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-bundle-http-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const fixture = await createSeededAppFixture(t);
+  const { db, app } = fixture;
 
   const listed = await app.inject({ method: 'GET', url: '/api/bundles?productId=1' });
   assert.equal(listed.statusCode, 200);
@@ -85,15 +74,8 @@ void test('bundle HTTP routes validate input, expose current bundles, and audit 
 });
 
 void test('bundle HTTP add maps unavailable and reserved-cart conflicts', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-bundle-http-conflict-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const fixture = await createSeededAppFixture(t);
+  const { db, app } = fixture;
 
   const unavailableCart = (await app.inject({ method: 'POST', url: '/api/cart' })).json<{
     cartId: string;

@@ -17,7 +17,7 @@ afterEach(() => {
 describe('Layout', () => {
   it('constrains the main content to the shared content shell width', async () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Layout />
       </MemoryRouter>,
     );

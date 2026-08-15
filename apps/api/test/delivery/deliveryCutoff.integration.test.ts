@@ -1,29 +1,20 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import type { Country } from '@shop/contracts/country';
 import type { DeliverySlotOptionsResponse } from '@shop/contracts/delivery';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 
 const NOW = new Date('2026-07-20T15:30:00.000Z');
 
 void test('delivery cut-off uses each cart persisted country at one instant', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-delivery-cutoff-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({
-    db,
-    resetBaseUrl: 'http://web.example.test/',
-    clock: { now: () => NOW },
+  const fixture = await createSeededAppFixture({
+    testContext: t,
+    app: {
+      resetBaseUrl: 'http://web.example.test/',
+      clock: { now: () => NOW },
+    },
   });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = fixture;
 
   const slotsFor = async (country: Country): Promise<DeliverySlotOptionsResponse> => {
     const created = await app.inject({

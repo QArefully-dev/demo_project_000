@@ -75,7 +75,10 @@ describe('OrderConfirmationPage', () => {
     vi.mocked(getOrder).mockResolvedValue(order);
 
     render(
-      <MemoryRouter initialEntries={['/order-confirmation/12']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/order-confirmation/12']}
+      >
         <Routes>
           <Route path="/order-confirmation/:orderId" element={<OrderConfirmationPage />} />
         </Routes>

@@ -49,7 +49,7 @@ function product(id: string) {
 
 function renderPage() {
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <BundlesPage />
     </MemoryRouter>,
   );
@@ -84,7 +84,7 @@ describe('BundlesPage', () => {
       refetch,
     });
     rerender(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <BundlesPage />
       </MemoryRouter>,
     );

@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { createHash, scryptSync, timingSafeEqual } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,6 +18,7 @@ import { createInventoryRepository } from '../../src/features/inventory/inventor
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
 import { createSavedListRepository } from '../../src/features/savedLists/savedListRepository.js';
 import { createSavedListService } from '../../src/features/savedLists/savedListService.js';
+import { verifyPassword } from '../../src/utils/passwords.js';
 
 const CANONICAL_IDS = new Set(
   Array.from({ length: 50 }, (_, i) => i + 1).concat(
@@ -1435,7 +1435,7 @@ void test('seed installs deterministic clearance windows and category-scoped pro
   );
 });
 
-void test('seed installs two Alice rows with distinct ids and distinct passwords', (t) => {
+void test('seed installs two Alice rows with distinct ids and distinct passwords', async (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-de-alice-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
   t.after(() => {
@@ -1464,29 +1464,22 @@ void test('seed installs two Alice rows with distinct ids and distinct passwords
   assert.notEqual(ukAlice.id, deAlice.id);
   assert.notEqual(ukAlice.password_hash, deAlice.password_hash);
 
-  const ukHash = ukAlice.password_hash.split('.')[1];
-  const deHash = deAlice.password_hash.split('.')[1];
-
-  {
-    const salt = createHash('sha256')
-      .update('seed-salt-alice@example.com-UK')
-      .digest('hex')
-      .slice(0, 64);
-    const expected = scryptSync('Password123!', salt, 64).toString('hex');
-    assert.equal(ukHash, expected);
-  }
-
-  {
-    const salt = createHash('sha256')
-      .update('seed-salt-alice@example.com-DE')
-      .digest('hex')
-      .slice(0, 64);
-    const expected = scryptSync('PasswordDE!1', salt, 64).toString('hex');
-    assert.equal(deHash, expected);
-  }
+  // Contract assertions keep accidental edits to the checked-in credential constants visible.
+  assert.equal(
+    ukAlice.password_hash,
+    '0cbb5ca947f000eb56198953f60edf764a6200608c2c7bbbb6ca9e38ad136e29.71a4b78c9640cafeb16526e9bc812cbc09649552e1c721d1fb2ce1cefd3b385e75ff2ea8466271a871c888c78308ed7360b3069abe5612bd8d675ead8e155e1a',
+  );
+  assert.equal(
+    deAlice.password_hash,
+    'b2a85508aa431e39826b69a446132617a03fd84559f88af1b828ac90f48624f7.6a5b2002b13397ddb23fa3e514aea3e5fa69bc2ecb3df3c7c06b4520c98d23f87adb1d70452d56af94853c8e87792afc327a0858b1bd1ab27900a894a13c417b',
+  );
+  assert.equal(await verifyPassword('Password123!', ukAlice.password_hash), true);
+  assert.equal(await verifyPassword('PasswordDE!1', deAlice.password_hash), true);
+  assert.equal(await verifyPassword('Password123!', deAlice.password_hash), false);
+  assert.equal(await verifyPassword('PasswordDE!1', ukAlice.password_hash), false);
 });
 
-void test('DE Alice password verifies only against its own row', (t) => {
+void test('DE Alice password verifies only against its own row', async (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'shop-de-alice-verify-'));
   const db = openDatabase({ path: join(directory, 'shop.db') });
   t.after(() => {
@@ -1502,19 +1495,74 @@ void test('DE Alice password verifies only against its own row', (t) => {
     )
     .all() as Array<{ id: number; email: string; country: string; password_hash: string }>;
 
-  const [ukSalt, ukHash] = ukRow.password_hash.split('.');
-  const [deSalt, deHash] = deRow.password_hash.split('.');
+  assert.equal(await verifyPassword('Password123!', ukRow.password_hash), true);
+  assert.equal(await verifyPassword('PasswordDE!1', deRow.password_hash), true);
+  assert.equal(await verifyPassword('Password123!', deRow.password_hash), false);
+  assert.equal(await verifyPassword('PasswordDE!1', ukRow.password_hash), false);
+});
 
-  const ukScrypt = scryptSync('Password123!', ukSalt, 64);
-  const deScrypt = scryptSync('PasswordDE!1', deSalt, 64);
-  const deWithUkPassword = scryptSync('Password123!', deSalt, 64);
+void test('seeded credential values stay stable after reset and seed', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-seeded-credentials-reset-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
 
-  assert.ok(timingSafeEqual(ukScrypt, Buffer.from(ukHash, 'hex')));
-  assert.ok(timingSafeEqual(deScrypt, Buffer.from(deHash, 'hex')));
-  assert.ok(!timingSafeEqual(deWithUkPassword, Buffer.from(deHash, 'hex')));
-  // Cross-check: DE hash does NOT match UK salt
-  const deAgainstUk = scryptSync('PasswordDE!1', ukSalt, 64);
-  assert.ok(!timingSafeEqual(deAgainstUk, Buffer.from(deHash, 'hex')));
+  const credentials = () =>
+    db
+      .prepare(
+        `SELECT email, country, password_hash, password_salt
+         FROM users
+         WHERE email IN ('alice@example.com', 'bob@example.com', 'admin@example.com',
+                         'acme@example.com', 'buyer@example.com', 'approver@example.com',
+                         'suspended@example.com')
+         ORDER BY email, country`,
+      )
+      .all() as Array<{
+      email: string;
+      country: string;
+      password_hash: string;
+      password_salt: string;
+    }>;
+
+  seedDatabase(db);
+  const first = credentials();
+  assert.equal(first.length, 8);
+
+  resetDatabase(db);
+  seedDatabase(db);
+
+  assert.deepEqual(credentials(), first);
+});
+
+void test('every seeded demo credential verifies with the production verifier', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'shop-seeded-credentials-verify-'));
+  const db = openDatabase({ path: join(directory, 'shop.db') });
+  t.after(() => {
+    closeDatabase(db);
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  seedDatabase(db);
+  const seededCredentials = [
+    ['alice@example.com', 'UK', 'Password123!'],
+    ['bob@example.com', 'UK', 'Password123!'],
+    ['admin@example.com', 'UK', 'Password123!'],
+    ['acme@example.com', 'UK', 'Password123!'],
+    ['buyer@example.com', 'UK', 'Password123!'],
+    ['approver@example.com', 'UK', 'Password123!'],
+    ['alice@example.com', 'DE', 'PasswordDE!1'],
+    ['suspended@example.com', 'UK', 'Password123!'],
+  ] as const;
+
+  for (const [email, country, password] of seededCredentials) {
+    const row = db
+      .prepare('SELECT password_hash FROM users WHERE email = ? AND country = ?')
+      .get(email, country) as { password_hash: string } | undefined;
+    assert.ok(row, `missing seeded identity ${email} (${country})`);
+    assert.equal(await verifyPassword(password, row.password_hash), true, `${email} (${country})`);
+  }
 });
 
 void test('seed installs stage-2 country fixtures and targeted promo idempotently', (t) => {

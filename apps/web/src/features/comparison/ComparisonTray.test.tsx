@@ -14,7 +14,7 @@ const storage = {
 
 function renderTray() {
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ComparisonSelectionProvider storage={storage}>
         <ComparisonTray />
         {['1', '2', '3', '4', '5'].map((id) => (

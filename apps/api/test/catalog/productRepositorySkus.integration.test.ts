@@ -1,19 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import { createProductRepository } from '../../src/features/catalog/productRepository.js';
+import { openSeededDatabase } from '../support/seededDatabase.js';
 
 void test('SKU lookup returns product names, includes retired variants, and preserves SKU matching', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-catalog-skus-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const repository = createProductRepository(db);
   // The saved-list seed retires exactly one lot so its add-to-cart journey always shows a
   // partial success; every other seeded variant stays live.

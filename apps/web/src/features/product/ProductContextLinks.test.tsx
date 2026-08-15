@@ -17,7 +17,7 @@ if (!packSizesLink) throw new Error('Pack-size link fixture is required.');
 
 function renderLinks(packagingQuantity?: string) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ProductContextLinks packagingQuantity={packagingQuantity} />
     </MemoryRouter>,
   );
@@ -29,7 +29,7 @@ describe('ProductContextLinks', () => {
     expect(screen.queryByRole('link', { name: packSizesLink.label })).not.toBeInTheDocument();
 
     rerender(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ProductContextLinks packagingQuantity="500g" />
       </MemoryRouter>,
     );

@@ -1,13 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import { CreateCartResponse } from '@shop/contracts/cart';
 import { ReorderResponse } from '@shop/contracts/reorder';
 import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededFixture } from '../support/seededDatabase.js';
 
 /**
  * The seeded `alice-reorder-mix` order is the demo fixture for Buy again. This suite asserts the
@@ -40,14 +37,9 @@ async function login(app: App, email: string): Promise<string> {
 }
 
 void test('the seeded buy-again order reorders into a mixed added/skipped result', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-reorder-seed-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test', clock: { now: () => NOW } });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
+  const { db, app } = await createSeededFixture({
+    testContext: t,
+    app: { clock: { now: () => NOW } },
   });
 
   const orderId = Number(

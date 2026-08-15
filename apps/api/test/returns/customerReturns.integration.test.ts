@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededFixture } from '../support/seededDatabase.js';
 
 function cookie(response: { headers: Record<string, string | string[] | undefined> }): string {
   const h = response.headers['set-cookie'];
@@ -24,15 +21,7 @@ async function login(app: Awaited<ReturnType<typeof buildApp>>, email: string): 
 }
 
 void test('customer return routes enforce ownership and auth', async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'shop-cust-returns-'));
-  const db = openDatabase({ path: join(dir, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(dir, { recursive: true, force: true });
-  });
+  const { app } = await createSeededFixture(t);
 
   const aliceCookie = await login(app, 'alice@example.com');
   const bobCookie = await login(app, 'bob@example.com');
@@ -140,15 +129,7 @@ void test('customer return routes enforce ownership and auth', async (t) => {
 });
 
 void test('return request validation rejects invalid inputs', async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'shop-ret-val-'));
-  const db = openDatabase({ path: join(dir, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(dir, { recursive: true, force: true });
-  });
+  const { app } = await createSeededFixture(t);
 
   const aliceCookie = await login(app, 'alice@example.com');
 

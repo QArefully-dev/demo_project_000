@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 
 const NOW = new Date('2026-08-05T10:00:00.000Z');
 const CN_HEADERS = { 'x-shop-country': 'CN' };
@@ -76,15 +73,11 @@ function paymentPayload(
 }
 
 void test('country stage 2 composes availability, checkout, delivery, and promo rules', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-country-stage2-e2e-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test', clock: { now: () => NOW } });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
+  const fixture = await createSeededAppFixture({
+    testContext: t,
+    app: { clock: { now: () => NOW } },
   });
+  const { db, app } = fixture;
 
   const blockedLot = db
     .prepare(

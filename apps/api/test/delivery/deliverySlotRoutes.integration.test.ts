@@ -1,13 +1,10 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import { DeliverySlotOptionsResponse } from '@shop/contracts/delivery';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { openDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 
 /** Fixed instant so lead time and the offered slot window are deterministic. */
 const CLOCK = { now: () => new Date('2026-07-27T09:00:00.000Z') };
@@ -23,16 +20,11 @@ function firstActiveVariantId(db: ReturnType<typeof openDatabase>, productId: nu
 }
 
 void test('delivery slot routes', async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'shop-slot-routes-'));
-  const db = openDatabase({ path: join(dir, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test', clock: CLOCK });
-
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(dir, { recursive: true, force: true });
+  const fixture = await createSeededAppFixture({
+    testContext: t,
+    app: { clock: CLOCK },
   });
+  const { db, app } = fixture;
 
   /** Creates a cart holding one seeded freight line. */
   const createStockedCart = async (): Promise<string> => {

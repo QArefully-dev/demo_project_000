@@ -1,10 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
@@ -13,15 +8,15 @@ import {
   createReviewService,
   ReviewServiceError,
 } from '../../src/features/reviews/reviewService.js';
+import { createSeededFixture, openSeededDatabase } from '../support/seededDatabase.js';
 
 const clock = { now: () => new Date('2026-07-18T12:00:00.000Z') };
 const context = { actor: { type: 'user' as const, userId: 1 }, requestId: 'review-test-request' };
 const body = 'This is a sufficiently detailed review body.';
 
 function setup() {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-reviews-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
+  const fixture = openSeededDatabase();
+  const { db } = fixture;
   db.exec(`
     DELETE FROM review_reports;
     DELETE FROM review_helpful_votes;
@@ -36,7 +31,7 @@ function setup() {
     audit: createAuditWriter({ repository: auditRepository, clock }),
     clock,
   });
-  return { directory, db, repository, service };
+  return { ...fixture, repository, service };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -52,11 +47,8 @@ function parseMetadataJson(value: string): Record<string, unknown> {
 }
 
 void test('published list and aggregate share visibility while owner can read hidden review', (t) => {
-  const { directory, db, service } = setup();
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { service, cleanup } = setup();
+  t.after(cleanup);
 
   const first = service.create(1, 1, { rating: 5, body }, context);
   service.create(
@@ -91,15 +83,7 @@ void test('published list and aggregate share visibility while owner can read hi
 });
 
 void test('admin review failures use selected admin country copy and stable code', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-review-route-errors-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { app } = await createSeededFixture(t);
 
   const login = await app.inject({
     method: 'POST',
@@ -131,11 +115,8 @@ void test('admin review failures use selected admin country copy and stable code
 });
 
 void test('verified purchase requires reviewer-owned order, matching line, and succeeded payment', (t) => {
-  const { directory, db, service } = setup();
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, service, cleanup } = setup();
+  t.after(cleanup);
   const reviewOne = service.create(1, 1, { rating: 4, body }, context);
   service.create(
     2,
@@ -171,11 +152,8 @@ void test('verified purchase requires reviewer-owned order, matching line, and s
 });
 
 void test('mutations enforce owner/unique/transition rules and audit failure rolls back', (t) => {
-  const { directory, db, repository, service } = setup();
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, repository, service, cleanup } = setup();
+  t.after(cleanup);
   const review = service.create(1, 1, { rating: 2, body }, context);
   assert.throws(
     () => service.create(1, 1, { rating: 2, body }, context),
@@ -230,11 +208,8 @@ void test('mutations enforce owner/unique/transition rules and audit failure rol
 });
 
 void test('review lifecycle writes exact body-free audit facts', (t) => {
-  const { directory, db, service } = setup();
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, service, cleanup } = setup();
+  t.after(cleanup);
   const review = service.create(1, 1, { rating: 2, body }, context);
   service.update(1, Number(review.id), { rating: 5, body: `${body} Updated.` }, context);
   service.hide(Number(review.id), context);
@@ -293,11 +268,8 @@ void test('review lifecycle writes exact body-free audit facts', (t) => {
 });
 
 void test('helpful and report workflows are published-only, idempotent, and reopenable', (t) => {
-  const { directory, db, service } = setup();
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { service, cleanup } = setup();
+  t.after(cleanup);
   const review = service.create(1, 1, { rating: 4, body }, context);
   const bobContext = {
     actor: { type: 'user' as const, userId: 2 },
@@ -339,11 +311,8 @@ void test('helpful and report workflows are published-only, idempotent, and reop
 });
 
 void test('moderation emits one decision-accurate audit fact', (t) => {
-  const { directory, db, service } = setup();
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, service, cleanup } = setup();
+  t.after(cleanup);
   const bobContext = { actor: { type: 'user' as const, userId: 2 }, requestId: 'bob-report' };
   const adminContext = { actor: { type: 'user' as const, userId: 3 }, requestId: 'admin-decision' };
   const hidden = service.create(1, 1, { rating: 4, body }, context);

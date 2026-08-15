@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import type Database from 'better-sqlite3';
-import { buildApp } from '../../src/app.js';
 import {
   createCheckoutService,
   type CheckoutParams,
@@ -15,7 +11,7 @@ import { createCartRepository } from '../../src/features/cart/cartRepository.js'
 import { addItem, createCart } from '../../src/features/cart/cartService.js';
 import { createProductRepository } from '../../src/features/catalog/productRepository.js';
 import { createCountryProfileService } from '../../src/features/countryProfile/countryProfileService.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { openSeededDatabase, createSeededAppFixture } from '../support/seededDatabase.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
@@ -38,13 +34,7 @@ function rowCount(db: Database.Database, sql: string, ...params: unknown[]): num
 }
 
 void test('checkout rejects a persisted-country blocked line before reservations or gateway', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-checkout-country-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
 
   const row = db
     .prepare(
@@ -139,15 +129,11 @@ void test('checkout rejects a persisted-country blocked line before reservations
 });
 
 void test('the payment route maps BLOCKED_IN_COUNTRY to a 409 pre-gateway conflict', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-checkout-country-route-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test', clock: { now: () => NOW } });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
+  const fixture = await createSeededAppFixture({
+    testContext: t,
+    app: { clock: { now: () => NOW } },
   });
+  const { db, app } = fixture;
 
   const variant = db
     .prepare(

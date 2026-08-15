@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 
 function sessionCookie(response: {
   headers: Record<string, string | string[] | undefined>;
@@ -26,9 +23,8 @@ async function login(app: Awaited<ReturnType<typeof buildApp>>, email: string): 
 }
 
 void test('admin reads follow standing country while global catalog is annotated', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-admin-country-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
+  const database = await createSeededAppFixture(t);
+  const db = database.db;
   const movedOrder = (
     db.prepare('SELECT id FROM orders ORDER BY id ASC LIMIT 1').get() as { id: number }
   ).id;
@@ -40,12 +36,7 @@ void test('admin reads follow standing country while global catalog is annotated
     'INSERT OR IGNORE INTO promo_code_countries (promo_code_id, country) VALUES (?, ?)',
   ).run(promoId, 'UK');
 
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const app = database.app;
 
   const adminCookie = await login(app, 'admin@example.com');
   const customerCookie = await login(app, 'alice@example.com');

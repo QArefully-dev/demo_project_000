@@ -1,4 +1,3 @@
-import { createHash, scryptSync } from 'node:crypto';
 import { CATALOG_PRODUCTS, CURATED_BUNDLES, validateCatalog } from '@shop/catalog';
 import { LEGACY_DATA_COUNTRY } from '@shop/contracts';
 import type Database from 'better-sqlite3';
@@ -74,6 +73,30 @@ const DE_ALICE = {
 } as const;
 
 const DE_ALICE_PASSWORD = 'PasswordDE!1';
+
+/**
+ * Credentials for the fixed demo identities. The salt and derived key are checked in so ordinary
+ * seeding does not spend CPU deriving the same values over and over. These values retain the
+ * historical `salt.hexHash` format and are still verified by the production password verifier.
+ */
+const SEEDED_PASSWORD_HASHES = Object.freeze({
+  'alice@example.com|UK|Password123!':
+    '0cbb5ca947f000eb56198953f60edf764a6200608c2c7bbbb6ca9e38ad136e29.71a4b78c9640cafeb16526e9bc812cbc09649552e1c721d1fb2ce1cefd3b385e75ff2ea8466271a871c888c78308ed7360b3069abe5612bd8d675ead8e155e1a',
+  'bob@example.com|UK|Password123!':
+    '6a02550322ef64c2c79f70a909764463d7209d0fbac9160d405fd4fad533a9a4.ba07f2052ee4410451dd41a3d16f605214d5be829a97d5ea4f2ff9addc1b8a50652e8d0222a37c96066b734da21f09632462976b858942df11e9429addf60d43',
+  'admin@example.com|UK|Password123!':
+    'd4b87683b4822d71f21b15874015a9e4cb5d1e682a235fa2dccfba00acba71f1.90e0b461dab51b243d650ad0e44fb422ebd43d82bc8b2cf0ff12375aeebf2e1c0dc58c74a5312d5b7f193577ce62664ad8e1a6b3f4b45b3645a0a23652cbe917',
+  'acme@example.com|UK|Password123!':
+    '15a113eba3c9931d36da830042d2513af1fb2b154ae5974264db75163549a0ae.7f4e004554d6e52e5c7a533c4a7a105c274c8e4df16788e186386647dc1c15b9d99f022787000955729dfd9d962d779ffee440b81ca33cb08f3ae0658631d3d2',
+  'buyer@example.com|UK|Password123!':
+    '15d4e780b89c02818e285bfe5b1f3be6668260e563313af7eb838a3825ffad72.758b37cba756d5561263abcfc75b0694ad9114b079e1f20232d72399320256c3864a59fd9e7deb4c38cfd7518e8e8dc7d926de3060b6363d9d32c9a3dffc2310',
+  'approver@example.com|UK|Password123!':
+    '603495e10249036696aaf09c44a71dacbec7e07289aa8dd5f5d4f0e26baeaf5d.93a216342256e10e56a0a438019dc6ddc5a48cb884a1ef04c7f9e907344af9e44484893ce77e7461ac779eba1421dc86c399281da0140ec5d0dda048596b3806',
+  'alice@example.com|DE|PasswordDE!1':
+    'b2a85508aa431e39826b69a446132617a03fd84559f88af1b828ac90f48624f7.6a5b2002b13397ddb23fa3e514aea3e5fa69bc2ecb3df3c7c06b4520c98d23f87adb1d70452d56af94853c8e87792afc327a0858b1bd1ab27900a894a13c417b',
+  'suspended@example.com|UK|Password123!':
+    '9c5e9fcfb896fc61dea4dffc03b0c87034a64813c099c3205a0e002cfaf319dc.3ba9212246f7cf8a7735830423e80dfe82744db8e575ead4c7688c6ef4834e9d1450f011625f3e761f69704a1b708a1e6176a96dddf8e01696f596372dcb4269',
+} as const);
 
 const ADMIN_DEACTIVATED_PROMO = {
   code: 'ADMINOFF',
@@ -423,11 +446,12 @@ const SEED_BILLING_ENTITIES = [
 const TRADE_ACCOUNT_SEED_INSTANT = '2026-07-01T09:00:00.000Z';
 
 function seededPassword(email: string, country: string, password = 'Password123!'): string {
-  const salt = createHash('sha256')
-    .update(`seed-salt-${email}-${country}`)
-    .digest('hex')
-    .slice(0, 64);
-  return `${salt}.${scryptSync(password, salt, 64).toString('hex')}`;
+  const key = `${email}|${country}|${password}` as keyof typeof SEEDED_PASSWORD_HASHES;
+  const stored = SEEDED_PASSWORD_HASHES[key];
+  if (stored === undefined) {
+    throw new Error(`Seed assertion failed: missing credential for ${email} (${country})`);
+  }
+  return stored;
 }
 
 const CANONICAL_PRODUCT_IDS = new Set(

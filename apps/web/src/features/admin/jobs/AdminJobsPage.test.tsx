@@ -59,7 +59,10 @@ describe('AdminJobsPage', () => {
   it('filters from URL and clamps an out-of-range page', async () => {
     api.getAdminJobs.mockResolvedValue(page({ total: 1, page: 3 }));
     render(
-      <MemoryRouter initialEntries={['/admin/jobs?status=dead&kind=webhook.process&page=9']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/admin/jobs?status=dead&kind=webhook.process&page=9']}
+      >
         <AdminJobsPage />
         <Location />
       </MemoryRouter>,
@@ -78,7 +81,7 @@ describe('AdminJobsPage', () => {
     api.drainAdminJobs.mockResolvedValue({ processedCount: 3, succeededCount: 2, failedCount: 1 });
     const user = userEvent.setup();
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AdminJobsPage />
       </MemoryRouter>,
     );
@@ -91,7 +94,10 @@ describe('AdminJobsPage', () => {
     api.retryAdminJob.mockReturnValue(retry.promise);
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/admin/jobs/1']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/admin/jobs/1']}
+      >
         <Routes>
           <Route path="/admin/jobs/:jobId" element={<AdminJobDetailPage />} />
         </Routes>
@@ -116,7 +122,10 @@ describe('AdminJobsPage', () => {
     api.retryAdminJob.mockResolvedValue(job);
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/admin/jobs/1']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/admin/jobs/1']}
+      >
         <Link to="/admin/jobs/2">Job 2</Link>
         <Routes>
           <Route path="/admin/jobs/:jobId" element={<AdminJobDetailPage />} />
@@ -138,7 +147,10 @@ describe('AdminJobsPage', () => {
     api.retryAdminJob.mockReturnValue(retry.promise);
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/admin/jobs/1']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/admin/jobs/1']}
+      >
         <Link to="/admin/jobs/2">Job 2</Link>
         <Routes>
           <Route path="/admin/jobs/:jobId" element={<AdminJobDetailPage />} />

@@ -1,23 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { CreateCartResponse } from '@shop/contracts/cart';
 import { Value } from '@sinclair/typebox/value';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 
 void test('cart creation persists country', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-country-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = await createSeededAppFixture(t);
 
   const created = await app.inject({
     method: 'POST',
@@ -33,15 +21,7 @@ void test('cart creation persists country', async (t) => {
 });
 
 void test('cart creation applies default country on omission', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-country-default-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = await createSeededAppFixture(t);
 
   const created = await app.inject({
     method: 'POST',
@@ -57,15 +37,7 @@ void test('cart creation applies default country on omission', async (t) => {
 });
 
 void test('cart creation accepts a bodyless request', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-country-bodyless-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = await createSeededAppFixture(t);
 
   const created = await app.inject({ method: 'POST', url: '/api/cart' });
   assert.equal(created.statusCode, 201);
@@ -77,15 +49,7 @@ void test('cart creation accepts a bodyless request', async (t) => {
 });
 
 void test('cart creation rejects invalid country', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-country-invalid-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { app } = await createSeededAppFixture(t);
 
   const created = await app.inject({
     method: 'POST',
@@ -96,15 +60,7 @@ void test('cart creation rejects invalid country', async (t) => {
 });
 
 void test('carts with different countries stay separate', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-country-separate-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db, app } = await createSeededAppFixture(t);
 
   const uk = await app.inject({ method: 'POST', url: '/api/cart', payload: { country: 'UK' } });
   assert.equal(uk.statusCode, 201);

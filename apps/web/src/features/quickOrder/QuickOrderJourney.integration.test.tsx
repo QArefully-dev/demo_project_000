@@ -97,7 +97,10 @@ function CartLanding() {
 
 function renderJourney() {
   return render(
-    <MemoryRouter initialEntries={['/quick-order']}>
+    <MemoryRouter
+      initialEntries={['/quick-order']}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <CartProvider>
         <Routes>
           <Route path="/quick-order" element={<QuickOrderPage />} />

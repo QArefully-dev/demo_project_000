@@ -42,7 +42,7 @@ const base: CustomBlendOption = {
 describe('SuccessRecap', () => {
   it('shows packaging, composition and the shared made-to-order note', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <SuccessRecap
           result="created"
           base={base}
@@ -69,7 +69,7 @@ describe('SuccessRecap', () => {
 
   it('keeps an edited-composition success recap on the preview mark until a new key is authoritative', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <SuccessRecap
           result="replaced"
           base={base}

@@ -1,7 +1,4 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import {
   createCheckoutService,
@@ -9,7 +6,7 @@ import {
 } from '../../src/features/checkout/checkoutService.js';
 import { createCartRepository } from '../../src/features/cart/cartRepository.js';
 import { addItem, createCart } from '../../src/features/cart/cartService.js';
-import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
+import { openSeededDatabase } from '../support/seededDatabase.js';
 import { createPromoRepository } from '../../src/features/promos/promoRepository.js';
 import { createPaymentRepository } from '../../src/features/payments/paymentRepository.js';
 import { createOrderRepository } from '../../src/features/orders/orderRepository.js';
@@ -84,19 +81,9 @@ function getVariantId(db: import('better-sqlite3').Database, productId: number):
 }
 
 void test('returns exclude delivery from refund', async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'shop-return-delivery-'));
-  const dbPath = join(dir, 'shop.db');
-  const db = openDatabase({ path: dbPath });
-  const carts = createCartRepository(db);
-
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  await t.test('freight order total includes delivery charge', async () => {
-    resetDatabase(db);
-    seedDatabase(db);
+  await t.test('freight order total includes delivery charge', async (nested) => {
+    const { db } = openSeededDatabase(nested);
+    const carts = createCartRepository(db);
     const cartId = createCart(carts).cartId;
 
     // Add enough items to cross 100kg threshold
@@ -132,9 +119,9 @@ void test('returns exclude delivery from refund', async (t) => {
     assert.ok(merchandiseTotal < order.totalCents);
   });
 
-  await t.test('parcel order has zero delivery charge', async () => {
-    resetDatabase(db);
-    seedDatabase(db);
+  await t.test('parcel order has zero delivery charge', async (nested) => {
+    const { db } = openSeededDatabase(nested);
+    const carts = createCartRepository(db);
     const cartId = createCart(carts).cartId;
     const vId = getVariantId(db, 1);
     db.prepare(
@@ -153,9 +140,8 @@ void test('returns exclude delivery from refund', async (t) => {
     assert.equal(order.totalCents, order.subtotalCents - order.discountCents);
   });
 
-  await t.test('legacy orders load with default delivery fields', () => {
-    resetDatabase(db);
-    seedDatabase(db);
+  await t.test('legacy orders load with default delivery fields', (nested) => {
+    const { db } = openSeededDatabase(nested);
 
     // Seed orders (alice-processing) already has delivery columns
     // Find alice-processing order (demo_seed_key)

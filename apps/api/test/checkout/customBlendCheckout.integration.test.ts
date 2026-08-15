@@ -1,8 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import test from 'node:test';
+import test, { type TestContext } from 'node:test';
 import type Database from 'better-sqlite3';
 import {
   CUSTOM_BLEND_FEE_CENTS,
@@ -10,8 +7,6 @@ import {
   type CustomBlendSnapshot,
 } from '@shop/contracts';
 import { parsePersistedCheckoutQuote } from '@shop/contracts/payments';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
@@ -41,6 +36,7 @@ import {
   resolveTierDiscountPct,
   resolveUnitPriceCents,
 } from '../../src/features/pricing/pricingRules.js';
+import { createSeededAppFixture, openSeededDatabase } from '../support/seededDatabase.js';
 
 interface Lot {
   variantId: number;
@@ -138,24 +134,15 @@ function loadQuote(db: Database.Database, idempotencyKey: string) {
 }
 
 void test('Custom Blend checkout money, promotion, and revalidation', async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'shop-custom-blend-checkout-'));
-  const db = openDatabase({ path: join(dir, 'shop.db') });
-
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  const setupFresh = () => {
-    resetDatabase(db);
-    seedDatabase(db);
+  const setupFresh = (testContext: TestContext) => {
+    const { db } = openSeededDatabase(testContext);
     const lots = eligiblePair(db);
     // Stock is deliberately generous on the base lot: tier boundaries, not availability, are
     // under test. Ingredient stock stays untouched here.
     db.prepare('UPDATE product_variants SET stock_count = 100000 WHERE id = ?').run(
       lots.base.variantId,
     );
-    return lots;
+    return { db, lots };
   };
 
   const configure = (
@@ -178,47 +165,50 @@ void test('Custom Blend checkout money, promotion, and revalidation', async (t) 
     return cartId;
   };
 
-  await t.test('blending fee is a flat per-line charge across every tier boundary', () => {
-    for (const [quantity, expectedDiscountPct] of [
-      [39, 0],
-      [40, 0],
-      [200, 5],
-      [400, 10],
-    ] as const) {
-      const lots = setupFresh();
-      const api = services(db, countingGateway());
-      const cartId = configure(api, lots, quantity);
-      const cart = api.carts.get(cartId)!;
-      const line = cart.items[0]!;
+  await t.test(
+    'blending fee is a flat per-line charge across every tier boundary',
+    (testContext) => {
+      for (const [quantity, expectedDiscountPct] of [
+        [39, 0],
+        [40, 0],
+        [200, 5],
+        [400, 10],
+      ] as const) {
+        const { db, lots } = setupFresh(testContext);
+        const api = services(db, countingGateway());
+        const cartId = configure(api, lots, quantity);
+        const cart = api.carts.get(cartId)!;
+        const line = cart.items[0]!;
 
-      assert.equal(
-        resolveTierDiscountPct(quantity, SACK_WEIGHT_GRAMS),
-        expectedDiscountPct,
-        `tier ladder for ${quantity} sacks`,
-      );
-      const unitPriceCents = resolveUnitPriceCents(
-        lots.base.priceCents,
-        quantity,
-        SACK_WEIGHT_GRAMS,
-      );
-      assert.equal(line.resolvedUnitPriceCents, unitPriceCents);
-      assert.equal(line.materialSubtotalCents, unitPriceCents * quantity);
-      // Flat, never tiered, never scaled by quantity.
-      assert.equal(line.blendingFeeCents, CUSTOM_BLEND_FEE_CENTS);
-      assert.equal(line.customBlend?.blendingFeeCents, CUSTOM_BLEND_FEE_CENTS);
-      assert.equal(line.discountableTotalCents, unitPriceCents * quantity);
-      assert.equal(line.lineTotalCents, unitPriceCents * quantity + CUSTOM_BLEND_FEE_CENTS);
-      assert.equal(cart.discountableSubtotalCents, unitPriceCents * quantity);
-      assert.equal(cart.subtotalCents, unitPriceCents * quantity + CUSTOM_BLEND_FEE_CENTS);
-      assert.equal(cart.blendingFeeTotalCents, CUSTOM_BLEND_FEE_CENTS);
-      assert.equal(cart.totalItems, quantity);
-    }
-  });
+        assert.equal(
+          resolveTierDiscountPct(quantity, SACK_WEIGHT_GRAMS),
+          expectedDiscountPct,
+          `tier ladder for ${quantity} sacks`,
+        );
+        const unitPriceCents = resolveUnitPriceCents(
+          lots.base.priceCents,
+          quantity,
+          SACK_WEIGHT_GRAMS,
+        );
+        assert.equal(line.resolvedUnitPriceCents, unitPriceCents);
+        assert.equal(line.materialSubtotalCents, unitPriceCents * quantity);
+        // Flat, never tiered, never scaled by quantity.
+        assert.equal(line.blendingFeeCents, CUSTOM_BLEND_FEE_CENTS);
+        assert.equal(line.customBlend?.blendingFeeCents, CUSTOM_BLEND_FEE_CENTS);
+        assert.equal(line.discountableTotalCents, unitPriceCents * quantity);
+        assert.equal(line.lineTotalCents, unitPriceCents * quantity + CUSTOM_BLEND_FEE_CENTS);
+        assert.equal(cart.discountableSubtotalCents, unitPriceCents * quantity);
+        assert.equal(cart.subtotalCents, unitPriceCents * quantity + CUSTOM_BLEND_FEE_CENTS);
+        assert.equal(cart.blendingFeeTotalCents, CUSTOM_BLEND_FEE_CENTS);
+        assert.equal(cart.totalItems, quantity);
+      }
+    },
+  );
 
   await t.test(
     'SAVE10 five-sack gate is met by blend sacks and discounts material only',
-    async () => {
-      const lots = setupFresh();
+    async (testContext) => {
+      const { db, lots } = setupFresh(testContext);
       const gateway = countingGateway();
       const api = services(db, gateway);
       const cartId = configure(api, lots, 5);
@@ -258,30 +248,33 @@ void test('Custom Blend checkout money, promotion, and revalidation', async (t) 
     },
   );
 
-  await t.test('plain lines keep a fee-free money split and an unchanged quote shape', async () => {
-    const lots = setupFresh();
-    const gateway = countingGateway();
-    const api = services(db, gateway);
-    const cartId = api.carts.create().cartId;
-    const added = api.carts.add(cartId, String(lots.base.variantId), 5);
-    assert.equal(typeof added === 'string', false, `add failed: ${JSON.stringify(added)}`);
+  await t.test(
+    'plain lines keep a fee-free money split and an unchanged quote shape',
+    async (testContext) => {
+      const { db, lots } = setupFresh(testContext);
+      const gateway = countingGateway();
+      const api = services(db, gateway);
+      const cartId = api.carts.create().cartId;
+      const added = api.carts.add(cartId, String(lots.base.variantId), 5);
+      assert.equal(typeof added === 'string', false, `add failed: ${JSON.stringify(added)}`);
 
-    const result = await api.checkout.process(paymentParams(cartId, 'plain-line'));
-    assert.equal(result.success, true, `checkout failed: ${JSON.stringify(result)}`);
+      const result = await api.checkout.process(paymentParams(cartId, 'plain-line'));
+      assert.equal(result.success, true, `checkout failed: ${JSON.stringify(result)}`);
 
-    const quote = loadQuote(db, 'plain-line');
-    const line = quote.variantLines[0]!;
-    assert.equal(quote.subtotalCents, lots.base.priceCents * 5);
-    assert.equal(line.blendingFeeCents, undefined);
-    assert.equal(line.materialSubtotalCents, undefined);
-    assert.equal(line.discountableTotalCents, undefined);
-    assert.equal(line.customBlend, undefined);
-  });
+      const quote = loadQuote(db, 'plain-line');
+      const line = quote.variantLines[0]!;
+      assert.equal(quote.subtotalCents, lots.base.priceCents * 5);
+      assert.equal(line.blendingFeeCents, undefined);
+      assert.equal(line.materialSubtotalCents, undefined);
+      assert.equal(line.discountableTotalCents, undefined);
+      assert.equal(line.customBlend, undefined);
+    },
+  );
 
   await t.test(
     'ingredient stock of zero does not block checkout and never enters demand',
-    async () => {
-      const lots = setupFresh();
+    async (testContext) => {
+      const { db, lots } = setupFresh(testContext);
       db.prepare('UPDATE product_variants SET stock_count = 0 WHERE id = ?').run(
         lots.ingredient.variantId,
       );
@@ -310,8 +303,8 @@ void test('Custom Blend checkout money, promotion, and revalidation', async (t) 
 
   await t.test(
     'an ingredient retired after configuration is rejected before the gateway',
-    async () => {
-      const lots = setupFresh();
+    async (testContext) => {
+      const { db, lots } = setupFresh(testContext);
       const gateway = countingGateway();
       const api = services(db, gateway);
       const cartId = configure(api, lots, 5);
@@ -342,8 +335,8 @@ void test('Custom Blend checkout money, promotion, and revalidation', async (t) 
     },
   );
 
-  await t.test('a retired base lot is rejected before the gateway', async () => {
-    const lots = setupFresh();
+  await t.test('a retired base lot is rejected before the gateway', async (testContext) => {
+    const { db, lots } = setupFresh(testContext);
     const gateway = countingGateway();
     const api = services(db, gateway);
     const cartId = configure(api, lots, 5);
@@ -356,21 +349,11 @@ void test('Custom Blend checkout money, promotion, and revalidation', async (t) 
 });
 
 void test('payment route maps a stale Custom Blend line to a 409 conflict', async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'shop-custom-blend-checkout-route-'));
-  const db = openDatabase({ path: join(dir, 'shop.db') });
-  resetDatabase(db);
-  seedDatabase(db);
+  const { db, app } = await createSeededAppFixture(t);
   const lots = eligiblePair(db);
   db.prepare('UPDATE product_variants SET stock_count = 100000 WHERE id = ?').run(
     lots.base.variantId,
   );
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(dir, { recursive: true, force: true });
-  });
 
   const cartId = (await app.inject({ method: 'POST', url: '/api/cart' })).json<{
     cartId: string;

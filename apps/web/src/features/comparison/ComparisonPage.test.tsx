@@ -60,7 +60,10 @@ function Selection() {
 
 function page(path: string) {
   return (
-    <MemoryRouter initialEntries={[path]}>
+    <MemoryRouter
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      initialEntries={[path]}
+    >
       <Routes>
         <Route
           path="/compare"

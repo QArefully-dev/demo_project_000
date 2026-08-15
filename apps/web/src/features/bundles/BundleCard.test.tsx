@@ -42,7 +42,7 @@ function product(id: string, name: string) {
 function renderCard(overrides: Partial<React.ComponentProps<typeof BundleCard>> = {}) {
   const onAdd = overrides.onAdd ?? vi.fn();
   render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <BundleCard bundle={bundle} isCartAvailable isAdding={false} onAdd={onAdd} {...overrides} />
     </MemoryRouter>,
   );
@@ -68,7 +68,7 @@ describe('BundleCard', () => {
 
   it('disables unavailable bundles and prevents duplicate pending adds', () => {
     const { rerender } = render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <BundleCard
           bundle={{ ...bundle, available: false }}
           isCartAvailable
@@ -81,7 +81,7 @@ describe('BundleCard', () => {
     expect(screen.getByText('This bundle is currently unavailable.')).toBeInTheDocument();
 
     rerender(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <BundleCard bundle={bundle} isCartAvailable isAdding onAdd={vi.fn()} />
       </MemoryRouter>,
     );

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import type { PublicUser } from '@shop/contracts/auth';
 import { translateUnchecked } from '@shop/localisation';
-import { apiErrors } from '@shop/localisation/messages/apiErrors';
+import { identityAccountMessages } from '@shop/localisation/messages/identityAccount';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
@@ -35,7 +35,10 @@ function LoginLocation() {
 
 function renderLogin(initialEntry: string | { pathname: string; state?: unknown }) {
   return render(
-    <MemoryRouter initialEntries={[initialEntry]}>
+    <MemoryRouter
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      initialEntries={[initialEntry]}
+    >
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="*" element={<Location />} />
@@ -95,7 +98,7 @@ describe('login return navigation', () => {
     await submitLogin();
 
     expect(
-      screen.getByText(translateUnchecked(apiErrors, 'DE', 'UNAUTHORIZED')),
+      screen.getByText(translateUnchecked(identityAccountMessages, 'DE', 'auth.signIn.failed')),
     ).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Sign In' })).toBeInTheDocument();
   });
@@ -104,7 +107,10 @@ describe('login return navigation', () => {
     authState.user = null;
     authState.loading = false;
     render(
-      <MemoryRouter initialEntries={['/account?tab=orders#recent']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/account?tab=orders#recent']}
+      >
         <Routes>
           <Route
             path="/account"

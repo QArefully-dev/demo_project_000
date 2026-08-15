@@ -1,7 +1,4 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import {
@@ -10,8 +7,8 @@ import {
   ErrorResponse,
   type CustomBlendOptionsResponse as CustomBlendOptionsResponseType,
 } from '@shop/contracts';
-import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, resetDatabase, seedDatabase } from '../../src/db/index.js';
+import { openDatabase } from '../../src/db/index.js';
+import { createSeededAppFixture } from '../support/seededDatabase.js';
 
 type EligibleLot = { variantId: number; productId: number; category: string };
 
@@ -37,10 +34,7 @@ function eligibleLot(db: ReturnType<typeof openDatabase>, category?: string): El
 }
 
 void test('Custom Blend options expose all compatible active 25 kg lots across categories, including sold out lots', async (t) => {
-  const tempDir = mkdtempSync(join(tmpdir(), 'shop-custom-blend-options-'));
-  const db = openDatabase({ path: join(tempDir, 'shop.db') });
-  resetDatabase(db);
-  seedDatabase(db);
+  const { db, app } = await createSeededAppFixture(t);
   const base = eligibleLot(db, 'Sports Nutrition');
   const crossCategory = db
     .prepare(
@@ -69,13 +63,6 @@ void test('Custom Blend options expose all compatible active 25 kg lots across c
     .get(base.variantId, crossCategory.variantId) as EligibleLot | undefined;
   if (!excluded) throw new Error('Expected additional eligible food-grade lot');
   db.prepare('UPDATE products SET mixing_group = NULL WHERE id = ?').run(excluded.productId);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(tempDir, { recursive: true, force: true });
-  });
-
   const response = await app.inject({
     method: 'GET',
     url: `/api/custom-blends/options?baseVariantId=${base.variantId}`,
@@ -121,10 +108,7 @@ void test('Custom Blend options expose all compatible active 25 kg lots across c
 });
 
 void test('Custom Blend options safely default invalid category facts', async (t) => {
-  const tempDir = mkdtempSync(join(tmpdir(), 'shop-custom-blend-options-facts-'));
-  const db = openDatabase({ path: join(tempDir, 'shop.db') });
-  resetDatabase(db);
-  seedDatabase(db);
+  const { db, app } = await createSeededAppFixture(t);
   const base = eligibleLot(db, 'Sports Nutrition');
   const ingredient = db
     .prepare(
@@ -137,13 +121,6 @@ void test('Custom Blend options safely default invalid category facts', async (t
     )
     .get(base.variantId) as EligibleLot | undefined;
   if (!ingredient) throw new Error('Expected compatible ingredient lot');
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(tempDir, { recursive: true, force: true });
-  });
-
   const expectedFacts = {
     texture: 'Not specified',
     colour: 'Not specified',
@@ -182,70 +159,62 @@ void test('Custom Blend options safely default invalid category facts', async (t
 });
 
 void test('Custom Blend options reject nonexistent, inactive, null-group, and wrong-shape bases', async (t) => {
-  const tempDir = mkdtempSync(join(tmpdir(), 'shop-custom-blend-invalid-base-'));
-  const db = openDatabase({ path: join(tempDir, 'shop.db') });
-  resetDatabase(db);
-  seedDatabase(db);
-  const base = eligibleLot(db, 'Sports Nutrition');
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(tempDir, { recursive: true, force: true });
-  });
-
-  for (const invalidCase of [
+  void t;
+  const invalidCases: Array<{
+    variantId: number | 'base';
+    mutate: (db: ReturnType<typeof openDatabase>, base: EligibleLot) => void;
+  }> = [
     { variantId: 999_999, mutate: () => undefined },
     {
-      variantId: base.variantId,
-      mutate: () =>
+      variantId: 'base',
+      mutate: (db, base) =>
         db.prepare('UPDATE product_variants SET active = 0 WHERE id = ?').run(base.variantId),
     },
     {
-      variantId: base.variantId,
-      mutate: () => db.prepare('UPDATE products SET active = 0 WHERE id = ?').run(base.productId),
+      variantId: 'base',
+      mutate: (db, base) =>
+        db.prepare('UPDATE products SET active = 0 WHERE id = ?').run(base.productId),
     },
     {
-      variantId: base.variantId,
-      mutate: () =>
+      variantId: 'base',
+      mutate: (db, base) =>
         db.prepare('UPDATE products SET mixing_group = NULL WHERE id = ?').run(base.productId),
     },
     {
-      variantId: base.variantId,
-      mutate: () =>
+      variantId: 'base',
+      mutate: (db, base) =>
         db
           .prepare('UPDATE product_variants SET weight_grams = 1000 WHERE id = ?')
           .run(base.variantId),
     },
     {
-      variantId: base.variantId,
-      mutate: () =>
-        db.prepare('UPDATE product_variants SET sort_order = 2 WHERE id = ?').run(base.variantId),
+      variantId: 'base',
+      mutate: (db, base) =>
+        db.prepare('UPDATE product_variants SET sort_order = 0 WHERE id = ?').run(base.variantId),
     },
-  ]) {
-    resetDatabase(db);
-    seedDatabase(db);
-    invalidCase.mutate();
-    const response = await app.inject({
-      method: 'GET',
-      url: `/api/custom-blends/options?baseVariantId=${invalidCase.variantId}`,
-    });
-    assert.equal(response.statusCode, 400);
-    assert.equal(Value.Check(CustomBlendErrorResponse, response.json()), true);
+  ];
+
+  for (const invalidCase of invalidCases) {
+    const fixture = await createSeededAppFixture();
+    try {
+      const { db, app } = fixture;
+      const base = eligibleLot(db, 'Sports Nutrition');
+      const variantId = invalidCase.variantId === 'base' ? base.variantId : invalidCase.variantId;
+      invalidCase.mutate(db, base);
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/custom-blends/options?baseVariantId=${variantId}`,
+      });
+      assert.equal(response.statusCode, 400);
+      assert.equal(Value.Check(CustomBlendErrorResponse, response.json()), true);
+    } finally {
+      await fixture.cleanup();
+    }
   }
 });
 
 void test('Custom Blend options serialize malformed query validation as 400 responses', async (t) => {
-  const tempDir = mkdtempSync(join(tmpdir(), 'shop-custom-blend-options-query-validation-'));
-  const db = openDatabase({ path: join(tempDir, 'shop.db') });
-  resetDatabase(db);
-  seedDatabase(db);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(tempDir, { recursive: true, force: true });
-  });
+  const { app } = await createSeededAppFixture(t);
 
   for (const query of ['', '?baseVariantId=not-a-number', '?baseVariantId=1&unexpected=true']) {
     const response = await app.inject({ method: 'GET', url: `/api/custom-blends/options${query}` });

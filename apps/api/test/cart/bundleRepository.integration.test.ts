@@ -1,12 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { openDatabase } from '../../src/db/index.js';
 import { createBundleRepository } from '../../src/features/bundles/bundleRepository.js';
 import { createCartRepository } from '../../src/features/cart/cartRepository.js';
 import { createCart } from '../../src/features/cart/cartService.js';
+import { openSeededDatabase } from '../support/seededDatabase.js';
 
 function defaultVariantId(db: ReturnType<typeof openDatabase>, productId: number): string {
   const row = db
@@ -19,13 +17,7 @@ function defaultVariantId(db: ReturnType<typeof openDatabase>, productId: number
 }
 
 void test('bundle repository hydrates ordered persisted products and filters by component', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-bundle-repository-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
 
   const bundles = createBundleRepository(db);
   assert.deepEqual(
@@ -62,13 +54,7 @@ void test('bundle repository hydrates ordered persisted products and filters by 
 });
 
 void test('cart repository reads and increments ordinary line quantities', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-cart-line-quantity-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
 
   const carts = createCartRepository(db);
   const variant1 = defaultVariantId(db, 1);

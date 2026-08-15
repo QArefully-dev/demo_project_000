@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import type { ProductSpecificationGroup, ProductTag } from '@shop/contracts/products';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import {
   rankSimilarProducts,
   scoreProductSimilarity,
@@ -13,6 +9,7 @@ import {
   createProductRepository,
   type CustomerProductRow,
 } from '../../src/features/catalog/productRepository.js';
+import { openSeededDatabase } from '../support/seededDatabase.js';
 
 function product(id: number, overrides: Partial<CustomerProductRow> = {}): CustomerProductRow {
   return {
@@ -153,13 +150,7 @@ void test('similarity availability score uses reservation-aware stock projection
 });
 
 void test('similarity limits after stable ranking and repository candidates omit inactive/source rows', (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-product-similarity-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const repository = createProductRepository(db);
   const source = repository.findActiveById(1);
   assert.ok(source);

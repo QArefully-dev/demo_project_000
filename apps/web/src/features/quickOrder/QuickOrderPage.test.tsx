@@ -74,7 +74,7 @@ function stubCart(overrides: Partial<CartStub> = {}): CartStub {
 function renderPage(cartStub = stubCart()) {
   vi.mocked(useCartContext).mockReturnValue(cartStub as never);
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <QuickOrderPage />
     </MemoryRouter>,
   );
@@ -162,7 +162,10 @@ describe('QuickOrderPage', () => {
   it('registers the public Quick Order route inside the layout', () => {
     vi.mocked(useCartContext).mockReturnValue(stubCart() as never);
     render(
-      <MemoryRouter initialEntries={['/quick-order']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/quick-order']}
+      >
         <App />
       </MemoryRouter>,
     );

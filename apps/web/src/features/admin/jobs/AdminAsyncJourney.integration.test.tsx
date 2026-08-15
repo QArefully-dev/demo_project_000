@@ -40,7 +40,10 @@ describe('admin async journey', () => {
     });
     const user = userEvent.setup();
     render(
-      <MemoryRouter initialEntries={['/admin/jobs/1']}>
+      <MemoryRouter
+        initialEntries={['/admin/jobs/1']}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
         <Link to="/admin/jobs">Job queue</Link>
         <Routes>
           <Route path="/admin/jobs" element={<AdminJobsPage />} />

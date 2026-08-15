@@ -28,7 +28,7 @@ describe('AdminWebhooksPage', () => {
     api.getAdminWebhooks.mockResolvedValue({ items: [webhook], total: 1, page: 1, pageSize: 10 });
     const user = userEvent.setup();
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AdminWebhooksPage />
       </MemoryRouter>,
     );
@@ -41,7 +41,10 @@ describe('AdminWebhooksPage', () => {
   it('renders payload only', async () => {
     api.getAdminWebhook.mockResolvedValue(webhook);
     render(
-      <MemoryRouter initialEntries={['/admin/webhooks/1']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/admin/webhooks/1']}
+      >
         <Routes>
           <Route path="/admin/webhooks/:webhookId" element={<AdminWebhookDetailPage />} />
         </Routes>

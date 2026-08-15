@@ -1,9 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
+import { openDatabase } from '../../src/db/index.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
@@ -12,6 +9,7 @@ import { createVariantAdminService } from '../../src/features/catalog/variantAdm
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
 import type { StockChangeObserver } from '../../src/features/inventory/stockObserver.js';
+import { openSeededDatabase } from '../support/seededDatabase.js';
 
 interface RecordedCall {
   variantId: number;
@@ -78,13 +76,7 @@ function defaultVariantId(db: ReturnType<typeof openDatabase>, productId: number
 }
 
 function fixture(t: test.TestContext) {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-stock-observer-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
-  t.after(() => {
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
-  });
+  const { db } = openSeededDatabase(t);
   const recorder = recordingObserver(db);
   const clock = { now: () => new Date('2030-01-01T00:00:00.000Z') };
   return {

@@ -28,7 +28,10 @@ describe('SaveToListButton', () => {
   it('returns anonymous customers to sign-in from the full current path', async () => {
     state.user = null;
     render(
-      <MemoryRouter initialEntries={['/products/a?source=card']}>
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/products/a?source=card']}
+      >
         <Routes>
           <Route
             path="*"
@@ -51,12 +54,12 @@ describe('SaveToListButton', () => {
     state.ids = new Set([4]);
     state.toggle.mockReset();
     const { rerender } = render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <SaveToListButton variantId={3} quantity={2} />
       </MemoryRouter>,
     );
     rerender(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <SaveToListButton variantId={4} quantity={7} />
       </MemoryRouter>,
     );
@@ -74,7 +77,7 @@ describe('SaveToListButton', () => {
       .mockReturnValue(new Promise<boolean>((resolve) => (resolveToggle = resolve)));
     const user = userEvent.setup();
     render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <SaveToListButton variantId={3} />
       </MemoryRouter>,
     );

@@ -1,15 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import type Database from 'better-sqlite3';
 import { Value } from '@sinclair/typebox/value';
 import { CUSTOM_BLEND_FEE_CENTS, SACK_WEIGHT_GRAMS } from '@shop/contracts';
 import { OrderDetailResponse, type OrderLineItem } from '@shop/contracts/orders';
 import { buildApp } from '../../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../../src/db/index.js';
 import { adhocBilling, adhocDestination, bookableSlot } from '../checkout/checkoutDepthFixtures.js';
+import { createSeededFixture } from '../support/seededDatabase.js';
 
 type App = Awaited<ReturnType<typeof buildApp>>;
 
@@ -72,21 +69,16 @@ interface Fixture {
 }
 
 async function fixture(label: string): Promise<Fixture> {
-  const dir = mkdtempSync(join(tmpdir(), `shop-${label}-`));
-  const db = openDatabase({ path: join(dir, 'shop.db') });
-  seedDatabase(db);
+  void label;
+  const seeded = await createSeededFixture();
+  const { db, app } = seeded;
   const lots = eligibleLots(db);
   stockUp(db, lots);
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test' });
   return {
     app,
     db,
     lots,
-    close: async () => {
-      await app.close();
-      closeDatabase(db);
-      rmSync(dir, { recursive: true, force: true });
-    },
+    close: seeded.cleanup,
   };
 }
 

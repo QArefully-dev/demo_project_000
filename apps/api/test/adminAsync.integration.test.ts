@@ -1,7 +1,4 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import {
@@ -11,7 +8,7 @@ import {
   AdminJobPage,
 } from '@shop/contracts/jobs';
 import { buildApp } from '../src/app.js';
-import { closeDatabase, openDatabase, seedDatabase } from '../src/db/index.js';
+import { createSeededAppFixture } from './support/seededDatabase.js';
 
 function cookie(response: { headers: Record<string, string | string[] | undefined> }): string {
   const header = response.headers['set-cookie'];
@@ -31,16 +28,13 @@ async function login(app: Awaited<ReturnType<typeof buildApp>>, email: string): 
 }
 
 void test('admin job routes enforce role, paginate, retry idempotently, and drain synchronously', async (t) => {
-  const directory = mkdtempSync(join(tmpdir(), 'shop-admin-async-'));
-  const db = openDatabase({ path: join(directory, 'shop.db') });
-  seedDatabase(db);
   const now = new Date('2026-08-02T10:00:00.000Z');
-  const app = await buildApp({ db, resetBaseUrl: 'http://web.test', clock: { now: () => now } });
-  t.after(async () => {
-    await app.close();
-    closeDatabase(db);
-    rmSync(directory, { recursive: true, force: true });
+  const database = await createSeededAppFixture({
+    testContext: t,
+    app: { clock: { now: () => now } },
   });
+  const db = database.db;
+  const app = database.app;
   const customer = await login(app, 'alice@example.com');
   const admin = await login(app, 'admin@example.com');
   db.prepare("UPDATE jobs SET run_at='2099-01-01T00:00:00.000Z' WHERE status='pending'").run();

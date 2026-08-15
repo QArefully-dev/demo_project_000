@@ -65,7 +65,7 @@ export function CartSheet() {
             })}
           </SheetTitle>
         </SheetHeader>
-        <div className="flex-1 overflow-y-auto py-4">
+        <div className="flex-1 overflow-y-auto px-4 py-4">
           {isInitializing && <LoadingSpinner />}
           {!isInitializing && isLoading && <LoadingSpinner />}
           {!isInitializing && !isLoading && error && !cart && (
@@ -149,7 +149,7 @@ export function CartSheet() {
             ))}
         </div>
         {!isInitializing && cart && cart.totalItems > 0 && (
-          <div className="border-t pt-4 space-y-3">
+          <div className="space-y-3 border-t px-4 pt-4 pb-4">
             {cart.blendingFeeTotalCents > 0 && (
               <>
                 <div className="flex items-center justify-between text-sm text-muted-foreground">

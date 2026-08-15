@@ -1,9 +1,17 @@
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-// @ts-expect-error The checker is an executable workspace script without a TS declaration file.
-import { ALLOWLIST, scanFiles } from '../../../../scripts/check-localisation.mjs';
+// @ts-expect-error JavaScript checker has no declarations.
+import { ALLOWLIST, scanFiles } from '../../../../scripts/check-localisation-core.mjs';
 
-const fixtureRoot = resolve(process.cwd(), '../../scripts/localisation-fixtures');
+const fixtureRoot = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../../scripts/localisation-fixtures',
+);
+const checkoutFixturePath = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../features/checkout/CheckoutPage.test-fixtures.tsx',
+);
 const allowlist = ALLOWLIST as Record<string, ReadonlySet<string>>;
 type Finding = { rule: string };
 const scanLocalisationFiles = scanFiles as unknown as (files: string[]) => Finding[];
@@ -26,5 +34,9 @@ describe('localisation guard contract', () => {
   ])('rejects forbidden %s surface', (fixture, rule) => {
     const findings = scanLocalisationFiles([resolve(fixtureRoot, fixture)]);
     expect(findings.some((finding) => finding.rule === rule)).toBe(true);
+  });
+
+  it('does not treat colocated test fixtures as production copy', () => {
+    expect(scanLocalisationFiles([checkoutFixturePath])).toEqual([]);
   });
 });
