@@ -55,6 +55,16 @@ function loginErrorState(
 
 function localizeLoginError(state: LoginErrorState | null, activeCountry: Country): string | null {
   if (state === null) return null;
+  // On the sign-in form, UNAUTHORIZED means the submitted credentials were rejected.
+  // The generic API copy is reserved for requests that require an existing session.
+  if (state.code === 'UNAUTHORIZED') {
+    return translateUnchecked(
+      identityAccountMessages,
+      state.country ?? activeCountry,
+      state.key,
+      state.params ?? {},
+    );
+  }
   if (state.code !== null) {
     try {
       return translateUnchecked(

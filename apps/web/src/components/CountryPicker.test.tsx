@@ -1,20 +1,8 @@
-import { useState } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Country } from '@shop/contracts/country';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CountryPicker } from './CountryPicker';
-
-const cartState = vi.hoisted(() => ({ cart: null as { totalItems: number } | null }));
-const countryState = vi.hoisted(() => ({ isAccountBound: false }));
-
-vi.mock('@/hooks/CountryContext', () => ({
-  useOptionalCountry: () => countryState,
-}));
-
-vi.mock('@/hooks/CartContext', () => ({
-  useCartContext: () => ({ cart: cartState.cart }),
-}));
 
 function renderPicker(
   value: Country = 'US',
@@ -26,8 +14,7 @@ function renderPicker(
 
 describe('CountryPicker', () => {
   beforeEach(() => {
-    countryState.isAccountBound = false;
-    cartState.cart = null;
+    vi.clearAllMocks();
   });
 
   it('renders all supported countries as options', () => {
@@ -70,33 +57,10 @@ describe('CountryPicker', () => {
 
   it('uses the enabled Country label for an admin browsing another country', () => {
     // CountryContext reports admins as not account-bound in stage 2.
-    countryState.isAccountBound = false;
     renderPicker('DE', vi.fn(), false);
 
     expect(screen.getByRole('combobox', { name: 'Country' })).not.toBeDisabled();
     expect(screen.queryByText('Account country')).not.toBeInTheDocument();
-  });
-
-  it('shows cart message when guest changes country with non-empty cart', async () => {
-    const onChange = vi.fn();
-    const user = userEvent.setup();
-    countryState.isAccountBound = false;
-    cartState.cart = { totalItems: 3 };
-    renderPicker('US', onChange);
-    await user.selectOptions(screen.getByTestId('country-picker'), 'DE');
-    expect(screen.getByTestId('country-cart-message')).toHaveTextContent(
-      'Your cart is tied to the previous country and will not follow this switch.',
-    );
-  });
-
-  it('does not show cart message when cart is empty', async () => {
-    const onChange = vi.fn();
-    const user = userEvent.setup();
-    countryState.isAccountBound = false;
-    cartState.cart = { totalItems: 0 };
-    renderPicker('US', onChange);
-    await user.selectOptions(screen.getByTestId('country-picker'), 'DE');
-    expect(screen.queryByTestId('country-cart-message')).not.toBeInTheDocument();
   });
 
   it('names the select without relying on the breakpoint-hidden label text', () => {
@@ -128,47 +92,5 @@ describe('CountryPicker', () => {
   it('does not render the account explanation when enabled', () => {
     renderPicker('US', vi.fn(), false);
     expect(screen.queryByTestId('country-picker-account-note')).not.toBeInTheDocument();
-  });
-
-  it('clears the cart message when the buyer switches back to the original country', async () => {
-    const user = userEvent.setup();
-    cartState.cart = { totalItems: 3 };
-    function Harness() {
-      const [country, setCountry] = useState<Country>('US');
-      return <CountryPicker value={country} onChange={setCountry} />;
-    }
-    render(<Harness />);
-    const select = screen.getByTestId('country-picker');
-
-    await user.selectOptions(select, 'DE');
-    expect(screen.getByTestId('country-cart-message')).toBeInTheDocument();
-
-    await user.selectOptions(select, 'US');
-    expect(screen.queryByTestId('country-cart-message')).not.toBeInTheDocument();
-  });
-
-  it('keeps the cart message while switching on to a third country', async () => {
-    const user = userEvent.setup();
-    cartState.cart = { totalItems: 3 };
-    function Harness() {
-      const [country, setCountry] = useState<Country>('US');
-      return <CountryPicker value={country} onChange={setCountry} />;
-    }
-    render(<Harness />);
-    const select = screen.getByTestId('country-picker');
-
-    await user.selectOptions(select, 'DE');
-    await user.selectOptions(select, 'FR');
-    expect(screen.getByTestId('country-cart-message')).toBeInTheDocument();
-  });
-
-  it('does not show cart message when account-bound', async () => {
-    const onChange = vi.fn();
-    const user = userEvent.setup();
-    countryState.isAccountBound = true;
-    cartState.cart = { totalItems: 5 };
-    renderPicker('US', onChange);
-    await user.selectOptions(screen.getByTestId('country-picker'), 'DE');
-    expect(screen.queryByTestId('country-cart-message')).not.toBeInTheDocument();
   });
 });

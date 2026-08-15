@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { translateUnchecked } from '@shop/localisation';
-import { apiErrors } from '@shop/localisation/messages/apiErrors';
 import { identityAccountMessages } from '@shop/localisation/messages/identityAccount';
 import { LoginPage } from './LoginPage';
 import { AuthProvider } from '@/hooks/AuthContext';
@@ -68,7 +67,7 @@ describe('LoginPage client-path country error authority', () => {
     vi.unstubAllGlobals();
   });
 
-  it('uses submitted DE copy when active browsing country remains US', async () => {
+  it('uses submitted DE sign-in copy when active browsing country remains US', async () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter
@@ -92,10 +91,12 @@ describe('LoginPage client-path country error authority', () => {
     await user.click(screen.getByRole('button', { name: 'Sign In' }));
 
     expect(
-      await screen.findByText(translateUnchecked(apiErrors, 'DE', 'UNAUTHORIZED')),
+      await screen.findByText(
+        translateUnchecked(identityAccountMessages, 'DE', 'auth.signIn.failed'),
+      ),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(translateUnchecked(apiErrors, 'US', 'UNAUTHORIZED')),
+      screen.queryByText(translateUnchecked(identityAccountMessages, 'US', 'auth.signIn.failed')),
     ).not.toBeInTheDocument();
   });
 
@@ -179,10 +180,12 @@ describe('LoginPage client-path country error authority', () => {
     );
 
     expect(
-      await screen.findByText(translateUnchecked(apiErrors, 'DE', 'UNAUTHORIZED')),
+      await screen.findByText(
+        translateUnchecked(identityAccountMessages, 'DE', 'auth.signIn.failed'),
+      ),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(translateUnchecked(apiErrors, 'FR', 'UNAUTHORIZED')),
+      screen.queryByText(translateUnchecked(identityAccountMessages, 'FR', 'auth.signIn.failed')),
     ).not.toBeInTheDocument();
   });
 });

@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { List } from 'lucide-react';
+import type { Country } from '@shop/contracts/country';
 import { CategoryNav } from './CategoryNav';
 import { SearchBar } from './SearchBar';
 import { AccountMenu } from './AccountMenu';
@@ -9,6 +11,7 @@ import { CartSheet } from './CartSheet';
 import { NotificationBell } from '@/features/notifications/NotificationBell';
 import { useAuth } from '@/hooks/AuthContext';
 import { useCountry } from '@/hooks/CountryContext';
+import { useCartContext } from '@/hooks/CartContext';
 import { useLocalisation } from '@/i18n/LocaleContext';
 import { webMessages } from '@shop/localisation/messages/webShell';
 
@@ -16,6 +19,7 @@ import { webMessages } from '@shop/localisation/messages/webShell';
 export function Header() {
   const { user } = useAuth();
   const { activeCountry, isAccountBound, selectCountry } = useCountry();
+  const { cart } = useCartContext();
   const { defaultList } = useSavedLists();
   const defaultItemCount = defaultList?.items.length ?? 0;
   const { translate } = useLocalisation();
@@ -23,6 +27,17 @@ export function Header() {
     translate(webMessages, key, params);
 
   const countryDisabled = isAccountBound;
+  /** The origin country lets the notice clear if the buyer switches back. */
+  const [cartOrigin, setCartOrigin] = useState<Country | null>(null);
+
+  function handleCountryChange(next: Country) {
+    if (cartOrigin !== null) {
+      if (next === cartOrigin) setCartOrigin(null);
+    } else if (next !== activeCountry && !isAccountBound && (cart?.totalItems ?? 0) > 0) {
+      setCartOrigin(activeCountry);
+    }
+    selectCountry(next);
+  }
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background shadow-sm">
@@ -42,7 +57,7 @@ export function Header() {
           >
             <CountryPicker
               value={activeCountry}
-              onChange={selectCountry}
+              onChange={handleCountryChange}
               disabled={countryDisabled}
             />
             <AccountMenu />
@@ -74,6 +89,17 @@ export function Header() {
           <CategoryNav />
         </div>
       </div>
+      {cartOrigin !== null && (
+        <div
+          role="status"
+          data-testid="country-cart-message"
+          className="border-t border-border bg-muted/60"
+        >
+          <p className="content-shell py-2 text-xs text-muted-foreground">
+            {t('country.cartSwitchWarning')}
+          </p>
+        </div>
+      )}
     </header>
   );
 }

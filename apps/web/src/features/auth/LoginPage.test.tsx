@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import type { PublicUser } from '@shop/contracts/auth';
 import { translateUnchecked } from '@shop/localisation';
-import { apiErrors } from '@shop/localisation/messages/apiErrors';
+import { identityAccountMessages } from '@shop/localisation/messages/identityAccount';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
@@ -98,7 +98,7 @@ describe('login return navigation', () => {
     await submitLogin();
 
     expect(
-      screen.getByText(translateUnchecked(apiErrors, 'DE', 'UNAUTHORIZED')),
+      screen.getByText(translateUnchecked(identityAccountMessages, 'DE', 'auth.signIn.failed')),
     ).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Sign In' })).toBeInTheDocument();
   });

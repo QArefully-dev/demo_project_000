@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Header } from './Header';
 
 const savedLists = vi.hoisted(() => ({ defaultList: null as { items: unknown[] } | null }));
@@ -12,6 +12,7 @@ const countryState = vi.hoisted(() => ({
   isAccountBound: false,
   selectCountry: vi.fn(),
 }));
+const cartState = vi.hoisted(() => ({ cart: null as { totalItems: number } | null }));
 
 vi.mock('./CategoryNav', () => ({
   CategoryNav: () => <nav aria-label="Product categories">Materials</nav>,
@@ -34,8 +35,9 @@ vi.mock('./CountryPicker', () => ({
       disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
     >
-      <option value={value}>{value}</option>
-      {value !== 'DE' && <option value="DE">DE</option>}
+      {value !== 'US' && value !== 'DE' && <option value={value}>{value}</option>}
+      <option value="US">US</option>
+      <option value="DE">DE</option>
     </select>
   ),
 }));
@@ -48,12 +50,24 @@ vi.mock('@/hooks/AuthContext', () => ({
 vi.mock('@/hooks/CountryContext', () => ({
   useCountry: () => countryState,
 }));
+vi.mock('@/hooks/CartContext', () => ({
+  useCartContext: () => cartState,
+}));
 vi.mock('./CartSheet', () => ({ CartSheet: () => <button type="button">Cart</button> }));
 vi.mock('@/features/notifications/NotificationBell', () => ({
   NotificationBell: () => null,
 }));
 
 describe('Header', () => {
+  beforeEach(() => {
+    savedLists.defaultList = null;
+    authState.user = null;
+    countryState.activeCountry = 'US';
+    countryState.isAccountBound = false;
+    countryState.selectCountry.mockClear();
+    cartState.cart = null;
+  });
+
   it('presents QArefully Materials Exchange without a category-nav tagline', () => {
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -126,5 +140,48 @@ describe('Header', () => {
 
     fireEvent.change(picker, { target: { value: 'DE' } });
     expect(countryState.selectCountry).toHaveBeenCalledWith('DE');
+  });
+
+  it('shows the cart country notice below the navigation instead of in the customer tools row', () => {
+    cartState.cart = { totalItems: 3 };
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Header />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByTestId('country-picker'), { target: { value: 'DE' } });
+
+    const notice = screen.getByTestId('country-cart-message');
+    const categoryNav = screen.getByRole('navigation', { name: 'Product categories' });
+    const customerTools = screen.getByRole('group');
+    expect(notice).toHaveTextContent(
+      'Your cart is tied to the previous country and will not follow this switch.',
+    );
+    expect(categoryNav.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(within(customerTools).queryByTestId('country-cart-message')).not.toBeInTheDocument();
+  });
+
+  it('clears the cart country notice when the buyer switches back to the origin country', () => {
+    cartState.cart = { totalItems: 3 };
+    const view = render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Header />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByTestId('country-picker'), { target: { value: 'DE' } });
+    expect(screen.getByTestId('country-cart-message')).toBeInTheDocument();
+
+    countryState.activeCountry = 'DE';
+    view.rerender(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Header />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByTestId('country-picker'), { target: { value: 'US' } });
+    expect(screen.queryByTestId('country-cart-message')).not.toBeInTheDocument();
   });
 });

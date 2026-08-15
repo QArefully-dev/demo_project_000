@@ -97,12 +97,16 @@ export const identityAccountMessages = defineMessages({
     ES: 'Selección de país no válida',
     FR: 'Sélection de pays invalide',
   }),
-  'auth.signIn.failed': text('Login failed', 'Anmeldung fehlgeschlagen', {
-    CN: '登录失败',
-    PL: 'Logowanie nie powiodło się',
-    ES: 'No se pudo iniciar sesión',
-    FR: 'Échec de la connexion',
-  }),
+  'auth.signIn.failed': text(
+    'Incorrect email or password. Reset your password or sign up for an account.',
+    'E-Mail-Adresse oder Passwort falsch. Setzen Sie Ihr Passwort zurück oder registrieren Sie sich.',
+    {
+      CN: '电子邮件或密码不正确。请重置密码或注册账户。',
+      PL: 'Nieprawidłowy e-mail lub hasło. Zresetuj hasło lub utwórz konto.',
+      ES: 'El correo o la contraseña son incorrectos. Restablece la contraseña o crea una cuenta.',
+      FR: 'E-mail ou mot de passe incorrect. Réinitialisez votre mot de passe ou créez un compte.',
+    },
+  ),
   'auth.unexpected': text(
     'An unexpected error occurred',
     'Ein unerwarteter Fehler ist aufgetreten',
