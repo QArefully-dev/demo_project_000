@@ -1,6 +1,6 @@
 ---
 name: write-orchestrator-coding-plan
-description: Write repository-grounded, coding-oriented implementation plans for orchestrator agents. Use when user supplies roadmap section, high-level plan item, feature lane, epic, backlog slice, or product direction and wants execution-ready coding plan. Inspect codebase before planning; specify architecture, data, contracts, API, UI, tests, sequencing, parallel subagent lanes, file ownership, dependency gates, convergence, and verification. Do not use for direct implementation or non-technical project plans.
+description: Write repository-grounded, coding-oriented implementation plans for orchestrator agents. Use when user supplies roadmap section, high-level plan item, feature lane, epic, backlog slice, or product direction and wants execution-ready coding plan. Inspect codebase before planning, using sol_medium audit subagents when useful; specify architecture, data, contracts, API, UI, tests, sequencing, parallel subagent lanes, file ownership, dependency gates, convergence, and verification. Do not use for direct implementation or non-technical project plans.
 ---
 
 # Write Orchestrator Coding Plan
@@ -36,6 +36,16 @@ Treat current code as implementation truth. Inspect before designing:
 Record evidence with repository-relative paths and symbol names. Label new paths as `proposed`; never present invented paths or symbols as existing.
 
 If repository access is unavailable, ask user for required files or permission to produce clearly labeled provisional plan.
+
+### Planning Audit Delegation
+
+Use `sol_medium` subagents when repository audit contains independent slices and parallel inspection materially reduces audit time or main-planner context load. Handle small, tightly coupled, or inherently sequential audits directly.
+
+- Spawn each planning subagent with `agent_type=sol_medium` and `fork_turns=none`.
+- Give each subagent one bounded, non-overlapping audit question. Prompt must be self-contained and include repository root, applicable instruction/source-plan paths, exact subsystem or symbols to inspect, required evidence, and exclusions.
+- Require read-only inspection and terse return: repository-relative paths, symbols, existing behavior, gaps, constraints, and unresolved conflicts. Planning subagents do not edit files or draft the final plan.
+- Main planner owns cross-slice reconciliation, user questions, architecture decisions, execution graph, packet boundaries, and final plan. Resolve conflicting or uncertain subagent claims against repository evidence before using them.
+- Do not spawn subagents merely to satisfy a count or repeat inspection already assigned. Reuse a suitable active `sol_medium` subagent for related follow-up when available.
 
 ## Plan Design
 
