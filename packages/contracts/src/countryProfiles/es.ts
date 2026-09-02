@@ -5,6 +5,7 @@ export const ES_COUNTRY_PROFILE = {
   numberLocale: 'es-ES',
   dateLocale: 'es-ES',
   displayCurrency: 'EUR',
+  vatRateBasisPoints: 2100,
   exchangeRate: { numerator: 117, denominator: 100 },
   blockedCategories: [],
   blockedProductSlugs: [],

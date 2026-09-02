@@ -5,6 +5,7 @@ export const UK_COUNTRY_PROFILE = {
   numberLocale: 'en-GB',
   dateLocale: 'en-GB',
   displayCurrency: 'GBP',
+  vatRateBasisPoints: 2000,
   exchangeRate: { numerator: 1, denominator: 1 },
   blockedCategories: [],
   blockedProductSlugs: [],

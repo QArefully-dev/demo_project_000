@@ -5,6 +5,7 @@ export const FR_COUNTRY_PROFILE = {
   numberLocale: 'fr-FR',
   dateLocale: 'fr-FR',
   displayCurrency: 'EUR',
+  vatRateBasisPoints: 2000,
   exchangeRate: { numerator: 117, denominator: 100 },
   blockedCategories: [],
   blockedProductSlugs: [],

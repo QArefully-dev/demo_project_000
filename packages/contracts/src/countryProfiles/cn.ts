@@ -5,6 +5,7 @@ export const CN_COUNTRY_PROFILE = {
   numberLocale: 'zh-CN',
   dateLocale: 'zh-CN',
   displayCurrency: 'CNY',
+  vatRateBasisPoints: 1300,
   exchangeRate: { numerator: 9, denominator: 1 },
   blockedCategories: ['Sports Nutrition'],
   blockedProductSlugs: [],

@@ -5,6 +5,7 @@ export const PL_COUNTRY_PROFILE = {
   numberLocale: 'pl-PL',
   dateLocale: 'pl-PL',
   displayCurrency: 'PLN',
+  vatRateBasisPoints: 2300,
   exchangeRate: { numerator: 5, denominator: 1 },
   blockedCategories: [],
   blockedProductSlugs: [],

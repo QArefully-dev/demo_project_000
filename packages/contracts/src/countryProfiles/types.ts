@@ -15,6 +15,9 @@ export interface CountryExchangeRate {
   readonly denominator: number;
 }
 
+/** VAT rate in basis points, constrained to the inclusive 0..10000 range. */
+export type VatRateBasisPoints = number;
+
 /** Stable lookup key for country-owned translated copy. */
 export type CountryMessageKey = string;
 
@@ -38,6 +41,8 @@ export interface CountryProfile {
   readonly dateLocale: CountryLocale;
   /** Currency used only for buyer-facing display conversion. */
   readonly displayCurrency: CountryDisplayCurrency;
+  /** Country VAT rate in basis points (0..10000 inclusive). */
+  readonly vatRateBasisPoints: VatRateBasisPoints;
   /** Positive integer ratio of target minor units per GBP penny. */
   readonly exchangeRate: CountryExchangeRate;
   /** Live catalogue categories unavailable to buyers in this identity country. */
