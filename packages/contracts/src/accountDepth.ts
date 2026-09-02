@@ -82,7 +82,28 @@ const ExportedInvoiceLifecycleIntegrity = TypeSystem.Type<unknown>(
 /** Export keeps the immutable document plus only safe lifecycle settlement state. */
 const ExportedInvoiceFacts = Type.Object(
   {
-    ...InvoiceDocumentV1Facts.properties,
+    // Keep this allowlist explicit: paymentIdempotencyKey is a checkout secret and must never
+    // cross the account export boundary, even when the immutable document gains new fields.
+    version: InvoiceDocumentV1Facts.properties.version,
+    id: InvoiceDocumentV1Facts.properties.id,
+    invoiceNumber: InvoiceDocumentV1Facts.properties.invoiceNumber,
+    orderId: InvoiceDocumentV1Facts.properties.orderId,
+    companyId: InvoiceDocumentV1Facts.properties.companyId,
+    userId: InvoiceDocumentV1Facts.properties.userId,
+    country: InvoiceDocumentV1Facts.properties.country,
+    paymentMethod: InvoiceDocumentV1Facts.properties.paymentMethod,
+    currency: InvoiceDocumentV1Facts.properties.currency,
+    terms: InvoiceDocumentV1Facts.properties.terms,
+    termsDays: InvoiceDocumentV1Facts.properties.termsDays,
+    billingEntity: InvoiceDocumentV1Facts.properties.billingEntity,
+    purchaseOrderReference: InvoiceDocumentV1Facts.properties.purchaseOrderReference,
+    lines: InvoiceDocumentV1Facts.properties.lines,
+    netCents: InvoiceDocumentV1Facts.properties.netCents,
+    vatRateBasisPoints: InvoiceDocumentV1Facts.properties.vatRateBasisPoints,
+    vatCents: InvoiceDocumentV1Facts.properties.vatCents,
+    grossCents: InvoiceDocumentV1Facts.properties.grossCents,
+    issuedAt: InvoiceDocumentV1Facts.properties.issuedAt,
+    dueAt: InvoiceDocumentV1Facts.properties.dueAt,
     status: InvoiceLifecycleStatus,
     settledAt: Type.Union([CreditUtcIsoInstant, Type.Null()]),
   },

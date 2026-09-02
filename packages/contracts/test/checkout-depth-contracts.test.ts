@@ -29,6 +29,7 @@ import {
   PaymentBody,
   PaymentConflictResponse,
 } from '../src/payments.js';
+import { AdminOrderDetailResponse } from '../src/adminOrdersList.js';
 
 const uuid = '123e4567-e89b-42d3-a456-426614174000';
 
@@ -490,6 +491,21 @@ void test('order summary and detail share credit attribution and accounting inte
   };
   assert.equal(Value.Check(OrderSummary, summary), true);
   assert.equal(Value.Check(OrderDetailResponse, detail), true);
+  assert.equal(
+    Value.Check(AdminOrderDetailResponse, {
+      ...detail,
+      refundPayment: { paymentId: '501', remainingRefundableCents: 12_000 },
+    }),
+    true,
+  );
+  assert.equal(
+    Value.Check(AdminOrderDetailResponse, {
+      ...detail,
+      grossCents: 12_001,
+      refundPayment: null,
+    }),
+    false,
+  );
 
   for (const candidate of [summary, detail]) {
     const schema = candidate === summary ? OrderSummary : OrderDetailResponse;

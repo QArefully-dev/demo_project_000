@@ -587,8 +587,24 @@ export type InvoiceLifecycleStatus = Static<typeof InvoiceLifecycleStatus>;
 export const InvoiceStatus = InvoiceLifecycleStatus;
 export type InvoiceStatus = InvoiceLifecycleStatus;
 
+const InvoiceLifecycleIntegrity = TypeSystem.Type<unknown>(
+  'InvoiceLifecycleIntegrity',
+  (_options, value) => {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+    const lifecycle = value as { status?: unknown; settledAt?: unknown };
+    if (lifecycle.status === 'paid') return lifecycle.settledAt !== null;
+    if (
+      lifecycle.status === 'open' ||
+      lifecycle.status === 'overdue' ||
+      lifecycle.status === 'voided'
+    )
+      return lifecycle.settledAt === null;
+    return false;
+  },
+);
+
 /** Mutable, versioned lifecycle projection kept separate from immutable document facts. */
-export const InvoiceLifecycle = Type.Object(
+const InvoiceLifecycleFields = Type.Object(
   {
     invoiceId: PositiveIntegerString,
     status: InvoiceLifecycleStatus,
@@ -597,6 +613,10 @@ export const InvoiceLifecycle = Type.Object(
     updatedAt: CreditUtcIsoInstant,
   },
   { additionalProperties: false },
+);
+export const InvoiceLifecycle = Object.assign(
+  Type.Intersect([InvoiceLifecycleFields, InvoiceLifecycleIntegrity()]),
+  { properties: InvoiceLifecycleFields.properties },
 );
 export type InvoiceLifecycle = Static<typeof InvoiceLifecycle>;
 export const InvoiceLifecycleProjection = InvoiceLifecycle;

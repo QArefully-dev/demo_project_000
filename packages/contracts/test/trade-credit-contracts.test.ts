@@ -13,6 +13,7 @@ import {
   InvoiceV1,
   InvoiceSettlement,
   InvoiceIssuedMailboxDescriptor,
+  InvoiceLifecycle,
   PaymentBody,
   PaymentFailureResponse,
   PersistedCheckoutQuote,
@@ -388,6 +389,7 @@ void test('credit checkout failures use closed code-specific fields', () => {
 void test('account invoice export includes only immutable document plus safe settlement state', () => {
   const exported = { ...invoice, status: 'open', settledAt: null };
   assert.equal(Value.Check(ExportedInvoice, exported), true);
+  assert.equal(Value.Check(ExportedInvoice, { ...exported, paymentIdempotencyKey: uuid }), false);
   assert.equal(Value.Check(ExportedInvoice, { ...exported, lifecycle: {} }), false);
   assert.equal(Value.Check(ExportedInvoice, { ...exported, events: [] }), false);
   assert.equal(
@@ -405,5 +407,42 @@ void test('account invoice export includes only immutable document plus safe set
       settledAt: '2026-09-20T00:00:00.000Z',
     }),
     true,
+  );
+});
+
+void test('invoice lifecycle requires settlement timestamps to match status', () => {
+  const lifecycle = {
+    invoiceId: invoice.id,
+    status: 'open' as const,
+    version: 0,
+    settledAt: null,
+    updatedAt: '2026-09-01T00:00:00.000Z',
+  };
+  assert.equal(Value.Check(InvoiceLifecycle, lifecycle), true);
+  assert.equal(Value.Check(InvoiceLifecycle, { ...lifecycle, status: 'overdue' }), true);
+  assert.equal(Value.Check(InvoiceLifecycle, { ...lifecycle, status: 'voided' }), true);
+  assert.equal(
+    Value.Check(InvoiceLifecycle, {
+      ...lifecycle,
+      status: 'paid',
+      settledAt: '2026-09-20T00:00:00.000Z',
+    }),
+    true,
+  );
+  assert.equal(
+    Value.Check(InvoiceLifecycle, {
+      ...lifecycle,
+      status: 'paid',
+      settledAt: null,
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(InvoiceLifecycle, {
+      ...lifecycle,
+      status: 'open',
+      settledAt: '2026-09-20T00:00:00.000Z',
+    }),
+    false,
   );
 });
