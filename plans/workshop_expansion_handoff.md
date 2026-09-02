@@ -15,21 +15,71 @@
 
 ## Expansion 1: custom blend rules (priority)
 
-Current state: `apps/api/src/features/customBlend/` 4 files, explicit placeholder ("Custom Small Order placeholder" per AGENTS.md). Web side `apps/web/src/features/customBlend/` 22 files: base picker, additives, packaging preview.
+Status: complete. Merged 2026-09-02 on `workshop_expansion_and_tasks` at `49c0a43171b7289d2629a9840bd777ef68c92960`. Coding plan: `plans/workshop_expansion_1_coding_plan.md`.
 
-Existing scaffolding to reuse, never rebuild:
-- `packages/catalog/src/model.ts` -> `MIXING_GROUPS` (8): food-grade, cleaning, garden-treatment, cementitious-materials, casting-materials, pigments, theatrical-effects, absorbents
-- `packages/catalog/src/model.ts` -> `ConsumptionClassification`: food | non-food | caution
-- `packages/contracts/src/pricing.ts` -> `CUSTOM_BLEND_FEE_CENTS = 2_500`
+Implemented rules:
 
-Build blend business rules (backend-owned, doc-worthy, non-inferable from code):
-- group compatibility matrix -> some `MIXING_GROUPS` pairs never mix (example direction: cementitious-materials + food-grade forbidden; pigments mix into casting/cleaning/theatrical only; absorbents mix with nothing). Exact matrix = product decision -> propose, get user sign-off before implementing.
-- dosage caps -> pigments capped % of total blend weight; exceeding cap -> validation error with exact domain error code
-- contamination rule -> any non-food component in blend -> whole blend `consumptionClassification` non-food, "Not for consumption" surfaces on web
-- blend pricing -> component weights priced per component tier rules + `CUSTOM_BLEND_FEE_CENTS`; blend line NEVER re-enters `TIER_LADDER` as aggregate (no double discount). Integer pence only.
-- blend identity -> blend = variant-scoped like everything else; cart/order lines key on variant
+- directional matrix:
+  - `food-grade` -> `food-grade`
+  - `cleaning` -> `cleaning`, `pigments`
+  - `garden-treatment` -> `garden-treatment`
+  - `cementitious-materials` -> `cementitious-materials`
+  - `casting-materials` -> `casting-materials`, `pigments`
+  - `theatrical-effects` -> `theatrical-effects`, `pigments`
+  - `pigments`, `absorbents` -> never bases
+  - `absorbents` -> never ingredients
+- combined pigment cap: `10%` finished blend weight; exact public error `CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED` with `maxPercentage` + `actualPercentage`
+- incompatible pair error: `CUSTOM_BLEND_INCOMPATIBLE`
+- classification: all components `food` -> `food`; any `caution` or `non-food` -> blend `non-food`; resolved blend never returns `caution`
+- pricing: each component weight resolves active clearance, then independent highest qualifying weight tier; half-up integer-pence unit contribution; no aggregate blend tier
+- fee: `CUSTOM_BLEND_FEE_CENTS = 2_500` exactly once per configured line; excluded from tier and promo discount math
+- identity: base variant + canonical ingredient variant IDs/percentages; derived price/classification excluded from config hash
+- inventory: base variant only; ingredient reservation/depletion remains out of scope
 
-Rule ownership per AGENTS.md: constants -> `packages/contracts`, rules -> API domain service, web renders server verdicts only. Web must not duplicate compatibility matrix.
+Implemented authority and transport:
+
+- shared constants and strict legacy/resolved schemas: `packages/contracts/src/customBlends.ts`
+- pure matrix, cap, classification, component pricing: `apps/api/src/features/customBlend/customBlendRules.ts`
+- live fact/rule/pricing authority: `apps/api/src/features/customBlend/customBlendResolver.ts`
+- repository SQL queries candidate facts only; no compatibility matrix in SQL
+- country-aware `GET /api/custom-blends/bases`, existing options route, side-effect-free `POST /api/custom-blends/evaluate`
+- create, replace, cart hydration, quantity change, bulk add, reorder, checkout revalidation use shared resolver instance
+- stored cart JSON contains specification only; reads distrust derived state and re-resolve live facts
+- configured cart lines expose resolved component totals/classification and omit aggregate next-tier progress
+- checkout validates current resolved snapshot before inventory/gateway mutation
+- persisted quote writer advanced to V9; V8 parser/finalizer compatibility retained
+- V9 orders freeze component prices, weights, tiers, clearance facts, result classification, and fixed fee in existing `custom_blend_json`
+- no migration; head remains `034`
+
+Implemented web behavior:
+
+- base picker loads all eligible server pages; search/category/stale/abort handling retained
+- evaluation hook: 150 ms debounce, abort + request identity, active-country binding, synchronous stale-result invalidation, same-draft retry
+- duplicate ingredient IDs and base-as-ingredient blocked as structural input errors before request
+- only exact current server verdict enables submit; create uses evaluated quantity, edit preserves locked cart quantity
+- configurator, cart, checkout, order render server classification, component pricing, material totals, one fee, final total
+- non-food resolved blends show localised `Not for consumption`
+- legacy orders remain readable with neutral packaging/safety fallback
+- web contains no compatibility matrix, pigment-cap arithmetic, classification propagation, tier selection, or component-price formula
+
+Compatibility and gate repairs included in merge:
+
+- public-error metadata narrowing fixed in bundle/cart/custom-blend routes to restore baseline API typecheck
+- approved-retry stale-blend rejection persisted atomically at `failed_pre_gateway`; restored facts cannot charge same idempotency key
+- configured reorder skips retain resolver-derived current price when blend remains valid
+- admin jobs URL-clamp test waits for second request before mock teardown
+- stale V8 and country-blocked test expectations updated to V9/current outcome
+
+Verification at merged change set:
+
+- `npm run reset`: pass
+- `npm run verify`: pass
+- localisation scan: 896 files, 0 findings
+- package tests: contracts 154, catalog 36, localisation 13
+- web Vitest: 129 files, 878 tests
+- API integration: 453/453
+- all workspace typechecks, lint, format, unit tests, integration tests, and builds: pass
+- no browser verification; excluded by coding plan
 
 ## Expansion 2: trade credit / invoicing
 
