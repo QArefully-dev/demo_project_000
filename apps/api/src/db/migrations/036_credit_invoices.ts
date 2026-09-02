@@ -337,6 +337,277 @@ function createInvoices(db: MigrationDb): void {
           )
       );
     END;
+
+    /*
+     * document_json is an immutable wire document, so its nested objects need the same closed
+     * shape as InvoiceDocumentV1.  SQLite CHECK expressions cannot contain subqueries; keep the
+     * per-line and nested-object checks in a trigger and fail before the row reaches the table
+     * constraints.  The original line trigger above is retained for databases that already ran an
+     * earlier copy of this migration; this trigger supplies the stricter V1 boundary.
+     */
+    CREATE TRIGGER IF NOT EXISTS invoices_validate_document_v1
+    BEFORE INSERT ON invoices
+    WHEN json_valid(NEW.document_json)
+    BEGIN
+      SELECT RAISE(ABORT, 'invoice document has duplicate fields')
+      WHERE EXISTS (
+        SELECT key FROM json_each(NEW.document_json) GROUP BY key HAVING COUNT(*) > 1
+      )
+      OR EXISTS (
+        SELECT key
+        FROM json_each(NEW.document_json, '$.billingEntity')
+        GROUP BY key
+        HAVING COUNT(*) > 1
+      )
+      OR EXISTS (
+        SELECT key
+        FROM json_each(NEW.document_json, '$.billingEntity.address')
+        GROUP BY key
+        HAVING COUNT(*) > 1
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM json_each(NEW.document_json, '$.lines') AS line
+        WHERE EXISTS (
+          SELECT key FROM json_each(line.value) GROUP BY key HAVING COUNT(*) > 1
+        )
+      );
+
+      SELECT RAISE(ABORT, 'invoice document has unknown fields')
+      WHERE EXISTS (
+        SELECT 1
+        FROM json_each(NEW.document_json)
+        WHERE key NOT IN (
+          'version', 'id', 'invoiceNumber', 'orderId', 'companyId', 'userId', 'country',
+          'paymentMethod', 'currency', 'terms', 'termsDays', 'billingEntity',
+          'purchaseOrderReference', 'paymentIdempotencyKey', 'lines', 'netCents',
+          'vatRateBasisPoints', 'vatCents', 'grossCents', 'issuedAt', 'dueAt'
+        )
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM json_each(NEW.document_json, '$.billingEntity')
+        WHERE key NOT IN ('legalName', 'registrationNumber', 'vatNumber', 'address')
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM json_each(NEW.document_json, '$.billingEntity.address')
+        WHERE key NOT IN ('line1', 'line2', 'city', 'region', 'postcode', 'countryCode')
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM json_each(NEW.document_json, '$.lines') AS line
+        WHERE EXISTS (
+          SELECT 1
+          FROM json_each(line.value)
+          WHERE key NOT IN (
+            'lineId', 'description', 'productId', 'variantId', 'sku', 'quantity',
+            'unitPriceCents', 'netCents'
+          )
+        )
+      );
+
+      SELECT RAISE(ABORT, 'invoice document has malformed V1 facts')
+      WHERE COALESCE(json_type(NEW.document_json, '$.version'), '') <> 'integer'
+        OR json_extract(NEW.document_json, '$.version') IS NOT 1
+        OR COALESCE(json_type(NEW.document_json, '$.id'), '') <> 'text'
+        OR json_extract(NEW.document_json, '$.id') NOT GLOB '[1-9]*'
+        OR json_extract(NEW.document_json, '$.id') GLOB '*[^0-9]*'
+        OR json_extract(NEW.document_json, '$.id') IS NOT CAST(NEW.id AS TEXT)
+        OR COALESCE(json_type(NEW.document_json, '$.invoiceNumber'), '') <> 'text'
+        OR length(json_extract(NEW.document_json, '$.invoiceNumber')) <> 15
+        OR json_extract(NEW.document_json, '$.invoiceNumber') NOT GLOB
+          'QME-[0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]'
+        OR json_extract(NEW.document_json, '$.invoiceNumber') IS NOT NEW.invoice_number
+        OR COALESCE(json_type(NEW.document_json, '$.orderId'), '') <> 'text'
+        OR json_extract(NEW.document_json, '$.orderId') NOT GLOB '[1-9]*'
+        OR json_extract(NEW.document_json, '$.orderId') GLOB '*[^0-9]*'
+        OR json_extract(NEW.document_json, '$.orderId') IS NOT CAST(NEW.order_id AS TEXT)
+        OR COALESCE(json_type(NEW.document_json, '$.companyId'), '') <> 'text'
+        OR json_extract(NEW.document_json, '$.companyId') NOT GLOB '[1-9]*'
+        OR json_extract(NEW.document_json, '$.companyId') GLOB '*[^0-9]*'
+        OR json_extract(NEW.document_json, '$.companyId') IS NOT CAST(NEW.company_id AS TEXT)
+        OR COALESCE(json_type(NEW.document_json, '$.userId'), '') <> 'text'
+        OR json_extract(NEW.document_json, '$.userId') NOT GLOB '[1-9]*'
+        OR json_extract(NEW.document_json, '$.userId') GLOB '*[^0-9]*'
+        OR json_extract(NEW.document_json, '$.userId') IS NOT CAST(NEW.user_id AS TEXT)
+        OR COALESCE(json_type(NEW.document_json, '$.country'), '') <> 'text'
+        OR json_extract(NEW.document_json, '$.country') NOT IN (${COUNTRY_VALUES})
+        OR json_extract(NEW.document_json, '$.country') IS NOT NEW.country
+        OR COALESCE(json_type(NEW.document_json, '$.paymentMethod'), '') <> 'text'
+        OR json_extract(NEW.document_json, '$.paymentMethod') IS NOT 'trade_credit'
+        OR COALESCE(json_type(NEW.document_json, '$.currency'), '') <> 'text'
+        OR json_extract(NEW.document_json, '$.currency') IS NOT 'GBP'
+        OR NOT (
+          (
+            json_type(NEW.document_json, '$.terms') = 'text'
+            AND json_extract(NEW.document_json, '$.terms') IS 'net_30'
+          )
+          OR (
+            json_type(NEW.document_json, '$.terms') = 'integer'
+            AND json_extract(NEW.document_json, '$.terms') IS 30
+          )
+          OR (
+            json_type(NEW.document_json, '$.terms') IS NULL
+            AND json_type(NEW.document_json, '$.termsDays') = 'integer'
+            AND json_extract(NEW.document_json, '$.termsDays') IS 30
+          )
+        )
+        OR (
+          json_type(NEW.document_json, '$.termsDays') IS NOT NULL
+          AND (
+            json_type(NEW.document_json, '$.termsDays') <> 'integer'
+            OR json_extract(NEW.document_json, '$.termsDays') IS NOT 30
+          )
+        )
+        OR COALESCE(json_type(NEW.document_json, '$.billingEntity'), '') <> 'object'
+        OR COALESCE(json_type(NEW.document_json, '$.billingEntity.legalName'), '') <> 'text'
+        OR length(json_extract(NEW.document_json, '$.billingEntity.legalName')) NOT BETWEEN 1 AND 120
+        OR trim(json_extract(NEW.document_json, '$.billingEntity.legalName')) = ''
+        OR json_extract(NEW.document_json, '$.billingEntity.legalName') GLOB '*[<>]*'
+        OR json_type(NEW.document_json, '$.billingEntity.registrationNumber') IS NULL
+        OR json_type(NEW.document_json, '$.billingEntity.registrationNumber') NOT IN ('null', 'text')
+        OR (
+          json_type(NEW.document_json, '$.billingEntity.registrationNumber') = 'text'
+          AND (
+            length(json_extract(NEW.document_json, '$.billingEntity.registrationNumber')) NOT BETWEEN 1 AND 40
+            OR trim(json_extract(NEW.document_json, '$.billingEntity.registrationNumber')) = ''
+            OR json_extract(NEW.document_json, '$.billingEntity.registrationNumber') GLOB '*[<>]*'
+          )
+        )
+        OR json_type(NEW.document_json, '$.billingEntity.vatNumber') IS NULL
+        OR json_type(NEW.document_json, '$.billingEntity.vatNumber') NOT IN ('null', 'text')
+        OR (
+          json_type(NEW.document_json, '$.billingEntity.vatNumber') = 'text'
+          AND (
+            length(json_extract(NEW.document_json, '$.billingEntity.vatNumber')) NOT BETWEEN 1 AND 40
+            OR trim(json_extract(NEW.document_json, '$.billingEntity.vatNumber')) = ''
+            OR json_extract(NEW.document_json, '$.billingEntity.vatNumber') GLOB '*[<>]*'
+          )
+        )
+        OR COALESCE(json_type(NEW.document_json, '$.billingEntity.address'), '') <> 'object'
+        OR COALESCE(json_type(NEW.document_json, '$.billingEntity.address.line1'), '') <> 'text'
+        OR length(json_extract(NEW.document_json, '$.billingEntity.address.line1')) NOT BETWEEN 1 AND 120
+        OR trim(json_extract(NEW.document_json, '$.billingEntity.address.line1')) = ''
+        OR json_extract(NEW.document_json, '$.billingEntity.address.line1') GLOB '*[<>]*'
+        OR (
+          json_type(NEW.document_json, '$.billingEntity.address.line2') IS NOT NULL
+          AND (
+            json_type(NEW.document_json, '$.billingEntity.address.line2') <> 'text'
+            OR length(json_extract(NEW.document_json, '$.billingEntity.address.line2')) NOT BETWEEN 1 AND 120
+            OR trim(json_extract(NEW.document_json, '$.billingEntity.address.line2')) = ''
+            OR json_extract(NEW.document_json, '$.billingEntity.address.line2') GLOB '*[<>]*'
+          )
+        )
+        OR COALESCE(json_type(NEW.document_json, '$.billingEntity.address.city'), '') <> 'text'
+        OR length(json_extract(NEW.document_json, '$.billingEntity.address.city')) NOT BETWEEN 1 AND 80
+        OR trim(json_extract(NEW.document_json, '$.billingEntity.address.city')) = ''
+        OR json_extract(NEW.document_json, '$.billingEntity.address.city') GLOB '*[<>]*'
+        OR (
+          json_type(NEW.document_json, '$.billingEntity.address.region') IS NOT NULL
+          AND (
+            json_type(NEW.document_json, '$.billingEntity.address.region') <> 'text'
+            OR length(json_extract(NEW.document_json, '$.billingEntity.address.region')) NOT BETWEEN 1 AND 80
+            OR trim(json_extract(NEW.document_json, '$.billingEntity.address.region')) = ''
+            OR json_extract(NEW.document_json, '$.billingEntity.address.region') GLOB '*[<>]*'
+          )
+        )
+        OR COALESCE(json_type(NEW.document_json, '$.billingEntity.address.postcode'), '') <> 'text'
+        OR length(json_extract(NEW.document_json, '$.billingEntity.address.postcode')) NOT BETWEEN 1 AND 16
+        OR json_extract(NEW.document_json, '$.billingEntity.address.postcode') NOT GLOB '[A-Za-z0-9]*'
+        OR json_extract(NEW.document_json, '$.billingEntity.address.postcode') GLOB '*[^A-Za-z0-9 -]*'
+        OR COALESCE(json_type(NEW.document_json, '$.billingEntity.address.countryCode'), '') <> 'text'
+        OR json_extract(NEW.document_json, '$.billingEntity.address.countryCode') NOT GLOB '[A-Z][A-Z]'
+        OR (
+          json_type(NEW.document_json, '$.purchaseOrderReference') IS NULL
+          OR json_type(NEW.document_json, '$.purchaseOrderReference') NOT IN ('null', 'text')
+          OR (
+            json_type(NEW.document_json, '$.purchaseOrderReference') = 'text'
+            AND (
+              length(json_extract(NEW.document_json, '$.purchaseOrderReference')) NOT BETWEEN 1 AND 64
+              OR json_extract(NEW.document_json, '$.purchaseOrderReference') GLOB '*[<>]*'
+            )
+          )
+        )
+        OR (
+          json_type(NEW.document_json, '$.paymentIdempotencyKey') IS NOT NULL
+          AND (
+            json_type(NEW.document_json, '$.paymentIdempotencyKey') <> 'text'
+            OR json_extract(NEW.document_json, '$.paymentIdempotencyKey') IS NOT NEW.payment_idempotency_key
+          )
+        )
+        OR COALESCE(json_type(NEW.document_json, '$.lines'), '') <> 'array'
+        OR json_array_length(NEW.document_json, '$.lines') NOT BETWEEN 1 AND 1000
+        OR COALESCE(json_type(NEW.document_json, '$.netCents'), '') <> 'integer'
+        OR json_extract(NEW.document_json, '$.netCents') IS NOT NEW.net_cents
+        OR COALESCE(json_type(NEW.document_json, '$.vatRateBasisPoints'), '') <> 'integer'
+        OR json_extract(NEW.document_json, '$.vatRateBasisPoints') IS NOT NEW.vat_rate_basis_points
+        OR COALESCE(json_type(NEW.document_json, '$.vatCents'), '') <> 'integer'
+        OR json_extract(NEW.document_json, '$.vatCents') IS NOT NEW.vat_cents
+        OR COALESCE(json_type(NEW.document_json, '$.grossCents'), '') <> 'integer'
+        OR json_extract(NEW.document_json, '$.grossCents') IS NOT NEW.gross_cents
+        OR COALESCE(json_type(NEW.document_json, '$.issuedAt'), '') <> 'text'
+        OR json_extract(NEW.document_json, '$.issuedAt') IS NOT NEW.issued_at
+        OR COALESCE(json_type(NEW.document_json, '$.dueAt'), '') <> 'text'
+        OR json_extract(NEW.document_json, '$.dueAt') IS NOT NEW.due_at;
+
+      SELECT RAISE(ABORT, 'invoice document has malformed lines')
+      WHERE EXISTS (
+        SELECT 1
+        FROM json_each(NEW.document_json, '$.lines') AS line
+        WHERE json_type(line.value) <> 'object'
+          OR COALESCE(json_type(line.value, '$.lineId'), '') <> 'text'
+          OR json_extract(line.value, '$.lineId') NOT GLOB '[1-9]*'
+          OR json_extract(line.value, '$.lineId') GLOB '*[^0-9]*'
+          OR COALESCE(json_type(line.value, '$.description'), '') <> 'text'
+          OR length(json_extract(line.value, '$.description')) NOT BETWEEN 1 AND 240
+          OR trim(json_extract(line.value, '$.description')) = ''
+          OR json_extract(line.value, '$.description') GLOB '*[<>]*'
+          OR COALESCE(json_type(line.value, '$.quantity'), '') <> 'integer'
+          OR json_extract(line.value, '$.quantity') < 1
+          OR json_extract(line.value, '$.quantity') > ${MAX_SAFE_INTEGER}
+          OR COALESCE(json_type(line.value, '$.unitPriceCents'), '') <> 'integer'
+          OR json_extract(line.value, '$.unitPriceCents') < 0
+          OR json_extract(line.value, '$.unitPriceCents') > ${MAX_SAFE_INTEGER}
+          OR COALESCE(json_type(line.value, '$.netCents'), '') <> 'integer'
+          OR json_extract(line.value, '$.netCents') < 0
+          OR json_extract(line.value, '$.netCents') > ${MAX_SAFE_INTEGER}
+          OR json_extract(line.value, '$.unitPriceCents') >
+            CAST(${MAX_SAFE_INTEGER} / json_extract(line.value, '$.quantity') AS INTEGER)
+          OR json_extract(line.value, '$.unitPriceCents') * json_extract(line.value, '$.quantity')
+            IS NOT json_extract(line.value, '$.netCents')
+          OR (
+            json_type(line.value, '$.productId') IS NOT NULL
+            AND (
+              json_type(line.value, '$.productId') <> 'text'
+              OR json_extract(line.value, '$.productId') NOT GLOB '[1-9]*'
+              OR json_extract(line.value, '$.productId') GLOB '*[^0-9]*'
+            )
+          )
+          OR (
+            json_type(line.value, '$.variantId') IS NOT NULL
+            AND (
+              json_type(line.value, '$.variantId') <> 'text'
+              OR json_extract(line.value, '$.variantId') NOT GLOB '[1-9]*'
+              OR json_extract(line.value, '$.variantId') GLOB '*[^0-9]*'
+            )
+          )
+          OR (
+            json_type(line.value, '$.sku') IS NOT NULL
+            AND (
+              json_type(line.value, '$.sku') <> 'text'
+              OR length(json_extract(line.value, '$.sku')) NOT BETWEEN 1 AND 64
+              OR json_extract(line.value, '$.sku') GLOB '*[<>]*'
+            )
+          )
+        );
+
+      SELECT RAISE(ABORT, 'invoice document line net total mismatch')
+      WHERE (
+        SELECT COALESCE(SUM(CAST(json_extract(line.value, '$.netCents') AS INTEGER)), 0)
+        FROM json_each(NEW.document_json, '$.lines') AS line
+      ) IS NOT NEW.net_cents;
+    END;
   `);
 }
 
@@ -535,6 +806,74 @@ function rebuildCreditExposureHolds(db: MigrationDb): void {
   `);
 }
 
+function createInvoiceLinkTriggers(db: MigrationDb): void {
+  db.exec(`
+    /* Invoice facts are snapshots of one trade-credit order and its payment intent. */
+    CREATE TRIGGER IF NOT EXISTS invoices_validate_cross_record_links
+    BEFORE INSERT ON invoices
+    BEGIN
+      SELECT RAISE(ABORT, 'invoice facts do not match order')
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM orders
+        WHERE orders.id = NEW.order_id
+          AND orders.payment_method = 'trade_credit'
+          AND orders.company_id = NEW.company_id
+          AND orders.user_id = NEW.user_id
+          AND orders.country = NEW.country
+          AND orders.net_cents = NEW.net_cents
+          AND orders.vat_rate_basis_points = NEW.vat_rate_basis_points
+          AND orders.vat_cents = NEW.vat_cents
+          AND orders.gross_cents = NEW.gross_cents
+      );
+
+      SELECT RAISE(ABORT, 'invoice facts do not match payment')
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM payments
+        WHERE payments.idempotency_key = NEW.payment_idempotency_key
+          AND payments.order_id = NEW.order_id
+          AND payments.payment_method = 'trade_credit'
+          AND payments.company_id = NEW.company_id
+          AND payments.amount_cents = NEW.gross_cents
+      );
+    END;
+
+    /* A hold may be prepared before its invoice exists, but an invoice reference is immutable
+       identity linkage: all three denormalised facts must point at the same invoice. */
+    CREATE TRIGGER IF NOT EXISTS credit_exposure_holds_validate_invoice_insert
+    BEFORE INSERT ON credit_exposure_holds
+    WHEN NEW.invoice_id IS NOT NULL
+    BEGIN
+      SELECT RAISE(ABORT, 'credit exposure hold invoice link mismatch')
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM invoices
+        WHERE invoices.id = NEW.invoice_id
+          AND invoices.payment_idempotency_key = NEW.payment_idempotency_key
+          AND invoices.company_id = NEW.company_id
+          AND invoices.gross_cents = NEW.amount_cents
+      );
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS credit_exposure_holds_validate_invoice_update
+    BEFORE UPDATE OF invoice_id, payment_idempotency_key, company_id, amount_cents
+      ON credit_exposure_holds
+    WHEN NEW.invoice_id IS NOT NULL
+    BEGIN
+      SELECT RAISE(ABORT, 'credit exposure hold invoice link mismatch')
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM invoices
+        WHERE invoices.id = NEW.invoice_id
+          AND invoices.payment_idempotency_key = NEW.payment_idempotency_key
+          AND invoices.company_id = NEW.company_id
+          AND invoices.gross_cents = NEW.amount_cents
+      );
+    END;
+  `);
+}
+
 /** Adds immutable trade-credit invoices and links exposure holds to invoice identity. */
 export const creditInvoicesMigration: Migration = {
   version: '036',
@@ -553,6 +892,7 @@ export const creditInvoicesMigration: Migration = {
     createInvoiceStates(db);
     createInvoiceEvents(db);
     rebuildCreditExposureHolds(db);
+    createInvoiceLinkTriggers(db);
     assertForeignKeysClean(db, 'credit invoice schema');
   },
 };

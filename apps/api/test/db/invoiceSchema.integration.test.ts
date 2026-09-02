@@ -89,17 +89,38 @@ function insertInvoice(
     invoiceNumber: string;
     orderId: number;
     paymentKey: string;
+    companyId?: number;
+    userId?: number;
+    country?: string;
+    netCents?: number;
+    vatRateBasisPoints?: number;
+    vatCents?: number;
+    grossCents?: number;
     issuedAt?: string;
     dueAt?: string;
     document?: Record<string, unknown>;
   },
 ): void {
+  const companyId = values.companyId ?? 3601;
+  const userId = values.userId ?? 3601;
+  const country = values.country ?? 'UK';
+  const netCents = values.netCents ?? 10_000;
+  const vatRateBasisPoints = values.vatRateBasisPoints ?? 2_000;
+  const vatCents = values.vatCents ?? 2_000;
+  const grossCents = values.grossCents ?? 12_000;
   const document = values.document ?? {
     ...invoiceDocument,
     id: String(values.id),
     invoiceNumber: values.invoiceNumber,
     orderId: String(values.orderId),
+    companyId: String(companyId),
+    userId: String(userId),
+    country,
     paymentIdempotencyKey: values.paymentKey,
+    netCents,
+    vatRateBasisPoints,
+    vatCents,
+    grossCents,
     issuedAt: values.issuedAt ?? invoiceDocument.issuedAt,
     dueAt: values.dueAt ?? invoiceDocument.dueAt,
   };
@@ -108,14 +129,20 @@ function insertInvoice(
       (id, version, invoice_number, order_id, payment_idempotency_key, company_id, user_id,
        country, currency, terms, terms_days, document_json, net_cents, vat_rate_basis_points,
        vat_cents, gross_cents, issued_at, due_at)
-     VALUES (?, 1, ?, ?, ?, 3601, 3601, 'UK', 'GBP', 'net_30', 30, ?, 10000, 2000, 2000,
-             12000, ?, ?)`,
+     VALUES (?, 1, ?, ?, ?, ?, ?, ?, 'GBP', 'net_30', 30, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     values.id,
     values.invoiceNumber,
     values.orderId,
     values.paymentKey,
+    companyId,
+    userId,
+    country,
     JSON.stringify(document),
+    netCents,
+    vatRateBasisPoints,
+    vatCents,
+    grossCents,
     values.issuedAt ?? invoiceDocument.issuedAt,
     values.dueAt ?? invoiceDocument.dueAt,
   );
@@ -283,7 +310,7 @@ void test('migration 036 creates strict invoice documents, lifecycle projections
                    '2026-09-01T09:00:00.000Z', '2026-09-01T09:00:00.000Z', 9999)`,
           )
           .run(),
-      /UNIQUE constraint failed|FOREIGN KEY constraint failed/,
+      /UNIQUE constraint failed|FOREIGN KEY constraint failed|invoice link mismatch/,
     );
 
     const beforeRerun = {
@@ -320,6 +347,17 @@ void test('invoice document checks reject malformed V1 facts and duplicate ident
   try {
     migrateDatabase(db);
     createFixture(db);
+    db.exec(`
+      INSERT INTO users
+        (id, email, display_name, password_hash, password_salt, role, country)
+      VALUES (3602, 'invoice-schema-second@example.test', 'Invoice Schema Second Buyer',
+              'hash', 'salt', 'customer', 'US');
+      INSERT INTO company_accounts
+        (id, name, created_by_user_id, active, approval_threshold_cents, created_at, updated_at,
+         country)
+      VALUES (3602, 'Invoice Schema Second Materials Ltd', 3601, 1, 0,
+              '2026-09-01T09:00:00.000Z', '2026-09-01T09:00:00.000Z', 'US');
+    `);
     insertInvoice(db, {
       id: 3601,
       invoiceNumber: invoiceDocument.invoiceNumber,
@@ -327,27 +365,132 @@ void test('invoice document checks reject malformed V1 facts and duplicate ident
       paymentKey: invoiceDocument.paymentIdempotencyKey,
     });
 
-    const addOrderPayment = (id: number, key: string): void => {
+    const addOrderPayment = (id: number, key: string, amountCents = 12_000): void => {
       db.prepare(
         `INSERT INTO orders
           (id, customer_name, customer_email, shipping_address, subtotal_cents, total_cents,
-           created_at, lifecycle_status, version, country, payment_method, company_id,
+           created_at, user_id, lifecycle_status, version, country, payment_method, company_id,
            net_cents, vat_rate_basis_points, vat_cents, gross_cents)
          VALUES (?, 'Another Buyer', ?, 'Another Lane', 10000, 12000,
-                 '2026-09-01T09:00:00.000Z', 'processing', 0, 'UK', 'trade_credit', 3601,
+                 '2026-09-01T09:00:00.000Z', 3601, 'processing', 0, 'UK', 'trade_credit', 3601,
                  10000, 2000, 2000, 12000)`,
       ).run(id, `${key}@example.test`);
       db.prepare(
         `INSERT INTO payments
           (id, order_id, idempotency_key, request_fingerprint, status, amount_cents,
            card_last4, card_brand, created_at, payment_method, company_id)
-         VALUES (?, ?, ?, ?, 'authorized_pending_finalize', 12000, NULL, NULL,
-                 '2026-09-01T09:00:00.000Z', 'trade_credit', 3601)`,
-      ).run(id, id, key, `${key}-fingerprint`);
+          VALUES (?, ?, ?, ?, 'authorized_pending_finalize', ?, NULL, NULL,
+                  '2026-09-01T09:00:00.000Z', 'trade_credit', 3601)`,
+      ).run(id, id, key, `${key}-fingerprint`, amountCents);
     };
     addOrderPayment(3602, 'invoice-schema-payment-3602');
     addOrderPayment(3603, 'invoice-schema-payment-3603');
     addOrderPayment(3604, 'invoice-schema-payment-3604');
+    addOrderPayment(3610, 'invoice-schema-payment-3610');
+    addOrderPayment(3611, 'invoice-schema-payment-3611', 11_999);
+    addOrderPayment(3612, 'invoice-schema-payment-3612');
+    addOrderPayment(3613, 'invoice-schema-payment-3613');
+    addOrderPayment(3614, 'invoice-schema-payment-3614');
+    addOrderPayment(3615, 'invoice-schema-payment-3615');
+    addOrderPayment(3616, 'invoice-schema-payment-3616');
+
+    // A coherent order/payment snapshot is accepted, while each cross-record mismatch is rejected
+    // before the invoice can become an immutable historical fact.
+    insertInvoice(db, {
+      id: 3610,
+      invoiceNumber: 'QME-2026-000010',
+      orderId: 3610,
+      paymentKey: 'invoice-schema-payment-3610',
+    });
+    assert.throws(
+      () =>
+        insertInvoice(db, {
+          id: 3611,
+          invoiceNumber: 'QME-2026-000011',
+          orderId: 3610,
+          paymentKey: 'invoice-schema-payment-3602',
+        }),
+      /invoice facts do not match payment/,
+    );
+    assert.throws(
+      () =>
+        insertInvoice(db, {
+          id: 3612,
+          invoiceNumber: 'QME-2026-000012',
+          orderId: 3611,
+          paymentKey: 'invoice-schema-payment-3611',
+        }),
+      /invoice facts do not match payment/,
+    );
+    assert.throws(
+      () =>
+        insertInvoice(db, {
+          id: 3613,
+          invoiceNumber: 'QME-2026-000013',
+          orderId: 3612,
+          paymentKey: 'invoice-schema-payment-3612',
+          companyId: 3602,
+        }),
+      /invoice facts do not match order/,
+    );
+    assert.throws(
+      () =>
+        insertInvoice(db, {
+          id: 3614,
+          invoiceNumber: 'QME-2026-000014',
+          orderId: 3613,
+          paymentKey: 'invoice-schema-payment-3613',
+          userId: 3602,
+        }),
+      /invoice facts do not match order/,
+    );
+    assert.throws(
+      () =>
+        insertInvoice(db, {
+          id: 3615,
+          invoiceNumber: 'QME-2026-000015',
+          orderId: 3614,
+          paymentKey: 'invoice-schema-payment-3614',
+          country: 'US',
+        }),
+      /invoice facts do not match order/,
+    );
+    assert.throws(
+      () =>
+        insertInvoice(db, {
+          id: 3616,
+          invoiceNumber: 'QME-2026-000016',
+          orderId: 3615,
+          paymentKey: 'invoice-schema-payment-3615',
+          netCents: 9_999,
+          grossCents: 11_999,
+          document: {
+            ...invoiceDocument,
+            id: '3616',
+            invoiceNumber: 'QME-2026-000016',
+            orderId: '3615',
+            paymentIdempotencyKey: 'invoice-schema-payment-3615',
+            lines: [{ ...invoiceDocument.lines[0], unitPriceCents: 9_999, netCents: 9_999 }],
+            netCents: 9_999,
+            grossCents: 11_999,
+          },
+        }),
+      /invoice facts do not match order/,
+    );
+
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            `INSERT INTO credit_exposure_holds
+              (company_id, payment_idempotency_key, amount_cents, status, created_at, updated_at,
+               invoice_id)
+             VALUES (3601, 'invoice-schema-payment-3610', 12000, 'authorized',
+                     '2026-09-01T09:00:00.000Z', '2026-09-01T09:00:00.000Z', 3601)`,
+          )
+          .run(),
+      /invoice link mismatch/,
+    );
 
     assert.throws(
       () =>
@@ -357,7 +500,7 @@ void test('invoice document checks reject malformed V1 facts and duplicate ident
           orderId: 3601,
           paymentKey: 'invoice-schema-payment-3602',
         }),
-      /UNIQUE constraint failed/,
+      /UNIQUE constraint failed|invoice facts do not match (order|payment)/,
     );
     assert.throws(
       () =>
@@ -367,7 +510,7 @@ void test('invoice document checks reject malformed V1 facts and duplicate ident
           orderId: 3602,
           paymentKey: invoiceDocument.paymentIdempotencyKey,
         }),
-      /UNIQUE constraint failed/,
+      /UNIQUE constraint failed|invoice facts do not match (order|payment)/,
     );
     assert.throws(
       () =>
@@ -377,7 +520,7 @@ void test('invoice document checks reject malformed V1 facts and duplicate ident
           orderId: 3603,
           paymentKey: 'invoice-schema-payment-3604',
         }),
-      /UNIQUE constraint failed/,
+      /UNIQUE constraint failed|invoice facts do not match (order|payment)/,
     );
 
     const malformed = [
@@ -417,6 +560,111 @@ void test('invoice document checks reject malformed V1 facts and duplicate ident
             document,
           }),
         /CHECK constraint failed|malformed|invoice document/,
+      );
+    }
+
+    const nestedMalformed = [
+      {
+        ...invoiceDocument,
+        id: '3620',
+        invoiceNumber: 'QME-2026-000020',
+        orderId: '3602',
+        paymentIdempotencyKey: 'invoice-schema-payment-3602',
+        billingEntity: { ...invoiceDocument.billingEntity, unexpected: true },
+      },
+      {
+        ...invoiceDocument,
+        id: '3621',
+        invoiceNumber: 'QME-2026-000021',
+        orderId: '3602',
+        paymentIdempotencyKey: 'invoice-schema-payment-3602',
+        billingEntity: {
+          ...invoiceDocument.billingEntity,
+          address: { ...invoiceDocument.billingEntity.address, unexpected: true },
+        },
+      },
+      {
+        ...invoiceDocument,
+        id: '3622',
+        invoiceNumber: 'QME-2026-000022',
+        orderId: '3602',
+        paymentIdempotencyKey: 'invoice-schema-payment-3602',
+        lines: [{ ...invoiceDocument.lines[0], unexpected: true }],
+      },
+      {
+        ...invoiceDocument,
+        id: '3623',
+        invoiceNumber: 'QME-2026-000023',
+        orderId: '3602',
+        paymentIdempotencyKey: 'invoice-schema-payment-3602',
+        lines: [{ ...invoiceDocument.lines[0], lineId: '0' }],
+      },
+      {
+        ...invoiceDocument,
+        id: '3624',
+        invoiceNumber: 'QME-2026-000024',
+        orderId: '3602',
+        paymentIdempotencyKey: 'invoice-schema-payment-3602',
+        lines: [{ ...invoiceDocument.lines[0], productId: '0' }],
+      },
+      {
+        ...invoiceDocument,
+        id: '3625',
+        invoiceNumber: 'QME-2026-000025',
+        orderId: '3602',
+        paymentIdempotencyKey: 'invoice-schema-payment-3602',
+        lines: [{ ...invoiceDocument.lines[0], variantId: 'not-a-decimal-id' }],
+      },
+      {
+        ...invoiceDocument,
+        id: '3626',
+        invoiceNumber: 'QME-2026-000026',
+        orderId: '3602',
+        paymentIdempotencyKey: 'invoice-schema-payment-3602',
+        billingEntity: {
+          ...invoiceDocument.billingEntity,
+          address: {
+            city: invoiceDocument.billingEntity.address.city,
+            postcode: invoiceDocument.billingEntity.address.postcode,
+            countryCode: invoiceDocument.billingEntity.address.countryCode,
+          },
+        },
+      },
+      {
+        ...invoiceDocument,
+        id: '3627',
+        invoiceNumber: 'QME-2026-000027',
+        orderId: '3602',
+        paymentIdempotencyKey: 'invoice-schema-payment-3602',
+        lines: [
+          {
+            ...invoiceDocument.lines[0],
+            lineId: '1',
+            quantity: 1,
+            unitPriceCents: 4_000,
+            netCents: 4_000,
+          },
+          {
+            ...invoiceDocument.lines[0],
+            lineId: '2',
+            quantity: 1,
+            unitPriceCents: 5_000,
+            netCents: 5_000,
+          },
+        ],
+      },
+    ];
+    for (const [index, document] of nestedMalformed.entries()) {
+      assert.throws(
+        () =>
+          insertInvoice(db, {
+            id: 3620 + index,
+            invoiceNumber: document.invoiceNumber,
+            orderId: Number(document.orderId),
+            paymentKey: document.paymentIdempotencyKey,
+            document,
+          }),
+        /invoice document/,
       );
     }
   } finally {
