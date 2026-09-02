@@ -1,10 +1,12 @@
 import { getCart } from '../cart/cartService.js';
 import type { Cart } from '@shop/contracts/cart';
+import type { CartRepository } from '../cart/cartRepository.js';
 import type { PostalAddress } from '@shop/contracts/address';
 import type { Country } from '@shop/contracts/country';
 import { countryProfile } from '@shop/contracts/country-profiles';
 import type { BillingEntitySnapshot } from '@shop/contracts/trade-account';
-import { CUSTOM_BLEND_FEE_CENTS } from '@shop/contracts';
+import type { ResolvedCustomBlendSnapshot } from '@shop/contracts/custom-blends';
+import { isDeepStrictEqual } from 'node:util';
 import { isSlotBookable } from '../delivery/deliverySlotRules.js';
 import {
   normalizeOptionalText,
@@ -13,7 +15,6 @@ import {
   isDeliverableCountryCode,
 } from '../tradeAccount/addressRules.js';
 import { toBillingEntitySnapshot } from '../tradeAccount/billingEntityRepository.js';
-import { normalizeCustomBlendSpec } from '../customBlend/customBlendRules.js';
 import { validateCard, type ValidCard } from '../payments/cardValidation.js';
 import { createSafeFingerprint, type PaymentRecord } from '../payments/paymentRepository.js';
 import { AUTHORITATIVE_CURRENCY } from '../payments/paymentGateway.js';
@@ -27,7 +28,11 @@ import { quoteCartDelivery } from '../delivery/deliveryRules.js';
 import { createCheckoutQuote } from './checkoutQuote.js';
 import { finalizeAuthorizedCheckout } from './checkoutFinalizer.js';
 import { InventoryError } from '../inventory/inventoryTypes.js';
-import { minimumOrderQuantity, validateMoq } from '../pricing/pricingRules.js';
+import {
+  minimumOrderQuantity,
+  resolveTierDiscountPct,
+  validateMoq,
+} from '../pricing/pricingRules.js';
 import type { PreGatewayFailureCode } from '../audit/auditEvent.js';
 import type {
   CheckoutDependencies,
@@ -49,6 +54,7 @@ type Preparation =
   | CheckoutResult
   | { quoteTotalCents: number; card: ValidCard; country: Country }
   | { resume: true; country: Country };
+type PreparationStatus = 'prepared' | 'failed_pre_gateway';
 const RESERVATION_LEASE_MS = 15 * 60_000;
 
 function preGatewayFailureCode(result: CheckoutResult): PreGatewayFailureCode {
@@ -113,6 +119,71 @@ function quoteTotalBeforeReservation(cart: Cart, promo: PromoValidation | undefi
       })
     : 0;
   return cart.subtotalCents - discountCents + quoteCartDelivery(cart).chargeCents;
+}
+
+/**
+ * Adapts the immutable resolver-backed cart to the promo service's legacy repository read. Promo
+ * eligibility is still evaluated by the shared promo rules, but configured-line material prices
+ * come from the resolver outcome rather than the base variant price; the one-off fee remains
+ * separate in getCart's configured-line arithmetic.
+ */
+function promoValidationCartRepository(repository: CartRepository, cart: Cart): CartRepository {
+  const resolvedLines = new Map(
+    cart.items.map(
+      (item) => [`${item.variantSnap?.variantId ?? 0}:${item.configKey}`, item] as const,
+    ),
+  );
+  return {
+    ...repository,
+    listLines(cartId) {
+      return repository.listLines(cartId).map((row) => {
+        if (row.config_key === '') return row;
+        const resolved = resolvedLines.get(`${row.variant_id}:${row.config_key}`);
+        if (!resolved?.customBlend) return row;
+        return {
+          ...row,
+          // Disable the base lot's standalone clearance for this projection: the resolver has
+          // already selected each component's source/clearance price before blend math.
+          // getCart applies the ordinary tier ladder to a source price. Invert that one
+          // projection so the already component-tiered resolver total is not discounted twice.
+          price_cents: inverseTierPriceForProjection(
+            resolved.resolvedUnitPriceCents,
+            row.quantity,
+            row.variant_weight_grams,
+          ),
+          variant_clearance_price_cents: null,
+          variant_clearance_starts_at: null,
+          variant_clearance_ends_at: null,
+        };
+      });
+    },
+  };
+}
+
+/**
+ * Return a source price which the legacy promo read path resolves back to an exact material unit
+ * price. Component tiers can differ by percentage, so simply supplying the aggregate price would
+ * apply the aggregate tier a second time. The resolver and pricing contracts use safe integers;
+ * BigInt keeps this inverse safe at the upper boundary before getCart performs its normal check.
+ */
+function inverseTierPriceForProjection(
+  resolvedUnitPriceCents: number,
+  quantity: number,
+  weightGrams: number,
+): number {
+  const discountPct = resolveTierDiscountPct(quantity, weightGrams);
+  const multiplier = BigInt(100 - discountPct);
+  if (multiplier <= 0n) throw new Error('Promo price projection has no positive tier multiplier.');
+
+  const target = BigInt(resolvedUnitPriceCents);
+  const floor = (target * 100n) / multiplier;
+  const maxSafe = BigInt(Number.MAX_SAFE_INTEGER);
+  for (const candidate of [floor - 1n, floor, floor + 1n, floor + 2n]) {
+    if (candidate < 0n || candidate > maxSafe) continue;
+    const rounded = (candidate * multiplier + 50n) / 100n;
+    if (rounded === target && candidate * multiplier <= maxSafe) return Number(candidate);
+  }
+  throw new Error('Promo price projection could not preserve the resolved material price.');
 }
 
 /**
@@ -211,6 +282,7 @@ function prepare(
   expirePreparedReservations(dependencies);
   const existing = dependencies.payments.load(params.idempotencyKey);
   const approvalRetry = existing !== undefined && isPendingApprovalPayment(existing);
+  let preparationStatus: PreparationStatus = approvalRetry ? 'failed_pre_gateway' : 'prepared';
   if (existing) {
     if (existing.fingerprint !== fingerprint)
       return { success: false, error: 'IDEMPOTENT_CONFLICT' };
@@ -226,10 +298,15 @@ function prepare(
       });
       if (!reservation.reserved) return replay(reservation.payment, fingerprint, dependencies);
     }
-    const cart = getCart(dependencies.carts, params.cartId, {
-      inventory: dependencies.inventory,
-      clock: dependencies.clock,
-    });
+    const cart = getCart(
+      dependencies.carts,
+      params.cartId,
+      {
+        inventory: dependencies.inventory,
+        clock: dependencies.clock,
+      },
+      dependencies.customBlendResolver,
+    );
     if (!cart)
       return failPreparation(
         params.idempotencyKey,
@@ -243,6 +320,7 @@ function prepare(
         },
         params.auditContext,
         dependencies,
+        preparationStatus,
       );
     const countryAvailability = cartLinesUnblocked(cart, dependencies);
     if (!countryAvailability.unblocked)
@@ -255,6 +333,7 @@ function prepare(
         },
         params.auditContext,
         dependencies,
+        preparationStatus,
       );
     if (!customBlendLinesRemainEligible(cart, dependencies))
       return failPreparation(
@@ -262,6 +341,7 @@ function prepare(
         { success: false, error: 'CUSTOM_BLEND_INVALID' },
         params.auditContext,
         dependencies,
+        preparationStatus,
       );
     if (cart.totalItems === 0)
       return failPreparation(
@@ -269,6 +349,7 @@ function prepare(
         { success: false, error: 'CART_EMPTY' },
         params.auditContext,
         dependencies,
+        preparationStatus,
       );
     const minQuantity = cartMoqMinimumQuantity(cart, dependencies);
     if (minQuantity !== undefined)
@@ -277,6 +358,7 @@ function prepare(
         { success: false, error: 'BELOW_MOQ', minQuantity },
         params.auditContext,
         dependencies,
+        preparationStatus,
       );
     // Destination, billing party, and slot are settled here: every branch below this point may take
     // a cart, promo, or inventory reservation, and none of these failures may leave one held.
@@ -289,6 +371,7 @@ function prepare(
         { success: false, error: 'CART_NOT_FOUND' },
         params.auditContext,
         dependencies,
+        preparationStatus,
       );
     const commitments = resolveCommitments(params, cartCountry, dependencies);
     if ('failure' in commitments)
@@ -297,6 +380,7 @@ function prepare(
         commitments.failure,
         params.auditContext,
         dependencies,
+        preparationStatus,
       );
     const promo = params.promoCode
       ? validatePromo(
@@ -307,7 +391,13 @@ function prepare(
             country: cartCountry,
             now: dependencies.clock.now(),
           },
-          dependencies,
+          {
+            promos: dependencies.promos,
+            // Promo eligibility must inspect the same resolved material totals as the checkout
+            // quote. The promo service remains a repository-bound API for legacy callers, so this
+            // adapter projects the already-resolved cart into its read-only getCart path.
+            carts: promoValidationCartRepository(dependencies.carts, cart),
+          },
         )
       : undefined;
     if (promo && !promo.valid)
@@ -324,6 +414,7 @@ function prepare(
         },
         params.auditContext,
         dependencies,
+        preparationStatus,
       );
     const validPromo = promo?.valid ? promo.promoCode : undefined;
     const approval = dependencies.approvals?.evaluate({
@@ -344,6 +435,7 @@ function prepare(
         },
         params.auditContext,
         dependencies,
+        preparationStatus,
       );
     if (approval?.gate === 'rejected')
       return failPreparation(
@@ -351,6 +443,7 @@ function prepare(
         { success: false, error: 'APPROVAL_REJECTED' },
         params.auditContext,
         dependencies,
+        preparationStatus,
       );
     if (approval?.gate === 'expired')
       return failPreparation(
@@ -358,6 +451,7 @@ function prepare(
         { success: false, error: 'APPROVAL_EXPIRED' },
         params.auditContext,
         dependencies,
+        preparationStatus,
       );
     if (approval?.gate === 'total-drift')
       return failPreparation(
@@ -365,6 +459,7 @@ function prepare(
         { success: false, error: 'APPROVAL_TOTAL_DRIFT' },
         params.auditContext,
         dependencies,
+        preparationStatus,
       );
     if (approval?.gate === 'requester-mismatch')
       return { success: false, error: 'CHECKOUT_FAILED' };
@@ -383,6 +478,7 @@ function prepare(
           ? replay(current, fingerprint, dependencies)
           : { success: false, error: 'CHECKOUT_FAILED' };
       }
+      preparationStatus = 'prepared';
     }
     const createdAt = dependencies.clock.now().toISOString();
     if (!dependencies.carts.reserve(params.cartId, params.idempotencyKey, createdAt)) {
@@ -391,6 +487,7 @@ function prepare(
         { success: false, error: 'CHECKOUT_FAILED' },
         params.auditContext,
         dependencies,
+        preparationStatus,
       );
     }
     if (
@@ -408,6 +505,7 @@ function prepare(
         { success: false, error: 'PROMO_INVALID' },
         params.auditContext,
         dependencies,
+        preparationStatus,
       );
     }
     const reservationExpiresAt = new Date(
@@ -437,6 +535,7 @@ function prepare(
           },
           params.auditContext,
           dependencies,
+          preparationStatus,
         );
       }
       throw error;
@@ -471,42 +570,55 @@ function prepare(
  * charge, and it must stop it with no inventory mutation and no money movement.
  */
 function customBlendLinesRemainEligible(cart: Cart, dependencies: CheckoutDependencies): boolean {
+  const resolver = dependencies.customBlendResolver;
+  // A configured line has no authoritative price without the resolver. Plain-only direct callers
+  // remain compatible, but checkout never accepts a legacy configured line through this path.
   return cart.items.every((item) => {
     const blend = item.customBlend;
     if (!blend) return item.configKey === '' && item.blendingFeeCents === 0;
+    if (!resolver) return false;
     const baseVariantId = item.variantSnap?.variantId;
     if (baseVariantId === undefined) return false;
-    if (
-      blend.configKey !== item.configKey ||
-      blend.blendingFeeCents !== CUSTOM_BLEND_FEE_CENTS ||
-      item.blendingFeeCents !== CUSTOM_BLEND_FEE_CENTS ||
-      item.discountableTotalCents !== item.materialSubtotalCents ||
-      item.materialSubtotalCents + item.blendingFeeCents !== item.lineTotalCents
-    ) {
-      return false;
-    }
-    let normalized;
     try {
-      normalized = normalizeCustomBlendSpec(baseVariantId, blend.ingredients);
+      const resolved = resolver.rehydrate(baseVariantId, blend, item.quantity);
+      return resolvedCustomBlendLineMatches(item, resolved);
     } catch {
       return false;
     }
-    if (
-      normalized.configKey !== item.configKey ||
-      normalized.basePercentage !== blend.basePercentage
-    ) {
-      return false;
-    }
-    const factVariantIds = [
-      baseVariantId,
-      ...normalized.ingredients.map((ingredient) => ingredient.variantId),
-    ];
-    const facts = dependencies.carts.listEligibleCustomBlendFacts(factVariantIds);
-    if (facts.length !== factVariantIds.length) return false;
-    const base = facts.find((fact) => fact.variant_id === baseVariantId);
-    if (!base || base.mixing_group !== blend.mixingGroup) return false;
-    return facts.every((fact) => fact.mixing_group === base.mixing_group);
   });
+}
+
+/**
+ * The cart is a read model, not a checkout commitment. Rehydrating a line again at its current
+ * quantity and comparing every resolved field closes the gap between those two boundaries: a
+ * changed lot, classification, compatibility verdict, component price, or tier cannot be charged
+ * merely because the cart read happened to succeed.
+ */
+function resolvedCustomBlendLineMatches(
+  item: Cart['items'][number],
+  resolved: ResolvedCustomBlendSnapshot,
+): boolean {
+  const current = item.customBlend;
+  if (
+    !current ||
+    !('ruleVersion' in current) ||
+    current.ruleVersion !== resolved.ruleVersion ||
+    item.configKey !== resolved.configKey ||
+    item.quantity !== resolved.quantity ||
+    item.product.consumptionClassification !== resolved.resultClassification ||
+    item.resolvedUnitPriceCents !== resolved.materialUnitPriceCents ||
+    item.materialSubtotalCents !== resolved.materialSubtotalCents ||
+    item.discountableTotalCents !== resolved.discountableTotalCents ||
+    item.blendingFeeCents !== resolved.blendingFeeCents ||
+    item.lineTotalCents !== resolved.lineTotalCents
+  ) {
+    return false;
+  }
+
+  // Components include the live classification, source/clearance price, tier, weights, and
+  // integer-pence contribution. Comparing the complete snapshot also covers the config key,
+  // ingredient facts, and resolved result classification without a stale same-group shortcut.
+  return isDeepStrictEqual(current, resolved);
 }
 
 function cartMoqMinimumQuantity(
@@ -568,10 +680,11 @@ function failPreparation(
   result: CheckoutResult,
   context: CheckoutParams['auditContext'],
   dependencies: CheckoutDependencies,
+  expectedStatus: PreparationStatus,
 ): CheckoutResult {
   const transitioned = dependencies.payments.transition({
     idempotencyKey,
-    expectedStatus: 'prepared',
+    expectedStatus,
     nextStatus: 'failed_pre_gateway',
     failureReason: result.success ? null : result.error,
     responseJson: JSON.stringify(result),

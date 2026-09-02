@@ -3,6 +3,7 @@ import test from 'node:test';
 import type Database from 'better-sqlite3';
 import { formatPostalAddress } from '@shop/contracts/address';
 import { countryProfile } from '@shop/contracts/country-profiles';
+import { CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION } from '@shop/contracts/payments';
 import { MOQ_DEFAULT_SACKS, SACK_WEIGHT_GRAMS } from '@shop/contracts/pricing';
 import { calculateLeadTime } from '../../src/features/delivery/deliverySlotRules.js';
 import {
@@ -462,7 +463,7 @@ void test('checkout depth: destination, billing, slot, and buyer reference', asy
   });
 
   await t.test(
-    'the persisted quote is v8 and the confirmation names slot and reference',
+    'the persisted quote is v9 and the confirmation names slot and reference',
     async () => {
       const cartId = freshCart();
       const key = '00000000-0000-4000-8000-000000000020';
@@ -476,7 +477,7 @@ void test('checkout depth: destination, billing, slot, and buyer reference', asy
         }
       ).quote_json;
       const quote = parsePersistedCheckoutQuote(quoteJson);
-      assert.equal(quote.version, 8);
+      assert.equal(quote.version, CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION);
       assert.equal(quote.discountBaseCents, 0);
       assert.equal(quote.promoCategoryScope, null);
       assert.equal(quote.customer.shippingAddress, formatPostalAddress(testPostalAddress));

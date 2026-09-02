@@ -1,5 +1,8 @@
 import type { CatalogVariant } from '@shop/contracts/products';
-import type { CustomBlendSnapshot } from '@shop/contracts/custom-blends';
+import type {
+  CustomBlendSnapshot,
+  ResolvedCustomBlendSnapshot,
+} from '@shop/contracts/custom-blends';
 import type { Country } from '@shop/contracts/country';
 import { formatNumber, translate } from '@shop/localisation';
 import { customBlendMessages } from '@shop/localisation/messages/customBlend';
@@ -58,6 +61,27 @@ export function customBlendBatchMark(configKey: string): string {
 }
 
 /**
+ * Narrow the compatibility union without guessing at any missing result facts. The API validates
+ * the complete snapshot at its transport boundary; the small structural check here keeps old
+ * order/cart records renderable when they only carry the historical specification.
+ */
+export function isResolvedCustomBlendSnapshot(
+  blend: CustomBlendSnapshot | null | undefined,
+): blend is ResolvedCustomBlendSnapshot {
+  return (
+    typeof blend === 'object' &&
+    blend !== null &&
+    !Array.isArray(blend) &&
+    'ruleVersion' in blend &&
+    blend.ruleVersion === 1 &&
+    'resultClassification' in blend &&
+    (blend.resultClassification === 'food' || blend.resultClassification === 'non-food') &&
+    'components' in blend &&
+    Array.isArray(blend.components)
+  );
+}
+
+/**
  * Human-readable composition, e.g. `Portland Cement — 30% Chalk Filler, 10% Silica Flour`.
  * Ingredient order follows the snapshot, which the server already canonicalises.
  */
@@ -110,6 +134,23 @@ export function CustomBlendPackaging({
   const { translate: t } = useLocalisation();
   const specBand = t(customBlendMessages, 'customBlend.specBand');
   const vesselLabel = (vessel: Vessel) => t(customBlendMessages, VESSEL_MESSAGE_KEY[vessel]);
+  const resolvedBlend = isResolvedCustomBlendSnapshot(blend) ? blend : undefined;
+  const resultLabel = resolvedBlend
+    ? t(
+        customBlendMessages,
+        resolvedBlend.resultClassification === 'food'
+          ? 'customBlend.resultFood'
+          : 'customBlend.resultNonFood',
+      )
+    : undefined;
+  const safetyLabel =
+    resolvedBlend?.resultClassification === 'non-food'
+      ? t(customBlendMessages, 'customBlend.notForConsumption')
+      : undefined;
+  const safetyWarning =
+    resolvedBlend?.resultClassification === 'non-food'
+      ? t(customBlendMessages, 'customBlend.safetyWarning')
+      : undefined;
   // Orders written before base presentation was frozen cannot safely infer a vessel. In
   // particular, the shared resolver's unknown-category fallback is a food bag, which would make
   // an historic non-food blend misleading. Show a neutral, explicit placeholder instead.
@@ -127,7 +168,14 @@ export function CustomBlendPackaging({
       </span>
     );
   }
-  const baseSpec = resolvePackagingSpec({ product, variant });
+  // The blend result, rather than the base row, owns the consumption treatment. Keep all other
+  // category facts intact so the heavy-duty renderer retains its category-owned hazard ink/text.
+  const baseSpec = resolvePackagingSpec({
+    product: resolvedBlend
+      ? { ...product, consumptionClassification: resolvedBlend.resultClassification }
+      : product,
+    variant,
+  });
   const mark = previewBatchMark ?? customBlendBatchMark(blend.configKey);
   const spec = {
     ...baseSpec,
@@ -136,6 +184,14 @@ export function CustomBlendPackaging({
     ink: { ink: CUSTOM_BLEND_INK, alert: baseSpec.ink.alert },
     grade: baseSpec.grade ?? specBand,
     lot: mark,
+    // Heavy-duty vessels do not consume PackagingArtwork's food-bag-only label slot. Include the
+    // resolved safety label in their existing hazard line as well, preserving explicit localised
+    // treatment for a contaminated blend without changing the vessel geometry.
+    ...(safetyLabel
+      ? {
+          hazard: [baseSpec.hazard, safetyLabel].filter(Boolean).join(' · '),
+        }
+      : {}),
   };
 
   return (
@@ -151,6 +207,9 @@ export function CustomBlendPackaging({
       data-pigment={spec.pigment}
       data-ink={spec.ink.ink}
       data-batch-mark={mark}
+      {...(resolvedBlend
+        ? { 'data-result-classification': resolvedBlend.resultClassification }
+        : {})}
     >
       <PackagingArtwork
         name={product.name}
@@ -161,10 +220,21 @@ export function CustomBlendPackaging({
         quantity={spec.grade}
         batchCode={mark}
         schemeKey={CUSTOM_BLEND_SCHEME_KEY}
-        consumptionLabel={null}
-        ariaLabel={`${product.name} ${t(customBlendMessages, 'customBlend.neutralPackaging')} ${vesselLabel(spec.vessel)}`}
+        consumptionLabel={safetyLabel ?? resultLabel ?? null}
+        ariaLabel={`${product.name} ${resultLabel ?? t(customBlendMessages, 'customBlend.neutralPackaging')} ${safetyLabel ? `${safetyLabel} ` : ''}${vesselLabel(spec.vessel)}`}
         className={className}
       />
+      {resolvedBlend && (
+        <span className="sr-only" data-testid="custom-blend-result">
+          {resultLabel}
+          {safetyLabel && (
+            <>
+              {' '}
+              {safetyLabel} {safetyWarning}
+            </>
+          )}
+        </span>
+      )}
     </span>
   );
 }

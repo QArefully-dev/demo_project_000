@@ -21,6 +21,7 @@ import type { InventoryService } from '../inventory/inventoryService.js';
 import type { ApprovalService } from '../orderApprovals/approvalService.js';
 import type { CompanyService } from '../companyAccounts/companyService.js';
 import type { CountryProfileService } from '../countryProfile/countryProfileService.js';
+import type { CustomBlendResolver } from '../customBlend/customBlendResolver.js';
 
 export type CheckoutErrorCode =
   | 'CART_NOT_FOUND'
@@ -132,6 +133,12 @@ export interface CheckoutDependencies {
   products: ProductRepository;
   audit: AuditWriter;
   inventory: InventoryService;
+  /**
+   * The application singleton used to rehydrate configured lines at the checkout boundary. It is
+   * optional only for legacy direct callers that can contain plain lines; app composition always
+   * supplies it so checkout and cart reads share one live-fact authority.
+   */
+  customBlendResolver?: CustomBlendResolver;
   /** Production composition always supplies the checked-in country availability policy. */
   countryProfiles?: Pick<CountryProfileService, 'isCategoryBlocked' | 'isProductBlocked'>;
   /** Optional only during composition convergence; production checkout wires both services. */

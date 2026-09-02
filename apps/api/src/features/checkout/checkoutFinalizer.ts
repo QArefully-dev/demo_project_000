@@ -1,5 +1,9 @@
 import { parsePersistedCheckoutQuote } from '../payments/paymentRepository.js';
 import type { Country } from '@shop/contracts/country';
+import type {
+  ResolvedCustomBlendComponent,
+  ResolvedCustomBlendSnapshot,
+} from '@shop/contracts/custom-blends';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { CreateOrderLineVariantSnapshot } from '../orders/orderTypes.js';
 import type { CheckoutDependencies, CheckoutResult } from './checkoutTypes.js';
@@ -27,12 +31,26 @@ export function finalizeAuthorizedCheckout(
 
     const orderItems = quote.variantLines.map((v) => {
       const variant = dependencies.products.findVariantById(v.variantId);
+      // Plain V9 lines do not carry customBlend; V8 and configured V9 lines do. Keep the
+      // structural narrowing at the storage boundary so both legacy and resolved snapshots flow
+      // through unchanged.
+      const customBlend = 'customBlend' in v ? v.customBlend : undefined;
+      const resolvedBlend = isResolvedCustomBlendSnapshot(customBlend) ? customBlend : undefined;
+      const resolvedBase = resolvedBlend?.components.find(
+        (component: ResolvedCustomBlendComponent) => component.role === 'base',
+      );
       const variantSnapshot: CreateOrderLineVariantSnapshot = {
         variantId: v.variantId,
-        sku: variant?.sku ?? `SKU-${v.productId}-${v.variantId}`,
-        label: v.variantLabel,
+        // V9 already contains the base facts used to price the line. Keep those facts frozen in
+        // the order even if a catalogue edit lands after authorization; V8 retains its historic
+        // product lookup fallback.
+        sku: resolvedBase?.sku ?? variant?.sku ?? `SKU-${v.productId}-${v.variantId}`,
+        label: resolvedBase?.variantLabel ?? v.variantLabel,
         weightGrams: v.weightGrams,
-        consumptionClassification: v.consumptionClassification as 'food' | 'non-food' | 'caution',
+        // A resolved V9 recipe owns the resulting classification. V8/legacy lines retain the
+        // historical base classification carried by the quote line.
+        consumptionClassification: (resolvedBlend?.resultClassification ??
+          v.consumptionClassification) as 'food' | 'non-food' | 'caution',
         deliveryClass: v.deliveryClass,
       };
       // The quote emits the money split and specification only on configured lines, so a plain
@@ -46,7 +64,7 @@ export function finalizeAuthorizedCheckout(
         blendingFeeCents: v.blendingFeeCents ?? 0,
         lineTotalCents: v.lineTotalCents,
         variantSnapshot,
-        ...(v.customBlend ? { customBlend: v.customBlend } : {}),
+        ...(customBlend ? { customBlend } : {}),
       };
     });
 
@@ -146,4 +164,14 @@ export function finalizeAuthorizedCheckout(
     });
     return result;
   });
+}
+
+function isResolvedCustomBlendSnapshot(value: unknown): value is ResolvedCustomBlendSnapshot {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    'ruleVersion' in value &&
+    value.ruleVersion === 1
+  );
 }

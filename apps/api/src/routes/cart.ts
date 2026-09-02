@@ -157,23 +157,19 @@ export default function cartRoutes(app: FastifyInstance, { services }: AppContex
         const minQuantity = selectedVariant
           ? minimumMoqQuantity(selectedVariant.weight_grams, selectedVariant.moq_sacks)
           : undefined;
-        sendPublicError(
-          request,
-          reply,
-          400,
-          'BELOW_MOQ',
-          minQuantity === undefined ? undefined : { minQuantity },
-        );
+        if (minQuantity === undefined) {
+          sendPublicError(request, reply, 400, 'INTERNAL_ERROR');
+          return;
+        }
+        sendPublicError(request, reply, 400, 'BELOW_MOQ', { minQuantity });
         return;
       }
       if (cart === 'INVALID_QUANTITY') {
-        sendPublicError(
-          request,
-          reply,
-          400,
-          'INVALID_QUANTITY',
-          requestedQuantity === undefined ? undefined : { quantity: requestedQuantity },
-        );
+        if (requestedQuantity === undefined) {
+          sendPublicError(request, reply, 400, 'INTERNAL_ERROR');
+          return;
+        }
+        sendPublicError(request, reply, 400, 'INVALID_QUANTITY', { quantity: requestedQuantity });
         return;
       }
       return cart;

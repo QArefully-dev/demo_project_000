@@ -3,12 +3,37 @@ import { TypeSystem } from '@sinclair/typebox/system';
 import { MoneyCents, Uuid } from './common.js';
 import { Product } from './products.js';
 import { DeliveryClass, DeliverySummary } from './delivery.js';
-import { CartLineConfigKey, CustomBlendSnapshot } from './customBlends.js';
+import {
+  CartLineConfigKey,
+  CustomBlendSnapshot,
+  ResolvedCustomBlendSnapshot,
+} from './customBlends.js';
 import { ClearanceWindow, NextTierProgress } from './pricing.js';
 import { Country } from './country.js';
 
 const SafePositiveInteger = Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER });
 const SafeNonNegativeInteger = Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER });
+
+function isSafeNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function safeProduct(left: unknown, right: unknown): number | undefined {
+  if (!isSafeNonNegativeInteger(left) || !isSafeNonNegativeInteger(right)) return undefined;
+  if (right > 0 && left > Math.floor(Number.MAX_SAFE_INTEGER / right)) return undefined;
+  const result = left * right;
+  return Number.isSafeInteger(result) ? result : undefined;
+}
+
+function safeSum(values: readonly unknown[]): number | undefined {
+  let total = 0;
+  for (const value of values) {
+    if (!isSafeNonNegativeInteger(value) || value > Number.MAX_SAFE_INTEGER - total)
+      return undefined;
+    total += value;
+  }
+  return total;
+}
 
 export const CartLineVariantSnap = Type.Object(
   {
@@ -57,19 +82,75 @@ const CartLineConfigPair = TypeSystem.Type<unknown>('CartLineConfigPair', (_opti
   );
 });
 
+/**
+ * Cart monetary fields are one invariant, not four unrelated numbers. The server computes the
+ * material amount from its resolved unit price and quantity; a resolved blend additionally has a
+ * quantity-specific snapshot whose totals must agree with the line. Legacy snapshots intentionally
+ * skip the outcome comparison so historic carts remain readable during the V8/V9 transition.
+ */
+const CartLineMoneyIntegrity = TypeSystem.Type<unknown>(
+  'CartLineMoneyIntegrity',
+  (_options, value) => {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+    const line = value as {
+      configKey?: unknown;
+      customBlend?: unknown;
+      quantity?: unknown;
+      resolvedUnitPriceCents?: unknown;
+      materialSubtotalCents?: unknown;
+      blendingFeeCents?: unknown;
+      discountableTotalCents?: unknown;
+      lineTotalCents?: unknown;
+      nextTierProgress?: unknown;
+    };
+    // Keep the historical plain-line pairing exactly as it was: the contract identifies a plain
+    // line by its empty config key and absent snapshot. Ordinary-line money remains a collection of
+    // safe pence fields; its arithmetic is owned by the server's ordinary pricing path.
+    if (line.configKey === '') return line.customBlend === undefined;
+    if (typeof line.customBlend !== 'object' || line.customBlend === null) return false;
+
+    const blend = line.customBlend as Partial<Static<typeof ResolvedCustomBlendSnapshot>> & {
+      ruleVersion?: unknown;
+    };
+    // A current configured line must carry the quantity-specific resolved outcome. The legacy
+    // specification remains valid for historic orders/quotes, but is not sufficient for a current
+    // cart because it contains no authoritative component price or total.
+    if (blend.ruleVersion !== 1) return false;
+    return (
+      safeProduct(line.resolvedUnitPriceCents, line.quantity) === line.materialSubtotalCents &&
+      line.materialSubtotalCents === line.discountableTotalCents &&
+      safeSum([line.materialSubtotalCents, line.blendingFeeCents]) === line.lineTotalCents &&
+      blend.quantity === line.quantity &&
+      blend.materialUnitPriceCents === line.resolvedUnitPriceCents &&
+      blend.materialSubtotalCents === line.materialSubtotalCents &&
+      blend.discountableTotalCents === line.discountableTotalCents &&
+      blend.lineTotalCents === line.lineTotalCents &&
+      blend.blendingFeeCents === line.blendingFeeCents &&
+      line.nextTierProgress === undefined
+    );
+  },
+);
+
 /** Plain lines use an empty config key; configured lines carry the matching specification key. */
-export const CartLine = Type.Intersect([CartLineFields, CartLineConfigPair()]);
+export const CartLine = Type.Intersect([
+  CartLineFields,
+  CartLineConfigPair(),
+  CartLineMoneyIntegrity(),
+]);
 export type CartLine = Static<typeof CartLine>;
 
-export const Cart = Type.Object({
-  id: Uuid,
-  items: Type.Array(CartLine),
-  subtotalCents: MoneyCents,
-  discountableSubtotalCents: MoneyCents,
-  blendingFeeTotalCents: MoneyCents,
-  totalItems: Type.Integer({ minimum: 0 }),
-  deliveryPreview: Type.Optional(DeliverySummary),
-});
+export const Cart = Type.Object(
+  {
+    id: Uuid,
+    items: Type.Array(CartLine),
+    subtotalCents: MoneyCents,
+    discountableSubtotalCents: MoneyCents,
+    blendingFeeTotalCents: MoneyCents,
+    totalItems: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+    deliveryPreview: Type.Optional(DeliverySummary),
+  },
+  { additionalProperties: false },
+);
 export type Cart = Static<typeof Cart>;
 
 export const AddToCartBody = Type.Object(

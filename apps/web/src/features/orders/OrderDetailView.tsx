@@ -10,6 +10,7 @@ import {
   CustomBlendPackaging,
   customBlendCompositionLabel,
   customBlendMadeToOrderNote,
+  isResolvedCustomBlendSnapshot,
 } from '@/features/customBlend/CustomBlendPackaging';
 import {
   orderLifecycleMessages,
@@ -40,7 +41,12 @@ function statusVariant(status: string): 'default' | 'secondary' | 'destructive' 
 }
 
 function orderPackagingProduct(item: OrderDetailResponse['items'][number]): Product {
-  const presentation = item.customBlend?.basePresentation;
+  const resolvedBlend = isResolvedCustomBlendSnapshot(item.customBlend)
+    ? item.customBlend
+    : undefined;
+  // Historic snapshots may carry a frozen base presentation, but without a server-resolved
+  // outcome it is not safe to infer either a vessel or a safety treatment from that data.
+  const presentation = resolvedBlend?.basePresentation;
   return {
     id: item.productId,
     name: item.productName,
@@ -59,10 +65,170 @@ function orderPackagingProduct(item: OrderDetailResponse['items'][number]): Prod
     tags: [],
     specificationGroups: [],
     consumptionClassification:
-      presentation?.consumptionClassification ?? item.variantSnapshot?.consumptionClassification,
+      resolvedBlend?.resultClassification ??
+      presentation?.consumptionClassification ??
+      item.variantSnapshot?.consumptionClassification,
     mixingGroup: item.customBlend?.mixingGroup,
     ...(presentation ? { categoryFacts: presentation.categoryFacts } : {}),
   };
+}
+
+function OrderCustomBlendDetails({
+  item,
+  locale,
+  t,
+}: {
+  item: OrderDetailResponse['items'][number];
+  locale: ReturnType<typeof useLocalisation>;
+  t: (key: OrderLifecycleMessageKey, params?: Record<string, string | number | bigint>) => string;
+}) {
+  const blend = item.customBlend;
+  if (!blend) return null;
+  const resolved = isResolvedCustomBlendSnapshot(blend) ? blend : undefined;
+  const resultLabel = resolved
+    ? t(
+        resolved.resultClassification === 'food'
+          ? 'order.customBlend.resultFood'
+          : 'order.customBlend.resultNonFood',
+      )
+    : undefined;
+  const safetyLabel =
+    resolved?.resultClassification === 'non-food'
+      ? t('order.customBlend.notForConsumption')
+      : undefined;
+
+  return (
+    <span className="block text-xs text-muted-foreground" data-testid="order-blend">
+      <Badge variant="outline" className="mb-0.5 w-fit text-[10px]">
+        {t('order.customBlend')}
+      </Badge>
+      <span className="block">
+        {customBlendCompositionLabel(item.productName, blend, locale.country)}
+      </span>
+      {resolved ? (
+        <>
+          <Badge
+            variant={resolved.resultClassification === 'non-food' ? 'destructive' : 'secondary'}
+            className="mt-1 w-fit"
+            data-testid="order-blend-result"
+          >
+            {resultLabel}
+          </Badge>
+          {safetyLabel && (
+            <span
+              role="alert"
+              data-testid="order-blend-safety"
+              className="custom-blend-notice mt-1 block rounded-md px-2 py-1"
+            >
+              <span className="font-semibold">{safetyLabel}</span>{' '}
+              {t('order.customBlend.safetyWarning')}
+            </span>
+          )}
+          <ul
+            className="mt-1 grid gap-1 border-l pl-2"
+            aria-label={t('order.customBlend')}
+            data-testid="order-blend-components"
+          >
+            {resolved.components.map((component) => {
+              const roleLabel = t(
+                component.role === 'base'
+                  ? 'order.customBlend.componentBase'
+                  : 'order.customBlend.componentIngredient',
+              );
+              return (
+                <li key={`${component.role}-${component.variantId}`}>
+                  <span className="font-medium text-foreground">{component.productName}</span>{' '}
+                  {locale.number.count(component.percentage)}% · {roleLabel}
+                  <span className="block">
+                    {t('order.customBlend.componentRole', { role: roleLabel })}
+                  </span>
+                  <span className="block">
+                    {t('order.customBlend.componentWeight', {
+                      weight: locale.formatWeightGrams(component.weightGrams),
+                    })}
+                  </span>
+                  <span className="block">
+                    {t('order.customBlend.componentSourcePrice', {
+                      money: locale.formatDisplayMoney(component.sourceUnitPriceCents),
+                    })}
+                  </span>
+                  {component.clearance && (
+                    <span className="block">
+                      {t('order.customBlend.componentClearance', {
+                        money: locale.formatDisplayMoney(component.clearance.priceCents),
+                      })}
+                    </span>
+                  )}
+                  <span className="block">
+                    {t('order.customBlend.componentTier', {
+                      discountPct: locale.number.count(component.tierDiscountPct),
+                    })}
+                  </span>
+                  {component.nextTierProgress && (
+                    <span className="block">
+                      {t('order.customBlend.componentNextTier', {
+                        sacksToNextTier: locale.number.count(
+                          component.nextTierProgress.sacksToNextTier,
+                        ),
+                        minTonnes: locale.number.decimal(component.nextTierProgress.minTonnes),
+                        discountPct: locale.number.count(component.nextTierProgress.discountPct),
+                      })}
+                    </span>
+                  )}
+                  <span className="block">
+                    {t('order.customBlend.componentUnitContribution', {
+                      money: locale.formatDisplayMoney(component.unitContributionCents),
+                    })}
+                  </span>
+                  <span className="block">
+                    {t('order.customBlend.componentSubtotal', {
+                      money: locale.formatDisplayMoney(component.subtotalCents),
+                    })}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          <span className="block">
+            {t('order.customBlend.materialUnitPrice', {
+              money: locale.formatDisplayMoney(resolved.materialUnitPriceCents),
+            })}
+          </span>
+          <span className="block">
+            {t('order.customBlend.materialSubtotal', {
+              money: locale.formatDisplayMoney(resolved.materialSubtotalCents),
+            })}
+          </span>
+          <span className="block">
+            {t('order.customBlend.blendingFee', {
+              money: locale.formatDisplayMoney(resolved.blendingFeeCents),
+            })}
+          </span>
+          <span className="block font-medium text-foreground">
+            {t('order.customBlend.lineTotal', {
+              money: locale.formatDisplayMoney(resolved.lineTotalCents),
+            })}
+          </span>
+        </>
+      ) : (
+        <>
+          <span className="block" data-testid="order-blend-legacy">
+            {t('order.customBlend.legacyFallback')}
+          </span>
+          {/* Legacy line money is historical order data; no current component facts are inferred. */}
+          <span className="block">
+            {t('order.baseMaterial', {
+              money: locale.formatDisplayMoney(item.discountableTotalCents),
+            })}{' '}
+            ·{' '}
+            {t('order.blendingFee', {
+              money: locale.formatDisplayMoney(item.blendingFeeCents),
+            })}
+          </span>
+        </>
+      )}
+    </span>
+  );
 }
 
 export function OrderDetailView({
@@ -131,27 +297,7 @@ export function OrderDetailView({
                     </span>
                   )}
                   {item.customBlend && (
-                    <span className="block text-xs text-muted-foreground" data-testid="order-blend">
-                      <Badge variant="outline" className="mb-0.5 w-fit text-[10px]">
-                        {t('order.customBlend')}
-                      </Badge>
-                      <span className="block">
-                        {customBlendCompositionLabel(
-                          item.productName,
-                          item.customBlend,
-                          locale.country,
-                        )}
-                      </span>
-                      <span className="block">
-                        {t('order.baseMaterial', {
-                          money: locale.formatDisplayMoney(item.discountableTotalCents),
-                        })}
-                        {' · '}
-                        {t('order.blendingFee', {
-                          money: locale.formatDisplayMoney(item.blendingFeeCents),
-                        })}
-                      </span>
-                    </span>
+                    <OrderCustomBlendDetails item={item} locale={locale} t={t} />
                   )}
                   {item.inventoryStatus === 'partially_backordered' && (
                     <span className="block text-xs font-medium text-amber-700">

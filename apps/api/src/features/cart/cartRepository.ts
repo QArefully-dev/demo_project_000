@@ -1,11 +1,6 @@
 import type Database from 'better-sqlite3';
-import { MIXING_GROUPS } from '@shop/catalog';
 import type { Country } from '@shop/contracts/country';
 import type { VariantRow } from '../catalog/productRepository.js';
-import type { CustomBlendFactRow } from '../customBlend/customBlendRepository.js';
-
-const SACK_WEIGHT_GRAMS = 25_000;
-const supportedMixingGroupPlaceholders = MIXING_GROUPS.map(() => '?').join(', ');
 
 export interface CartLineRow {
   variant_id: number;
@@ -52,7 +47,6 @@ export interface CartRepository {
   country(cartId: string): Country | undefined;
   listCountryVariantFacts(cartId: string, variantIds: readonly number[]): CartCountryVariantFact[];
   listLines(cartId: string): CartLineRow[];
-  listEligibleCustomBlendFacts(variantIds: number[]): CustomBlendFactRow[];
   variantExists(variantId: string): boolean;
   lineQuantity(cartId: string, variantId: string, configKey?: string): number;
   addLine(cartId: string, variantId: string, configKey?: string): void;
@@ -142,28 +136,6 @@ export function createCartRepository(db: Database.Database): CartRepository {
          WHERE cli.cart_id = ?`,
         )
         .all(cartId) as CartLineRow[];
-    },
-    listEligibleCustomBlendFacts(variantIds) {
-      if (variantIds.length === 0) return [];
-      const variantPlaceholders = variantIds.map(() => '?').join(', ');
-      return db
-        .prepare(
-          `SELECT
-             p.id AS product_id, p.name AS product_name, p.description AS product_description,
-             p.mixing_group, pv.id AS variant_id, pv.sku, pv.label, pv.weight_grams,
-             pv.price_cents, pv.moq_sacks, pv.compare_at_price_cents, pv.stock_count,
-             pv.backorderable, pv.backorder_lead_days, pv.delivery_class,
-             pv.active AS variant_active, pv.sort_order
-           FROM product_variants pv
-           INNER JOIN products p ON p.id = pv.product_id
-           WHERE pv.id IN (${variantPlaceholders})
-             AND p.active = 1
-             AND pv.active = 1
-             AND pv.sort_order = 1
-             AND pv.weight_grams = ${SACK_WEIGHT_GRAMS}
-             AND p.mixing_group IN (${supportedMixingGroupPlaceholders})`,
-        )
-        .all(...variantIds, ...MIXING_GROUPS) as CustomBlendFactRow[];
     },
     variantExists(variantId) {
       return (

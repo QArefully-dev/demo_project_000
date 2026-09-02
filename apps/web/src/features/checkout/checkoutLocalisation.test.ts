@@ -63,5 +63,11 @@ describe('checkout localisation boundaries', () => {
     };
     expect(customBlendMadeToOrderNote('DE')).toContain('Auf Bestellung');
     expect(customBlendCompositionLabel('Cement', blend, 'DE')).toContain('Cement');
+    expect(translate(checkoutMessages, 'DE', 'checkout.customBlend.resultNonFood')).toBe(
+      'Nicht für Lebensmittel bestimmte Mischung',
+    );
+    expect(translate(checkoutMessages, 'DE', 'checkout.customBlend.notForConsumption')).toBe(
+      'Nicht zum Verzehr geeignet',
+    );
   });
 });

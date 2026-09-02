@@ -150,7 +150,7 @@ void test('cart writes enforce the persisted country without leaking lower-prece
   );
 
   await t.test(
-    'a blocked blend ingredient produces the existing blend-unavailable outcome',
+    'a blocked blend ingredient produces the country-blocked outcome with resolved pricing',
     async () => {
       const usCartId = await createCart(app, 'US');
       const configured = await app.inject({
@@ -183,7 +183,12 @@ void test('cart writes enforce the persisted country without leaking lower-prece
       assert.notEqual(typeof result, 'string');
       if (typeof result === 'string') return;
       assert.deepEqual(result.outcomes, [
-        { key: 'blend', status: 'skipped', reason: 'BLEND_UNAVAILABLE' },
+        {
+          key: 'blend',
+          status: 'skipped',
+          reason: 'BLOCKED_IN_COUNTRY',
+          resolvedUnitPriceCents: 4260,
+        },
       ]);
       assert.equal(result.cart.items.length, 0);
     },

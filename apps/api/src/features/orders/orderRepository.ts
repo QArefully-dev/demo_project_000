@@ -16,6 +16,7 @@ import type {
   OrderSummary,
   ShipmentStatus,
 } from '@shop/contracts/orders';
+import type { ResolvedCustomBlendSnapshot } from '@shop/contracts/custom-blends';
 import type { Country } from '@shop/contracts/country';
 import { orderLifecycleTitle } from '@shop/localisation/messages/asyncContent';
 import type { CreateOrderParams, LifecycleEventInput, PersistedShipment } from './orderTypes.js';
@@ -168,7 +169,45 @@ function hydrateOrderCustomBlend(row: ProductLineRow): CustomBlendSnapshot | und
       `Order line ${row.id} Custom Blend fee disagrees with its persisted line money`,
     );
   }
+  if (isResolvedCustomBlendSnapshot(parsed) && !resolvedSnapshotMatchesOrderLine(row, parsed)) {
+    throw new Error(
+      `Order line ${row.id} Custom Blend resolved snapshot disagrees with its persisted line facts`,
+    );
+  }
   return parsed;
+}
+
+function isResolvedCustomBlendSnapshot(
+  value: CustomBlendSnapshot,
+): value is ResolvedCustomBlendSnapshot {
+  return 'ruleVersion' in value && value.ruleVersion === 1;
+}
+
+/**
+ * A resolved snapshot is a frozen financial outcome. Its quantity, classification, base identity,
+ * and all line money must remain paired with the order columns; legacy specification-only snapshots
+ * deliberately skip this check so historic rows remain readable.
+ */
+function resolvedSnapshotMatchesOrderLine(
+  row: ProductLineRow,
+  snapshot: ResolvedCustomBlendSnapshot,
+): boolean {
+  const base = snapshot.components.find((component) => component.role === 'base');
+  return (
+    base !== undefined &&
+    base.variantId === row.variant_id &&
+    base.productId === String(row.product_id) &&
+    base.productName === row.product_name &&
+    (base.sku === undefined || base.sku === row.sku) &&
+    (base.variantLabel === undefined || base.variantLabel === row.variant_label) &&
+    snapshot.quantity === row.quantity &&
+    snapshot.resultClassification === row.consumption_classification &&
+    snapshot.materialUnitPriceCents === row.product_price_cents &&
+    snapshot.materialSubtotalCents === row.discountable_total_cents &&
+    snapshot.discountableTotalCents === row.discountable_total_cents &&
+    snapshot.blendingFeeCents === row.blending_fee_cents &&
+    snapshot.lineTotalCents === row.line_total_cents
+  );
 }
 
 /**

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OrderDetailResponse, OrderListResponse } from '@shop/contracts/orders';
+import type { ResolvedCustomBlendSnapshot } from '@shop/contracts/custom-blends';
 import { ApiError } from '@/api/client';
 import { cancelOrder, getOrder, getOrders } from '@/api/orders';
 import { fetchReturnOverview } from '@/api/returns';
@@ -149,6 +150,81 @@ const tradeDetail: OrderDetailResponse = {
   },
   deliverySlot: { date: '2026-08-07', window: 'am' },
   purchaseOrderReference: 'PO-55120',
+};
+
+const resolvedOrderBlend: ResolvedCustomBlendSnapshot = {
+  configKey: 'e'.repeat(64),
+  basePercentage: 75,
+  mixingGroup: 'mineral',
+  basePresentation: {
+    category: 'Trade & Creative Materials',
+    consumptionClassification: 'non-food',
+    categoryFacts: {
+      composition: 'Cementitious powder',
+      source: 'Mineral',
+      intendedUse: 'Construction',
+      storage: 'Keep dry',
+      colour: 'Grey',
+      texture: 'Fine powder',
+      consumptionClassification: 'non-food',
+    },
+  },
+  ingredients: [
+    {
+      variantId: 601,
+      productId: '11',
+      productName: 'Chalk Filler',
+      productDescription: 'Filler',
+      mixingGroup: 'mineral',
+      percentage: 25,
+    },
+  ],
+  blendingFeeCents: 2_500,
+  madeToOrder: true,
+  returnable: false,
+  ruleVersion: 1,
+  resultClassification: 'non-food',
+  quantity: 1,
+  components: [
+    {
+      role: 'base',
+      variantId: 31,
+      productId: '31',
+      productName: 'Oat powder',
+      productDescription: 'Base powder',
+      sku: 'OAT-001',
+      variantLabel: '25 kg sack',
+      mixingGroup: 'mineral',
+      consumptionClassification: 'non-food',
+      percentage: 75,
+      weightGrams: 18_750,
+      sourceUnitPriceCents: 1_000,
+      tierDiscountPct: 0,
+      unitContributionCents: 750,
+      subtotalCents: 750,
+    },
+    {
+      role: 'ingredient',
+      variantId: 601,
+      productId: '11',
+      productName: 'Chalk Filler',
+      productDescription: 'Filler',
+      sku: 'CHALK-601',
+      variantLabel: '25 kg sack',
+      mixingGroup: 'mineral',
+      consumptionClassification: 'non-food',
+      percentage: 25,
+      weightGrams: 6_250,
+      sourceUnitPriceCents: 1_200,
+      tierDiscountPct: 0,
+      unitContributionCents: 300,
+      subtotalCents: 300,
+    },
+  ],
+  materialUnitPriceCents: 1_050,
+  materialSubtotalCents: 1_050,
+  discountableTotalCents: 1_050,
+  lineTotalCents: 3_550,
 };
 
 function ConfirmationRoutes() {
@@ -343,12 +419,66 @@ describe('customer order UI', () => {
     expect(await screen.findByText(/75% Oat powder — 25% Chalk Filler/)).toBeInTheDocument();
     expect(screen.getByText('Custom blend')).toBeInTheDocument();
     expect(screen.getByTestId('custom-blend-livery')).toBeInTheDocument();
-    expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute('data-vessel', 'kraft-sack');
-    expect(screen.getByText('Mineral')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute('data-vessel', 'neutral');
+    expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute(
+      'data-colour-scheme',
+      'neutral',
+    );
+    expect(screen.queryByText('Not for consumption')).not.toBeInTheDocument();
     expect(screen.getByText(/Base material: \$12.50.*Blending fee: \$31.25/)).toBeInTheDocument();
     expect(
       screen.getByText(/Made to order\. Custom blends cannot be returned/),
     ).toBeInTheDocument();
+  });
+
+  it('renders resolved result safety and frozen component totals on the order record', async () => {
+    vi.mocked(getOrder).mockResolvedValue({
+      ...detail,
+      items: [
+        {
+          ...detail.items[0]!,
+          productId: '31',
+          unitPriceCents: resolvedOrderBlend.materialUnitPriceCents,
+          discountableTotalCents: resolvedOrderBlend.discountableTotalCents,
+          blendingFeeCents: resolvedOrderBlend.blendingFeeCents,
+          lineTotalCents: resolvedOrderBlend.lineTotalCents,
+          variantSnapshot: {
+            variantId: 31,
+            sku: 'OAT-001',
+            label: '25 kg sack',
+            unitPriceCents: 1000,
+            weightGrams: 25_000,
+            consumptionClassification: 'non-food',
+            deliveryClass: 'freight',
+          },
+          customBlend: resolvedOrderBlend,
+        },
+      ],
+    });
+    render(
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders/12']}
+      >
+        <Routes>
+          <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByTestId('order-blend-result')).toHaveTextContent('Non-food blend');
+    expect(screen.getByTestId('order-blend-safety')).toHaveTextContent('Not for consumption');
+    expect(screen.getByText('Component weight: 18.75 kg')).toBeInTheDocument();
+    expect(screen.getByText('Source price: $12.50 per sack')).toBeInTheDocument();
+    expect(screen.getByText('Unit contribution: $9.38')).toBeInTheDocument();
+    expect(screen.getByText('Material price per sack: $13.13')).toBeInTheDocument();
+    expect(screen.getByText('Material total: $13.13')).toBeInTheDocument();
+    expect(screen.getByText('Blending fee: $31.25')).toBeInTheDocument();
+    expect(screen.getByText('Blend total: $44.38')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute(
+      'data-result-classification',
+      'non-food',
+    );
   });
 
   it('uses a neutral Custom Blend presentation for legacy order snapshots', async () => {
@@ -363,6 +493,7 @@ describe('customer order UI', () => {
             configKey: 'd'.repeat(64),
             basePercentage: 75,
             mixingGroup: 'mineral',
+            basePresentation: resolvedOrderBlend.basePresentation,
             ingredients: [
               {
                 variantId: 601,
@@ -399,6 +530,15 @@ describe('customer order UI', () => {
       'data-vessel',
       'food-bag',
     );
+    expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute(
+      'data-colour-scheme',
+      'neutral',
+    );
+    expect(screen.queryByText('Not for consumption')).not.toBeInTheDocument();
+    expect(screen.getByTestId('order-blend-legacy')).toHaveTextContent(
+      'Pricing and safety details are unavailable for this historic blend.',
+    );
+    expect(screen.queryByTestId('order-blend-result')).not.toBeInTheDocument();
   });
 
   it('shows order allocation state without an estimated delivery date', async () => {

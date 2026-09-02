@@ -534,6 +534,176 @@ export const checkoutMessages = defineMessages({
     ES: 'Mezcla personalizada',
     FR: 'Mélange personnalisé',
   }),
+  'checkout.customBlend.resultFood': text('Food-grade blend', 'Lebensmittelgeeignete Mischung', {
+    CN: '食品级混合',
+    PL: 'Mieszanka przeznaczona do kontaktu z żywnością',
+    ES: 'Mezcla apta para alimentos',
+    FR: 'Mélange de qualité alimentaire',
+  }),
+  'checkout.customBlend.resultNonFood': text(
+    'Non-food blend',
+    'Nicht für Lebensmittel bestimmte Mischung',
+    {
+      CN: '非食品混合',
+      PL: 'Mieszanka nieżywnościowa',
+      ES: 'Mezcla no alimentaria',
+      FR: 'Mélange non alimentaire',
+    },
+  ),
+  'checkout.customBlend.notForConsumption': text(
+    'Not for consumption',
+    'Nicht zum Verzehr geeignet',
+    {
+      CN: '不可食用',
+      PL: 'Nie do spożycia',
+      ES: 'No apto para el consumo',
+      FR: 'Ne pas consommer',
+    },
+  ),
+  'checkout.customBlend.safetyWarning': text(
+    'This blend contains a non-food material. Follow the handling guidance shown for the materials.',
+    'Diese Mischung enthält ein nicht für Lebensmittel bestimmtes Material. Befolgen Sie die angezeigten Hinweise zum Umgang mit den Materialien.',
+    {
+      CN: '此混合物含有非食品材料。请遵循材料显示的处理指南。',
+      PL: 'Ta mieszanka zawiera materiał nieżywnościowy. Postępuj zgodnie z podanymi zaleceniami dotyczącymi obchodzenia się z materiałami.',
+      ES: 'Esta mezcla contiene un material no alimentario. Sigue las indicaciones de manipulación mostradas para los materiales.',
+      FR: 'Ce mélange contient un matériau non alimentaire. Suivez les consignes de manipulation affichées pour les matériaux.',
+    },
+  ),
+  'checkout.customBlend.componentRole': text(
+    'Component role: {role}',
+    'Rolle der Komponente: {role}',
+    {
+      CN: '成分角色：{role}',
+      PL: 'Rola składnika: {role}',
+      ES: 'Función del componente: {role}',
+      FR: 'Rôle du composant : {role}',
+    },
+  ),
+  'checkout.customBlend.componentBase': text('Base', 'Basis', {
+    CN: '基础材料',
+    PL: 'Baza',
+    ES: 'Base',
+    FR: 'Base',
+  }),
+  'checkout.customBlend.componentIngredient': text('Ingredient', 'Zutat', {
+    CN: '成分',
+    PL: 'Składnik',
+    ES: 'Ingrediente',
+    FR: 'Ingrédient',
+  }),
+  'checkout.customBlend.componentWeight': text(
+    'Component weight: {weight}',
+    'Gewicht der Komponente: {weight}',
+    {
+      CN: '成分重量：{weight}',
+      PL: 'Masa składnika: {weight}',
+      ES: 'Peso del componente: {weight}',
+      FR: 'Poids du composant : {weight}',
+    },
+  ),
+  'checkout.customBlend.componentSourcePrice': text(
+    'Source price: {money} per sack',
+    'Quellpreis: {money} pro Sack',
+    {
+      CN: '来源价格：每袋 {money}',
+      PL: 'Cena źródłowa: {money} za worek',
+      ES: 'Precio de origen: {money} por saco',
+      FR: 'Prix source : {money} par sac',
+    },
+  ),
+  'checkout.customBlend.componentClearance': text(
+    'Clearance price applied: {money} per sack',
+    'Ausverkaufspreis angewendet: {money} pro Sack',
+    {
+      CN: '已应用清仓价：每袋 {money}',
+      PL: 'Zastosowano cenę wyprzedażową: {money} za worek',
+      ES: 'Precio de liquidación aplicado: {money} por saco',
+      FR: 'Prix de liquidation appliqué : {money} par sac',
+    },
+  ),
+  'checkout.customBlend.componentTier': text(
+    'Volume tier discount: {discountPct}% off',
+    'Mengenrabatt: {discountPct}%',
+    {
+      CN: '数量等级折扣：优惠 {discountPct}%',
+      PL: 'Rabat z progu ilościowego: {discountPct}%',
+      ES: 'Descuento por volumen: {discountPct}%',
+      FR: 'Remise par palier de volume : {discountPct} %',
+    },
+  ),
+  'checkout.customBlend.componentNextTier': text(
+    '{sacksToNextTier} sacks to the {minTonnes}-tonne tier ({discountPct}% off)',
+    '{sacksToNextTier} Säcke bis zur {minTonnes}-Tonnen-Stufe ({discountPct}% Rabatt)',
+    {
+      CN: '距 {minTonnes} 吨等级还差 {sacksToNextTier} 袋（优惠 {discountPct}%）',
+      PL: 'Do progu {minTonnes} ton brakuje {sacksToNextTier} worków ({discountPct}% rabatu)',
+      ES: 'Faltan {sacksToNextTier} sacos para el nivel de {minTonnes} toneladas ({discountPct}% de descuento)',
+      FR: '{sacksToNextTier} sacs avant le palier de {minTonnes} tonnes ({discountPct} % de remise)',
+    },
+  ),
+  'checkout.customBlend.componentUnitContribution': text(
+    'Unit contribution: {money}',
+    'Einzelbeitrag: {money}',
+    {
+      CN: '单位贡献：{money}',
+      PL: 'Wkład jednostkowy: {money}',
+      ES: 'Contribución por unidad: {money}',
+      FR: 'Contribution unitaire : {money}',
+    },
+  ),
+  'checkout.customBlend.componentSubtotal': text(
+    'Component subtotal: {money}',
+    'Zwischensumme der Komponente: {money}',
+    {
+      CN: '成分小计：{money}',
+      PL: 'Suma częściowa składnika: {money}',
+      ES: 'Subtotal del componente: {money}',
+      FR: 'Sous-total du composant : {money}',
+    },
+  ),
+  'checkout.customBlend.materialUnitPrice': text(
+    'Material price per sack: {money}',
+    'Materialpreis pro Sack: {money}',
+    {
+      CN: '材料每袋价格：{money}',
+      PL: 'Cena materiału za worek: {money}',
+      ES: 'Precio del material por saco: {money}',
+      FR: 'Prix du matériau par sac : {money}',
+    },
+  ),
+  'checkout.customBlend.materialSubtotal': text(
+    'Material total: {money}',
+    'Materialsumme: {money}',
+    {
+      CN: '材料总额：{money}',
+      PL: 'Suma materiałów: {money}',
+      ES: 'Total de materiales: {money}',
+      FR: 'Total des matériaux : {money}',
+    },
+  ),
+  'checkout.customBlend.blendingFee': text('Blending fee: {money}', 'Mischgebühr: {money}', {
+    CN: '混合费用：{money}',
+    PL: 'Opłata za mieszanie: {money}',
+    ES: 'Tarifa de mezcla: {money}',
+    FR: 'Frais de mélange : {money}',
+  }),
+  'checkout.customBlend.lineTotal': text('Blend total: {money}', 'Mischungssumme: {money}', {
+    CN: '混合总额：{money}',
+    PL: 'Suma mieszanki: {money}',
+    ES: 'Total de la mezcla: {money}',
+    FR: 'Total du mélange : {money}',
+  }),
+  'checkout.customBlend.legacyFallback': text(
+    'Pricing and safety details are unavailable for this historic blend.',
+    'Preis- und Sicherheitsangaben für diese historische Mischung sind nicht verfügbar.',
+    {
+      CN: '此历史混合没有可用的价格和安全详情。',
+      PL: 'Szczegóły ceny i bezpieczeństwa tej historycznej mieszanki są niedostępne.',
+      ES: 'Los detalles de precio y seguridad de esta mezcla histórica no están disponibles.',
+      FR: 'Les détails de prix et de sécurité de ce mélange historique sont indisponibles.',
+    },
+  ),
   'checkout.baseMaterial': text('Base material: {money}', 'Basismaterial: {money}', {
     CN: '基础材料：{money}',
     PL: 'Materiał bazowy: {money}',

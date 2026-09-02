@@ -1,4 +1,5 @@
 import { Type, type Static } from '@sinclair/typebox';
+import { TypeSystem } from '@sinclair/typebox/system';
 import { Value } from '@sinclair/typebox/value';
 import {
   CustomerName,
@@ -11,7 +12,11 @@ import {
 } from './common.js';
 import { PlaceOrderResponse } from './orders.js';
 import { DeliveryClass, DeliveryDate, DeliverySlot, DeliverySummary } from './delivery.js';
-import { CustomBlendSnapshot } from './customBlends.js';
+import {
+  CustomBlendSnapshot,
+  LegacyCustomBlendSnapshot,
+  ResolvedCustomBlendSnapshot,
+} from './customBlends.js';
 import { PostalAddress } from './address.js';
 import { BillingEntityInput, BillingEntitySnapshot } from './tradeAccount.js';
 import { PendingApprovalResult } from './orderApprovals.js';
@@ -172,32 +177,166 @@ const PersistedInventoryAllocation = Type.Object(
   { additionalProperties: false },
 );
 
-const PersistedCheckoutVariantLine = Type.Object(
+const PersistedCheckoutVariantLineFields = {
+  productId: PositiveIntegerString,
+  variantId: Type.Integer({ minimum: 1 }),
+  productName: Type.String(),
+  variantLabel: Type.String({ minLength: 1, maxLength: 160 }),
+  unitPriceCents: MoneyCents,
+  weightGrams: Type.Integer({ minimum: 1 }),
+  deliveryClass: DeliveryClass,
+  quantity: Type.Integer({ minimum: 1 }),
+  materialSubtotalCents: Type.Optional(MoneyCents),
+  blendingFeeCents: Type.Optional(MoneyCents),
+  discountableTotalCents: Type.Optional(MoneyCents),
+  lineTotalCents: MoneyCents,
+  consumptionClassification: Type.String(),
+} as const;
+
+/** Historical V7 line shape. The broad snapshot union is retained for old callers. */
+const PersistedCheckoutVariantLineV7 = Type.Object(
   {
-    productId: PositiveIntegerString,
-    variantId: Type.Integer({ minimum: 1 }),
-    productName: Type.String(),
-    variantLabel: Type.String({ minLength: 1, maxLength: 160 }),
-    unitPriceCents: MoneyCents,
-    weightGrams: Type.Integer({ minimum: 1 }),
-    deliveryClass: DeliveryClass,
-    quantity: Type.Integer({ minimum: 1 }),
-    materialSubtotalCents: Type.Optional(MoneyCents),
-    blendingFeeCents: Type.Optional(MoneyCents),
-    discountableTotalCents: Type.Optional(MoneyCents),
-    lineTotalCents: MoneyCents,
-    consumptionClassification: Type.String(),
+    ...PersistedCheckoutVariantLineFields,
     customBlend: Type.Optional(CustomBlendSnapshot),
   },
   { additionalProperties: false },
 );
+
+/** V8 freezes configured lines to the specification-only snapshot used by prepared intents. */
+const PersistedCheckoutVariantLineV8 = Type.Object(
+  {
+    ...PersistedCheckoutVariantLineFields,
+    customBlend: Type.Optional(LegacyCustomBlendSnapshot),
+  },
+  { additionalProperties: false },
+);
+
+function isSafeNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function safeProduct(left: unknown, right: unknown): number | undefined {
+  if (!isSafeNonNegativeInteger(left) || !isSafeNonNegativeInteger(right)) return undefined;
+  if (right > 0 && left > Math.floor(Number.MAX_SAFE_INTEGER / right)) return undefined;
+  const result = left * right;
+  return Number.isSafeInteger(result) ? result : undefined;
+}
+
+function safeSum(values: readonly unknown[]): number | undefined {
+  let total = 0;
+  for (const value of values) {
+    if (!isSafeNonNegativeInteger(value) || value > Number.MAX_SAFE_INTEGER - total)
+      return undefined;
+    total += value;
+  }
+  return total;
+}
+
+/**
+ * A V9 configured line duplicates the resolved outcome's money at the line boundary. Keeping the
+ * pair exact prevents a valid snapshot from being attached to a different charged amount.
+ */
+const PersistedCheckoutVariantLineV9Integrity = TypeSystem.Type<unknown>(
+  'PersistedCheckoutVariantLineV9Integrity',
+  (_options, value) => {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+    const line = value as {
+      productId?: unknown;
+      variantId?: unknown;
+      productName?: unknown;
+      unitPriceCents?: unknown;
+      quantity?: unknown;
+      materialSubtotalCents?: unknown;
+      blendingFeeCents?: unknown;
+      discountableTotalCents?: unknown;
+      lineTotalCents?: unknown;
+      customBlend?: unknown;
+    };
+    // Plain V9 lines deliberately retain V8's semantics and may omit the configured split.
+    if (line.customBlend === undefined) return true;
+    if (
+      typeof line.customBlend !== 'object' ||
+      line.customBlend === null ||
+      Array.isArray(line.customBlend)
+    ) {
+      return false;
+    }
+    const blend = line.customBlend as {
+      quantity?: unknown;
+      components?: unknown;
+      materialUnitPriceCents?: unknown;
+      materialSubtotalCents?: unknown;
+      blendingFeeCents?: unknown;
+      discountableTotalCents?: unknown;
+      lineTotalCents?: unknown;
+    };
+    const base = Array.isArray(blend.components)
+      ? blend.components.find(
+          (
+            component,
+          ): component is {
+            role?: unknown;
+            productId?: unknown;
+            variantId?: unknown;
+            productName?: unknown;
+          } =>
+            typeof component === 'object' &&
+            component !== null &&
+            !Array.isArray(component) &&
+            (component as { role?: unknown }).role === 'base',
+        )
+      : undefined;
+    return (
+      base !== undefined &&
+      base.productId === line.productId &&
+      base.variantId === line.variantId &&
+      base.productName === line.productName &&
+      safeProduct(line.unitPriceCents, line.quantity) === line.materialSubtotalCents &&
+      line.materialSubtotalCents === line.discountableTotalCents &&
+      safeSum([line.materialSubtotalCents, line.blendingFeeCents]) === line.lineTotalCents &&
+      blend.quantity === line.quantity &&
+      blend.materialUnitPriceCents === line.unitPriceCents &&
+      blend.materialSubtotalCents === line.materialSubtotalCents &&
+      blend.discountableTotalCents === line.discountableTotalCents &&
+      blend.lineTotalCents === line.lineTotalCents &&
+      blend.blendingFeeCents === line.blendingFeeCents
+    );
+  },
+);
+
+/** Plain V9 lines retain the historical optional split and have no configured outcome. */
+const PersistedCheckoutVariantLineV9Plain = Type.Object(
+  { ...PersistedCheckoutVariantLineFields },
+  { additionalProperties: false },
+);
+
+/** Configured V9 lines require the resolved outcome and every matching money field. */
+const PersistedCheckoutVariantLineV9Configured = Type.Intersect([
+  Type.Object(
+    {
+      ...PersistedCheckoutVariantLineFields,
+      materialSubtotalCents: MoneyCents,
+      blendingFeeCents: MoneyCents,
+      discountableTotalCents: MoneyCents,
+      customBlend: ResolvedCustomBlendSnapshot,
+    },
+    { additionalProperties: false },
+  ),
+  PersistedCheckoutVariantLineV9Integrity(),
+]);
+
+/** V9 is a strict plain/configured union; configured lines cannot omit their resolved outcome. */
+const PersistedCheckoutVariantLineV9 = Type.Union([
+  PersistedCheckoutVariantLineV9Plain,
+  PersistedCheckoutVariantLineV9Configured,
+]);
 
 /** Historical V7 schema retained for callers that reference its transport type. */
 export const PersistedCheckoutQuoteV7 = Type.Object(
   {
     version: Type.Literal(7),
     ...PersistedCheckoutQuoteFields,
-    variantLines: Type.Array(PersistedCheckoutVariantLine),
+    variantLines: Type.Array(PersistedCheckoutVariantLineV7),
     deliverySummary: DeliverySummary,
     inventoryAllocations: Type.Array(PersistedInventoryAllocation),
     billingEntity: BillingEntitySnapshot,
@@ -209,10 +348,9 @@ export const PersistedCheckoutQuoteV7 = Type.Object(
 export type PersistedCheckoutQuoteV7 = Static<typeof PersistedCheckoutQuoteV7>;
 
 /**
- * The only persisted checkout quote shape. V8 records the base eligible for a promo discount,
- * the category that scoped it, and the V7 checkout commitments. The version integer advances to
- * `8` rather than restarting at `1`: it is written into stored JSON, and a number no earlier
- * writer emitted means a stale blob can never be read as current. Never reuse or restart it.
+ * V8 records the base eligible for a promo discount, the category that scoped it, and the V7
+ * checkout commitments. Configured lines retain their legacy specification-only snapshot so
+ * already-prepared V8 intents remain representable during the V9 transition.
  */
 export const PersistedCheckoutQuoteV8 = Type.Object(
   {
@@ -220,7 +358,7 @@ export const PersistedCheckoutQuoteV8 = Type.Object(
     ...PersistedCheckoutQuoteFields,
     discountBaseCents: MoneyCents,
     promoCategoryScope: Type.Union([Type.String({ minLength: 1, maxLength: 100 }), Type.Null()]),
-    variantLines: Type.Array(PersistedCheckoutVariantLine),
+    variantLines: Type.Array(PersistedCheckoutVariantLineV8),
     deliverySummary: DeliverySummary,
     inventoryAllocations: Type.Array(PersistedInventoryAllocation),
     billingEntity: BillingEntitySnapshot,
@@ -231,14 +369,35 @@ export const PersistedCheckoutQuoteV8 = Type.Object(
 );
 export type PersistedCheckoutQuoteV8 = Static<typeof PersistedCheckoutQuoteV8>;
 
-/** Union of one. Retained as the stable name readers and writers depend on. */
-export const PersistedCheckoutQuote = Type.Union([PersistedCheckoutQuoteV8]);
-export type PersistedCheckoutQuote = Static<typeof PersistedCheckoutQuote>;
-export const CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION = 8;
+/** New quotes freeze resolved configured outcomes and their exact line-level money pairing. */
+export const PersistedCheckoutQuoteV9 = Type.Object(
+  {
+    version: Type.Literal(9),
+    ...PersistedCheckoutQuoteFields,
+    discountBaseCents: MoneyCents,
+    promoCategoryScope: Type.Union([Type.String({ minLength: 1, maxLength: 100 }), Type.Null()]),
+    variantLines: Type.Array(PersistedCheckoutVariantLineV9),
+    deliverySummary: DeliverySummary,
+    inventoryAllocations: Type.Array(PersistedInventoryAllocation),
+    billingEntity: BillingEntitySnapshot,
+    deliverySlot: DeliverySlot,
+    purchaseOrderReference: Type.Union([PurchaseOrderReference, Type.Null()]),
+  },
+  { additionalProperties: false },
+);
+export type PersistedCheckoutQuoteV9 = Static<typeof PersistedCheckoutQuoteV9>;
 
-/** Strict storage-boundary parser. V8 is the only readable and writable version. */
+/** Strict reader union. Prepared V8 intents and current V9 intents are the only accepted versions. */
+export const PersistedCheckoutQuote = Type.Union([
+  PersistedCheckoutQuoteV8,
+  PersistedCheckoutQuoteV9,
+]);
+export type PersistedCheckoutQuote = Static<typeof PersistedCheckoutQuote>;
+export const CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION = 9;
+
+/** Strict storage-boundary parser. Unknown versions and malformed configured pairs fail closed. */
 export function parsePersistedCheckoutQuote(value: unknown): PersistedCheckoutQuote {
-  if (Value.Check(PersistedCheckoutQuoteV8, value)) return value;
+  if (Value.Check(PersistedCheckoutQuote, value)) return value;
   throw new Error('Invalid persisted checkout quote');
 }
 

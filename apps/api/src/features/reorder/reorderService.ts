@@ -90,8 +90,10 @@ function currentUnitPriceFor(
  * Builds the current-price map used for drift disclosure.
  *
  * An added line already carries the cart's resolved price at its post-add cumulative quantity, so
- * that value is reused rather than recomputed. Any other line is priced live at the quantity that
- * was originally ordered, which is the honest answer to "what would this line cost today".
+ * that value is reused rather than recomputed. A policy-valid configured skip likewise carries the
+ * singleton resolver's material price; a configured line without that outcome price is unresolved
+ * and must not fall back to the base variant price. Ordinary lines are priced live at the quantity
+ * that was originally ordered.
  */
 function resolveCurrentPrices(
   orderLines: readonly OrderLineItem[],
@@ -117,8 +119,16 @@ function resolveCurrentPrices(
   for (const line of orderLines) {
     const key = String(line.lineId);
     const outcome = outcomeByKey.get(key);
-    if (outcome?.status === 'added' && typeof outcome.resolvedUnitPriceCents === 'number') {
+    if (typeof outcome?.resolvedUnitPriceCents === 'number') {
       prices.set(key, outcome.resolvedUnitPriceCents);
+      continue;
+    }
+    // The base variant price is not a valid substitute for a configured blend. The cart bulk
+    // classifier leaves this null when the singleton resolver could not resolve the blend itself
+    // (including BLEND_UNAVAILABLE), while policy-valid stock/MOQ/country skips carry the price
+    // above and return early.
+    if (line.customBlend) {
+      prices.set(key, null);
       continue;
     }
     const variantId = reorderLineVariantId(line);

@@ -47,7 +47,10 @@ import {
 import { createPromoRepository } from './features/promos/promoRepository.js';
 import { createPromoService, type PromoService } from './features/promos/promoService.js';
 import { createPaymentRepository } from './features/payments/paymentRepository.js';
-import { simulatedPaymentGateway } from './features/payments/paymentGateway.js';
+import {
+  simulatedPaymentGateway,
+  type PaymentGateway,
+} from './features/payments/paymentGateway.js';
 import { createUnitOfWork, type UnitOfWork } from './db/unitOfWork.js';
 import { createAuditRepository } from './features/audit/auditRepository.js';
 import {
@@ -75,6 +78,7 @@ import { createReturnRepository } from './features/returns/returnRepository.js';
 import { createReturnService } from './features/returns/returnService.js';
 import { createRefundGateway } from './features/returns/refundGateway.js';
 import { createCustomBlendRepository } from './features/customBlend/customBlendRepository.js';
+import { createCustomBlendResolver } from './features/customBlend/customBlendResolver.js';
 import {
   createCustomBlendService,
   type CustomBlendService,
@@ -229,6 +233,8 @@ export interface AppDependencies {
   db: Database.Database;
   resetBaseUrl: string;
   clock?: Clock;
+  /** Test/integration seam; production composition falls back to the local simulated gateway. */
+  paymentGateway?: PaymentGateway;
   resetTokenSource?: ResetTokenSource;
   orderAccessTokenSource?: OrderAccessTokenSource;
   webhookSecret?: string;
@@ -296,6 +302,12 @@ function createAppServices(dependencies: AppDependencies): AppServices {
   const unitOfWork = createUnitOfWork(dependencies.db);
   const auditRepository = createAuditRepository(dependencies.db);
   const audit = createAuditWriter({ repository: auditRepository, clock });
+  // One resolver instance is shared by cart reads/mutations and the custom-blend routes so every
+  // path observes the same live facts, clock, policy, and pricing authority.
+  const customBlendResolver = createCustomBlendResolver(
+    createCustomBlendRepository(dependencies.db),
+    clock,
+  );
   const registry = new JobHandlerRegistry();
   const jobs = new JobService({
     repository: createJobRepository(dependencies.db),
@@ -344,6 +356,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       clock,
       countryProfiles,
     },
+    customBlendResolver,
   );
   // Hoisted: checkout resolves saved destinations and re-validates slots through the very same
   // service instances the account and slot routes answer from, so no second view can exist.
@@ -540,11 +553,12 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       payments: paymentRepository,
       orders,
       mailbox,
-      gateway: simulatedPaymentGateway,
+      gateway: dependencies.paymentGateway ?? simulatedPaymentGateway,
       clock,
       products,
       audit,
       inventory,
+      customBlendResolver,
       countryProfiles,
       approvals,
       companies: companyAccounts,
@@ -594,7 +608,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
         return row?.variant_id ?? undefined;
       },
     }),
-    customBlends: createCustomBlendService(createCustomBlendRepository(dependencies.db)),
+    customBlends: createCustomBlendService(customBlendResolver),
     tradeAccount,
     deliverySlots,
     preferences,

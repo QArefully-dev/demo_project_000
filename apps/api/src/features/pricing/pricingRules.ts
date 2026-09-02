@@ -41,23 +41,34 @@ function tierMinimumWeightGrams(tier: PriceTier): number {
   return minimumWeightGrams;
 }
 
-function roundHalfUp(numerator: number, denominator: number): number {
+/**
+ * Rounds a non-negative integer ratio to the nearest integer, breaking exact
+ * halves upwards. Both inputs and the result stay within JavaScript's safe
+ * integer range.
+ */
+export function roundHalfUp(numerator: number, denominator: number): number {
   requireNonNegativeSafeInteger(numerator, 'rounding numerator');
   requirePositiveSafeInteger(denominator, 'rounding denominator');
-  const rounded = Math.floor((numerator + Math.floor(denominator / 2)) / denominator);
+
+  // Compare the remainder to ceil(denominator / 2) instead of adding a
+  // half-denominator to the numerator. That keeps the intermediate arithmetic
+  // safe even when both inputs are close to MAX_SAFE_INTEGER.
+  const quotient = Math.floor(numerator / denominator);
+  const remainder = numerator % denominator;
+  const roundsUp = remainder >= Math.ceil(denominator / 2);
+  const rounded = quotient + (roundsUp ? 1 : 0);
   if (!Number.isSafeInteger(rounded)) {
     throw new RangeError('Calculated price is outside the safe integer range.');
   }
   return rounded;
 }
 
-/** Resolves the highest qualifying discount from the uniform tonne-based ladder. */
-export function resolveTierDiscountPct(
-  quantity: number,
-  weightGrams: number,
+/** Resolves the highest qualifying discount for a total line weight in grams. */
+export function resolveTierDiscountPctForWeight(
+  totalWeightGrams: number,
   tiers: readonly PriceTier[] = TIER_LADDER,
 ): number {
-  const totalWeightGrams = totalWeightGramsFor(quantity, weightGrams);
+  requireNonNegativeSafeInteger(totalWeightGrams, 'totalWeightGrams');
 
   let highestQualifyingMinTonnes = 0;
   let discountPct = 0;
@@ -69,6 +80,16 @@ export function resolveTierDiscountPct(
     }
   }
   return discountPct;
+}
+
+/** Resolves the highest qualifying discount from the uniform tonne-based ladder. */
+export function resolveTierDiscountPct(
+  quantity: number,
+  weightGrams: number,
+  tiers: readonly PriceTier[] = TIER_LADDER,
+): number {
+  const totalWeightGrams = totalWeightGramsFor(quantity, weightGrams);
+  return resolveTierDiscountPctForWeight(totalWeightGrams, tiers);
 }
 
 /** Progress from the current line weight to the next unqualified price tier. */

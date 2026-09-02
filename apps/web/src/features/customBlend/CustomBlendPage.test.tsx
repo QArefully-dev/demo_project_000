@@ -3,66 +3,66 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useSearchParams } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Cart, CartLine } from '@shop/contracts/cart';
-import type { CustomBlendOption, CustomBlendOptionsResponse } from '@shop/contracts/custom-blends';
-import { translateUnchecked } from '@shop/localisation';
-import { apiErrors } from '@shop/localisation/messages/apiErrors';
-import { customBlendMessages } from '@shop/localisation/messages/customBlend';
+import type {
+  CustomBlendBaseListResponse,
+  CustomBlendEvaluationBody,
+  CustomBlendEvaluationResponse,
+  CustomBlendOption,
+  CustomBlendOptionsResponse,
+  ResolvedCustomBlendSnapshot,
+} from '@shop/contracts/custom-blends';
+
 import { ApiError } from '@/api/client';
-import { getCustomBlendOptions } from '@/api/customBlends';
-import { getProduct } from '@/api/products';
-import { LocaleProvider } from '@/i18n/LocaleContext';
+import {
+  evaluateCustomBlend,
+  getCustomBlendBases,
+  getCustomBlendOptions,
+} from '@/api/customBlends';
 import { useCartContext } from '@/hooks/CartContext';
-import { useProducts } from '@/hooks/useProducts';
-import { useCategories } from '@/hooks/useCategories';
 import { CustomBlendPage } from './CustomBlendPage';
-import { CUSTOM_BLEND_MADE_TO_ORDER_NOTE } from './CustomBlendPackaging';
 
 vi.mock('@/api/customBlends', () => ({
+  evaluateCustomBlend: vi.fn(),
+  getCustomBlendBases: vi.fn(),
   getCustomBlendOptions: vi.fn(),
-  createCustomBlend: vi.fn(),
-  replaceCustomBlend: vi.fn(),
 }));
 vi.mock('@/hooks/CartContext', () => ({ useCartContext: vi.fn() }));
-vi.mock('@/api/products', () => ({ getProduct: vi.fn() }));
-vi.mock('@/hooks/useProducts', () => ({ useProducts: vi.fn() }));
-vi.mock('@/hooks/useCategories', () => ({ useCategories: vi.fn() }));
 
-const countryState = vi.hoisted(() => ({ activeCountry: 'US' }));
+const countryState = vi.hoisted(() => ({ activeCountry: 'US' as const }));
 vi.mock('@/hooks/CountryContext', () => ({
   useCountry: () => ({ activeCountry: countryState.activeCountry }),
+  useOptionalCountry: () => ({ activeCountry: countryState.activeCountry }),
 }));
 
 const EDIT_CONFIG_KEY = 'a'.repeat(64);
 const CREATED_CONFIG_KEY = 'c'.repeat(64);
 const REPLACED_CONFIG_KEY = 'b'.repeat(64);
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise;
-  });
-  return { promise, resolve };
-}
-
 function option(
   variantId: number,
   productName: string,
-  overrides: { stockCount?: number } = {},
+  overrides: {
+    category?: string;
+    mixingGroup?: CustomBlendOption['mixingGroup'];
+    stockCount?: number;
+  } = {},
 ): CustomBlendOption {
+  const mixingGroup = overrides.mixingGroup ?? 'mineral';
+  const classification = mixingGroup === 'food-grade' ? 'food' : 'non-food';
   return {
     productId: String(variantId),
     productName,
     productDescription: `${productName} description`,
-    mixingGroup: 'mineral',
-    category: 'Cement',
-    consumptionClassification: 'non-food',
+    mixingGroup,
+    category: overrides.category ?? 'Trade & Creative Materials',
+    consumptionClassification: classification,
     categoryFacts: {
       texture: 'Fine',
       colour: 'Grey',
       source: 'Test source',
       intendedUse: 'Testing',
       storage: 'Dry cool',
-      consumptionClassification: 'non-food',
+      consumptionClassification: classification,
     },
     variant: {
       variantId,
@@ -84,11 +84,116 @@ function option(
   };
 }
 
-function optionsFor(baseName: string, ingredientOptions: CustomBlendOption[]) {
+function optionsFor(baseName: string, ingredients: readonly CustomBlendOption[]) {
   return {
     base: option(501, baseName),
-    ingredients: ingredientOptions,
+    ingredients: [...ingredients],
   } satisfies CustomBlendOptionsResponse;
+}
+
+function basesResponse(items: readonly CustomBlendOption[]): CustomBlendBaseListResponse {
+  return { items: [...items], total: items.length, page: 1, pageSize: 12 };
+}
+
+function component(
+  role: 'base' | 'ingredient',
+  item: CustomBlendOption,
+  percentage: number,
+  quantity: number,
+  sourceUnitPriceCents = 1_200,
+) {
+  const weightGrams = (quantity * 25_000 * percentage) / 100;
+  const unitContributionCents = Math.round((sourceUnitPriceCents * percentage) / 100);
+  return {
+    role,
+    variantId: item.variant.variantId,
+    productId: item.productId,
+    productName: item.productName,
+    productDescription: item.productDescription,
+    sku: item.variant.sku,
+    variantLabel: item.variant.label,
+    mixingGroup: item.mixingGroup,
+    consumptionClassification: item.consumptionClassification,
+    percentage,
+    weightGrams,
+    sourceUnitPriceCents,
+    tierDiscountPct: 0,
+    unitContributionCents,
+    subtotalCents: unitContributionCents * quantity,
+  };
+}
+
+function evaluationFor(
+  body: CustomBlendEvaluationBody,
+  overrides: {
+    quantity?: number;
+    resultClassification?: 'food' | 'non-food';
+    configKey?: string;
+    sourceUnitPriceCents?: number;
+  } = {},
+): CustomBlendEvaluationResponse {
+  const quantity = overrides.quantity ?? body.quantity ?? 4;
+  const base = option(
+    body.baseVariantId,
+    body.baseVariantId === 501 ? 'Portland Cement' : `Base ${body.baseVariantId}`,
+  );
+  const ingredientItems = body.ingredients.map((ingredient) =>
+    option(
+      ingredient.variantId,
+      ingredient.variantId === 601 ? 'Chalk Filler' : `Ingredient ${ingredient.variantId}`,
+    ),
+  );
+  const basePercentage =
+    100 - body.ingredients.reduce((sum, ingredient) => sum + ingredient.percentage, 0);
+  const sourceUnitPriceCents = overrides.sourceUnitPriceCents ?? 1_200;
+  const components = [
+    component('base', base, basePercentage, quantity, sourceUnitPriceCents),
+    ...ingredientItems.map((item, index) =>
+      component(
+        'ingredient',
+        item,
+        body.ingredients[index]!.percentage,
+        quantity,
+        sourceUnitPriceCents,
+      ),
+    ),
+  ];
+  const ingredients = ingredientItems.map((item, index) => ({
+    variantId: item.variant.variantId,
+    productId: item.productId,
+    productName: item.productName,
+    productDescription: item.productDescription,
+    mixingGroup: item.mixingGroup,
+    percentage: body.ingredients[index]!.percentage,
+  }));
+  const materialUnitPriceCents = components.reduce(
+    (sum, item) => sum + item.unitContributionCents,
+    0,
+  );
+  const materialSubtotalCents = components.reduce((sum, item) => sum + item.subtotalCents, 0);
+  const customBlend: ResolvedCustomBlendSnapshot = {
+    configKey: overrides.configKey ?? 'e'.repeat(64),
+    basePercentage,
+    mixingGroup: base.mixingGroup,
+    basePresentation: {
+      category: base.category,
+      consumptionClassification: base.consumptionClassification,
+      categoryFacts: base.categoryFacts,
+    },
+    ingredients,
+    blendingFeeCents: 2_500,
+    madeToOrder: true,
+    returnable: false,
+    ruleVersion: 1,
+    resultClassification: overrides.resultClassification ?? 'non-food',
+    quantity,
+    components,
+    materialUnitPriceCents,
+    materialSubtotalCents,
+    discountableTotalCents: materialSubtotalCents,
+    lineTotalCents: materialSubtotalCents + 2_500,
+  };
+  return { quantity, customBlend };
 }
 
 function configuredLine(): CartLine {
@@ -101,7 +206,7 @@ function configuredLine(): CartLine {
       description: 'Base',
       priceCents: 1_200,
       imageSetId: 'cement',
-      category: 'Cement',
+      category: 'Trade & Creative Materials',
       stock: 40,
       availability: 'in_stock',
       backorderable: false,
@@ -134,7 +239,7 @@ function configuredLine(): CartLine {
       ingredients: [
         {
           variantId: 601,
-          productId: '11',
+          productId: '601',
           productName: 'Chalk Filler',
           productDescription: 'Filler',
           mixingGroup: 'mineral',
@@ -148,36 +253,16 @@ function configuredLine(): CartLine {
   };
 }
 
-function returnedCart(line: CartLine): Cart {
+function returnedCart(configKey: string): Cart {
+  const line = configuredLine();
   return {
     id: 'cart',
-    items: [line],
+    items: [{ ...line, configKey, customBlend: { ...line.customBlend!, configKey } }],
     subtotalCents: line.lineTotalCents,
     discountableSubtotalCents: line.discountableTotalCents,
     blendingFeeTotalCents: line.blendingFeeCents,
     totalItems: line.quantity,
   };
-}
-
-function lineWithAuthoritativeKey(
-  configKey: string,
-  basePercentage: number,
-  ingredientPercentage: number,
-) {
-  const line = configuredLine();
-  return {
-    ...line,
-    configKey,
-    customBlend: {
-      ...line.customBlend!,
-      configKey,
-      basePercentage,
-      ingredients: line.customBlend!.ingredients.map((ingredient) => ({
-        ...ingredient,
-        percentage: ingredientPercentage,
-      })),
-    },
-  } satisfies CartLine;
 }
 
 const addCustomBlend = vi.fn();
@@ -194,68 +279,6 @@ function mockCart(cart: Cart | null) {
   } as unknown as ReturnType<typeof useCartContext>);
 }
 
-/** A catalog row the base picker can offer: the sack variant is the only eligible base. */
-function pickerProduct(variantId: number, name: string) {
-  return {
-    ...configuredLine().product,
-    id: String(variantId),
-    name,
-    variants: [{ variantId, weightGrams: 25_000, active: true }],
-  };
-}
-
-/**
- * The product-detail read, which is the only response that carries variants. Mirrors the real
- * split: catalog list rows have no `variants`, the detail does.
- */
-function detailProduct(
-  listRow: { id: string; name: string },
-  [firstVariant, ...restVariants]: [
-    CustomBlendOption['variant'],
-    ...CustomBlendOption['variant'][],
-  ],
-) {
-  const variants = [firstVariant, ...restVariants];
-  return {
-    ...configuredLine().product,
-    ...listRow,
-    variants,
-    defaultVariantId: firstVariant.variantId,
-    consumptionClassification: 'non-food' as const,
-    mixingGroup: 'mineral' as const,
-    priceRange: { min: 1_200, max: 1_200 },
-    baseAvailability: 'in_stock' as const,
-    categoryFacts: {
-      texture: 'Fine',
-      colour: 'Grey',
-      source: 'Test source',
-      intendedUse: 'Testing',
-      storage: 'Dry cool',
-      consumptionClassification: 'non-food' as const,
-    },
-  };
-}
-
-function mockProducts(products: ReturnType<typeof pickerProduct>[]) {
-  vi.mocked(useProducts).mockReturnValue({
-    products,
-    isLoading: false,
-    error: null,
-    total: products.length,
-    currentPage: 1,
-    currentPageSize: 12,
-    refetch: vi.fn(),
-  } as unknown as ReturnType<typeof useProducts>);
-  // The catalog list response carries no variants, so the picker resolves the eligible sack from
-  // the product detail read. The stub mirrors that: same rows, variants only on the detail.
-  vi.mocked(getProduct).mockImplementation((id) => {
-    const match = products.find((product) => product.id === id);
-    return match
-      ? Promise.resolve(match as unknown as Awaited<ReturnType<typeof getProduct>>)
-      : Promise.reject(new Error(`No product ${id}`));
-  });
-}
-
 function renderPage(search: string, extra?: React.ReactNode) {
   return render(
     <MemoryRouter
@@ -268,106 +291,90 @@ function renderPage(search: string, extra?: React.ReactNode) {
   );
 }
 
-function countryPage(search: string, extra?: React.ReactNode) {
+function TargetSwitcher() {
+  const [, setSearchParams] = useSearchParams();
   return (
-    <MemoryRouter
-      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-      initialEntries={[`/custom-blend${search}`]}
-    >
-      <LocaleProvider>
-        {extra}
-        <CustomBlendPage />
-      </LocaleProvider>
-    </MemoryRouter>
+    <button type="button" onClick={() => setSearchParams({ baseVariantId: '502' })}>
+      switch base
+    </button>
   );
-}
-
-function renderCountryPage(search: string, extra?: React.ReactNode) {
-  return render(countryPage(search, extra));
 }
 
 beforeEach(() => {
   vi.resetAllMocks();
   countryState.activeCountry = 'US';
-  const cart = {
+  addCustomBlend.mockResolvedValue(returnedCart(CREATED_CONFIG_KEY));
+  replaceCustomBlend.mockResolvedValue(returnedCart(REPLACED_CONFIG_KEY));
+  mockCart({
     id: 'cart',
     items: [],
     subtotalCents: 0,
     discountableSubtotalCents: 0,
     blendingFeeTotalCents: 0,
     totalItems: 0,
-  } satisfies Cart;
-  addCustomBlend.mockResolvedValue(cart);
-  replaceCustomBlend.mockResolvedValue(cart);
-  mockCart(cart);
-  vi.mocked(useCategories).mockReturnValue({ categories: [], isLoading: false, error: null });
-  mockProducts([]);
+  });
+  vi.mocked(getCustomBlendBases).mockResolvedValue(
+    basesResponse([option(501, 'Portland Cement'), option(502, 'Fresh Base')]),
+  );
+  vi.mocked(getCustomBlendOptions).mockResolvedValue(
+    optionsFor('Portland Cement', [option(601, 'Chalk Filler'), option(602, 'Fine Sand')]),
+  );
+  vi.mocked(evaluateCustomBlend).mockImplementation((body) => Promise.resolve(evaluationFor(body)));
 });
 
 describe('CustomBlendPage', () => {
-  it('labels every control and reports the derived base remainder as ingredients change', async () => {
+  it('keeps the submit gate closed until the exact current draft has a server verdict', async () => {
     const user = userEvent.setup();
-    vi.mocked(getCustomBlendOptions).mockResolvedValue(
-      optionsFor('Portland Cement', [option(601, 'Chalk Filler'), option(602, 'Fine Sand')]),
-    );
     renderPage('?baseVariantId=501');
 
-    const chalk = await screen.findByLabelText('Chalk Filler');
-    expect(
-      screen.getByText(/Base 100% · ingredients 0% · 0 of 4 ingredients selected/),
-    ).toHaveTextContent('Base 100% · ingredients 0% · 0 of 4 ingredients selected');
+    const ingredient = await screen.findByLabelText('Chalk Filler');
+    await user.click(ingredient);
+    const submit = screen.getByRole('button', { name: 'Add blend to cart' });
+    expect(submit).toBeDisabled();
+    expect(await screen.findByText('Checking your blend and current price…')).toBeInTheDocument();
 
-    // Operable from the keyboard alone: focus the checkbox and toggle with Space.
-    chalk.focus();
-    await user.keyboard(' ');
-    expect(
-      screen.getByText(/Base 50% · ingredients 50% · 1 of 4 ingredients selected/),
-    ).toHaveTextContent('Base 50% · ingredients 50% · 1 of 4 ingredients selected');
-
-    const percentage = screen.getByLabelText('Chalk Filler percentage');
-    fireEvent.change(percentage, { target: { value: '30' } });
-    expect(
-      screen.getByText(/Base 70% · ingredients 30% · 1 of 4 ingredients selected/),
-    ).toHaveTextContent('Base 70% · ingredients 30% · 1 of 4 ingredients selected');
-
-    await user.click(screen.getByLabelText('Fine Sand'));
-    fireEvent.change(screen.getByLabelText('Fine Sand percentage'), { target: { value: '25' } });
-    expect(
-      screen.getByText(/Base 50% · ingredients 50% · 2 of 4 ingredients selected/),
-    ).toHaveTextContent('Base 50% · ingredients 50% · 2 of 4 ingredients selected');
-    expect(screen.getByRole('button', { name: 'Add blend to cart' })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('Chalk Filler percentage'), {
+      target: { value: '20' },
+    });
+    await waitFor(() => expect(submit).toBeEnabled());
+    expect(evaluateCustomBlend).toHaveBeenLastCalledWith(
+      { baseVariantId: 501, ingredients: [{ variantId: 601, percentage: 20 }] },
+      expect.any(AbortSignal),
+      'US',
+    );
+    expect(screen.getByText('Non-food blend')).toBeInTheDocument();
+    expect(screen.getByText(/Material total:/)).toBeInTheDocument();
+    expect(screen.getByText(/Blending fee:/)).toBeInTheDocument();
+    expect(screen.getByText(/Blend total:/)).toBeInTheDocument();
   });
 
-  it('submits a valid blend to the cart', async () => {
+  it('sends the evaluated quantity when creating and uses the returned authoritative key', async () => {
     const user = userEvent.setup();
-    vi.mocked(getCustomBlendOptions).mockResolvedValue(
-      optionsFor('Portland Cement', [option(601, 'Chalk Filler')]),
+    vi.mocked(evaluateCustomBlend).mockImplementation((body) =>
+      Promise.resolve(evaluationFor(body, { quantity: 9, configKey: CREATED_CONFIG_KEY })),
     );
-    addCustomBlend.mockResolvedValue(
-      returnedCart(lineWithAuthoritativeKey(CREATED_CONFIG_KEY, 80, 20)),
-    );
+    addCustomBlend.mockResolvedValue(returnedCart(CREATED_CONFIG_KEY));
     renderPage('?baseVariantId=501');
 
     await user.click(await screen.findByLabelText('Chalk Filler'));
     fireEvent.change(screen.getByLabelText('Chalk Filler percentage'), { target: { value: '20' } });
-    await user.click(screen.getByRole('button', { name: 'Add blend to cart' }));
+    const submit = screen.getByRole('button', { name: 'Add blend to cart' });
+    await waitFor(() => expect(submit).toBeEnabled());
+    await user.click(submit);
 
     expect(addCustomBlend).toHaveBeenCalledWith({
       baseVariantId: 501,
       ingredients: [{ variantId: 601, percentage: 20 }],
+      quantity: 9,
     });
     expect(await screen.findByText('Custom blend added to your cart')).toBeInTheDocument();
     expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute(
       'data-batch-mark',
       'CB-CCCCCC',
     );
-    // The success screen must render the shared note verbatim: dropping the cancellation clause
-    // reads as "this order is now final" at the highest-salience moment of the flow.
-    expect(screen.getByText(CUSTOM_BLEND_MADE_TO_ORDER_NOTE)).toBeInTheDocument();
-    expect(screen.getByText(/cancel the order until it is dispatched/)).toBeInTheDocument();
   });
 
-  it('keeps a sold-out ingredient selectable with an advisory badge', async () => {
+  it('keeps a sold-out server ingredient selectable', async () => {
     const user = userEvent.setup();
     vi.mocked(getCustomBlendOptions).mockResolvedValue(
       optionsFor('Portland Cement', [option(601, 'Chalk Filler', { stockCount: 0 })]),
@@ -381,366 +388,139 @@ describe('CustomBlendPage', () => {
     expect(ingredient).toBeChecked();
   });
 
-  /**
-   * Regression: `/api/products` returns no `variants`, so a picker that filtered rows on a sack
-   * variant from the list response offered nothing at all and the feature was unreachable. The
-   * eligible sack must be resolved from the product detail read at selection time instead.
-   */
-  it('offers bases from a list response that carries no variants', async () => {
+  it('excludes a server-returned base variant without filtering other groups', async () => {
     const user = userEvent.setup();
-    const listRow = { ...configuredLine().product, id: '602', name: 'Fine Sand' };
-    vi.mocked(useProducts).mockReturnValue({
-      products: [listRow],
-      isLoading: false,
-      error: null,
-      total: 1,
-      currentPage: 1,
-      currentPageSize: 12,
-      refetch: vi.fn(),
-    });
-    vi.mocked(getProduct).mockResolvedValue(
-      detailProduct(listRow, [
-        option(602, 'Fine Sand').variant,
-        { ...option(603, 'Fine Sand').variant, weightGrams: 1_000_000 },
-      ]),
-    );
     vi.mocked(getCustomBlendOptions).mockResolvedValue(
-      optionsFor('Fine Sand', [option(701, 'Fresh Filler')]),
-    );
-
-    renderPage('');
-
-    await user.click(await screen.findByRole('button', { name: 'Use Fine Sand as base' }));
-
-    // The 25 kg sack is chosen over the pallet, and only after the detail read resolves it.
-    await waitFor(() => {
-      expect(getProduct).toHaveBeenCalledWith('602');
-    });
-    expect(await screen.findByRole('heading', { name: 'Base material' })).toBeInTheDocument();
-    expect(getCustomBlendOptions).toHaveBeenCalledWith(602, expect.anything());
-  });
-
-  it('reports a material that has no 25 kg sack instead of selecting a wrong lot', async () => {
-    const user = userEvent.setup();
-    const listRow = { ...configuredLine().product, id: '604', name: 'Pallet Only Material' };
-    vi.mocked(useProducts).mockReturnValue({
-      products: [listRow],
-      isLoading: false,
-      error: null,
-      total: 1,
-      currentPage: 1,
-      currentPageSize: 12,
-      refetch: vi.fn(),
-    });
-    vi.mocked(getProduct).mockResolvedValue(
-      detailProduct(listRow, [
-        { ...option(605, 'Pallet Only Material').variant, weightGrams: 1_000_000 },
+      optionsFor('Portland Cement', [
+        option(501, 'Base Returned As Ingredient'),
+        option(701, 'Food Binder', { mixingGroup: 'food-grade' }),
       ]),
     );
+    renderPage('?baseVariantId=501');
 
-    renderPage('');
-
-    await user.click(
-      await screen.findByRole('button', { name: 'Use Pallet Only Material as base' }),
-    );
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'That material is not stocked in a 25 kg sack',
-    );
-    expect(getCustomBlendOptions).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('Base Returned As Ingredient')).not.toBeInTheDocument();
+    const crossGroup = await screen.findByLabelText('Food Binder');
+    expect(crossGroup).toBeEnabled();
+    await user.click(crossGroup);
+    await waitFor(() => expect(evaluateCustomBlend).toHaveBeenCalled());
   });
 
-  it('falls back to the base picker when the base variant query value is unusable', async () => {
-    renderPage('?baseVariantId=not-a-number');
-
-    expect(
-      await screen.findByText(
-        'That base material is not available for Custom Blend. Choose another base below.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText('Search materials')).toBeInTheDocument();
-    expect(screen.getByLabelText('Category')).toBeInTheDocument();
-    expect(getCustomBlendOptions).not.toHaveBeenCalled();
-  });
-
-  it('recovers to the base picker when the server rejects an ineligible base lot', async () => {
-    vi.mocked(getCustomBlendOptions).mockRejectedValue(
-      new Error('Selected base lot is not eligible for Custom Blend.'),
-    );
-    renderPage('?baseVariantId=999');
-
-    expect(
-      await screen.findByText(
-        'That base material is not available for Custom Blend. Choose another base below.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText('Search materials')).toBeInTheDocument();
-  });
-
-  it('ignores an options response that arrives after the base lot changed', async () => {
+  it('renders a coded pigment-cap verdict and keeps submit disabled', async () => {
     const user = userEvent.setup();
-    const stale = deferred<CustomBlendOptionsResponse>();
-    vi.mocked(getCustomBlendOptions)
-      .mockReturnValueOnce(stale.promise)
-      .mockResolvedValueOnce(optionsFor('Fresh Base', [option(701, 'Fresh Ingredient')]));
-
-    function BaseSwitcher() {
-      const [, setSearchParams] = useSearchParams();
-      return (
-        <button type="button" onClick={() => setSearchParams({ baseVariantId: '502' })}>
-          switch base
-        </button>
-      );
-    }
-    renderPage('?baseVariantId=501', <BaseSwitcher />);
-
-    await waitFor(() => expect(getCustomBlendOptions).toHaveBeenCalledTimes(1));
-    await user.click(screen.getByRole('button', { name: 'switch base' }));
-    expect(await screen.findByLabelText('Fresh Ingredient')).toBeInTheDocument();
-
-    await act(async () => {
-      stale.resolve(optionsFor('Stale Base', [option(601, 'Stale Ingredient')]));
-      await stale.promise;
-    });
-
-    expect(screen.queryByLabelText('Stale Ingredient')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Fresh Ingredient')).toBeInTheDocument();
-  });
-
-  it('reloads already-loaded options when the active country changes', async () => {
-    vi.mocked(getCustomBlendOptions)
-      .mockResolvedValueOnce(optionsFor('US Base', [option(601, 'US Ingredient')]))
-      .mockResolvedValueOnce(optionsFor('DE Base', [option(701, 'DE Ingredient')]));
-
-    const view = renderCountryPage('?baseVariantId=501');
-    expect(await screen.findByLabelText('US Ingredient')).toBeInTheDocument();
-
-    const oldSignal = vi.mocked(getCustomBlendOptions).mock.calls[0]?.[1];
-    countryState.activeCountry = 'DE';
-    view.rerender(countryPage('?baseVariantId=501'));
-
-    expect(await screen.findByLabelText('DE Ingredient')).toBeInTheDocument();
-    expect(screen.queryByLabelText('US Ingredient')).not.toBeInTheDocument();
-    expect(oldSignal?.aborted).toBe(true);
-    expect(getCustomBlendOptions).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(getCustomBlendOptions).mock.calls.map(([baseId]) => baseId)).toEqual([
-      501, 501,
-    ]);
-  });
-
-  it('clears and aborts in-flight options when the active country changes', async () => {
-    const oldOptions = deferred<CustomBlendOptionsResponse>();
-    const currentOptions = deferred<CustomBlendOptionsResponse>();
-    vi.mocked(getCustomBlendOptions)
-      .mockReturnValueOnce(oldOptions.promise)
-      .mockReturnValueOnce(currentOptions.promise);
-
-    const view = renderCountryPage('?baseVariantId=501');
-    await waitFor(() => expect(getCustomBlendOptions).toHaveBeenCalledTimes(1));
-    const oldSignal = vi.mocked(getCustomBlendOptions).mock.calls[0]?.[1];
-
-    countryState.activeCountry = 'DE';
-    view.rerender(countryPage('?baseVariantId=501'));
-    await waitFor(() => expect(getCustomBlendOptions).toHaveBeenCalledTimes(2));
-    expect(oldSignal?.aborted).toBe(true);
-    expect(
-      screen.getByLabelText(
-        translateUnchecked(customBlendMessages, 'DE', 'customBlend.loadingOptions'),
-      ),
-    ).toBeInTheDocument();
-
-    await act(async () => {
-      currentOptions.resolve(optionsFor('DE Base', [option(701, 'DE Ingredient')]));
-      await currentOptions.promise;
-    });
-    expect(await screen.findByLabelText('DE Ingredient')).toBeInTheDocument();
-
-    await act(async () => {
-      oldOptions.resolve(optionsFor('US Base', [option(601, 'US Ingredient')]));
-      await oldOptions.promise;
-    });
-    expect(screen.queryByLabelText('US Ingredient')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('DE Ingredient')).toBeInTheDocument();
-  });
-
-  it('renders coded options failures with active-country API copy and never server prose', async () => {
-    const serverProse = 'internal custom-blend detail must stay private';
-    countryState.activeCountry = 'DE';
-    vi.mocked(getCustomBlendOptions).mockRejectedValue(
-      new ApiError(serverProse, 400, { error: serverProse, code: 'CUSTOM_BLEND_INVALID' }),
+    vi.mocked(evaluateCustomBlend).mockRejectedValue(
+      new ApiError('private backend detail', 400, {
+        error: 'private backend detail',
+        code: 'CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED',
+        meta: { maxPercentage: 10, actualPercentage: 20 },
+      }),
     );
+    renderPage('?baseVariantId=501');
 
-    renderCountryPage('?baseVariantId=501');
-
+    await user.click(await screen.findByLabelText('Chalk Filler'));
+    fireEvent.change(screen.getByLabelText('Chalk Filler percentage'), { target: { value: '20' } });
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent(translateUnchecked(apiErrors, 'DE', 'CUSTOM_BLEND_INVALID'));
-    expect(alert).not.toHaveTextContent(serverProse);
+    expect(alert).toHaveTextContent('Pigment content cannot exceed 10% (selected: 20%).');
+    expect(alert).not.toHaveTextContent('private backend detail');
+    expect(screen.getByRole('button', { name: 'Add blend to cart' })).toBeDisabled();
   });
 
-  it('localizes unknown or network options failures after a country switch', async () => {
-    const networkProse = 'Failed to fetch';
-    vi.mocked(getCustomBlendOptions)
-      .mockRejectedValueOnce(new Error(networkProse))
-      .mockRejectedValueOnce(new Error(networkProse));
-
-    const view = renderCountryPage('?baseVariantId=501');
-    const usAlert = await screen.findByRole('alert');
-    expect(usAlert).toHaveTextContent(
-      translateUnchecked(customBlendMessages, 'US', 'customBlend.invalidBase'),
-    );
-    expect(usAlert).not.toHaveTextContent(networkProse);
-
-    countryState.activeCountry = 'DE';
-    view.rerender(countryPage('?baseVariantId=501'));
-    await waitFor(() => {
-      const deAlert = screen.getByRole('alert');
-      expect(deAlert).toHaveTextContent(
-        translateUnchecked(customBlendMessages, 'DE', 'customBlend.invalidBase'),
-      );
-      expect(deAlert).not.toHaveTextContent(networkProse);
-    });
-  });
-
-  it('locks the base lot and quantity when editing an existing configured line', async () => {
+  it('drops a stale evaluation when the percentage changes before the fresh verdict', async () => {
     const user = userEvent.setup();
+    let resolveStale!: (response: CustomBlendEvaluationResponse) => void;
+    let resolveFresh!: (response: CustomBlendEvaluationResponse) => void;
+    const stale = new Promise<CustomBlendEvaluationResponse>((resolve) => {
+      resolveStale = resolve;
+    });
+    const fresh = new Promise<CustomBlendEvaluationResponse>((resolve) => {
+      resolveFresh = resolve;
+    });
+    vi.mocked(evaluateCustomBlend).mockReturnValueOnce(stale).mockReturnValueOnce(fresh);
+    renderPage('?baseVariantId=501');
+
+    await user.click(await screen.findByLabelText('Chalk Filler'));
+    await waitFor(() => expect(evaluateCustomBlend).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByLabelText('Chalk Filler percentage'), { target: { value: '20' } });
+    expect(screen.getByRole('button', { name: 'Add blend to cart' })).toBeDisabled();
+    resolveFresh(
+      evaluationFor({ baseVariantId: 501, ingredients: [{ variantId: 601, percentage: 20 }] }),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Add blend to cart' })).toBeEnabled(),
+    );
+    await act(async () => {
+      resolveStale(
+        evaluationFor({ baseVariantId: 501, ingredients: [{ variantId: 601, percentage: 50 }] }),
+      );
+      await stale;
+    });
+    expect(screen.getByRole('button', { name: 'Add blend to cart' })).toBeEnabled();
+  });
+
+  it('shows non-food classification from the server result without inferring from the base', async () => {
+    const user = userEvent.setup();
+    vi.mocked(evaluateCustomBlend).mockImplementation((body) =>
+      Promise.resolve(evaluationFor(body, { resultClassification: 'non-food' })),
+    );
+    renderPage('?baseVariantId=501');
+
+    await user.click(await screen.findByLabelText('Chalk Filler'));
+    fireEvent.change(screen.getByLabelText('Chalk Filler percentage'), { target: { value: '20' } });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Add blend to cart' })).toBeEnabled(),
+    );
+    expect(screen.getByText('Non-food blend')).toBeInTheDocument();
+    expect(screen.getByText('Not for consumption')).toBeInTheDocument();
+  });
+
+  it('preserves edit quantity while replacing with a newly resolved key', async () => {
+    const user = userEvent.setup();
+    const line = configuredLine();
     mockCart({
       id: 'cart',
-      items: [configuredLine()],
-      subtotalCents: 10_900,
-      discountableSubtotalCents: 8_400,
-      blendingFeeTotalCents: 2_500,
-      totalItems: 7,
+      items: [line],
+      subtotalCents: line.lineTotalCents,
+      discountableSubtotalCents: line.discountableTotalCents,
+      blendingFeeTotalCents: line.blendingFeeCents,
+      totalItems: line.quantity,
     });
     vi.mocked(getCustomBlendOptions).mockResolvedValue(
       optionsFor('Portland Cement', [option(601, 'Chalk Filler'), option(602, 'Fine Sand')]),
     );
-    replaceCustomBlend.mockResolvedValue(
-      returnedCart(lineWithAuthoritativeKey(REPLACED_CONFIG_KEY, 70, 30)),
+    vi.mocked(evaluateCustomBlend).mockImplementation((body) =>
+      Promise.resolve(evaluationFor(body, { quantity: 7, configKey: REPLACED_CONFIG_KEY })),
     );
+    replaceCustomBlend.mockResolvedValue(returnedCart(REPLACED_CONFIG_KEY));
     renderPage(`?baseVariantId=501&editConfigKey=${EDIT_CONFIG_KEY}`);
 
     expect(await screen.findByLabelText('Chalk Filler')).toBeChecked();
-    expect(screen.getByLabelText('Chalk Filler percentage')).toHaveValue(30);
-    expect(screen.getByText(/Base 70% · ingredients 30%/)).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'Quantity: 7 sacks. Base material and quantity stay fixed while editing a blend.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Change base material' })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Update blend' }));
+    expect(screen.getByText(/Quantity: 7 sacks/)).toBeInTheDocument();
+    const submit = screen.getByRole('button', { name: 'Update blend' });
+    await waitFor(() => expect(submit).toBeEnabled());
+    await user.click(submit);
     expect(replaceCustomBlend).toHaveBeenCalledWith({
       baseVariantId: 501,
       configKey: EDIT_CONFIG_KEY,
       ingredients: [{ variantId: 601, percentage: 30 }],
     });
     expect(await screen.findByText('Custom blend updated')).toBeInTheDocument();
-    expect(screen.getByText(CUSTOM_BLEND_MADE_TO_ORDER_NOTE)).toBeInTheDocument();
     expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute(
       'data-batch-mark',
       'CB-BBBBBB',
     );
-    expect(screen.getByTestId('custom-blend-livery')).not.toHaveAttribute(
-      'data-batch-mark',
-      'CB-AAAAAA',
-    );
   });
 
-  it('creates a new blend after recovering from a failed edit onto a different base lot', async () => {
+  it('aborts options and immediately invalidates the old target when the base changes', async () => {
     const user = userEvent.setup();
-    mockCart({
-      id: 'cart',
-      items: [configuredLine()],
-      subtotalCents: 10_900,
-      discountableSubtotalCents: 8_400,
-      blendingFeeTotalCents: 2_500,
-      totalItems: 7,
-    });
-    // The edit draft hydrates from the cart, then the options call for its base lot fails, so
-    // the only offered control is the picker recovery.
+    const oldOptions = new Promise<CustomBlendOptionsResponse>(() => {});
     vi.mocked(getCustomBlendOptions)
-      .mockRejectedValueOnce(new Error('Selected base lot is not eligible for Custom Blend.'))
-      .mockResolvedValue(optionsFor('Fine Sand', [option(701, 'Fresh Filler')]));
-    mockProducts([pickerProduct(602, 'Fine Sand')]);
-    renderPage(`?baseVariantId=501&editConfigKey=${EDIT_CONFIG_KEY}`);
+      .mockReturnValueOnce(oldOptions)
+      .mockResolvedValueOnce(optionsFor('Fresh Base', [option(701, 'Fresh Ingredient')]));
+    renderPage('?baseVariantId=501', <TargetSwitcher />);
 
-    await user.click(await screen.findByRole('button', { name: 'Choose another base' }));
-    await user.click(await screen.findByRole('button', { name: 'Use Fine Sand as base' }));
-
-    expect(
-      await screen.findByRole('heading', { name: 'Build a custom blend' }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/Base material and quantity stay fixed/)).not.toBeInTheDocument();
-
-    await user.click(await screen.findByLabelText('Fresh Filler'));
-    fireEvent.change(screen.getByLabelText('Fresh Filler percentage'), { target: { value: '20' } });
-    await user.click(screen.getByRole('button', { name: 'Add blend to cart' }));
-
-    expect(replaceCustomBlend).not.toHaveBeenCalled();
-    expect(addCustomBlend).toHaveBeenCalledWith({
-      baseVariantId: 602,
-      ingredients: [{ variantId: 701, percentage: 20 }],
-    });
-  });
-
-  it('clears the edit draft when the target returns to a plain create URL', async () => {
-    const user = userEvent.setup();
-    mockCart({
-      id: 'cart',
-      items: [configuredLine()],
-      subtotalCents: 10_900,
-      discountableSubtotalCents: 8_400,
-      blendingFeeTotalCents: 2_500,
-      totalItems: 7,
-    });
-    vi.mocked(getCustomBlendOptions).mockResolvedValue(
-      optionsFor('Portland Cement', [option(601, 'Chalk Filler')]),
-    );
-
-    // Same route, changed query: react-router keeps this component mounted.
-    function LeaveEdit() {
-      const [, setSearchParams] = useSearchParams();
-      return (
-        <button type="button" onClick={() => setSearchParams({ baseVariantId: '501' })}>
-          leave edit
-        </button>
-      );
-    }
-    renderPage(`?baseVariantId=501&editConfigKey=${EDIT_CONFIG_KEY}`, <LeaveEdit />);
-
-    expect(await screen.findByLabelText('Chalk Filler')).toBeChecked();
-    await user.click(screen.getByRole('button', { name: 'leave edit' }));
-
-    expect(
-      await screen.findByRole('heading', { name: 'Build a custom blend' }),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText('Chalk Filler')).not.toBeChecked();
-    expect(screen.queryByText(/Base material and quantity stay fixed/)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Change base material' })).toBeInTheDocument();
-
-    await user.click(screen.getByLabelText('Chalk Filler'));
-    fireEvent.change(screen.getByLabelText('Chalk Filler percentage'), { target: { value: '20' } });
-    await user.click(screen.getByRole('button', { name: 'Add blend to cart' }));
-
-    expect(replaceCustomBlend).not.toHaveBeenCalled();
-    expect(addCustomBlend).toHaveBeenCalledWith({
-      baseVariantId: 501,
-      ingredients: [{ variantId: 601, percentage: 20 }],
-    });
-  });
-
-  it('offers a recoverable path when the edited line is no longer in the cart', async () => {
-    vi.mocked(getCustomBlendOptions).mockResolvedValue(
-      optionsFor('Portland Cement', [option(601, 'Chalk Filler')]),
-    );
-    renderPage(`?baseVariantId=501&editConfigKey=${'c'.repeat(64)}`);
-
-    expect(
-      await screen.findByText(
-        'That custom blend is no longer in your cart. Start a new blend to continue.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Start a new blend' })).toBeInTheDocument();
+    const oldSignal = vi.mocked(getCustomBlendOptions).mock.calls[0]?.[1];
+    await user.click(screen.getByRole('button', { name: 'switch base' }));
+    expect(await screen.findByLabelText('Fresh Ingredient')).toBeInTheDocument();
+    expect(oldSignal?.aborted).toBe(true);
+    expect(screen.queryByLabelText('Chalk Filler')).not.toBeInTheDocument();
   });
 });

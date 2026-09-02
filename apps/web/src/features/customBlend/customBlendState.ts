@@ -2,6 +2,15 @@ import type {
   CustomBlendIngredientInput,
   CustomBlendSnapshot,
 } from '@shop/contracts/custom-blends';
+import {
+  CUSTOM_BLEND_MAX_INGREDIENTS,
+  CUSTOM_BLEND_MAX_INGREDIENT_PERCENTAGE,
+  CUSTOM_BLEND_MAX_INGREDIENT_TOTAL_PERCENTAGE,
+  CUSTOM_BLEND_MAX_BASE_PERCENTAGE,
+  CUSTOM_BLEND_MIN_BASE_PERCENTAGE,
+  CUSTOM_BLEND_MIN_INGREDIENTS,
+  CUSTOM_BLEND_MIN_INGREDIENT_PERCENTAGE,
+} from '@shop/contracts/custom-blends';
 import type { CustomBlendMessageKey } from '@shop/localisation/messages/customBlend';
 
 export type CustomBlendMessageParam = string | number | bigint;
@@ -18,13 +27,16 @@ export type CustomBlendMessage = {
  * re-resolves every fact at mutation time.
  */
 
-export const MIN_INGREDIENTS = 1;
-export const MAX_INGREDIENTS = 4;
-export const MIN_INGREDIENT_PERCENTAGE = 5;
-export const MAX_INGREDIENT_PERCENTAGE = 50;
-export const MAX_INGREDIENT_TOTAL = 50;
-export const MIN_BASE_PERCENTAGE = 50;
-export const MAX_BASE_PERCENTAGE = 95;
+// Keep the historical short exports for existing configurator callers, but source every bound
+// from the shared transport contract. The web only applies these generic structural bounds; the
+// server remains authoritative for compatibility, pigments, classification, and pricing.
+export const MIN_INGREDIENTS = CUSTOM_BLEND_MIN_INGREDIENTS;
+export const MAX_INGREDIENTS = CUSTOM_BLEND_MAX_INGREDIENTS;
+export const MIN_INGREDIENT_PERCENTAGE = CUSTOM_BLEND_MIN_INGREDIENT_PERCENTAGE;
+export const MAX_INGREDIENT_PERCENTAGE = CUSTOM_BLEND_MAX_INGREDIENT_PERCENTAGE;
+export const MAX_INGREDIENT_TOTAL = CUSTOM_BLEND_MAX_INGREDIENT_TOTAL_PERCENTAGE;
+export const MIN_BASE_PERCENTAGE = CUSTOM_BLEND_MIN_BASE_PERCENTAGE;
+export const MAX_BASE_PERCENTAGE = CUSTOM_BLEND_MAX_BASE_PERCENTAGE;
 
 export type CustomBlendDraftIngredient = {
   variantId: number;

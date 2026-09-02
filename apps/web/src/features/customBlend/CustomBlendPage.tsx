@@ -19,6 +19,7 @@ import { BlendSummaryAside } from './BlendSummaryAside';
 import { IngredientPicker } from './IngredientPicker';
 import { RatioEditor } from './RatioEditor';
 import { SuccessRecap } from './SuccessRecap';
+import { useCustomBlendEvaluation } from './useCustomBlendEvaluation';
 import {
   MAX_INGREDIENTS,
   MAX_INGREDIENT_PERCENTAGE,
@@ -211,49 +212,89 @@ export function CustomBlendPage() {
 
   // Defence in depth: a draft that does not match the target currently named by the URL must
   // never reach the cart, because a replace keyed on a stale config key would overwrite a
-  // different line than the one on screen.
+  // different line than the one on screen. The stricter equality also prevents an edit draft from
+  // being evaluated before its cart line has hydrated.
   const isDraftOnCurrentTarget =
     state.baseVariantId === baseVariantId &&
-    (state.editConfigKey === null || state.editConfigKey === editConfigKey);
+    (editConfigKey === null ? state.editConfigKey === null : state.editConfigKey === editConfigKey);
+  const evaluation = useCustomBlendEvaluation({
+    baseVariantId: isDraftOnCurrentTarget ? state.baseVariantId : null,
+    ingredients: state.ingredients,
+    quantity: isDraftOnCurrentTarget ? state.lockedQuantity : null,
+    editConfigKey: isDraftOnCurrentTarget ? state.editConfigKey : null,
+  });
+  const evaluatedSnapshot = evaluation.result?.customBlend ?? null;
+  const hasExactEvaluation =
+    isDraftOnCurrentTarget &&
+    evaluation.isStructurallyValid &&
+    !evaluation.loading &&
+    evaluation.error === null &&
+    evaluation.result !== null &&
+    evaluatedSnapshot !== null &&
+    evaluation.quantity !== null &&
+    evaluatedSnapshot.quantity === evaluation.quantity &&
+    (state.lockedQuantity === null || evaluation.quantity === state.lockedQuantity) &&
+    evaluatedSnapshot.basePercentage === basePercentage &&
+    evaluatedSnapshot.components.some(
+      (component) => component.role === 'base' && component.variantId === state.baseVariantId,
+    ) &&
+    evaluatedSnapshot.ingredients.length === state.ingredients.length &&
+    state.ingredients.every((ingredient) =>
+      evaluatedSnapshot.ingredients.some(
+        (resolvedIngredient) =>
+          resolvedIngredient.variantId === ingredient.variantId &&
+          resolvedIngredient.percentage === ingredient.percentage,
+      ),
+    );
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!validation.isValid || state.baseVariantId === null || isSubmitting) return;
-    if (!isDraftOnCurrentTarget) return;
+    if (
+      !validation.isValid ||
+      !hasExactEvaluation ||
+      state.baseVariantId === null ||
+      evaluation.result === null ||
+      evaluation.quantity === null ||
+      isSubmitting
+    )
+      return;
     setIsSubmitting(true);
     try {
       const ingredients = toIngredientInputs(state);
       const completedCart =
         state.editConfigKey === null
-          ? await addCustomBlend({ baseVariantId: state.baseVariantId, ingredients })
+          ? await addCustomBlend({
+              baseVariantId: state.baseVariantId,
+              ingredients,
+              quantity: evaluation.quantity,
+            })
           : await replaceCustomBlend({
               baseVariantId: state.baseVariantId,
               configKey: state.editConfigKey,
               ingredients,
             });
       if (completedCart && options) {
-        const authoritativeConfigKey = completedCart.items.find(
-          (item) =>
-            item.variantSnap?.variantId === state.baseVariantId &&
-            item.customBlend?.basePercentage === basePercentage &&
-            item.customBlend.ingredients.length === ingredients.length &&
-            item.customBlend.ingredients.every((ingredient) =>
-              ingredients.some(
-                (submitted) =>
-                  submitted.variantId === ingredient.variantId &&
-                  submitted.percentage === ingredient.percentage,
-              ),
-            ),
-        )?.configKey;
+        // The mutation response is authoritative for the cart line key. The evaluation key is a
+        // safe fallback for test doubles/legacy adapters that omit the returned line, but a stale
+        // edit target is never presented as the new batch mark.
+        const authoritativeConfigKey =
+          completedCart.items.find(
+            (item) =>
+              item.configKey === evaluation.result?.customBlend.configKey &&
+              item.variantSnap?.variantId === state.baseVariantId,
+          )?.configKey ?? evaluation.result.customBlend.configKey;
+        const resolvedIngredients = evaluation.result.customBlend.ingredients
+          .map((ingredient) => {
+            const option = options.ingredients.find(
+              (candidate) => candidate.variant.variantId === ingredient.variantId,
+            );
+            return option ? { option, percentage: ingredient.percentage } : null;
+          })
+          .filter((ingredient): ingredient is PreviewIngredient => ingredient !== null);
         setResult({
           kind: state.editConfigKey === null ? 'created' : 'replaced',
           base: options.base,
-          basePercentage,
-          ingredients: options.ingredients
-            .filter((option) => percentages.has(option.variant.variantId))
-            .map((option) => ({
-              option,
-              percentage: percentages.get(option.variant.variantId) ?? 0,
-            })),
+          basePercentage: evaluation.result.customBlend.basePercentage,
+          ingredients: resolvedIngredients,
           authoritativeConfigKey,
         });
       }
@@ -328,7 +369,7 @@ export function CustomBlendPage() {
         </div>
       )}
       {baseVariantId === null || optionsError ? (
-        <BasePicker onSelectBase={selectBase} />
+        <BasePicker onSelectBase={selectBase} suppressError={hasUnparseableBaseParam} />
       ) : isOptionsLoading || !options ? (
         <div
           aria-live="polite"
@@ -365,13 +406,17 @@ export function CustomBlendPage() {
               )}
             </section>
             <IngredientPicker
-              options={options.ingredients}
+              options={options.ingredients.filter(
+                (option) => option.variant.variantId !== state.baseVariantId,
+              )}
               selectedVariantIds={state.ingredients.map((ingredient) => ingredient.variantId)}
               isLimitReached={isIngredientLimitReached(state)}
               onToggle={(variantId) => dispatch({ type: 'ingredient-toggled', variantId })}
             />
             <RatioEditor
-              options={options.ingredients}
+              options={options.ingredients.filter(
+                (option) => option.variant.variantId !== state.baseVariantId,
+              )}
               selectedVariantIds={state.ingredients.map((ingredient) => ingredient.variantId)}
               percentages={percentages}
               onPercentageChange={(variantId, percentage) =>
@@ -416,12 +461,22 @@ export function CustomBlendPage() {
                 percentage: percentages.get(option.variant.variantId) ?? 0,
               }))}
             previewIngredients={options.ingredients
-              .filter((option) => percentages.has(option.variant.variantId))
+              .filter(
+                (option) =>
+                  option.variant.variantId !== state.baseVariantId &&
+                  percentages.has(option.variant.variantId),
+              )
               .map((option) => ({
                 option,
                 percentage: percentages.get(option.variant.variantId) ?? 0,
               }))}
             configKey={state.editConfigKey ?? undefined}
+            evaluation={evaluation.result}
+            evaluationLoading={
+              evaluation.loading || (!isDraftOnCurrentTarget && lineError === null)
+            }
+            evaluationError={evaluation.error}
+            onRetryEvaluation={evaluation.retry}
           />
         </form>
       )}

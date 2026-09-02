@@ -63,6 +63,8 @@ export const PUBLIC_ERROR_CODES = [
   'BLOCKED_IN_COUNTRY',
   'BLEND_UNAVAILABLE',
   'CUSTOM_BLEND_INVALID',
+  'CUSTOM_BLEND_INCOMPATIBLE',
+  'CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED',
   'CART_NOT_FOUND',
   'CART_EMPTY',
   'CART_RESERVED',
@@ -176,6 +178,7 @@ export type PublicErrorId = Static<typeof PublicErrorId>;
 
 const SafeCount = Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER });
 const SafePositiveCount = Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER });
+const SafePercentage = Type.Integer({ minimum: 0, maximum: 100 });
 const SafeMoneyCents = Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER });
 const Uuid = Type.String({
   minLength: 36,
@@ -235,6 +238,8 @@ const PublicErrorMetaFieldSchemas = {
   reservationExpiresAt: UtcIsoInstant,
   expiresAt: UtcIsoInstant,
   retryAfterSeconds: SafeCount,
+  maxPercentage: SafePercentage,
+  actualPercentage: SafePercentage,
 } as const;
 
 type PublicErrorMetaField = keyof typeof PublicErrorMetaFieldSchemas;
@@ -269,6 +274,7 @@ const ParameterizedPublicErrorMetaSchemas = {
   PENDING_APPROVAL: strictMeta(['approvalRequestId']),
   QUANTITY_UNAVAILABLE: strictMeta(['availableQuantity']),
   TOO_MANY_LINES: strictMeta(['lineCount']),
+  CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED: strictMeta(['maxPercentage', 'actualPercentage']),
 } as const satisfies Partial<Record<PublicErrorCode, TSchema>>;
 
 type FieldStatic<Field extends PublicErrorMetaField> = Static<
@@ -290,6 +296,10 @@ type ParameterizedPublicErrorMetaByCode = {
   PENDING_APPROVAL: { approvalRequestId: FieldStatic<'approvalRequestId'> };
   QUANTITY_UNAVAILABLE: { availableQuantity: FieldStatic<'availableQuantity'> };
   TOO_MANY_LINES: { lineCount: FieldStatic<'lineCount'> };
+  CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED: {
+    maxPercentage: FieldStatic<'maxPercentage'>;
+    actualPercentage: FieldStatic<'actualPercentage'>;
+  };
 };
 
 /** Public error identities whose caller must provide one approved metadata object. */

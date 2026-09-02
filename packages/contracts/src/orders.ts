@@ -1,7 +1,8 @@
 import { Type, type Static } from '@sinclair/typebox';
+import { TypeSystem } from '@sinclair/typebox/system';
 import { MoneyCents, PositiveIntegerString, PurchaseOrderReference, Uuid } from './common.js';
 import { DeliveryClass, DeliveryMode, DeliverySlot } from './delivery.js';
-import { CustomBlendSnapshot } from './customBlends.js';
+import { CustomBlendSnapshot, ResolvedCustomBlendSnapshot } from './customBlends.js';
 import { PostalAddress } from './address.js';
 import { BillingEntitySnapshot } from './tradeAccount.js';
 
@@ -16,6 +17,27 @@ const TrackingReference = Type.String({ minLength: 1, maxLength: 100 });
 const TrackingText = Type.String({ minLength: 1, maxLength: 500, pattern: '^[^<>]*$' });
 const TrackingDetail = Type.String({ minLength: 1, maxLength: 2_000, pattern: '^[^<>]*$' });
 const TrackingLocation = Type.String({ minLength: 1, maxLength: 160, pattern: '^[^<>]*$' });
+
+function isSafeNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function safeProduct(left: unknown, right: unknown): number | undefined {
+  if (!isSafeNonNegativeInteger(left) || !isSafeNonNegativeInteger(right)) return undefined;
+  if (right > 0 && left > Math.floor(Number.MAX_SAFE_INTEGER / right)) return undefined;
+  const result = left * right;
+  return Number.isSafeInteger(result) ? result : undefined;
+}
+
+function safeSum(values: readonly unknown[]): number | undefined {
+  let total = 0;
+  for (const value of values) {
+    if (!isSafeNonNegativeInteger(value) || value > Number.MAX_SAFE_INTEGER - total)
+      return undefined;
+    total += value;
+  }
+  return total;
+}
 
 export const OrderStatus = Type.Union([
   Type.Literal('processing'),
@@ -81,7 +103,7 @@ export const OrderLineVariantSnapshot = Type.Object(
 );
 export type OrderLineVariantSnapshot = Static<typeof OrderLineVariantSnapshot>;
 
-export const OrderLineItem = Type.Object(
+const OrderLineItemFields = Type.Object(
   {
     lineId: PositiveIntegerString,
     productId: Type.String({ minLength: 1 }),
@@ -99,6 +121,45 @@ export const OrderLineItem = Type.Object(
   },
   { additionalProperties: false },
 );
+
+/**
+ * Order lines freeze the same money split as the quote. Resolved snapshots carry a second copy of
+ * their quantity-specific totals, so an unreadable or tampered order cannot silently disclose a
+ * different amount. Legacy snapshots intentionally retain their historical, line-only pairing.
+ */
+const OrderLineMoneyIntegrity = TypeSystem.Type<unknown>(
+  'OrderLineMoneyIntegrity',
+  (_options, value) => {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+    const line = value as {
+      unitPriceCents?: unknown;
+      quantity?: unknown;
+      discountableTotalCents?: unknown;
+      blendingFeeCents?: unknown;
+      lineTotalCents?: unknown;
+      customBlend?: unknown;
+    };
+    if (typeof line.customBlend !== 'object' || line.customBlend === null) return true;
+    const blend = line.customBlend as Partial<Static<typeof ResolvedCustomBlendSnapshot>> & {
+      ruleVersion?: unknown;
+    };
+    // Legacy order snapshots intentionally retain the old line-only shape and its historical
+    // money semantics. Only a V9/resolved snapshot adds the cross-field arithmetic invariant.
+    if (blend.ruleVersion !== 1) return true;
+    return (
+      safeProduct(line.unitPriceCents, line.quantity) === line.discountableTotalCents &&
+      safeSum([line.discountableTotalCents, line.blendingFeeCents]) === line.lineTotalCents &&
+      blend.quantity === line.quantity &&
+      blend.materialUnitPriceCents === line.unitPriceCents &&
+      blend.materialSubtotalCents === line.discountableTotalCents &&
+      blend.discountableTotalCents === line.discountableTotalCents &&
+      blend.lineTotalCents === line.lineTotalCents &&
+      blend.blendingFeeCents === line.blendingFeeCents
+    );
+  },
+);
+
+export const OrderLineItem = Type.Intersect([OrderLineItemFields, OrderLineMoneyIntegrity()]);
 export type OrderLineItem = Static<typeof OrderLineItem>;
 
 export const Order = Type.Object(

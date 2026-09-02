@@ -42,6 +42,9 @@ const ENGLISH_OVERRIDES: Partial<Record<PublicErrorCode, string>> = {
   VARIANT_RETIRED: 'This item is no longer available.',
   BLEND_UNAVAILABLE: 'This blend is no longer available.',
   CUSTOM_BLEND_INVALID: 'The custom blend is no longer valid.',
+  CUSTOM_BLEND_INCOMPATIBLE: 'The selected materials cannot be combined.',
+  CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED:
+    'Pigment content cannot exceed {maxPercentage}% (selected: {actualPercentage}%).',
   CART_NOT_FOUND: 'The cart was not found.',
   CART_EMPTY: 'Add an item before continuing.',
   CART_RESERVED: 'The cart is currently reserved for checkout.',
@@ -144,6 +147,9 @@ const LOCALIZED_OVERRIDES: Partial<Record<Country, Partial<Record<PublicErrorCod
     RATE_LIMITED: '请求过多，请在 {retryAfterSeconds} 秒后重试。',
     BELOW_MOQ: '数量必须至少为 {minQuantity}。',
     BLOCKED_IN_COUNTRY: '此商品在您所在的国家/地区不可用。',
+    CUSTOM_BLEND_INCOMPATIBLE: '所选材料不能混合。',
+    CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED:
+      '颜料含量不能超过 {maxPercentage}%（当前选择：{actualPercentage}%）。',
     CART_EMPTY: '请先添加商品。',
     RESERVATION_EXPIRED: '您的预留已于 {reservationExpiresAt} 过期。',
     DELIVERY_SLOT_UNAVAILABLE: '配送时段不可用。最早日期：{earliestDate}。',
@@ -159,6 +165,9 @@ const LOCALIZED_OVERRIDES: Partial<Record<Country, Partial<Record<PublicErrorCod
     RATE_LIMITED: 'Zbyt wiele żądań. Spróbuj ponownie za {retryAfterSeconds} s.',
     BELOW_MOQ: 'Ilość musi wynosić co najmniej {minQuantity}.',
     BLOCKED_IN_COUNTRY: 'Ten produkt nie jest dostępny w Twoim kraju.',
+    CUSTOM_BLEND_INCOMPATIBLE: 'Wybrane materiały nie mogą być ze sobą mieszane.',
+    CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED:
+      'Zawartość pigmentu nie może przekraczać {maxPercentage}% (wybrano: {actualPercentage}%).',
     CART_EMPTY: 'Dodaj produkt przed kontynuowaniem.',
     RESERVATION_EXPIRED: 'Rezerwacja wygasła o {reservationExpiresAt}.',
     DELIVERY_SLOT_UNAVAILABLE:
@@ -175,6 +184,9 @@ const LOCALIZED_OVERRIDES: Partial<Record<Country, Partial<Record<PublicErrorCod
     RATE_LIMITED: 'Demasiadas solicitudes. Inténtalo de nuevo en {retryAfterSeconds} segundos.',
     BELOW_MOQ: 'La cantidad debe ser al menos {minQuantity}.',
     BLOCKED_IN_COUNTRY: 'Este producto no está disponible en tu país.',
+    CUSTOM_BLEND_INCOMPATIBLE: 'Los materiales seleccionados no se pueden mezclar.',
+    CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED:
+      'El contenido de pigmento no puede superar el {maxPercentage}% (seleccionado: {actualPercentage}%).',
     CART_EMPTY: 'Añade un producto antes de continuar.',
     RESERVATION_EXPIRED: 'La reserva caducó a las {reservationExpiresAt}.',
     DELIVERY_SLOT_UNAVAILABLE:
@@ -191,6 +203,10 @@ const LOCALIZED_OVERRIDES: Partial<Record<Country, Partial<Record<PublicErrorCod
     RATE_LIMITED: 'Zu viele Anfragen. Versuchen Sie es in {retryAfterSeconds} Sekunden erneut.',
     BELOW_MOQ: 'Die Menge muss mindestens {minQuantity} betragen.',
     BLOCKED_IN_COUNTRY: 'Dieser Artikel ist in Ihrem Land nicht verfügbar.',
+    CUSTOM_BLEND_INCOMPATIBLE:
+      'Die ausgewählten Materialien können nicht miteinander gemischt werden.',
+    CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED:
+      'Der Pigmentanteil darf {maxPercentage}% nicht überschreiten (ausgewählt: {actualPercentage}%).',
     CART_EMPTY: 'Fügen Sie einen Artikel hinzu, bevor Sie fortfahren.',
     RESERVATION_EXPIRED: 'Ihre Reservierung ist um {reservationExpiresAt} abgelaufen.',
     DELIVERY_SLOT_UNAVAILABLE:
@@ -207,6 +223,9 @@ const LOCALIZED_OVERRIDES: Partial<Record<Country, Partial<Record<PublicErrorCod
     RATE_LIMITED: 'Trop de requêtes. Réessayez dans {retryAfterSeconds} secondes.',
     BELOW_MOQ: 'La quantité doit être au moins de {minQuantity}.',
     BLOCKED_IN_COUNTRY: 'Cet article n’est pas disponible dans votre pays.',
+    CUSTOM_BLEND_INCOMPATIBLE: 'Les matériaux sélectionnés ne peuvent pas être mélangés.',
+    CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED:
+      'La teneur en pigment ne peut pas dépasser {maxPercentage}% (sélection : {actualPercentage}%).',
     CART_EMPTY: 'Ajoutez un article avant de continuer.',
     RESERVATION_EXPIRED: 'Votre réservation a expiré à {reservationExpiresAt}.',
     DELIVERY_SLOT_UNAVAILABLE:

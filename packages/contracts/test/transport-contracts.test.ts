@@ -10,6 +10,7 @@ import {
   PersistedCheckoutQuote,
   PersistedCheckoutQuoteV7,
   PersistedCheckoutQuoteV8,
+  PersistedCheckoutQuoteV9,
   parsePersistedCheckoutQuote,
 } from '../src/payments.js';
 
@@ -101,7 +102,7 @@ void test('cart and order transports accept product-only line collections', () =
   assert.equal(Value.Check(Order, { ...emptyOrder, retiredLegacyField: [] }), false);
 });
 
-void test('persisted checkout quotes accept only the strict V8 shape', () => {
+void test('persisted checkout quotes accept only strict V8 or V9 shapes', () => {
   const v8 = {
     version: 8,
     cartId: uuid,
@@ -136,6 +137,10 @@ void test('persisted checkout quotes accept only the strict V8 shape', () => {
   assert.equal(Value.Check(PersistedCheckoutQuoteV8, v8), true);
   assert.equal(Value.Check(PersistedCheckoutQuote, v8), true);
   assert.deepEqual(parsePersistedCheckoutQuote(v8), v8);
+  const v9 = { ...v8, version: 9 };
+  assert.equal(Value.Check(PersistedCheckoutQuoteV9, v9), true);
+  assert.equal(Value.Check(PersistedCheckoutQuote, v9), true);
+  assert.deepEqual(parsePersistedCheckoutQuote(v9), v9);
   const v7 = { ...v8, version: 7 };
   Reflect.deleteProperty(v7, 'discountBaseCents');
   Reflect.deleteProperty(v7, 'promoCategoryScope');
@@ -147,6 +152,7 @@ void test('persisted checkout quotes accept only the strict V8 shape', () => {
     false,
   );
   assert.throws(() => parsePersistedCheckoutQuote({ ...v8, unexpectedPersistedField: true }));
+  assert.throws(() => parsePersistedCheckoutQuote({ ...v9, version: 10 }));
 });
 
 void test('current-user transport contract accepts public user or null', () => {

@@ -1,6 +1,7 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ResolvedCustomBlendSnapshot } from '@shop/contracts/custom-blends';
 import { validatePromo } from '@/api/promo';
 import { getDeliverySlotOptions } from '@/api/deliverySlots';
 import { useCartContext } from '@/hooks/CartContext';
@@ -36,6 +37,68 @@ beforeEach(() => {
   mockAnonymous();
 });
 
+const resolvedBlend: ResolvedCustomBlendSnapshot = {
+  configKey: 'b'.repeat(64),
+  basePercentage: 80,
+  mixingGroup: 'mineral',
+  ingredients: [
+    {
+      variantId: 601,
+      productId: '11',
+      productName: 'Chalk Filler',
+      productDescription: 'Filler',
+      mixingGroup: 'mineral',
+      percentage: 20,
+    },
+  ],
+  blendingFeeCents: 2_500,
+  madeToOrder: true,
+  returnable: false,
+  ruleVersion: 1,
+  resultClassification: 'non-food',
+  quantity: 2,
+  components: [
+    {
+      role: 'base',
+      variantId: 1,
+      productId: '1',
+      productName: 'Powdered Water',
+      productDescription: 'Water in powder form.',
+      sku: 'H2O-001',
+      variantLabel: '25kg sack',
+      mixingGroup: 'mineral',
+      consumptionClassification: 'non-food',
+      percentage: 80,
+      weightGrams: 40_000,
+      sourceUnitPriceCents: 1_000,
+      tierDiscountPct: 0,
+      unitContributionCents: 800,
+      subtotalCents: 1_600,
+    },
+    {
+      role: 'ingredient',
+      variantId: 601,
+      productId: '11',
+      productName: 'Chalk Filler',
+      productDescription: 'Filler',
+      sku: 'CHALK-601',
+      variantLabel: '25kg sack',
+      mixingGroup: 'mineral',
+      consumptionClassification: 'non-food',
+      percentage: 20,
+      weightGrams: 10_000,
+      sourceUnitPriceCents: 2_000,
+      tierDiscountPct: 0,
+      unitContributionCents: 400,
+      subtotalCents: 800,
+    },
+  ],
+  materialUnitPriceCents: 1_200,
+  materialSubtotalCents: 2_400,
+  discountableTotalCents: 2_400,
+  lineTotalCents: 4_900,
+};
+
 describe('Checkout summary and promotions', { timeout: 20_000 }, () => {
   it('renders server-resolved pack, tonne, and pack-weight values in the order summary', async () => {
     await renderCheckout();
@@ -58,6 +121,18 @@ describe('Checkout summary and promotions', { timeout: 20_000 }, () => {
         configKey,
         basePercentage: 80,
         mixingGroup: 'mineral' as const,
+        basePresentation: {
+          category: 'Trade & Creative Materials',
+          consumptionClassification: 'non-food' as const,
+          categoryFacts: {
+            texture: 'Fine powder',
+            colour: 'Grey',
+            source: 'Mineral',
+            intendedUse: 'Construction',
+            storage: 'Keep dry',
+            consumptionClassification: 'non-food' as const,
+          },
+        },
         ingredients: [
           {
             variantId: 601,
@@ -88,12 +163,55 @@ describe('Checkout summary and promotions', { timeout: 20_000 }, () => {
 
     expect(screen.getByText(/80% Powdered Water.*20% Chalk Filler/)).toBeInTheDocument();
     expect(screen.getByText('Custom blend')).toBeInTheDocument();
-    expect(screen.getByTestId('custom-blend-livery')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute('data-vessel', 'neutral');
+    expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute(
+      'data-colour-scheme',
+      'neutral',
+    );
+    expect(screen.queryByText('Not for consumption')).not.toBeInTheDocument();
     expect(screen.getByText(/Base material: \$12.50.*Blending fee: \$31.25/)).toBeInTheDocument();
-    expect(screen.getByText('Blending fees')).toBeInTheDocument();
+    expect(screen.queryByText('Blending fees')).not.toBeInTheDocument();
     expect(
       screen.getByText(/Made to order\. Custom blends cannot be returned/),
     ).toBeInTheDocument();
+  });
+
+  it('renders the resolved result, component pricing facts, and safety warning from the server', async () => {
+    const resolvedLine = {
+      ...cart.items[0]!,
+      configKey: resolvedBlend.configKey,
+      quantity: resolvedBlend.quantity,
+      resolvedUnitPriceCents: resolvedBlend.materialUnitPriceCents,
+      materialSubtotalCents: resolvedBlend.materialSubtotalCents,
+      blendingFeeCents: resolvedBlend.blendingFeeCents,
+      discountableTotalCents: resolvedBlend.discountableTotalCents,
+      lineTotalCents: resolvedBlend.lineTotalCents,
+      customBlend: resolvedBlend,
+    };
+    vi.mocked(useCartContext).mockReturnValue({
+      ...cartContext,
+      cart: {
+        ...cart,
+        items: [resolvedLine],
+        subtotalCents: resolvedBlend.lineTotalCents,
+        discountableSubtotalCents: resolvedBlend.discountableTotalCents,
+        blendingFeeTotalCents: resolvedBlend.blendingFeeCents,
+        totalItems: resolvedBlend.quantity,
+      },
+    });
+
+    await renderCheckout();
+
+    expect(screen.getByTestId('checkout-blend-result')).toHaveTextContent('Non-food blend');
+    expect(screen.getByTestId('checkout-blend-safety')).toHaveTextContent('Not for consumption');
+    expect(screen.getByText('Component weight: 40 kg')).toBeInTheDocument();
+    expect(screen.getByText('Unit contribution: $10.00')).toBeInTheDocument();
+    expect(screen.getByText('Material price per sack: $15.00')).toBeInTheDocument();
+    expect(screen.getByText('Material total: $30.00')).toBeInTheDocument();
+    expect(screen.getAllByText('Blending fee: $31.25')).toHaveLength(1);
+    expect(screen.getByText('Blend total: $61.25')).toBeInTheDocument();
+    expect(screen.queryByText('Blending fees')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Next volume tier progress/)).not.toBeInTheDocument();
   });
 
   it('adds the server-provided delivery preview to the checkout total', async () => {

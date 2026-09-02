@@ -15,11 +15,16 @@ import {
 } from '../src/index.js';
 import { commonMessages } from '../src/messages/common.js';
 import { countryMessages } from '../src/messages/country.js';
+import { cartMessages } from '../src/messages/cart.js';
+import { checkoutMessages } from '../src/messages/checkout.js';
+import { customBlendMessages } from '../src/messages/customBlend.js';
+import { orderLifecycleMessages } from '../src/messages/orderLifecycle.js';
 import {
   adminCatalogMessages,
   adminDateTimeInputValue,
   localizeAdminError,
 } from '../src/messages/adminCatalog.js';
+import type { MessageCatalog } from '../src/messages/defineMessages.js';
 
 void test('shared catalogs are exhaustive across all supported countries', () => {
   for (const catalog of [countryMessages, commonMessages]) {
@@ -58,6 +63,45 @@ void test('admin errors expose only coded copy or selected-country safe fallback
     '请求失败。',
   );
   assert.equal(adminDateTimeInputValue('2026-01-01T12:34:56.789Z'), '2026-01-01T12:34');
+});
+
+void test('blend disclosure catalogs are exhaustive across all supported countries', () => {
+  const catalogs: readonly MessageCatalog[] = [
+    customBlendMessages,
+    cartMessages,
+    checkoutMessages,
+    orderLifecycleMessages,
+  ];
+  for (const catalog of catalogs) {
+    assert.ok(Object.keys(catalog).length > 0);
+    for (const [key, entries] of Object.entries(catalog)) {
+      assert.deepEqual(Object.keys(entries).sort(), [...SUPPORTED_COUNTRIES].sort(), key);
+      for (const country of SUPPORTED_COUNTRIES) {
+        const template = entries[country];
+        assert.ok(template !== undefined, `${key}.${country}`);
+        if (typeof template === 'string') assert.notEqual(template.trim(), '', `${key}.${country}`);
+      }
+    }
+  }
+});
+
+void test('blend rule and pricing copy interpolates in every country', () => {
+  const cases = [
+    [customBlendMessages, 'customBlend.evaluationCurrentPrice', { money: '£12.34' }],
+    [
+      customBlendMessages,
+      'customBlend.componentNextTier',
+      { sacksToNextTier: 2, minTonnes: 5, discountPct: 5 },
+    ],
+    [cartMessages, 'cart.customBlend.componentSubtotal', { money: '£12.34' }],
+    [checkoutMessages, 'checkout.customBlend.componentSourcePrice', { money: '£12.34' }],
+    [orderLifecycleMessages, 'order.customBlend.componentWeight', { weight: '25 kg' }],
+  ] as const;
+  for (const [catalog, key, params] of cases) {
+    for (const country of SUPPORTED_COUNTRIES) {
+      assert.notEqual(translate(catalog, country, key, params), '', `${key}.${country}`);
+    }
+  }
 });
 
 void test('translation interpolates plain text and selects plural category', () => {

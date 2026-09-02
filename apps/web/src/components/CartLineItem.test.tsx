@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import type { CartLine } from '@shop/contracts/cart';
+import type { ResolvedCustomBlendSnapshot } from '@shop/contracts/custom-blends';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { CartLineItem } from './CartLineItem';
@@ -83,6 +84,83 @@ const blendItem: CartLine = {
     madeToOrder: true,
     returnable: false,
   },
+};
+
+const resolvedBlend: ResolvedCustomBlendSnapshot = {
+  ...blendItem.customBlend!,
+  blendingFeeCents: 2_500,
+  basePresentation: {
+    category: 'Trade & Creative Materials',
+    consumptionClassification: 'non-food',
+    categoryFacts: {
+      composition: 'Cementitious powder',
+      source: 'Mineral',
+      intendedUse: 'Construction',
+      storage: 'Keep dry',
+      colour: 'Grey',
+      texture: 'Fine powder',
+      consumptionClassification: 'non-food',
+    },
+  },
+  ruleVersion: 1,
+  resultClassification: 'non-food',
+  quantity: 2,
+  components: [
+    {
+      role: 'base',
+      variantId: 102,
+      productId: '1',
+      productName: 'Pallet material',
+      productDescription: 'Test material.',
+      sku: 'MAT-102',
+      variantLabel: '25 kg sack',
+      mixingGroup: 'mineral',
+      consumptionClassification: 'non-food',
+      percentage: 80,
+      weightGrams: 40_000,
+      sourceUnitPriceCents: 1_000,
+      tierDiscountPct: 0,
+      nextTierProgress: {
+        minTonnes: 10,
+        discountPct: 5,
+        sacksToNextTier: 398,
+        weightToNextTierGrams: 9_950_000,
+      },
+      unitContributionCents: 800,
+      subtotalCents: 1_600,
+    },
+    {
+      role: 'ingredient',
+      variantId: 601,
+      productId: '11',
+      productName: 'Chalk Filler',
+      productDescription: 'Filler',
+      sku: 'MAT-601',
+      variantLabel: '25 kg sack',
+      mixingGroup: 'mineral',
+      consumptionClassification: 'non-food',
+      percentage: 20,
+      weightGrams: 10_000,
+      sourceUnitPriceCents: 2_000,
+      tierDiscountPct: 0,
+      unitContributionCents: 400,
+      subtotalCents: 800,
+    },
+  ],
+  materialUnitPriceCents: 1_200,
+  materialSubtotalCents: 2_400,
+  discountableTotalCents: 2_400,
+  lineTotalCents: 4_900,
+};
+
+const resolvedBlendItem: CartLine = {
+  ...blendItem,
+  quantity: 2,
+  resolvedUnitPriceCents: 1_200,
+  materialSubtotalCents: 2_400,
+  discountableTotalCents: 2_400,
+  lineTotalCents: 4_900,
+  customBlend: resolvedBlend,
 };
 
 function renderBlendLine(overrides?: Partial<CartLineItemCallbacks>) {
@@ -184,6 +262,27 @@ describe('CartLineItem', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('Base material: $25.00')).toBeInTheDocument();
     expect(screen.getByText('Blending fee: $31.25')).toBeInTheDocument();
+  });
+
+  it('renders resolved component facts, classification safety, and one server fee without aggregate tier progress', () => {
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <CartLineItem item={resolvedBlendItem} onUpdateQuantity={vi.fn()} onRemove={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId('cart-line-blend-result')).toHaveTextContent('Non-food blend');
+    expect(screen.getByTestId('cart-line-blend-safety')).toHaveTextContent('Not for consumption');
+    expect(screen.getByText('Component weight: 40 kg')).toBeInTheDocument();
+    expect(screen.getByText('Source price: $12.50 per sack')).toBeInTheDocument();
+    expect(screen.getByText('398 sacks to the 10-tonne tier (5% off)')).toBeInTheDocument();
+    expect(screen.getByText('Unit contribution: $10.00')).toBeInTheDocument();
+    expect(screen.getByText('Component subtotal: $20.00')).toBeInTheDocument();
+    expect(screen.getByText('Material price per sack: $15.00')).toBeInTheDocument();
+    expect(screen.getByText('Material total: $30.00')).toBeInTheDocument();
+    expect(screen.getByText('Blending fee: $31.25')).toBeInTheDocument();
+    expect(screen.getByText('Blend total: $61.25')).toBeInTheDocument();
+    expect(screen.queryByText(/Next volume tier progress/)).not.toBeInTheDocument();
   });
 
   it('prints the fixed charcoal livery on the base category vessel with a config-key batch mark', () => {
