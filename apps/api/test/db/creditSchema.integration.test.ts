@@ -107,7 +107,7 @@ void test('migration 035 preserves legacy payment/order facts and adds strict cr
 
   assert.equal(
     db.prepare('SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1').pluck().get(),
-    '036',
+    '037',
   );
   assert.deepEqual(
     db

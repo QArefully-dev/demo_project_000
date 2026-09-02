@@ -163,7 +163,7 @@ void test('migration 036 creates strict invoice documents, lifecycle projections
         .prepare('SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1')
         .pluck()
         .get(),
-      '036',
+      '037',
     );
     assert.deepEqual(
       db.prepare('SELECT * FROM credit_exposure_holds ORDER BY id').all(),
