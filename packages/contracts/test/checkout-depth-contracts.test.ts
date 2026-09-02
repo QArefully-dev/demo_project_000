@@ -21,7 +21,7 @@ import {
   DeliverySlotOptionsResponse,
   DeliverySlotWindow,
 } from '../src/delivery.js';
-import { Order, OrderSummary } from '../src/orders.js';
+import { Order, OrderDetailResponse, OrderSummary } from '../src/orders.js';
 import {
   BillingSelection,
   CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION,
@@ -452,6 +452,64 @@ void test('order summary carries an optional PO reference so history rows can sh
     Value.Check(OrderSummary, { ...legacySummary, purchaseOrderReference: 'P'.repeat(65) }),
     false,
   );
+});
+
+void test('order summary and detail share credit attribution and accounting integrity', () => {
+  const accounting = {
+    paymentMethod: 'trade_credit' as const,
+    companyId: '7',
+    netCents: 10_000,
+    vatRateBasisPoints: 2_000,
+    vatCents: 2_000,
+    grossCents: 12_000,
+  };
+  const summary = {
+    id: '1',
+    status: 'processing',
+    version: 0,
+    totalCents: 12_000,
+    ...accounting,
+    totalItems: 0,
+    hasBackorder: false,
+    createdAt: '2026-07-14T00:00:00.000Z',
+  };
+  const detail = {
+    id: '1',
+    status: 'processing',
+    version: 0,
+    items: [],
+    subtotalCents: 10_000,
+    discountCents: 0,
+    totalCents: 12_000,
+    ...accounting,
+    promoApplied: null,
+    createdAt: '2026-07-14T00:00:00.000Z',
+    shipments: [],
+    events: [],
+    canCancel: true,
+  };
+  assert.equal(Value.Check(OrderSummary, summary), true);
+  assert.equal(Value.Check(OrderDetailResponse, detail), true);
+
+  for (const candidate of [summary, detail]) {
+    const schema = candidate === summary ? OrderSummary : OrderDetailResponse;
+    assert.equal(Value.Check(schema, { ...candidate, grossCents: 12_001 }), false);
+    assert.equal(Value.Check(schema, { ...candidate, totalCents: 10_000 }), false);
+    assert.equal(Value.Check(schema, { ...candidate, companyId: undefined }), false);
+    assert.equal(
+      Value.Check(schema, {
+        ...candidate,
+        paymentMethod: 'card',
+        companyId: '7',
+        vatRateBasisPoints: 0,
+        vatCents: 0,
+        grossCents: 12_000,
+      }),
+      false,
+    );
+  }
+  assert.equal(Value.Check(OrderSummary, { ...summary, netCents: undefined }), false);
+  assert.equal(Value.Check(OrderDetailResponse, { ...detail, netCents: undefined }), false);
 });
 
 void test('persisted quote version advanced and never restarted', () => {

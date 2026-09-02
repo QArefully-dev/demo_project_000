@@ -5,12 +5,29 @@ import { Country } from './country.js';
 import { BillingEntitySnapshot } from './tradeAccount.js';
 import { MoneyCents, PositiveIntegerString, PurchaseOrderReference, Uuid } from './common.js';
 
-/** UTC instant used by all immutable credit and invoice snapshots. */
-export const CreditUtcIsoInstant = Type.String({
+const CreditUtcIsoInstantPattern = Type.String({
   minLength: 24,
   maxLength: 24,
   pattern: '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$',
 });
+
+function isRealCreditUtcInstant(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value))
+    return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
+}
+
+const CreditUtcIsoInstantIntegrity = TypeSystem.Type<unknown>(
+  'CreditUtcIsoInstantIntegrity',
+  (_options, value) => isRealCreditUtcInstant(value),
+);
+
+/** UTC instant used by all immutable credit and invoice snapshots. */
+export const CreditUtcIsoInstant = Type.Intersect([
+  CreditUtcIsoInstantPattern,
+  CreditUtcIsoInstantIntegrity(),
+]);
 export type CreditUtcIsoInstant = Static<typeof CreditUtcIsoInstant>;
 
 /** Credit policy is intentionally a closed vocabulary. */
@@ -272,10 +289,7 @@ const Page = Type.Integer({ minimum: 1, maximum: 10_000 });
 const PageSize = Type.Integer({ minimum: 1, maximum: 100 });
 
 /** Member query is deliberately limited to the caller's active company context. */
-export const CreditAccountQuery = Type.Object(
-  { companyId: Type.Optional(PositiveIntegerString) },
-  { additionalProperties: false },
-);
+export const CreditAccountQuery = Type.Object({}, { additionalProperties: false });
 export type CreditAccountQuery = Static<typeof CreditAccountQuery>;
 
 /** Cross-company administrator filters are closed and bounded. */
@@ -314,18 +328,29 @@ export type TradeCreditAccountAdminListResponse = AdminCreditAccountListResponse
 export const AdminCreditAccountDetailResponse = CreditAccountAdminView;
 export type AdminCreditAccountDetailResponse = CreditAccountAdminView;
 
-/** Idempotent optimistic-versioned PATCH accepted by administrator credit routes. */
-export const AdminCreditAccountUpdateBody = Type.Object(
-  {
-    expectedVersion: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
-    idempotencyKey: Uuid,
-    creditLimitCents: Type.Optional(CreditMoneyCents),
-    state: Type.Optional(TradeCreditState),
-    status: Type.Optional(TradeCreditState),
-    reason: Type.Optional(CreditStateReason),
-  },
-  { additionalProperties: false, minProperties: 3 },
-);
+const CreditAccountUpdateCommonFields = {
+  expectedVersion: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+  idempotencyKey: Uuid,
+  reason: Type.Optional(CreditStateReason),
+} as const;
+
+/** Idempotent optimistic-versioned PATCH with exactly one unambiguous account mutation. */
+export const AdminCreditAccountUpdateBody = Type.Union([
+  Type.Object(
+    {
+      ...CreditAccountUpdateCommonFields,
+      creditLimitCents: CreditMoneyCents,
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      ...CreditAccountUpdateCommonFields,
+      state: TradeCreditState,
+    },
+    { additionalProperties: false },
+  ),
+]);
 export type AdminCreditAccountUpdateBody = Static<typeof AdminCreditAccountUpdateBody>;
 
 /** Administrator creates one account per company. Terms are fixed to net-30. */
@@ -456,7 +481,7 @@ function calculateVatCents(netCents: unknown, vatRateBasisPoints: unknown): numb
   return Math.floor((numerator + 5_000) / 10_000);
 }
 
-const InvoiceDocumentV1Facts = Type.Object(
+export const InvoiceDocumentV1Facts = Type.Object(
   {
     version: Type.Literal(1),
     id: PositiveIntegerString,
@@ -483,7 +508,7 @@ const InvoiceDocumentV1Facts = Type.Object(
   { additionalProperties: false },
 );
 
-const InvoiceDocumentV1Integrity = TypeSystem.Type<unknown>(
+export const InvoiceDocumentV1Integrity = TypeSystem.Type<unknown>(
   'InvoiceDocumentV1Integrity',
   (_options, value) => {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
@@ -495,7 +520,13 @@ const InvoiceDocumentV1Integrity = TypeSystem.Type<unknown>(
       vatRateBasisPoints?: unknown;
       vatCents?: unknown;
       grossCents?: unknown;
+      issuedAt?: unknown;
+      dueAt?: unknown;
     };
+    const issuedAt = isRealCreditUtcInstant(invoice.issuedAt)
+      ? Date.parse(invoice.issuedAt)
+      : undefined;
+    const dueAt = isRealCreditUtcInstant(invoice.dueAt) ? Date.parse(invoice.dueAt) : undefined;
     if (
       (invoice.terms === undefined && invoice.termsDays === undefined) ||
       (invoice.terms !== undefined && !isTerms(invoice.terms)) ||
@@ -503,7 +534,10 @@ const InvoiceDocumentV1Integrity = TypeSystem.Type<unknown>(
       !Array.isArray(invoice.lines) ||
       !isSafeMoney(invoice.netCents) ||
       !isSafeMoney(invoice.vatCents) ||
-      !isSafeMoney(invoice.grossCents)
+      !isSafeMoney(invoice.grossCents) ||
+      issuedAt === undefined ||
+      dueAt === undefined ||
+      dueAt !== issuedAt + 30 * 24 * 60 * 60 * 1_000
     )
       return false;
     let lineNet = 0;
@@ -634,7 +668,8 @@ const InvoiceEnvelopeFacts = Type.Object(
     ...InvoiceDocumentV1Facts.properties,
     status: InvoiceLifecycleStatus,
     lifecycleStatus: Type.Optional(InvoiceLifecycleStatus),
-    version: NonNegativeVersion,
+    /** Mutable lifecycle version is kept separate from immutable document version `1`. */
+    lifecycleVersion: NonNegativeVersion,
     settledAt: Type.Union([CreditUtcIsoInstant, Type.Null()]),
     lifecycle: Type.Optional(InvoiceLifecycle),
     settlement: Type.Optional(Type.Union([InvoiceSettlement, Type.Null()])),
@@ -648,46 +683,82 @@ const InvoiceEnvelopeIntegrity = TypeSystem.Type<unknown>(
   (_options, value) => {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
     const invoice = value as {
+      id?: unknown;
       status?: unknown;
       lifecycleStatus?: unknown;
       lifecycle?: unknown;
+      lifecycleVersion?: unknown;
       settlement?: unknown;
       settledAt?: unknown;
       grossCents?: unknown;
-      version?: unknown;
+      events?: unknown;
     };
     if (invoice.lifecycleStatus !== undefined && invoice.lifecycleStatus !== invoice.status)
       return false;
     if (invoice.lifecycle !== undefined && invoice.lifecycle !== null) {
       const lifecycle = invoice.lifecycle as {
+        invoiceId?: unknown;
         status?: unknown;
         version?: unknown;
         settledAt?: unknown;
       };
       if (
+        lifecycle.invoiceId !== invoice.id ||
         lifecycle.status !== invoice.status ||
-        lifecycle.version !== invoice.version ||
+        (invoice.lifecycleVersion !== undefined &&
+          lifecycle.version !== invoice.lifecycleVersion) ||
         lifecycle.settledAt !== invoice.settledAt
       )
         return false;
     }
     if (invoice.status === 'paid') {
       if (invoice.settledAt === null) return false;
-    }
-    if (invoice.status === 'open' || invoice.status === 'overdue' || invoice.status === 'voided') {
+      if (invoice.settlement === null) return false;
+    } else if (
+      invoice.status === 'open' ||
+      invoice.status === 'overdue' ||
+      invoice.status === 'voided'
+    ) {
+      if (invoice.settledAt !== null) return false;
       if (invoice.settlement !== undefined && invoice.settlement !== null) return false;
-      if (invoice.status === 'voided' && invoice.settledAt !== null) return false;
     }
     if (invoice.settlement !== undefined && invoice.settlement !== null) {
-      const settlement = invoice.settlement as { amountCents?: unknown };
-      if (settlement.amountCents !== invoice.grossCents) return false;
+      const settlement = invoice.settlement as {
+        invoiceId?: unknown;
+        amountCents?: unknown;
+        settledAt?: unknown;
+      };
+      if (
+        invoice.status !== 'paid' ||
+        invoice.settledAt === null ||
+        settlement.invoiceId !== invoice.id ||
+        settlement.amountCents !== invoice.grossCents ||
+        settlement.settledAt !== invoice.settledAt
+      )
+        return false;
+    }
+    if (invoice.events !== undefined) {
+      if (!Array.isArray(invoice.events)) return false;
+      for (const event of invoice.events) {
+        if (
+          typeof event !== 'object' ||
+          event === null ||
+          Array.isArray(event) ||
+          (event as { invoiceId?: unknown }).invoiceId !== invoice.id
+        )
+          return false;
+      }
     }
     return true;
   },
 );
 
 /** Authenticated invoice response combines immutable facts with lifecycle projection. */
-export const Invoice = Type.Intersect([InvoiceEnvelopeFacts, InvoiceEnvelopeIntegrity()]);
+export const Invoice = Type.Intersect([
+  InvoiceEnvelopeFacts,
+  InvoiceDocumentV1Integrity(),
+  InvoiceEnvelopeIntegrity(),
+]);
 export type Invoice = Static<typeof Invoice>;
 export const InvoiceResponse = Invoice;
 export type InvoiceResponse = Invoice;

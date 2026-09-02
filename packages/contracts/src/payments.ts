@@ -94,7 +94,6 @@ export const TradeCreditPaymentBody = Type.Object(
   {
     ...PaymentCommonFields,
     paymentMethod: TradeCreditPaymentMethod,
-    companyId: PositiveIntegerString,
   },
   { additionalProperties: false },
 );
@@ -501,13 +500,13 @@ const PersistedCheckoutQuoteV10Integrity = TypeSystem.Type<unknown>(
     if (quote.paymentMethod === 'trade_credit') {
       if (
         typeof quote.companyId !== 'string' ||
-        (quote.userId !== null && quote.userId === undefined) ||
         quote.userId === null ||
+        (quote.terms !== 'net_30' && quote.terms !== 30 && quote.termsDays !== 30) ||
         (quote.terms !== undefined && quote.terms !== 'net_30' && quote.terms !== 30) ||
-        (quote.termsDays !== undefined && quote.termsDays !== 30 && quote.termsDays !== null) ||
-        (quote.terms === undefined && quote.termsDays === undefined)
+        (quote.termsDays !== undefined && quote.termsDays !== 30)
       )
         return false;
+      if (quote.grossCents !== quote.totalCents) return false;
     } else if (quote.paymentMethod === 'card') {
       if (
         quote.companyId !== null ||
@@ -616,13 +615,6 @@ const CheckoutGenericErrorCode = Type.Union([
   Type.Literal('DELIVERY_SITE_NOT_FOUND'),
   Type.Literal('BILLING_ENTITY_INVALID'),
   Type.Literal('CHECKOUT_FAILED'),
-  Type.Literal('CREDIT_NOT_ELIGIBLE'),
-  Type.Literal('CREDIT_ACCOUNT_ON_HOLD'),
-  Type.Literal('CREDIT_ACCOUNT_SUSPENDED'),
-  Type.Literal('CREDIT_PAYMENT_UNAVAILABLE'),
-  Type.Literal('COMPANY_REQUIRED'),
-  Type.Literal('PAYMENT_METHOD_INVALID'),
-  Type.Literal('CARD_FIELDS_FORBIDDEN'),
 ]);
 
 export const CheckoutResult = Type.Union([
@@ -698,5 +690,38 @@ export const CheckoutResult = Type.Union([
     { success: Type.Literal(false), error: Type.Literal('CREDIT_ACCOUNT_SUSPENDED') },
     { additionalProperties: false },
   ),
+  Type.Object(
+    { success: Type.Literal(false), error: Type.Literal('CREDIT_PAYMENT_UNAVAILABLE') },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { success: Type.Literal(false), error: Type.Literal('COMPANY_REQUIRED') },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { success: Type.Literal(false), error: Type.Literal('PAYMENT_METHOD_INVALID') },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { success: Type.Literal(false), error: Type.Literal('CARD_FIELDS_FORBIDDEN') },
+    { additionalProperties: false },
+  ),
 ]);
 export type CheckoutResult = Static<typeof CheckoutResult>;
+
+const PaymentFailureResponseIntegrity = TypeSystem.Type<unknown>(
+  'PaymentFailureResponseIntegrity',
+  (_options, value) =>
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    (value as { success?: unknown }).success === false &&
+    Value.Check(CheckoutResult, value),
+);
+
+/** Failure-only view of checkout responses for payment route consumers. */
+export const PaymentFailureResponse = Type.Intersect([
+  CheckoutResult,
+  PaymentFailureResponseIntegrity(),
+]);
+export type PaymentFailureResponse = Static<typeof PaymentFailureResponse>;

@@ -260,7 +260,7 @@ export type Order = Static<typeof Order>;
 export const OrderWithAccounting = Order;
 export type OrderWithAccounting = Order;
 
-export const OrderSummary = Type.Object(
+const OrderSummaryFields = Type.Object(
   {
     id: PositiveIntegerString,
     status: OrderStatus,
@@ -268,6 +268,10 @@ export const OrderSummary = Type.Object(
     totalCents: MoneyCents,
     paymentMethod: Type.Optional(PaymentMethod),
     companyId: Type.Optional(PositiveIntegerString),
+    netCents: Type.Optional(MoneyCents),
+    vatRateBasisPoints: Type.Optional(Type.Integer({ minimum: 0, maximum: 10_000 })),
+    vatCents: Type.Optional(MoneyCents),
+    grossCents: Type.Optional(MoneyCents),
     totalItems: Type.Integer({ minimum: 0 }),
     hasBackorder: Type.Boolean(),
     createdAt: UtcIsoInstant,
@@ -275,6 +279,10 @@ export const OrderSummary = Type.Object(
     purchaseOrderReference: Type.Optional(PurchaseOrderReference),
   },
   { additionalProperties: false },
+);
+export const OrderSummary = Object.assign(
+  Type.Intersect([OrderSummaryFields, OrderAccountingIntegrity()]),
+  { properties: OrderSummaryFields.properties },
 );
 export type OrderSummary = Static<typeof OrderSummary>;
 
@@ -337,7 +345,7 @@ export const OrderLifecycleEvent = Type.Object(
 );
 export type OrderLifecycleEvent = Static<typeof OrderLifecycleEvent>;
 
-export const OrderDetailResponse = Type.Object(
+const OrderDetailFields = Type.Object(
   {
     ...OrderFields.properties,
     shipments: Type.Array(OrderShipment),
@@ -345,6 +353,10 @@ export const OrderDetailResponse = Type.Object(
     canCancel: Type.Boolean(),
   },
   { additionalProperties: false },
+);
+export const OrderDetailResponse = Object.assign(
+  Type.Intersect([OrderDetailFields, OrderAccountingIntegrity()]),
+  { properties: OrderDetailFields.properties },
 );
 export type OrderDetailResponse = Static<typeof OrderDetailResponse>;
 

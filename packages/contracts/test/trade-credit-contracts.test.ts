@@ -3,12 +3,18 @@ import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import {
   AdminCreditAccountListQuery,
+  AdminCreditAccountUpdateBody,
   CreditAccount,
+  CreditAccountQuery,
   CreditAccountMemberView,
+  CheckoutResult,
+  ExportedInvoice,
+  Invoice,
   InvoiceV1,
   InvoiceSettlement,
   InvoiceIssuedMailboxDescriptor,
   PaymentBody,
+  PaymentFailureResponse,
   PersistedCheckoutQuote,
   PersistedCheckoutQuoteV10,
   PublicErrorResponse,
@@ -53,13 +59,41 @@ void test('trade-credit checkout is strict and can never carry card fields', () 
   const credit: TradeCreditPaymentBody = {
     ...checkoutCommon,
     paymentMethod: 'trade_credit',
-    companyId: '7',
   };
   assert.equal(Value.Check(TradeCreditPaymentBody, credit), true);
   assert.equal(Value.Check(PaymentBody, credit), true);
+  assert.equal(Value.Check(TradeCreditPaymentBody, { ...credit, companyId: '7' }), false);
   assert.equal(Value.Check(PaymentBody, { ...credit, cardNumber: '424242424242' }), false);
-  assert.equal(Value.Check(PaymentBody, { ...credit, companyId: '0' }), false);
   assert.equal(Value.Check(PaymentBody, { ...credit, paymentMethod: 'credit' }), false);
+});
+
+void test('buyer credit queries cannot select a company and admin updates require one mutation', () => {
+  assert.equal(Value.Check(CreditAccountQuery, {}), true);
+  assert.equal(Value.Check(CreditAccountQuery, { companyId: '7' }), false);
+
+  const common = { expectedVersion: 0, idempotencyKey: uuid };
+  assert.equal(
+    Value.Check(AdminCreditAccountUpdateBody, { ...common, creditLimitCents: 100_000 }),
+    true,
+  );
+  assert.equal(Value.Check(AdminCreditAccountUpdateBody, { ...common, state: 'active' }), true);
+  assert.equal(
+    Value.Check(AdminCreditAccountUpdateBody, { ...common, state: 'active', reason: 'Reinstated' }),
+    true,
+  );
+  assert.equal(Value.Check(AdminCreditAccountUpdateBody, { ...common, reason: 'No-op' }), false);
+  assert.equal(
+    Value.Check(AdminCreditAccountUpdateBody, {
+      ...common,
+      state: 'active',
+      creditLimitCents: 100_000,
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(AdminCreditAccountUpdateBody, { ...common, state: 'active', status: 'active' }),
+    false,
+  );
 });
 
 void test('credit accounts expose safe money and derived available credit', () => {
@@ -139,6 +173,89 @@ void test('invoice V1 enforces line/net/VAT/gross integrity and immutable fields
   );
   assert.equal(Value.Check(InvoiceV1, { ...invoice, convertedGrossCents: 15_000 }), false);
   assert.throws(() => parseInvoiceV1({ ...invoice, version: 2 }));
+  assert.equal(Value.Check(InvoiceV1, { ...invoice, issuedAt: '2026-02-30T00:00:00.000Z' }), false);
+  assert.equal(Value.Check(InvoiceV1, { ...invoice, dueAt: '2026-10-02T00:00:00.000Z' }), false);
+});
+
+void test('invoice responses retain V1 document integrity and link lifecycle records to the invoice', () => {
+  const response = {
+    ...invoice,
+    status: 'open',
+    settledAt: null,
+    lifecycleVersion: 0,
+    lifecycle: {
+      invoiceId: invoice.id,
+      status: 'open',
+      version: 0,
+      settledAt: null,
+      updatedAt: '2026-09-01T00:00:00.000Z',
+    },
+    settlement: null,
+    events: [
+      {
+        id: '301',
+        invoiceId: invoice.id,
+        type: 'issued',
+        occurredAt: '2026-09-01T00:00:00.000Z',
+      },
+    ],
+  } as const;
+  assert.equal(Value.Check(Invoice, response), true);
+  assert.equal(Value.Check(Invoice, { ...response, version: 2 }), false);
+  assert.equal(Value.Check(Invoice, { ...response, vatCents: 2_001 }), false);
+  assert.equal(
+    Value.Check(Invoice, {
+      ...response,
+      lifecycle: { ...response.lifecycle, invoiceId: '999' },
+    }),
+    false,
+  );
+  assert.equal(Value.Check(Invoice, { ...response, lifecycleVersion: 1 }), false);
+  assert.equal(
+    Value.Check(Invoice, { ...response, status: 'open', settledAt: '2026-09-20T00:00:00.000Z' }),
+    false,
+  );
+  assert.equal(
+    Value.Check(Invoice, {
+      ...response,
+      status: 'paid',
+      settledAt: '2026-09-20T00:00:00.000Z',
+      lifecycleVersion: 1,
+      lifecycle: {
+        ...response.lifecycle,
+        status: 'paid',
+        version: 1,
+        settledAt: '2026-09-20T00:00:00.000Z',
+      },
+      settlement: {
+        id: '201',
+        invoiceId: invoice.id,
+        amountCents: invoice.grossCents,
+        currency: 'GBP',
+        status: 'settled',
+        idempotencyKey: uuid,
+        settledAt: '2026-09-20T00:00:00.000Z',
+        createdAt: '2026-09-20T00:00:00.000Z',
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    Value.Check(Invoice, {
+      ...response,
+      status: 'paid',
+      settledAt: '2026-09-20T00:00:00.000Z',
+      settlement: null,
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(Invoice, {
+      ...response,
+      events: [{ ...response.events[0], invoiceId: '999' }],
+    }),
+    false,
+  );
 });
 
 void test('V10 quote carries country, method, identity, accounting, and terms while V8/V9 read', () => {
@@ -161,7 +278,7 @@ void test('V10 quote carries country, method, identity, accounting, and terms wh
     discountBaseCents: 10_000,
     promoCategoryScope: null,
     discountCents: 0,
-    totalCents: 10_000,
+    totalCents: 12_000,
     netCents: 10_000,
     vatRateBasisPoints: 2_000,
     vatCents: 2_000,
@@ -178,6 +295,12 @@ void test('V10 quote carries country, method, identity, accounting, and terms wh
   assert.equal(Value.Check(PersistedCheckoutQuoteV10, v10), true);
   assert.equal(Value.Check(PersistedCheckoutQuote, v10), true);
   assert.equal(Value.Check(PersistedCheckoutQuoteV10, { ...v10, grossCents: 12_001 }), false);
+  assert.equal(Value.Check(PersistedCheckoutQuoteV10, { ...v10, totalCents: 10_000 }), false);
+  assert.equal(Value.Check(PersistedCheckoutQuoteV10, { ...v10, terms: null }), false);
+  assert.equal(Value.Check(PersistedCheckoutQuoteV10, { ...v10, termsDays: null }), false);
+  const withoutTerms: Record<string, unknown> = { ...v10 };
+  delete withoutTerms.terms;
+  assert.equal(Value.Check(PersistedCheckoutQuoteV10, withoutTerms), false);
   assert.equal(
     Value.Check(PersistedCheckoutQuoteV10, { ...v10, cardNumber: '424242424242' }),
     false,
@@ -226,5 +349,61 @@ void test('invoice settlement, mailbox descriptor, and public metadata are stric
       meta: { requestedCents: 20_000 },
     }),
     false,
+  );
+});
+
+void test('credit checkout failures use closed code-specific fields', () => {
+  const failures = [
+    { success: false, error: 'CREDIT_NOT_ELIGIBLE' },
+    { success: false, error: 'CREDIT_ACCOUNT_ON_HOLD' },
+    { success: false, error: 'CREDIT_ACCOUNT_SUSPENDED' },
+    { success: false, error: 'CREDIT_PAYMENT_UNAVAILABLE' },
+    { success: false, error: 'COMPANY_REQUIRED' },
+    { success: false, error: 'PAYMENT_METHOD_INVALID' },
+    { success: false, error: 'CARD_FIELDS_FORBIDDEN' },
+    {
+      success: false,
+      error: 'CREDIT_LIMIT_EXCEEDED',
+      requestedCents: 12_000,
+      availableCreditCents: 10_000,
+    },
+  ] as const;
+  for (const failure of failures) {
+    assert.equal(Value.Check(CheckoutResult, failure), true, failure.error);
+    assert.equal(Value.Check(PaymentFailureResponse, failure), true, failure.error);
+    assert.equal(
+      Value.Check(CheckoutResult, { ...failure, promoError: 'internal account details' }),
+      false,
+      `${failure.error} must not accept promoError`,
+    );
+    assert.equal(
+      Value.Check(CheckoutResult, { ...failure, promoErrorCode: 'PRIVATE_CODE' }),
+      false,
+      `${failure.error} must not accept promoErrorCode`,
+    );
+  }
+  assert.equal(Value.Check(PaymentFailureResponse, { success: true, order: {} }), false);
+});
+
+void test('account invoice export includes only immutable document plus safe settlement state', () => {
+  const exported = { ...invoice, status: 'open', settledAt: null };
+  assert.equal(Value.Check(ExportedInvoice, exported), true);
+  assert.equal(Value.Check(ExportedInvoice, { ...exported, lifecycle: {} }), false);
+  assert.equal(Value.Check(ExportedInvoice, { ...exported, events: [] }), false);
+  assert.equal(
+    Value.Check(ExportedInvoice, {
+      ...exported,
+      status: 'open',
+      settledAt: '2026-09-20T00:00:00.000Z',
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(ExportedInvoice, {
+      ...exported,
+      status: 'paid',
+      settledAt: '2026-09-20T00:00:00.000Z',
+    }),
+    true,
   );
 });
