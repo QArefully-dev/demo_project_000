@@ -449,27 +449,77 @@ export type TradeCreditEligibilityResult =
   | { readonly eligible: true }
   | { readonly eligible: false; readonly code: TradeCreditEligibilityFailureCode };
 
+interface NestedRecordRead {
+  readonly record: Record<string, unknown> | null;
+  readonly conflict: boolean;
+}
+
+function readNestedAliasValue(
+  record: Record<string, unknown>,
+  names: readonly string[],
+): { readonly present: boolean; readonly value: unknown } {
+  for (const name of names) {
+    if (record[name] !== undefined) return { present: true, value: record[name] };
+  }
+  return { present: false, value: undefined };
+}
+
+function nestedAliasesConflict(record: Record<string, unknown>, names: readonly string[]): boolean {
+  let value: unknown;
+  let present = false;
+  for (const name of names) {
+    if (record[name] === undefined) continue;
+    if (present && value !== record[name]) return true;
+    value = record[name];
+    present = true;
+  }
+  return false;
+}
+
+function nestedRecordsConflict(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+): boolean {
+  for (const names of [['active'], ['role'], ['state', 'status'], ['id'], ['companyId']]) {
+    const leftValue = readNestedAliasValue(left, names);
+    const rightValue = readNestedAliasValue(right, names);
+    if (leftValue.present && rightValue.present && leftValue.value !== rightValue.value) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function readNestedRecord(
   input: Record<string, unknown>,
   names: readonly string[],
-): Record<string, unknown> | null {
+): NestedRecordRead {
   let record: Record<string, unknown> | null = null;
+  let conflict = false;
   for (const name of names) {
     const value = input[name];
     if (!isRecord(value)) continue;
+    if (
+      nestedAliasesConflict(value, ['active']) ||
+      nestedAliasesConflict(value, ['role']) ||
+      nestedAliasesConflict(value, ['state', 'status']) ||
+      nestedAliasesConflict(value, ['id']) ||
+      nestedAliasesConflict(value, ['companyId'])
+    ) {
+      conflict = true;
+    }
     if (record === null) {
-      record = value;
+      record = { ...value };
       continue;
     }
     // Treat conflicting aliases as malformed authorization input. A caller must not be able to
     // place an inactive company in one alias and an active company in another to bypass a gate.
-    for (const key of ['active', 'role', 'state', 'status', 'id', 'companyId']) {
-      if (record[key] !== undefined && value[key] !== undefined && record[key] !== value[key]) {
-        return null;
-      }
+    conflict ||= nestedRecordsConflict(record, value);
+    for (const [key, candidate] of Object.entries(value)) {
+      if (record[key] === undefined) record[key] = candidate;
     }
   }
-  return record;
+  return { record, conflict };
 }
 
 function readBooleanFact(
@@ -539,9 +589,15 @@ export function evaluateTradeCreditEligibility(
   input: TradeCreditEligibilityInput,
 ): TradeCreditEligibilityResult {
   if (!isRecord(input)) return { eligible: false, code: 'NO_ACTIVE_COMPANY' };
-  const company = readNestedRecord(input, ['company', 'companyAccount']);
-  const membership = readNestedRecord(input, ['membership', 'companyMembership']);
-  const account = readNestedRecord(input, ['creditAccount', 'account']);
+  const companyRead = readNestedRecord(input, ['company', 'companyAccount']);
+  const membershipRead = readNestedRecord(input, ['membership', 'companyMembership']);
+  const accountRead = readNestedRecord(input, ['creditAccount', 'account']);
+  const company = companyRead.record;
+  const membership = membershipRead.record;
+  const account = accountRead.record;
+  if (companyRead.conflict) return { eligible: false, code: 'NO_ACTIVE_COMPANY' };
+  if (membershipRead.conflict) return { eligible: false, code: 'NO_ACTIVE_MEMBERSHIP' };
+  if (accountRead.conflict) return { eligible: false, code: 'CREDIT_ACCOUNT_NOT_ACTIVE' };
   const companyActive = readBooleanFact(input, ['companyActive', 'activeCompany'], company);
   if (companyActive !== true) return { eligible: false, code: 'NO_ACTIVE_COMPANY' };
   const membershipActive = readBooleanFact(

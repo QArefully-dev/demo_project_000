@@ -161,6 +161,44 @@ void test('requires active company/member buyer authority and active credit stat
   assert.equal(isTradeCreditEligible(true, true, 'approver', 'active', true), false);
 });
 
+void test('keeps flattened eligibility aliases valid when nested records are absent', () => {
+  assert.deepEqual(
+    evaluateTradeCreditEligibility({
+      companyActive: true,
+      membershipActive: true,
+      membershipRole: 'buyer',
+      creditState: 'active',
+    }),
+    { eligible: true },
+  );
+});
+
+void test('fails closed when company active aliases conflict', () => {
+  assert.deepEqual(
+    evaluateTradeCreditEligibility({
+      company: { id: '7', active: false },
+      companyAccount: { id: '7', active: true },
+      companyActive: true,
+      membership: { companyId: '7', active: true, role: 'buyer' },
+      creditAccount: { companyId: '7', state: 'active' },
+    }),
+    { eligible: false, code: 'NO_ACTIVE_COMPANY' },
+  );
+});
+
+void test('fails closed when nested credit state and status aliases conflict', () => {
+  assert.deepEqual(
+    evaluateTradeCreditEligibility({
+      company: { id: '7', active: true },
+      membership: { companyId: '7', active: true, role: 'buyer' },
+      creditAccount: { companyId: '7', state: 'active' },
+      account: { companyId: '7', status: 'on_hold' },
+      creditState: 'active',
+    }),
+    { eligible: false, code: 'CREDIT_ACCOUNT_NOT_ACTIVE' },
+  );
+});
+
 void test('returns stable eligibility failure identities', () => {
   assert.deepEqual(evaluateTradeCreditEligibility({}), {
     eligible: false,
