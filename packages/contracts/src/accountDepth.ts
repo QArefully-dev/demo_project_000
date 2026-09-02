@@ -6,6 +6,7 @@ import { Order } from './orders.js';
 import { CustomBlendSnapshot } from './customBlends.js';
 import { CompanyMembership } from './companyAccounts.js';
 import { SavedListDetail } from './savedLists.js';
+import { InvoiceV1 } from './tradeCredit.js';
 
 const UtcIsoInstant = Type.String({
   minLength: 24,
@@ -71,6 +72,8 @@ export const DataExportResponse = Type.Object(
     deliverySites: Type.Array(DeliverySite),
     billingEntities: Type.Array(BillingEntity),
     orders: Type.Array(Order),
+    /** Caller-owned invoice snapshots only; legacy exports may omit this newly added field. */
+    invoices: Type.Optional(Type.Array(InvoiceV1)),
     savedLists: Type.Array(SavedListDetail),
     customBlends: Type.Array(CustomBlendSnapshot),
     sessions: Type.Array(SessionSummary),
@@ -80,6 +83,10 @@ export const DataExportResponse = Type.Object(
   { additionalProperties: false },
 );
 export type DataExportResponse = Static<typeof DataExportResponse>;
+
+/** Export keeps the same immutable invoice shape; selection is enforced by the API owner. */
+export const ExportedInvoice = InvoiceV1;
+export type ExportedInvoice = InvoiceV1;
 
 /** Current password confirmation makes this destructive, self-service request intentional. */
 export const DeleteAccountBody = Type.Object(

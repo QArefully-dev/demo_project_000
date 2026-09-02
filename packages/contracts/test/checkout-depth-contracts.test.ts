@@ -455,5 +455,5 @@ void test('order summary carries an optional PO reference so history rows can sh
 });
 
 void test('persisted quote version advanced and never restarted', () => {
-  assert.equal(CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION, 9);
+  assert.equal(CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION, 10);
 });

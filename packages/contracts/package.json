@@ -58,6 +58,10 @@
       "types": "./dist/payments.d.ts",
       "import": "./dist/payments.js"
     },
+    "./trade-credit": {
+      "types": "./dist/tradeCredit.d.ts",
+      "import": "./dist/tradeCredit.js"
+    },
     "./mailbox": {
       "types": "./dist/mailbox.d.ts",
       "import": "./dist/mailbox.js"

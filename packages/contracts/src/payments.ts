@@ -20,6 +20,15 @@ import {
 import { PostalAddress } from './address.js';
 import { BillingEntityInput, BillingEntitySnapshot } from './tradeAccount.js';
 import { PendingApprovalResult } from './orderApprovals.js';
+import {
+  CreditUtcIsoInstant,
+  PaymentMethod as PaymentMethodSchema,
+  type PaymentMethod as PaymentMethodType,
+  TradeCreditPaymentMethod,
+  TradeCreditTerms,
+  TradeCreditTermsDays,
+} from './tradeCredit.js';
+import { Country } from './country.js';
 
 /**
  * Where the consignment goes. Discriminated on `kind`: a `saved` selection carries only an
@@ -50,7 +59,7 @@ export const BillingSelection = Type.Union([
 ]);
 export type BillingSelection = Static<typeof BillingSelection>;
 
-export const PaymentBody = Type.Object({
+const PaymentCommonFields = {
   cartId: Uuid,
   promoCode: Type.Optional(PromoCodeValue),
   customerName: CustomerName,
@@ -59,12 +68,46 @@ export const PaymentBody = Type.Object({
   billingSelection: BillingSelection,
   deliverySlot: DeliverySlot,
   purchaseOrderReference: Type.Optional(PurchaseOrderReference),
-  cardNumber: Type.String({ minLength: 12, maxLength: 25, pattern: '^[0-9 -]+$' }),
-  cardExpiry: Type.String({ pattern: '^(0[1-9]|1[0-2])/[0-9]{2}$' }),
-  cardCvc: Type.String({ pattern: '^[0-9]{3,4}$' }),
   idempotencyKey: Uuid,
+} as const;
+
+const CardNumber = Type.String({ minLength: 12, maxLength: 25, pattern: '^[0-9 -]+$' });
+const CardExpiry = Type.String({ pattern: '^(0[1-9]|1[0-2])/[0-9]{2}$' });
+const CardCvc = Type.String({ pattern: '^[0-9]{3,4}$' });
+
+/** Payment method discriminator. Omitted method is the historic simulated-card wire shape. */
+export const PaymentMethod = PaymentMethodSchema;
+export type PaymentMethod = PaymentMethodType;
+
+/** Historical card body. It stays open so old callers' ignored fields remain wire-compatible. */
+export const CardPaymentBody = Type.Object({
+  ...PaymentCommonFields,
+  paymentMethod: Type.Optional(Type.Literal('card')),
+  cardNumber: CardNumber,
+  cardExpiry: CardExpiry,
+  cardCvc: CardCvc,
 });
+export type CardPaymentBody = Static<typeof CardPaymentBody>;
+
+/** Trade-credit body is intentionally closed: card PAN, expiry, and CVC cannot cross this branch. */
+export const TradeCreditPaymentBody = Type.Object(
+  {
+    ...PaymentCommonFields,
+    paymentMethod: TradeCreditPaymentMethod,
+    companyId: PositiveIntegerString,
+  },
+  { additionalProperties: false },
+);
+export type TradeCreditPaymentBody = Static<typeof TradeCreditPaymentBody>;
+
+/** Checkout accepts the old card shape plus one strict company-credit discriminator branch. */
+export const PaymentBody = Type.Union([CardPaymentBody, TradeCreditPaymentBody]);
 export type PaymentBody = Static<typeof PaymentBody>;
+/** Descriptive aliases for routes that call this payload a checkout request. */
+export const CheckoutPaymentBody = PaymentBody;
+export type CheckoutPaymentBody = PaymentBody;
+export const CheckoutRequest = PaymentBody;
+export type CheckoutRequest = PaymentBody;
 
 export const PaymentFailureReason = Type.Union([
   Type.Literal('CARD_DECLINED'),
@@ -83,7 +126,7 @@ const PaymentConflictFallbackError = Type.String({
   // Detail-bearing conflict codes must select their dedicated schema. Generic legacy messages
   // remain valid, but cannot make a required detail field optional through the catch-all member.
   pattern:
-    '^(?!(?:RESERVATION_EXPIRED|INSUFFICIENT_STOCK|BLOCKED_IN_COUNTRY|DELIVERY_SLOT_UNAVAILABLE|PENDING_APPROVAL|APPROVAL_REJECTED|APPROVAL_EXPIRED|APPROVAL_TOTAL_DRIFT|CUSTOM_BLEND_INVALID)$).+$',
+    '^(?!(?:RESERVATION_EXPIRED|INSUFFICIENT_STOCK|BLOCKED_IN_COUNTRY|DELIVERY_SLOT_UNAVAILABLE|PENDING_APPROVAL|APPROVAL_REJECTED|APPROVAL_EXPIRED|APPROVAL_TOTAL_DRIFT|CUSTOM_BLEND_INVALID|CREDIT_LIMIT_EXCEEDED|CREDIT_ACCOUNT_ON_HOLD|CREDIT_ACCOUNT_SUSPENDED|CREDIT_NOT_ELIGIBLE)$).+$',
 });
 
 export const PaymentConflictResponse = Type.Union([
@@ -126,6 +169,17 @@ export const PaymentConflictResponse = Type.Union([
   Type.Object({ error: Type.Literal('APPROVAL_EXPIRED') }, { additionalProperties: false }),
   Type.Object({ error: Type.Literal('APPROVAL_TOTAL_DRIFT') }, { additionalProperties: false }),
   Type.Object({ error: Type.Literal('CUSTOM_BLEND_INVALID') }, { additionalProperties: false }),
+  Type.Object(
+    {
+      error: Type.Literal('CREDIT_LIMIT_EXCEEDED'),
+      requestedCents: MoneyCents,
+      availableCreditCents: MoneyCents,
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object({ error: Type.Literal('CREDIT_ACCOUNT_ON_HOLD') }, { additionalProperties: false }),
+  Type.Object({ error: Type.Literal('CREDIT_ACCOUNT_SUSPENDED') }, { additionalProperties: false }),
+  Type.Object({ error: Type.Literal('CREDIT_NOT_ELIGIBLE') }, { additionalProperties: false }),
   Type.Object({ error: PaymentConflictFallbackError }),
 ]);
 export type PaymentConflictResponse = Static<typeof PaymentConflictResponse>;
@@ -387,13 +441,123 @@ export const PersistedCheckoutQuoteV9 = Type.Object(
 );
 export type PersistedCheckoutQuoteV9 = Static<typeof PersistedCheckoutQuoteV9>;
 
-/** Strict reader union. Prepared V8 intents and current V9 intents are the only accepted versions. */
+/** V10 freezes buyer/company identity and the invoice accounting basis at quote creation. */
+const PersistedCheckoutQuoteV10Facts = Type.Object(
+  {
+    ...PersistedCheckoutQuoteV9.properties,
+    version: Type.Literal(10),
+    // Existing persisted rows use a number; transport writers may use the canonical string form.
+    // Both forms remain safe and are normalized by the persistence owner.
+    userId: Type.Union([
+      Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
+      PositiveIntegerString,
+      Type.Null(),
+    ]),
+    companyId: Type.Union([PositiveIntegerString, Type.Null()]),
+    country: Country,
+    paymentMethod: PaymentMethod,
+    netCents: MoneyCents,
+    vatRateBasisPoints: Type.Integer({ minimum: 0, maximum: 10_000 }),
+    vatCents: MoneyCents,
+    grossCents: MoneyCents,
+    terms: Type.Optional(Type.Union([TradeCreditTerms, Type.Null()])),
+    termsDays: Type.Optional(Type.Union([TradeCreditTermsDays, Type.Null()])),
+    preparedAt: Type.Optional(CreditUtcIsoInstant),
+  },
+  { additionalProperties: false },
+);
+
+const PersistedCheckoutQuoteV10Integrity = TypeSystem.Type<unknown>(
+  'PersistedCheckoutQuoteV10Integrity',
+  (_options, value) => {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+    const quote = value as {
+      paymentMethod?: unknown;
+      companyId?: unknown;
+      terms?: unknown;
+      termsDays?: unknown;
+      userId?: unknown;
+      totalCents?: unknown;
+      netCents?: unknown;
+      vatRateBasisPoints?: unknown;
+      vatCents?: unknown;
+      grossCents?: unknown;
+    };
+    const safeMoney = (candidate: unknown): candidate is number =>
+      typeof candidate === 'number' && Number.isSafeInteger(candidate) && candidate >= 0;
+    if (
+      !safeMoney(quote.netCents) ||
+      !safeMoney(quote.vatCents) ||
+      !safeMoney(quote.grossCents) ||
+      typeof quote.vatRateBasisPoints !== 'number' ||
+      !Number.isSafeInteger(quote.vatRateBasisPoints) ||
+      quote.vatRateBasisPoints < 0 ||
+      quote.vatRateBasisPoints > 10_000
+    ) {
+      return false;
+    }
+    // A credit quote must point at an authenticated user/company and carry the fixed net-30 term.
+    // Card quotes retain the legacy no-company identity and zero VAT.
+    if (quote.paymentMethod === 'trade_credit') {
+      if (
+        typeof quote.companyId !== 'string' ||
+        (quote.userId !== null && quote.userId === undefined) ||
+        quote.userId === null ||
+        (quote.terms !== undefined && quote.terms !== 'net_30' && quote.terms !== 30) ||
+        (quote.termsDays !== undefined && quote.termsDays !== 30 && quote.termsDays !== null) ||
+        (quote.terms === undefined && quote.termsDays === undefined)
+      )
+        return false;
+    } else if (quote.paymentMethod === 'card') {
+      if (
+        quote.companyId !== null ||
+        (quote.terms !== undefined &&
+          quote.terms !== null &&
+          quote.terms !== 'net_30' &&
+          quote.terms !== 30) ||
+        (quote.termsDays !== undefined && quote.termsDays !== null && quote.termsDays !== 30) ||
+        quote.vatRateBasisPoints !== 0 ||
+        quote.vatCents !== 0 ||
+        quote.netCents !== quote.grossCents ||
+        quote.grossCents !== quote.totalCents
+      )
+        return false;
+    } else {
+      return false;
+    }
+    if (
+      quote.vatRateBasisPoints > 0 &&
+      quote.netCents > Math.floor(Number.MAX_SAFE_INTEGER / quote.vatRateBasisPoints)
+    ) {
+      return false;
+    }
+    const vatNumerator = quote.netCents * quote.vatRateBasisPoints;
+    if (!Number.isSafeInteger(vatNumerator) || vatNumerator > Number.MAX_SAFE_INTEGER - 5_000)
+      return false;
+    const expectedVat = Math.floor((vatNumerator + 5_000) / 10_000);
+    return (
+      expectedVat === quote.vatCents &&
+      quote.netCents <= Number.MAX_SAFE_INTEGER - quote.vatCents &&
+      quote.netCents + quote.vatCents === quote.grossCents &&
+      (quote.paymentMethod !== 'card' || quote.grossCents === quote.totalCents)
+    );
+  },
+);
+
+export const PersistedCheckoutQuoteV10 = Type.Intersect([
+  PersistedCheckoutQuoteV10Facts,
+  PersistedCheckoutQuoteV10Integrity(),
+]);
+export type PersistedCheckoutQuoteV10 = Static<typeof PersistedCheckoutQuoteV10>;
+
+/** Strict reader union. Prepared V8/V9 intents and current V10 intents are accepted. */
 export const PersistedCheckoutQuote = Type.Union([
   PersistedCheckoutQuoteV8,
   PersistedCheckoutQuoteV9,
+  PersistedCheckoutQuoteV10,
 ]);
 export type PersistedCheckoutQuote = Static<typeof PersistedCheckoutQuote>;
-export const CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION = 9;
+export const CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION = 10;
 
 /** Strict storage-boundary parser. Unknown versions and malformed configured pairs fail closed. */
 export function parsePersistedCheckoutQuote(value: unknown): PersistedCheckoutQuote {
@@ -427,6 +591,14 @@ export const CheckoutErrorCode = Type.Union([
   Type.Literal('APPROVAL_REJECTED'),
   Type.Literal('APPROVAL_EXPIRED'),
   Type.Literal('APPROVAL_TOTAL_DRIFT'),
+  Type.Literal('CREDIT_NOT_ELIGIBLE'),
+  Type.Literal('CREDIT_ACCOUNT_ON_HOLD'),
+  Type.Literal('CREDIT_ACCOUNT_SUSPENDED'),
+  Type.Literal('CREDIT_LIMIT_EXCEEDED'),
+  Type.Literal('CREDIT_PAYMENT_UNAVAILABLE'),
+  Type.Literal('COMPANY_REQUIRED'),
+  Type.Literal('PAYMENT_METHOD_INVALID'),
+  Type.Literal('CARD_FIELDS_FORBIDDEN'),
 ]);
 export type CheckoutErrorCode = Static<typeof CheckoutErrorCode>;
 
@@ -444,6 +616,13 @@ const CheckoutGenericErrorCode = Type.Union([
   Type.Literal('DELIVERY_SITE_NOT_FOUND'),
   Type.Literal('BILLING_ENTITY_INVALID'),
   Type.Literal('CHECKOUT_FAILED'),
+  Type.Literal('CREDIT_NOT_ELIGIBLE'),
+  Type.Literal('CREDIT_ACCOUNT_ON_HOLD'),
+  Type.Literal('CREDIT_ACCOUNT_SUSPENDED'),
+  Type.Literal('CREDIT_PAYMENT_UNAVAILABLE'),
+  Type.Literal('COMPANY_REQUIRED'),
+  Type.Literal('PAYMENT_METHOD_INVALID'),
+  Type.Literal('CARD_FIELDS_FORBIDDEN'),
 ]);
 
 export const CheckoutResult = Type.Union([
@@ -496,6 +675,27 @@ export const CheckoutResult = Type.Union([
   ),
   Type.Object(
     { success: Type.Literal(false), error: Type.Literal('APPROVAL_TOTAL_DRIFT') },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    {
+      success: Type.Literal(false),
+      error: Type.Literal('CREDIT_LIMIT_EXCEEDED'),
+      requestedCents: MoneyCents,
+      availableCreditCents: MoneyCents,
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { success: Type.Literal(false), error: Type.Literal('CREDIT_NOT_ELIGIBLE') },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { success: Type.Literal(false), error: Type.Literal('CREDIT_ACCOUNT_ON_HOLD') },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { success: Type.Literal(false), error: Type.Literal('CREDIT_ACCOUNT_SUSPENDED') },
     { additionalProperties: false },
   ),
 ]);

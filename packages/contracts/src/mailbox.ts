@@ -217,6 +217,21 @@ export type MailboxOrderReceipt = Static<typeof MailboxOrderReceipt>;
 export const OrderReceiptMailboxMessage = MailboxOrderReceipt;
 export type OrderReceiptMailboxMessage = MailboxOrderReceipt;
 
+/** Structured invoice notification. The reader hydrates the immutable document by invoice id. */
+export const InvoiceIssuedMailboxDescriptor = Type.Object(
+  {
+    ...MailboxIdentity,
+    kind: Type.Literal('invoice_issued'),
+    invoiceId: PositiveIntegerString,
+  },
+  { additionalProperties: false },
+);
+export type InvoiceIssuedMailboxDescriptor = Static<typeof InvoiceIssuedMailboxDescriptor>;
+export const MailboxInvoiceIssued = InvoiceIssuedMailboxDescriptor;
+export type MailboxInvoiceIssued = InvoiceIssuedMailboxDescriptor;
+export const InvoiceIssuedMailboxMessage = InvoiceIssuedMailboxDescriptor;
+export type InvoiceIssuedMailboxMessage = InvoiceIssuedMailboxDescriptor;
+
 /**
  * Every row is exactly one of: legacy plain, typed system template, or canonical order receipt.
  * Each branch closes its object so metadata cannot be mixed across variants.
@@ -225,6 +240,7 @@ export const MailboxMessage = Type.Union([
   LegacyMailboxMessage,
   SystemMailboxTemplate,
   MailboxOrderReceipt,
+  InvoiceIssuedMailboxDescriptor,
 ]);
 export type MailboxMessage = Static<typeof MailboxMessage>;
 

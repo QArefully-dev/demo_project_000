@@ -586,8 +586,8 @@ void test('PersistedCheckoutQuoteV8 roundtrip with variant lines and delivery', 
   assert.equal(v8.totalCents, total);
 });
 
-void test('V9 is current while prepared V8 and unknown-version rejection remain enforced', () => {
-  assert.equal(CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION, 9);
+void test('V10 is current while prepared V8/V9 and unknown-version rejection remain enforced', () => {
+  assert.equal(CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION, 10);
 
   const v8 = {
     version: 8,

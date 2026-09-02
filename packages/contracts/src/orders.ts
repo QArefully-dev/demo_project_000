@@ -5,6 +5,7 @@ import { DeliveryClass, DeliveryMode, DeliverySlot } from './delivery.js';
 import { CustomBlendSnapshot, ResolvedCustomBlendSnapshot } from './customBlends.js';
 import { PostalAddress } from './address.js';
 import { BillingEntitySnapshot } from './tradeAccount.js';
+import { PaymentMethod } from './tradeCredit.js';
 
 const UtcIsoInstant = Type.String({
   minLength: 24,
@@ -162,7 +163,7 @@ const OrderLineMoneyIntegrity = TypeSystem.Type<unknown>(
 export const OrderLineItem = Type.Intersect([OrderLineItemFields, OrderLineMoneyIntegrity()]);
 export type OrderLineItem = Static<typeof OrderLineItem>;
 
-export const Order = Type.Object(
+const OrderFields = Type.Object(
   {
     id: PositiveIntegerString,
     status: OrderStatus,
@@ -171,6 +172,15 @@ export const Order = Type.Object(
     subtotalCents: MoneyCents,
     discountCents: MoneyCents,
     totalCents: MoneyCents,
+    /** Present on new orders; omitted on historic card/legacy rows. */
+    paymentMethod: Type.Optional(PaymentMethod),
+    /** Company identity is present only for a company trade-credit order. */
+    companyId: Type.Optional(PositiveIntegerString),
+    /** VAT accounting is optional for legacy rows and complete when present. */
+    netCents: Type.Optional(MoneyCents),
+    vatRateBasisPoints: Type.Optional(Type.Integer({ minimum: 0, maximum: 10_000 })),
+    vatCents: Type.Optional(MoneyCents),
+    grossCents: Type.Optional(MoneyCents),
     promoApplied: Type.Union([Type.String(), Type.Null()]),
     promoCategoryScope: Type.Optional(Type.String({ minLength: 1, maxLength: 100 })),
     discountBaseCents: Type.Optional(MoneyCents),
@@ -186,7 +196,69 @@ export const Order = Type.Object(
   },
   { additionalProperties: false },
 );
+
+const OrderAccountingIntegrity = TypeSystem.Type<unknown>(
+  'OrderAccountingIntegrity',
+  (_options, value) => {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+    const order = value as {
+      paymentMethod?: unknown;
+      companyId?: unknown;
+      totalCents?: unknown;
+      netCents?: unknown;
+      vatRateBasisPoints?: unknown;
+      vatCents?: unknown;
+      grossCents?: unknown;
+    };
+    const fields = [order.netCents, order.vatRateBasisPoints, order.vatCents, order.grossCents];
+    const anyVatField = fields.some((field) => field !== undefined);
+    if (!anyVatField) {
+      // Legacy/card orders may omit the new accounting fields. A company id is only valid on a
+      // credit order, and a credit order must carry the complete accounting tuple.
+      return order.paymentMethod !== 'trade_credit' && order.companyId === undefined;
+    }
+    const safeMoney = (candidate: unknown): candidate is number =>
+      typeof candidate === 'number' && Number.isSafeInteger(candidate) && candidate >= 0;
+    if (
+      !safeMoney(order.totalCents) ||
+      !safeMoney(order.netCents) ||
+      !safeMoney(order.vatCents) ||
+      !safeMoney(order.grossCents) ||
+      typeof order.vatRateBasisPoints !== 'number' ||
+      !Number.isSafeInteger(order.vatRateBasisPoints) ||
+      order.vatRateBasisPoints < 0 ||
+      order.vatRateBasisPoints > 10_000 ||
+      (order.paymentMethod === 'trade_credit' && typeof order.companyId !== 'string') ||
+      (order.paymentMethod === 'card' && order.companyId !== undefined) ||
+      (order.paymentMethod !== 'trade_credit' && order.paymentMethod !== 'card')
+    ) {
+      return false;
+    }
+    if (
+      order.vatRateBasisPoints > 0 &&
+      order.netCents > Math.floor(Number.MAX_SAFE_INTEGER / order.vatRateBasisPoints)
+    ) {
+      return false;
+    }
+    const vatNumerator = order.netCents * order.vatRateBasisPoints;
+    if (!Number.isSafeInteger(vatNumerator) || vatNumerator > Number.MAX_SAFE_INTEGER - 5_000)
+      return false;
+    const expectedVat = Math.floor((vatNumerator + 5_000) / 10_000);
+    return (
+      expectedVat === order.vatCents &&
+      (order.paymentMethod !== 'card' || order.vatRateBasisPoints === 0) &&
+      order.netCents <= Number.MAX_SAFE_INTEGER - order.vatCents &&
+      order.netCents + order.vatCents === order.grossCents &&
+      order.grossCents === order.totalCents
+    );
+  },
+);
+
+/** Customer order transport with optional VAT/accounting fields and strict credit integrity. */
+export const Order = Type.Intersect([OrderFields, OrderAccountingIntegrity()]);
 export type Order = Static<typeof Order>;
+export const OrderWithAccounting = Order;
+export type OrderWithAccounting = Order;
 
 export const OrderSummary = Type.Object(
   {
@@ -194,6 +266,8 @@ export const OrderSummary = Type.Object(
     status: OrderStatus,
     version: NonNegativeVersion,
     totalCents: MoneyCents,
+    paymentMethod: Type.Optional(PaymentMethod),
+    companyId: Type.Optional(PositiveIntegerString),
     totalItems: Type.Integer({ minimum: 0 }),
     hasBackorder: Type.Boolean(),
     createdAt: UtcIsoInstant,
@@ -265,7 +339,7 @@ export type OrderLifecycleEvent = Static<typeof OrderLifecycleEvent>;
 
 export const OrderDetailResponse = Type.Object(
   {
-    ...Order.properties,
+    ...OrderFields.properties,
     shipments: Type.Array(OrderShipment),
     events: Type.Array(OrderLifecycleEvent),
     canCancel: Type.Boolean(),
