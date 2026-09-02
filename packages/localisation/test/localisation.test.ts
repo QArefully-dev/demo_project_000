@@ -19,6 +19,9 @@ import { cartMessages } from '../src/messages/cart.js';
 import { checkoutMessages } from '../src/messages/checkout.js';
 import { customBlendMessages } from '../src/messages/customBlend.js';
 import { orderLifecycleMessages } from '../src/messages/orderLifecycle.js';
+import { tradeAsyncMessages } from '../src/messages/tradeAsync.js';
+import { adminCommerceMessages } from '../src/messages/adminCommerce.js';
+import { adminDiagnosticsMessages } from '../src/messages/adminDiagnostics.js';
 import {
   adminCatalogMessages,
   adminDateTimeInputValue,
@@ -71,6 +74,9 @@ void test('blend disclosure catalogs are exhaustive across all supported countri
     cartMessages,
     checkoutMessages,
     orderLifecycleMessages,
+    tradeAsyncMessages,
+    adminCommerceMessages,
+    adminDiagnosticsMessages,
   ];
   for (const catalog of catalogs) {
     assert.ok(Object.keys(catalog).length > 0);
@@ -81,6 +87,32 @@ void test('blend disclosure catalogs are exhaustive across all supported countri
         assert.ok(template !== undefined, `${key}.${country}`);
         if (typeof template === 'string') assert.notEqual(template.trim(), '', `${key}.${country}`);
       }
+    }
+  }
+});
+
+void test('trade-credit message surfaces resolve in every supported country', () => {
+  const cases = [
+    [checkoutMessages, 'checkout.paymentMethod.tradeCreditDueOn', { date: '2026-10-01' }],
+    [checkoutMessages, 'checkout.credit.available', { money: '£12.34' }],
+    [orderLifecycleMessages, 'order.invoice.number', { invoiceNumber: 'QME-2026-000001' }],
+    [orderLifecycleMessages, 'order.invoice.gross', { money: '£12.34' }],
+    [orderLifecycleMessages, 'order.invoice.termsDue', { date: '2026-10-01' }],
+    [tradeAsyncMessages, 'company.credit.available', { money: '£12.34' }],
+    [tradeAsyncMessages, 'company.credit.reason', { reason: 'Review required' }],
+    [
+      adminCommerceMessages,
+      'adminCommerce.invoice.settle.confirmation',
+      {
+        invoiceNumber: 'QME-2026-000001',
+        money: '£12.34',
+      },
+    ],
+    [adminDiagnosticsMessages, 'admin.shell.standingCountry', { country: 'UK' }],
+  ] as const;
+  for (const [catalog, key, params] of cases) {
+    for (const country of SUPPORTED_COUNTRIES) {
+      assert.notEqual(translate(catalog, country, key, params), '', `${key}.${country}`);
     }
   }
 });

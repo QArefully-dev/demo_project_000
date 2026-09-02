@@ -234,6 +234,54 @@ export const adminDiagnosticsMessages = defineMessages({
       FR: 'Examinez les avis clients signalés et masqués.',
     },
   ),
+  'admin.shell.creditAccounts': text('Credit accounts', 'Kreditkonten', {
+    CN: '信用账户',
+    PL: 'Konta kredytowe',
+    ES: 'Cuentas de crédito',
+    FR: 'Comptes de crédit',
+  }),
+  'admin.shell.invoices': text('Invoices', 'Rechnungen', {
+    CN: '发票',
+    PL: 'Faktury',
+    ES: 'Facturas',
+    FR: 'Factures',
+  }),
+  'admin.index.creditTitle': text('Company credit', 'Firmenkredit', {
+    CN: '公司信用',
+    PL: 'Kredyt firmy',
+    ES: 'Crédito de empresa',
+    FR: 'Crédit d’entreprise',
+  }),
+  'admin.index.creditDescription': text(
+    'Manage company credit limits and account state.',
+    'Firmenkreditlimits und Kontostatus verwalten.',
+    {
+      CN: '管理公司信用额度上限和账户状态。',
+      PL: 'Zarządzaj limitami kredytowymi i stanem kont firm.',
+      ES: 'Gestiona los límites de crédito y el estado de las cuentas de empresa.',
+      FR: 'Gérez les limites de crédit et l’état des comptes d’entreprise.',
+    },
+  ),
+  'admin.index.invoicesTitle': text(
+    'Trade-credit invoices',
+    'Rechnungen aus dem Kauf auf Rechnung',
+    {
+      CN: '贸易赊账发票',
+      PL: 'Faktury kredytu kupieckiego',
+      ES: 'Facturas de crédito comercial',
+      FR: 'Factures de crédit commercial',
+    },
+  ),
+  'admin.index.invoicesDescription': text(
+    'Review invoices and record full GBP settlements.',
+    'Rechnungen prüfen und vollständige GBP-Abrechnungen erfassen.',
+    {
+      CN: '查看发票并记录 GBP 全额结算。',
+      PL: 'Przeglądaj faktury i zapisuj pełne rozliczenia w GBP.',
+      ES: 'Revisa facturas y registra liquidaciones completas en GBP.',
+      FR: 'Consultez les factures et enregistrez les règlements complets en GBP.',
+    },
+  ),
 
   // Shared diagnostics controls and statuses. Values in selects remain raw contract values.
   'admin.common.requestFailed': text('Request failed.', 'Anfrage fehlgeschlagen.', {

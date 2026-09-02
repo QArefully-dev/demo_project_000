@@ -19,6 +19,11 @@ function paramsFor(code: string): MessageParams {
       return { earliestDate: '2026-01-02' };
     case 'PENDING_APPROVAL':
       return { approvalRequestId: '14' };
+    case 'CREDIT_LIMIT_EXCEEDED':
+      return { requestedCents: 12_500, availableCreditCents: 10_000 };
+    case 'INVOICE_SETTLEMENT_INVALID':
+    case 'INVOICE_SETTLEMENT_CONFLICT':
+      return { invoiceId: '14' };
     case 'CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED':
       return { maxPercentage: 10, actualPercentage: 15 };
     default:
