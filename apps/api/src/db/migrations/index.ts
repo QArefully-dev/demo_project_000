@@ -34,6 +34,7 @@ import { countryLocalisationMigration } from './032_country_localisation.js';
 import { promoCountryTargetingMigration } from './033_promo_country_targeting.js';
 import { mailboxOrderReceiptMigration } from './034_mailbox_order_receipt.js';
 import { tradeCreditAccountsAndIntentsMigration } from './035_trade_credit_accounts_and_intents.js';
+import { creditInvoicesMigration } from './036_credit_invoices.js';
 
 export const migrations: readonly Migration[] = [
   initialMigration,
@@ -71,4 +72,5 @@ export const migrations: readonly Migration[] = [
   promoCountryTargetingMigration,
   mailboxOrderReceiptMigration,
   tradeCreditAccountsAndIntentsMigration,
+  creditInvoicesMigration,
 ];
