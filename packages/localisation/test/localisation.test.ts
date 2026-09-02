@@ -117,6 +117,23 @@ void test('trade-credit message surfaces resolve in every supported country', ()
   }
 });
 
+void test('credit-limit hints describe GBP decimal input in every country', () => {
+  const expectedHints = {
+    UK: 'Enter the credit limit in GBP, using at most two decimal places.',
+    US: 'Enter the credit limit in GBP, using at most two decimal places.',
+    CN: '请输入以 GBP 计价的额度上限，最多保留两位小数。',
+    PL: 'Wpisz limit kredytowy w GBP, używając najwyżej dwóch miejsc po przecinku.',
+    ES: 'Introduce el límite de crédito en GBP, con un máximo de dos decimales.',
+    DE: 'Geben Sie das Kreditlimit in GBP mit höchstens zwei Dezimalstellen ein.',
+    FR: 'Saisissez la limite de crédit en GBP avec au plus deux décimales.',
+  } as const;
+
+  for (const country of SUPPORTED_COUNTRIES) {
+    const hint = translate(adminCommerceMessages, country, 'adminCommerce.credit.limitHint');
+    assert.equal(hint, expectedHints[country], `${country} credit-limit hint`);
+  }
+});
+
 void test('blend rule and pricing copy interpolates in every country', () => {
   const cases = [
     [customBlendMessages, 'customBlend.evaluationCurrentPrice', { money: '£12.34' }],
