@@ -33,6 +33,7 @@ import { backInStockMigration } from './031_back_in_stock.js';
 import { countryLocalisationMigration } from './032_country_localisation.js';
 import { promoCountryTargetingMigration } from './033_promo_country_targeting.js';
 import { mailboxOrderReceiptMigration } from './034_mailbox_order_receipt.js';
+import { tradeCreditAccountsAndIntentsMigration } from './035_trade_credit_accounts_and_intents.js';
 
 export const migrations: readonly Migration[] = [
   initialMigration,
@@ -69,4 +70,5 @@ export const migrations: readonly Migration[] = [
   countryLocalisationMigration,
   promoCountryTargetingMigration,
   mailboxOrderReceiptMigration,
+  tradeCreditAccountsAndIntentsMigration,
 ];
