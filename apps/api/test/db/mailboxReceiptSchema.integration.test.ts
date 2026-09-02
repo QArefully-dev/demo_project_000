@@ -8,6 +8,7 @@ import { closeDatabase, migrateDatabase } from '../../src/db/index.js';
 import { migrations } from '../../src/db/migrations/index.js';
 
 const pre034Migrations = migrations.filter((migration) => migration.version < '034');
+const migrationsThrough034 = migrations.filter((migration) => migration.version <= '034');
 
 function migrationVersions(db: Database.Database): string[] {
   return db
@@ -45,7 +46,7 @@ void test('migration 034 adds structured mailbox storage without losing legacy m
              '2026-08-07T10:00:00.000Z')`,
   ).run();
 
-  migrateDatabase(db);
+  migrateDatabase(db, migrationsThrough034);
 
   assert.equal(migrationVersions(db).at(-1), '034');
   assert.deepEqual(columnNames(db), [
@@ -164,7 +165,7 @@ void test('migration 034 adds structured mailbox storage without losing legacy m
       'SELECT id, recipient, subject, body, kind, created_at, order_id, template_key, template_params_json, template_country FROM dev_mailbox ORDER BY id',
     )
     .all();
-  migrateDatabase(db);
+  migrateDatabase(db, migrationsThrough034);
   assert.deepEqual(
     db
       .prepare(
@@ -194,7 +195,7 @@ void test('migration 034 rejects a same-name index collision instead of recordin
   db.exec('CREATE INDEX dev_mailbox_order_id_idx ON dev_mailbox(id)');
 
   assert.throws(
-    () => migrateDatabase(db),
+    () => migrateDatabase(db, migrationsThrough034),
     /Migration 034 found incompatible index dev_mailbox_order_id_idx/,
   );
   assert.equal(migrationVersions(db).at(-1), '033');
@@ -207,7 +208,7 @@ void test('migration 034 rejects a same-name index collision instead of recordin
   );
 
   db.exec('DROP INDEX dev_mailbox_order_id_idx');
-  migrateDatabase(db);
+  migrateDatabase(db, migrationsThrough034);
 
   assert.equal(migrationVersions(db).at(-1), '034');
   assert.deepEqual(
