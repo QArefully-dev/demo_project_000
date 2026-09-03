@@ -42,7 +42,8 @@ export interface CreditHoldAuthorizeInput {
 export interface CreditHoldCommitInput {
   paymentIdempotencyKey: string;
   committedAt: string;
-  invoiceId?: number | null;
+  /** Every committed hold must be linked to its immutable invoice. */
+  invoiceId: number;
 }
 
 export interface CreditHoldReleaseInput {
@@ -84,17 +85,17 @@ export interface CreditHoldRepository {
   authorize(input: CreditHoldAuthorizeInput): CreditHoldRow | null;
   authorizeHold(paymentIdempotencyKey: string, authorizedAt: string): CreditHoldRow | null;
   authorizeHold(input: CreditHoldAuthorizeInput): CreditHoldRow | null;
-  /** Idempotent authorized -> committed CAS. */
+  /** Idempotent authorized -> committed CAS with a validated invoice link. */
   commit(
     paymentIdempotencyKey: string,
     committedAt: string,
-    invoiceId?: number | null,
+    invoiceId: number,
   ): CreditHoldRow | null;
   commit(input: CreditHoldCommitInput): CreditHoldRow | null;
   commitHold(
     paymentIdempotencyKey: string,
     committedAt: string,
-    invoiceId?: number | null,
+    invoiceId: number,
   ): CreditHoldRow | null;
   commitHold(input: CreditHoldCommitInput): CreditHoldRow | null;
   /** Idempotent prepared/authorized -> released CAS. */
@@ -110,6 +111,13 @@ const holdColumns = `id, company_id, payment_idempotency_key, amount_cents, stat
 function safeMoney(value: unknown, name: string): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
     throw new RangeError(`${name} must be a non-negative safe integer`);
+  }
+  return value;
+}
+
+function requirePositiveId(value: unknown, name: string): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) {
+    throw new RangeError(`${name} must be a positive safe integer`);
   }
   return value;
 }
@@ -298,7 +306,9 @@ export function createCreditHoldRepository(db: Database.Database): CreditHoldRep
 
     expirePrepared(updatedAt);
     const existing = findByKey(paymentIdempotencyKey);
-    if (existing) return existing;
+    if (existing) {
+      return existing.status === 'prepared' || existing.status === 'authorized' ? existing : null;
+    }
     const payment = db
       .prepare(
         `SELECT payment_method, company_id, amount_cents
@@ -340,7 +350,9 @@ export function createCreditHoldRepository(db: Database.Database): CreditHoldRep
       // A concurrent same-key insertion is an idempotent replay. Re-read it; unrelated constraint
       // failures still surface to the transaction owner rather than being hidden as no capacity.
       const replay = findByKey(paymentIdempotencyKey);
-      if (replay) return replay;
+      if (replay) {
+        return replay.status === 'prepared' || replay.status === 'authorized' ? replay : null;
+      }
       throw error;
     }
     return findByKey(paymentIdempotencyKey);
@@ -373,8 +385,8 @@ export function createCreditHoldRepository(db: Database.Database): CreditHoldRep
 
   const commit = (
     keyOrInput: string | CreditHoldCommitInput,
-    committedAtOrInvoiceId?: string | number | null,
-    invoiceIdOrCommittedAt?: number | string | null,
+    committedAtOrInvoiceId?: string,
+    invoiceIdOrCommittedAt?: number,
   ): CreditHoldRow | null => {
     const paymentIdempotencyKey =
       typeof keyOrInput === 'string' ? keyOrInput : keyOrInput.paymentIdempotencyKey;
@@ -383,35 +395,29 @@ export function createCreditHoldRepository(db: Database.Database): CreditHoldRep
     const invoiceId =
       typeof keyOrInput === 'string' ? invoiceIdOrCommittedAt : keyOrInput.invoiceId;
     if (typeof committedAt !== 'string') throw new RangeError('committedAt is required');
-    if (invoiceId !== undefined && invoiceId !== null && typeof invoiceId !== 'number')
-      throw new RangeError('invoiceId must be a positive safe integer or null');
     requireInstant(committedAt, 'committedAt');
-    if (
-      invoiceId !== undefined &&
-      invoiceId !== null &&
-      (!Number.isSafeInteger(invoiceId) || invoiceId < 1)
-    ) {
-      throw new RangeError('invoiceId must be a positive safe integer or null');
-    }
+    const committedInvoiceId = requirePositiveId(invoiceId, 'invoiceId');
     const existing = findByKey(paymentIdempotencyKey);
     if (!existing) return null;
     if (existing.status === 'committed') {
-      if (
-        invoiceId !== undefined &&
-        existing.invoice_id !== null &&
-        existing.invoice_id !== invoiceId
-      )
-        return null;
-      return existing;
+      return existing.invoice_id === committedInvoiceId ? existing : null;
     }
     if (existing.status !== 'authorized') return null;
     const changed = db
       .prepare(
         `UPDATE credit_exposure_holds
-         SET status = 'committed', invoice_id = COALESCE(?, invoice_id), committed_at = ?, updated_at = ?
-         WHERE id = ? AND status = 'authorized'`,
+         SET status = 'committed', invoice_id = ?, committed_at = ?, updated_at = ?
+         WHERE id = ? AND status = 'authorized'
+           AND EXISTS (
+             SELECT 1
+             FROM invoices
+             WHERE invoices.id = ?
+               AND invoices.payment_idempotency_key = credit_exposure_holds.payment_idempotency_key
+               AND invoices.company_id = credit_exposure_holds.company_id
+               AND invoices.gross_cents = credit_exposure_holds.amount_cents
+           )`,
       )
-      .run(invoiceId ?? null, committedAt, committedAt, existing.id).changes;
+      .run(committedInvoiceId, committedAt, committedAt, existing.id, committedInvoiceId).changes;
     if (changed !== 1) return null;
     return findByKey(paymentIdempotencyKey);
   };

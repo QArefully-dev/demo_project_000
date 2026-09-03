@@ -44,6 +44,14 @@ function setup(t: test.TestContext) {
   const audits: CreditAccountAuditInput[] = [];
   const accounts = createCreditAccountRepository(db);
   const holds = createCreditHoldRepository(db);
+  const addPayment = (key: string, amount: number) => {
+    db.prepare(
+      `INSERT INTO payments
+        (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand,
+         payment_method, company_id, user_id, created_at, updated_at)
+       VALUES (?, ?, 'authorized_pending_finalize', ?, NULL, NULL, 'trade_credit', ?, ?, ?, ?)`,
+    ).run(key, `${key}-fingerprint`, amount, COMPANY_ID, BUYER_ID, NOW, NOW);
+  };
   const service = createCreditAccountService({
     accounts,
     holds,
@@ -56,7 +64,7 @@ function setup(t: test.TestContext) {
     closeDatabase(db);
     rmSync(directory, { recursive: true, force: true });
   });
-  return { db, service, accounts, holds, audits, clock };
+  return { db, service, accounts, holds, audits, clock, addPayment };
 }
 
 const adminContext = {
@@ -222,5 +230,119 @@ void test('admin credit mutation rolls back account and immutable event when aud
     (db.prepare('SELECT COUNT(*) AS count FROM company_credit_events').get() as { count: number })
       .count,
     0,
+  );
+});
+
+void test('same-value mutations reject before writes and preserve the current state reason', (t) => {
+  const { db, service, audits } = setup(t);
+  const stateKey = '44444444-4444-4444-8444-444444444444';
+  const limitKey = '55555555-5555-4555-8555-555555555555';
+  const noOpLimitKey = '66666666-6666-4666-8666-666666666666';
+  const noOpStateKey = '77777777-7777-4777-8777-777777777777';
+
+  const held = service.updateState(
+    COMPANY_ID,
+    { expectedVersion: 0, idempotencyKey: stateKey, state: 'on_hold', reason: 'Past due' },
+    adminContext,
+    'UK',
+  );
+  assert.equal(held.state, 'on_hold');
+  assert.equal(held.holdReason, 'Past due');
+
+  const limited = service.updateLimit(
+    COMPANY_ID,
+    { expectedVersion: 1, idempotencyKey: limitKey, creditLimitCents: 12000 },
+    adminContext,
+    'UK',
+  );
+  assert.equal(limited.version, 2);
+  assert.equal(limited.holdReason, 'Past due', 'limit events do not erase state reason');
+
+  const before = {
+    account: db
+      .prepare(
+        'SELECT credit_limit_cents, credit_state, credit_version FROM company_accounts WHERE id = ?',
+      )
+      .get(COMPANY_ID),
+    events: (
+      db.prepare('SELECT COUNT(*) AS count FROM company_credit_events').get() as { count: number }
+    ).count,
+    audits: audits.length,
+  };
+  assert.throws(
+    () =>
+      service.updateLimit(
+        COMPANY_ID,
+        { expectedVersion: 2, idempotencyKey: noOpLimitKey, creditLimitCents: 12000 },
+        adminContext,
+        'UK',
+      ),
+    (error: unknown) => error instanceof CreditAccountError && error.code === 'INVALID_INPUT',
+  );
+  assert.throws(
+    () =>
+      service.updateState(
+        COMPANY_ID,
+        { expectedVersion: 2, idempotencyKey: noOpStateKey, state: 'on_hold', reason: 'Past due' },
+        adminContext,
+        'UK',
+      ),
+    (error: unknown) => error instanceof CreditAccountError && error.code === 'INVALID_INPUT',
+  );
+  assert.deepEqual(
+    {
+      account: db
+        .prepare(
+          'SELECT credit_limit_cents, credit_state, credit_version FROM company_accounts WHERE id = ?',
+        )
+        .get(COMPANY_ID),
+      events: (
+        db.prepare('SELECT COUNT(*) AS count FROM company_credit_events').get() as { count: number }
+      ).count,
+      audits: audits.length,
+    },
+    before,
+    'no-op commands leave the account, event ledger, and audit ledger unchanged',
+  );
+});
+
+void test('expired and released hold keys cannot be replayed as acquisitions', (t) => {
+  const { db, service, holds, clock, addPayment } = setup(t);
+  db.prepare("UPDATE company_accounts SET credit_state = 'active' WHERE id = ?").run(COMPANY_ID);
+  const expiredKey = 'credit-expired-replay';
+  const releasedKey = 'credit-released-replay';
+  addPayment(expiredKey, 100);
+  addPayment(releasedKey, 100);
+  const input = (paymentIdempotencyKey: string) => ({
+    paymentIdempotencyKey,
+    amountCents: 100,
+    createdAt: NOW,
+    expiresAt: '2026-09-03T10:00:00.000Z',
+  });
+
+  assert.equal(service.tryAcquireHold(BUYER_ID, input(expiredKey)).ok, true);
+  assert.equal(service.tryAcquireHold(BUYER_ID, input(releasedKey)).ok, true);
+  clock.now = () => new Date('2026-09-03T11:00:00.000Z');
+
+  assert.throws(
+    () => service.tryAcquireHold(BUYER_ID, input(expiredKey)),
+    (error: unknown) =>
+      error instanceof CreditAccountError && error.code === 'IDEMPOTENCY_CONFLICT',
+  );
+  assert.equal(holds.findByKey(expiredKey)?.status, 'released');
+
+  assert.equal(service.releaseHold(releasedKey, '2026-09-03T11:00:00.000Z').status, 'released');
+  assert.throws(
+    () => service.tryAcquireHold(BUYER_ID, input(releasedKey)),
+    (error: unknown) =>
+      error instanceof CreditAccountError && error.code === 'IDEMPOTENCY_CONFLICT',
+  );
+  assert.equal(
+    (
+      db
+        .prepare('SELECT COUNT(*) AS count FROM credit_exposure_holds WHERE company_id = ?')
+        .get(COMPANY_ID) as { count: number }
+    ).count,
+    2,
   );
 });

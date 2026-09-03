@@ -177,11 +177,7 @@ export interface CreditAccountService {
     input: AcquireCreditHoldInput,
   ): CreditHoldAcquireResult;
   authorizeHold(paymentIdempotencyKey: string, at?: string): CreditHoldRow;
-  commitHold(
-    paymentIdempotencyKey: string,
-    invoiceIdOrAt?: number | null | string,
-    at?: string,
-  ): CreditHoldRow;
+  commitHold(paymentIdempotencyKey: string, invoiceId: number, at?: string): CreditHoldRow;
   releaseHold(paymentIdempotencyKey: string, at?: string): CreditHoldRow;
   expirePreparedHolds(at?: string): string[];
 }
@@ -572,6 +568,12 @@ export function createCreditAccountService(
       const nextState = input.state ?? current.credit_state;
       requireSafeNonNegative(nextLimit, 'creditLimitCents');
       requireState(nextState);
+      if (nextLimit === current.credit_limit_cents && nextState === current.credit_state) {
+        throw new CreditAccountError(
+          'INVALID_INPUT',
+          'credit mutation must change the credit limit or state',
+        );
+      }
       if (current.credit_version >= MAX_SAFE_INTEGER) throw new CreditAccountError('STALE_VERSION');
       if (
         !accounts.updateCas({
@@ -653,6 +655,11 @@ export function createCreditAccountService(
       if (membership.company_id !== companyId) {
         return { ok: false, code: 'NO_ACTIVE_MEMBERSHIP' };
       }
+      // Expire before looking up an existing key. Otherwise a lease that elapsed between the
+      // original acquisition and this retry would be returned as a successful replay. An owning
+      // call performs this maintenance in its own committed UoW below so a replay conflict cannot
+      // roll the expiry write back.
+      if (!ownsTransaction) holds.expirePrepared(now());
       const account = accounts.findByCompanyId(membership.company_id);
       if (!account) return { ok: false, code: 'NO_ACTIVE_MEMBERSHIP' };
       const eligibility = evaluateTradeCreditEligibility({
@@ -684,7 +691,12 @@ export function createCreditAccountService(
         ) {
           throw new CreditAccountError('IDEMPOTENCY_CONFLICT');
         }
-        return { ok: true, hold: existing };
+        if (existing.status === 'prepared' || existing.status === 'authorized') {
+          return { ok: true, hold: existing };
+        }
+        // A released/committed key is terminal for acquisition. Reusing it must not appear to
+        // reserve capacity a second time or hide an expired lease from the caller.
+        throw new CreditAccountError('IDEMPOTENCY_CONFLICT');
       }
       const hold = holds.acquire({
         companyId: membership.company_id,
@@ -710,6 +722,7 @@ export function createCreditAccountService(
         availableCreditCents: currentExposure.availableCreditCents,
       };
     };
+    if (ownsTransaction) unitOfWork.run(() => holds.expirePrepared(now()));
     return ownsTransaction ? unitOfWork.run(decision) : decision();
   };
 
@@ -840,21 +853,16 @@ export function createCreditAccountService(
         return hold;
       });
     },
-    commitHold(paymentIdempotencyKey, invoiceIdOrAt, at) {
-      // Accept both common call shapes: `(key, invoiceId, at)` and `(key, at)`. The latter is
-      // useful for callers that do not yet have an invoice link; the repository remains canonical.
-      const invoiceId = typeof invoiceIdOrAt === 'string' ? undefined : invoiceIdOrAt;
-      const committedAt =
-        typeof invoiceIdOrAt === 'string'
-          ? requireInstant(invoiceIdOrAt, 'committedAt')
-          : (at ?? now());
+    commitHold(paymentIdempotencyKey, invoiceId, at) {
+      const committedInvoiceId = requirePositiveId(invoiceId, 'invoiceId');
+      const committedAt = requireInstant(at ?? now(), 'committedAt');
       const key = holdKey({
         paymentIdempotencyKey,
         amountCents: 0,
         expiresAt: committedAt,
       });
       return unitOfWork.run(() => {
-        const hold = holds.commit(key, committedAt, invoiceId);
+        const hold = holds.commit(key, committedAt, committedInvoiceId);
         if (!hold) throw new CreditAccountError('HOLD_INVALID_TRANSITION');
         return hold;
       });

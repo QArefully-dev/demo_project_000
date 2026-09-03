@@ -260,7 +260,7 @@ export function createCreditAccountRepository(db: Database.Database): CreditAcco
       const row = db
         .prepare(
           `SELECT reason FROM company_credit_events
-           WHERE company_id = ? AND credit_state = ?
+           WHERE company_id = ? AND event_type = 'state_changed' AND credit_state = ?
            ORDER BY id DESC LIMIT 1`,
         )
         .get(companyId, state) as { reason: string | null } | undefined;
