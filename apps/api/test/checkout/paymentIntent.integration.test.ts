@@ -367,8 +367,14 @@ void test('quote persistence rejects changed method/company and malformed condit
     userId: 1,
     createdAt,
   });
+  const baseCreditQuote = quote('00000000-0000-4000-8000-000000000065', 1200);
   const creditQuote = {
-    ...quote('00000000-0000-4000-8000-000000000065', 1200),
+    ...baseCreditQuote,
+    // V10 freezes the catalogue SKU; keep the fixture schema-valid so binding assertions run.
+    variantLines: baseCreditQuote.variantLines.map((line) => ({
+      ...line,
+      sku: 'BKP-0001-001',
+    })),
     version: 10,
     userId: 1,
     companyId: String(companyId),
@@ -446,8 +452,14 @@ void test('credit quote persistence binds the quote buyer to the stored reservat
     userId: 1,
     createdAt,
   });
+  const baseQuoteForBuyerB = quote('00000000-0000-4000-8000-000000000067', 1200);
   const quoteForBuyerB = {
-    ...quote('00000000-0000-4000-8000-000000000067', 1200),
+    ...baseQuoteForBuyerB,
+    // V10 freezes the catalogue SKU; keep the fixture schema-valid so buyer binding is tested.
+    variantLines: baseQuoteForBuyerB.variantLines.map((line) => ({
+      ...line,
+      sku: 'BKP-0001-001',
+    })),
     version: 10,
     userId: 2,
     companyId: String(companyId),
