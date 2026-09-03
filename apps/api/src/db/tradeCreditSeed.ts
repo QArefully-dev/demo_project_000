@@ -1,11 +1,14 @@
 import { LEGACY_DATA_COUNTRY } from '@shop/contracts';
 import type Database from 'better-sqlite3';
 import { ACME_CREDIT_TERMS_DAYS } from './companyAccountsSeed.js';
+import { createInvoiceRepository } from '../features/invoices/invoiceRepository.js';
 
 const SEED_INSTANT = '2026-08-01T09:00:00.000Z';
 const OPEN_ISSUED_AT = '2026-08-20T09:00:00.000Z';
-const PAID_ISSUED_AT = '2026-07-01T09:00:00.000Z';
-const PAID_SETTLED_AT = '2026-07-08T09:00:00.000Z';
+const PAID_ORDER_CREATED_AT = '2026-08-03T09:00:00.000Z';
+const PAID_ISSUED_AT = '2026-08-04T09:00:00.000Z';
+const PAID_SETTLED_AT = '2026-08-05T09:00:00.000Z';
+const PAID_DELIVERY_DATE = '2026-08-06';
 const VAT_RATE_BASIS_POINTS = 2_000;
 const CREDIT_POLICY_IDEMPOTENCY_KEY = 'seed-acme-credit-policy-v1';
 const CREDIT_POLICY_FINGERPRINT = 'seed-acme-credit-policy-v1';
@@ -44,7 +47,7 @@ const SCENARIOS: readonly Scenario[] = [
   {
     key: 'acme-credit-paid',
     invoiceNumber: 'QME-2026-000702',
-    orderCreatedAt: PAID_ISSUED_AT,
+    orderCreatedAt: PAID_ORDER_CREATED_AT,
     issuedAt: PAID_ISSUED_AT,
     settledAt: PAID_SETTLED_AT,
     quantity: 8,
@@ -166,6 +169,48 @@ function nextInvoiceId(db: Database.Database): number {
   return Math.max(maxId, sequence?.value ?? 0) + 1;
 }
 
+type InvoiceIdentity = { id: number; invoiceNumber: string };
+
+function invoiceNumberParts(invoiceNumber: string): { year: number; nextNumber: number } {
+  const match = /^QME-(\d{4})-(\d{6})$/.exec(invoiceNumber);
+  if (!match) throw new Error(`Invalid seeded invoice number ${invoiceNumber}`);
+  return { year: Number(match[1]), nextNumber: Number(match[2]) };
+}
+
+function ensureInvoiceSequenceFloor(db: Database.Database, invoiceNumber: string): number {
+  const { year, nextNumber } = invoiceNumberParts(invoiceNumber);
+  const highestExisting = db
+    .prepare(
+      `SELECT COALESCE(MAX(CAST(substr(invoice_number, 10, 6) AS INTEGER)), 0) AS value
+       FROM invoices WHERE substr(invoice_number, 5, 4) = ?`,
+    )
+    .get(String(year)) as { value: number };
+  const sequenceFloor = Math.max(nextNumber, highestExisting.value + 1);
+  db.prepare(
+    `INSERT INTO invoice_sequences (year, next_number) VALUES (?, ?)
+     ON CONFLICT(year) DO UPDATE SET next_number = MAX(invoice_sequences.next_number, excluded.next_number)`,
+  ).run(year, sequenceFloor);
+  return year;
+}
+
+/**
+ * Allocates from the production invoice sequence while retaining the preferred demo number when
+ * it is available. Existing higher sequence values are never lowered. A number already occupied
+ * by a local invoice is consumed and skipped before the next sequence value is considered.
+ */
+function allocateSeedInvoiceNumber(db: Database.Database, preferredNumber: string): string {
+  const year = ensureInvoiceSequenceFloor(db, preferredNumber);
+
+  const invoices = createInvoiceRepository(db);
+  for (;;) {
+    const invoiceNumber = invoices.allocateNumber(year);
+    const occupied = db
+      .prepare('SELECT 1 FROM invoices WHERE invoice_number = ? LIMIT 1')
+      .get(invoiceNumber);
+    if (!occupied) return invoiceNumber;
+  }
+}
+
 function dueAt(issuedAt: string): string {
   return new Date(
     Date.parse(issuedAt) + ACME_CREDIT_TERMS_DAYS * 24 * 60 * 60 * 1000,
@@ -253,13 +298,15 @@ function insertOrder(
     grossCents,
     scenario.orderCreatedAt,
     buyer.id,
-    scenario.settledAt === null ? 'processing' : 'delivered',
+    // No order lifecycle history is seeded for these fixtures, so both remain at the honest
+    // initial state. Invoice settlement does not imply that the shipment was delivered.
+    'processing',
     scenario.key,
     product.delivery_class,
     deliveryWeightGrams,
     JSON.stringify(shippingAddress()),
     JSON.stringify(billingEntity()),
-    scenario.settledAt === null ? '2026-08-21' : '2026-07-02',
+    scenario.settledAt === null ? '2026-08-21' : PAID_DELIVERY_DATE,
     scenario.purchaseOrderReference,
     LEGACY_DATA_COUNTRY,
     company.id,
@@ -340,13 +387,20 @@ function ensureInvoice(
   buyer: UserRow,
   scenario: Scenario,
   paymentKey: string,
-): number | undefined {
+): InvoiceIdentity | undefined {
   const existing = db
     .prepare(
-      'SELECT id FROM invoices WHERE invoice_number = ? OR payment_idempotency_key = ? LIMIT 1',
+      `SELECT id, invoice_number, order_id
+       FROM invoices WHERE payment_idempotency_key = ? LIMIT 1`,
     )
-    .get(scenario.invoiceNumber, paymentKey) as { id: number } | undefined;
-  if (existing) return existing.id;
+    .get(paymentKey) as { id: number; invoice_number: string; order_id: number } | undefined;
+  // The deterministic payment/order link is the seed identity. Never treat a matching display
+  // number as ownership: a local invoice may already use the preferred number.
+  if (existing) {
+    if (existing.order_id !== order.id) return undefined;
+    ensureInvoiceSequenceFloor(db, existing.invoice_number);
+    return { id: existing.id, invoiceNumber: existing.invoice_number };
+  }
   if (
     order.user_id !== buyer.id ||
     order.net_cents !== line.line_total_cents ||
@@ -358,10 +412,11 @@ function ensureInvoice(
 
   const id = nextInvoiceId(db);
   const issuedAt = scenario.issuedAt;
+  const invoiceNumber = allocateSeedInvoiceNumber(db, scenario.invoiceNumber);
   const document = {
     version: 1,
     id: String(id),
-    invoiceNumber: scenario.invoiceNumber,
+    invoiceNumber,
     orderId: String(order.id),
     companyId: String(company.id),
     userId: String(buyer.id),
@@ -399,7 +454,7 @@ function ensureInvoice(
      VALUES (?, 1, ?, ?, ?, ?, ?, ?, 'GBP', 'net_30', ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
-    scenario.invoiceNumber,
+    invoiceNumber,
     order.id,
     paymentKey,
     company.id,
@@ -414,7 +469,7 @@ function ensureInvoice(
     issuedAt,
     dueAt(issuedAt),
   );
-  return id;
+  return { id, invoiceNumber };
 }
 
 function ensureInvoiceStateAndEvents(
@@ -461,20 +516,24 @@ function ensureCreditHold(
   scenario: Scenario,
   paymentKey: string,
 ): void {
+  const releasedAt = scenario.settledAt;
+  const status = releasedAt === null ? 'committed' : 'released';
   db.prepare(
     `INSERT OR IGNORE INTO credit_exposure_holds
        (company_id, payment_idempotency_key, amount_cents, status, expires_at, invoice_id,
         authorized_at, committed_at, released_at, created_at, updated_at)
-     VALUES (?, ?, ?, 'committed', NULL, ?, ?, ?, NULL, ?, ?)`,
+     VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
   ).run(
     company.id,
     paymentKey,
     order.gross_cents,
+    status,
     invoiceId,
     scenario.issuedAt,
     scenario.issuedAt,
+    releasedAt,
     scenario.issuedAt,
-    scenario.issuedAt,
+    releasedAt ?? scenario.issuedAt,
   );
 }
 
@@ -526,10 +585,13 @@ export function seedTradeCredit(db: Database.Database): void {
     const line = ensureLine(db, order, product, scenario.quantity);
     if (!line) continue;
     const paymentKey = ensurePayment(db, order, company, buyer, scenario);
-    const invoiceId = ensureInvoice(db, order, line, company, buyer, scenario, paymentKey);
-    if (invoiceId === undefined) continue;
-    ensureInvoiceStateAndEvents(db, invoiceId, buyer, scenario);
-    ensureCreditHold(db, invoiceId, order, company, scenario, paymentKey);
-    ensureInvoiceMailbox(db, invoiceId, buyer, scenario);
+    const invoice = ensureInvoice(db, order, line, company, buyer, scenario, paymentKey);
+    if (invoice === undefined) continue;
+    ensureInvoiceStateAndEvents(db, invoice.id, buyer, scenario);
+    ensureCreditHold(db, invoice.id, order, company, scenario, paymentKey);
+    ensureInvoiceMailbox(db, invoice.id, buyer, {
+      ...scenario,
+      invoiceNumber: invoice.invoiceNumber,
+    });
   }
 }
