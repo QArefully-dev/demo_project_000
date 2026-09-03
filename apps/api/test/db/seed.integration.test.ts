@@ -311,10 +311,10 @@ void test('seed installs deterministic lifecycle scenarios once and reset restor
     .prepare(
       `SELECT orders.demo_seed_key, users.email, orders.lifecycle_status, orders.created_at
        FROM orders JOIN users ON users.id = orders.user_id
-       WHERE orders.demo_seed_key IS NOT NULL
+       WHERE orders.demo_seed_key IN (${DEMO_ORDER_SCENARIO_KEYS.map(() => '?').join(', ')})
        ORDER BY orders.created_at DESC, orders.id DESC`,
     )
-    .all();
+    .all(...DEMO_ORDER_SCENARIO_KEYS);
   assert.deepEqual(scenarioRows, [
     {
       demo_seed_key: 'alice-reorder-mix',
@@ -356,10 +356,12 @@ void test('seed installs deterministic lifecycle scenarios once and reset restor
   assert.deepEqual(
     db
       .prepare(
-        'SELECT demo_seed_key FROM orders WHERE demo_seed_key IS NOT NULL ORDER BY demo_seed_key',
+        `SELECT demo_seed_key FROM orders
+         WHERE demo_seed_key IN (${DEMO_ORDER_SCENARIO_KEYS.map(() => '?').join(', ')})
+         ORDER BY demo_seed_key`,
       )
       .pluck()
-      .all(),
+      .all(...DEMO_ORDER_SCENARIO_KEYS),
     [...DEMO_ORDER_SCENARIO_KEYS].sort(),
   );
   assert.deepEqual(
@@ -430,9 +432,12 @@ void test('seed installs deterministic lifecycle scenarios once and reset restor
         .prepare(
           `SELECT COUNT(*) AS count FROM payments
            WHERE status = 'succeeded'
-             AND order_id IN (SELECT id FROM orders WHERE demo_seed_key IS NOT NULL)`,
+             AND order_id IN (
+               SELECT id FROM orders
+               WHERE demo_seed_key IN (${DEMO_ORDER_SCENARIO_KEYS.map(() => '?').join(', ')})
+             )`,
         )
-        .get() as { count: number }
+        .get(...DEMO_ORDER_SCENARIO_KEYS) as { count: number }
     ).count,
     DEMO_ORDER_SCENARIO_KEYS.length,
   );
@@ -501,7 +506,12 @@ void test('seed installs deterministic lifecycle scenarios once and reset restor
   );
   assert.equal(
     (
-      db.prepare('SELECT COUNT(*) AS count FROM orders WHERE demo_seed_key IS NOT NULL').get() as {
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM orders
+           WHERE demo_seed_key IN (${DEMO_ORDER_SCENARIO_KEYS.map(() => '?').join(', ')})`,
+        )
+        .get(...DEMO_ORDER_SCENARIO_KEYS) as {
         count: number;
       }
     ).count,
@@ -512,9 +522,12 @@ void test('seed installs deterministic lifecycle scenarios once and reset restor
       db
         .prepare(
           `SELECT COUNT(*) AS count FROM order_lifecycle_events
-           WHERE order_id IN (SELECT id FROM orders WHERE demo_seed_key IS NOT NULL)`,
+           WHERE order_id IN (
+             SELECT id FROM orders
+             WHERE demo_seed_key IN (${DEMO_ORDER_SCENARIO_KEYS.map(() => '?').join(', ')})
+           )`,
         )
-        .get() as { count: number }
+        .get(...DEMO_ORDER_SCENARIO_KEYS) as { count: number }
     ).count,
     // 19 lifecycle events across the five original scenarios, plus the single `order_created`
     // event of the `alice-reorder-mix` buy-again fixture.

@@ -5,6 +5,7 @@ import { catalogProductSpecifications } from '../features/catalog/catalogSpecifi
 import { seedOrderScenarios } from './orderSeedScenarios.js';
 import { seedReviewScenarios } from './reviewSeedScenarios.js';
 import { seedCompanyAccounts } from './companyAccountsSeed.js';
+import { seedTradeCredit } from './tradeCreditSeed.js';
 import { seedSavedLists } from './savedListSeed.js';
 import { seedAsyncScenarios } from './seedAsyncScenarios.js';
 import { seedBackInStock } from './backInStockSeed.js';
@@ -789,6 +790,7 @@ export function seedDatabase(db: Database.Database): void {
     for (const cart of aliceCountryCarts) insertAliceCart.run(cart.id, cart.country);
 
     seedCompanyAccounts(db);
+    seedTradeCredit(db);
 
     const upsertSuspendedUser = db.prepare(`
       INSERT INTO users
