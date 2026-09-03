@@ -115,3 +115,68 @@ void test('admin refund shares return cap, replays idempotently, and audits once
     AdminRefundError,
   );
 });
+
+void test('succeeded trade-credit intent has no refundable balance and never calls the gateway', (t) => {
+  const { db, orderId, context } = fixture(t);
+  const now = '2026-07-29T10:00:00.000Z';
+  const companyId = Number(
+    db
+      .prepare(
+        `INSERT INTO company_accounts
+           (name, created_by_user_id, active, approval_threshold_cents, credit_limit_cents,
+            credit_terms_days, credit_state, credit_version, created_at, updated_at)
+         VALUES ('Refund Credit Ltd', ?, 1, NULL, 100000, 30, 'active', 0, ?, ?)`,
+      )
+      .run(context.actor.userId, now, now).lastInsertRowid,
+  );
+  const paymentId = Number(
+    db
+      .prepare(
+        `INSERT INTO payments
+           (order_id, idempotency_key, request_fingerprint, status, amount_cents, created_at,
+            payment_method, company_id, user_id)
+         VALUES (?, 'credit-admin-refund-payment', 'credit-admin-refund-fingerprint', 'succeeded',
+                 1000, ?, 'trade_credit', ?, ?)`,
+      )
+      .run(orderId, now, companyId, context.actor.userId).lastInsertRowid,
+  );
+  let gatewayCalls = 0;
+  const service = createAdminRefundService({
+    db,
+    unitOfWork: createUnitOfWork(db),
+    audit: createAuditWriter({
+      repository: createAuditRepository(db),
+      clock: { now: () => new Date(now) },
+    }),
+    clock: { now: () => new Date(now) },
+    refundGateway: {
+      refund() {
+        gatewayCalls += 1;
+        return { processor: 'simulated', simulatedReference: 'must-not-run' };
+      },
+    },
+  });
+
+  assert.throws(
+    () =>
+      service.refund({
+        paymentId,
+        orderId,
+        amountCents: 100,
+        reason: 'Credit return should not refund',
+        idempotencyKey: 'credit-admin-refund-request',
+        context,
+      }),
+    (error: unknown) =>
+      error instanceof AdminRefundError && error.code === 'PAYMENT_NOT_REFUNDABLE',
+  );
+  assert.equal(gatewayCalls, 0);
+  assert.equal(
+    (
+      db
+        .prepare('SELECT COUNT(*) AS count FROM admin_refunds WHERE payment_id = ?')
+        .get(paymentId) as { count: number }
+    ).count,
+    0,
+  );
+});

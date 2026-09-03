@@ -101,7 +101,7 @@ export function createAdminRefundService(deps: {
         const payment = deps.db
           .prepare(
             `SELECT id, order_id, amount_cents FROM payments
-             WHERE id = ? AND status = 'succeeded'`,
+             WHERE id = ? AND status = 'succeeded' AND payment_method = 'card'`,
           )
           .get(paymentId) as
           { id: number; order_id: number | null; amount_cents: number } | undefined;

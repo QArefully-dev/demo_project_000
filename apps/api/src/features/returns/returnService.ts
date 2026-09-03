@@ -130,6 +130,16 @@ export function createReturnService(deps: ReturnServiceDeps): ReturnService {
     return current;
   };
 
+  /** Returns are a card settlement workflow; reject credit orders before any state or stock write. */
+  const requireCardOrder = (orderId: number) => {
+    const order = orderRepository.findDetailById(orderId);
+    if (!order) throw new ReturnDomainError(ReturnErrorCode.RETURN_DATA_CORRUPT);
+    if (order.paymentMethod === 'trade_credit') {
+      throw new ReturnDomainError(ReturnErrorCode.PAYMENT_NOT_REFUNDABLE);
+    }
+    return order;
+  };
+
   // ── public API ────────────────────────────────────────────────────
 
   return {
@@ -229,6 +239,7 @@ export function createReturnService(deps: ReturnServiceDeps): ReturnService {
         if (replay) return replay;
 
         const current = requireReturnWithState(returnId, version, ReturnRequestStatus.REQUESTED);
+        requireCardOrder(Number(current.orderId));
 
         const nextStatus =
           decision === 'approve' ? ReturnRequestStatus.APPROVED : ReturnRequestStatus.REJECTED;
@@ -294,8 +305,9 @@ export function createReturnService(deps: ReturnServiceDeps): ReturnService {
         const current = requireReturnWithState(returnId, version, ReturnRequestStatus.APPROVED);
         assertReturnTransition(current.status, ReturnRequestStatus.RECEIVED);
 
-        const occurredAt = clock.now().toISOString();
         const orderId = Number(current.orderId);
+        const orderDetail = requireCardOrder(orderId);
+        const occurredAt = clock.now().toISOString();
 
         if (
           !returnRepository.updateState({
@@ -311,9 +323,6 @@ export function createReturnService(deps: ReturnServiceDeps): ReturnService {
         }
 
         // Restore inventory + FIFO backorder allocation
-        const orderDetail = orderRepository.findDetailById(orderId);
-        if (!orderDetail) throw new ReturnDomainError(ReturnErrorCode.RETURN_DATA_CORRUPT);
-
         const restoreLines = current.items.map((item) => {
           const orderItem = orderDetail.items.find(
             (oi) => String(oi.lineId) === item.orderLineItemId,
@@ -368,16 +377,13 @@ export function createReturnService(deps: ReturnServiceDeps): ReturnService {
         assertReturnTransition(current.status, ReturnRequestStatus.REFUNDED);
 
         const orderId = Number(current.orderId);
+        const orderDetail = requireCardOrder(orderId);
 
         // Resolve payment
         const payment = returnRepository.resolveSucceededPayment(orderId);
         if (!payment) {
           throw new ReturnDomainError(ReturnErrorCode.PAYMENT_NOT_REFUNDABLE);
         }
-
-        // Load order facts for proration
-        const orderDetail = orderRepository.findDetailById(orderId);
-        if (!orderDetail) throw new ReturnDomainError(ReturnErrorCode.RETURN_DATA_CORRUPT);
 
         // Build discount lines from every purchased order line. The base is the discountable
         // total, not the line total: a blending fee is a service charge that never earned the

@@ -5,8 +5,50 @@ import { createUnitOfWork } from '../../src/db/unitOfWork.js';
 import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
 import { createAdminRefundService } from '../../src/features/payments/adminRefundService.js';
+import { createReturnRepository } from '../../src/features/returns/returnRepository.js';
 import { createRefundGateway } from '../../src/features/returns/refundGateway.js';
 import { createSeededFixture } from '../support/seededDatabase.js';
+
+function insertCreditOrder(
+  db: Parameters<typeof createReturnRepository>[0],
+  userId: number,
+): { orderId: number; paymentId: number; companyId: number } {
+  const now = '2026-09-03T10:00:00.000Z';
+  const companyId = Number(
+    db
+      .prepare(
+        `INSERT INTO company_accounts
+           (name, created_by_user_id, active, approval_threshold_cents, credit_limit_cents,
+            credit_terms_days, credit_state, credit_version, created_at, updated_at)
+         VALUES ('Returns Credit Ltd', ?, 1, NULL, 100000, 30, 'active', 0, ?, ?)`,
+      )
+      .run(userId, now, now).lastInsertRowid,
+  );
+  const orderId = Number(
+    db
+      .prepare(
+        `INSERT INTO orders
+           (customer_name, customer_email, shipping_address, subtotal_cents, discount_cents,
+            total_cents, user_id, created_at, lifecycle_status, version,
+            payment_method, company_id, net_cents, vat_rate_basis_points, vat_cents, gross_cents)
+         VALUES ('Credit Buyer', 'alice@example.com', 'Credit address', 1000, 0,
+                 1200, ?, ?, 'delivered', 0, 'trade_credit', ?, 1000, 2000, 200, 1200)`,
+      )
+      .run(userId, now, companyId).lastInsertRowid,
+  );
+  const paymentId = Number(
+    db
+      .prepare(
+        `INSERT INTO payments
+           (order_id, idempotency_key, request_fingerprint, status, amount_cents, created_at,
+            payment_method, company_id, user_id)
+         VALUES (?, 'credit-return-payment', 'credit-return-fingerprint', 'succeeded', 1200, ?,
+                 'trade_credit', ?, ?)`,
+      )
+      .run(orderId, now, companyId, userId).lastInsertRowid,
+  );
+  return { orderId, paymentId, companyId };
+}
 
 function cookie(response: { headers: Record<string, string | string[] | undefined> }): string {
   const h = response.headers['set-cookie'];
@@ -333,4 +375,122 @@ void test('admin return routes enforce auth and process lifecycle', async (t) =>
     });
     assert.equal(r.statusCode, 200);
   }
+});
+
+void test('trade-credit returns fail before creating rows, restoring stock, or refunding', async (t) => {
+  const { db, app } = await createSeededFixture(t);
+  const alice = db
+    .prepare('SELECT id FROM users WHERE email = ? AND country = ? LIMIT 1')
+    .get('alice@example.com', 'UK') as { id: number } | undefined;
+  assert.ok(alice);
+  if (!alice) throw new Error('Expected seeded Alice');
+  const { orderId, paymentId } = insertCreditOrder(db, alice.id);
+  const aliceCookie = await login(app, 'alice@example.com');
+  const adminCookie = await login(app, 'admin@example.com');
+
+  const returnsBefore = (
+    db.prepare('SELECT COUNT(*) AS count FROM return_requests').get() as { count: number }
+  ).count;
+
+  const overview = await app.inject({
+    method: 'GET',
+    url: `/api/orders/${orderId}/returns`,
+    headers: { cookie: aliceCookie },
+  });
+  assert.equal(overview.statusCode, 409, overview.body);
+  assert.equal(overview.json<{ code: string }>().code, 'PAYMENT_NOT_REFUNDABLE');
+
+  const request = await app.inject({
+    method: 'POST',
+    url: `/api/orders/${orderId}/returns`,
+    headers: { cookie: aliceCookie },
+    payload: {
+      idempotencyKey: '11111111-1111-4111-8111-111111111111',
+      reason: 'damaged',
+      selections: [{ shipmentId: '1', orderLineItemId: '1', quantity: 1 }],
+    },
+  });
+  assert.equal(request.statusCode, 409);
+  assert.equal(request.json<{ code: string }>().code, 'PAYMENT_NOT_REFUNDABLE');
+  assert.equal(
+    (db.prepare('SELECT COUNT(*) AS count FROM return_requests').get() as { count: number }).count,
+    returnsBefore,
+  );
+
+  const approvedReturnId = Number(
+    db
+      .prepare(
+        `INSERT INTO return_requests
+           (order_id, user_id, status, reason, version, requested_at, approved_at)
+         VALUES (?, ?, 'approved', 'other', 0, ?, ?)`,
+      )
+      .run(orderId, alice.id, '2026-09-03T10:00:00.000Z', '2026-09-03T10:01:00.000Z')
+      .lastInsertRowid,
+  );
+  const receive = await app.inject({
+    method: 'POST',
+    url: `/api/admin/returns/${approvedReturnId}/receive`,
+    headers: { cookie: adminCookie },
+    payload: {
+      version: 0,
+      idempotencyKey: '22222222-2222-4222-8222-222222222222',
+    },
+  });
+  assert.equal(receive.statusCode, 409);
+  assert.equal(receive.json<{ code: string }>().code, 'PAYMENT_NOT_REFUNDABLE');
+  assert.deepEqual(
+    db.prepare('SELECT status, version FROM return_requests WHERE id = ?').get(approvedReturnId),
+    { status: 'approved', version: 0 },
+  );
+  assert.equal(
+    (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count
+           FROM inventory_stock_movements
+           WHERE return_request_id = ? AND movement_type = 'return_received'`,
+        )
+        .get(approvedReturnId) as { count: number }
+    ).count,
+    0,
+  );
+
+  const receivedReturnId = Number(
+    db
+      .prepare(
+        `INSERT INTO return_requests
+           (order_id, user_id, status, reason, version, requested_at, approved_at, received_at)
+         VALUES (?, ?, 'received', 'other', 2, ?, ?, ?)`,
+      )
+      .run(
+        orderId,
+        alice.id,
+        '2026-09-03T10:00:00.000Z',
+        '2026-09-03T10:01:00.000Z',
+        '2026-09-03T10:02:00.000Z',
+      ).lastInsertRowid,
+  );
+  const refund = await app.inject({
+    method: 'POST',
+    url: `/api/admin/returns/${receivedReturnId}/refund`,
+    headers: { cookie: adminCookie },
+    payload: {
+      version: 2,
+      idempotencyKey: '33333333-3333-4333-8333-333333333333',
+    },
+  });
+  assert.equal(refund.statusCode, 409);
+  assert.equal(refund.json<{ code: string }>().code, 'PAYMENT_NOT_REFUNDABLE');
+  assert.equal(
+    (
+      db.prepare('SELECT COUNT(*) AS count FROM refunds WHERE payment_id = ?').get(paymentId) as {
+        count: number;
+      }
+    ).count,
+    0,
+  );
+
+  const returnRepository = createReturnRepository(db);
+  assert.equal(returnRepository.resolveSucceededPayment(orderId), undefined);
+  assert.equal(returnRepository.getPaymentRefundedCents(paymentId), 0);
 });

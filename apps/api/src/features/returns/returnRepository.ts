@@ -417,9 +417,16 @@ export function createReturnRepository(db: Database.Database): ReturnRepository 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     getOwnedOverview(orderId, userId, _now) {
       const order = db
-        .prepare('SELECT 1 FROM orders WHERE id = ? AND user_id = ?')
-        .get(orderId, userId);
+        .prepare(
+          `SELECT payment_method
+           FROM orders
+           WHERE id = ? AND user_id = ?`,
+        )
+        .get(orderId, userId) as { payment_method: string } | undefined;
       if (!order) return undefined;
+      if (order.payment_method === 'trade_credit') {
+        throw new ReturnDomainError(ReturnErrorCode.PAYMENT_NOT_REFUNDABLE);
+      }
 
       const { lines, corruption } = loadEligibleLines(orderId);
 
@@ -570,7 +577,7 @@ export function createReturnRepository(db: Database.Database): ReturnRepository 
         .prepare(
           `SELECT id, amount_cents
            FROM payments
-           WHERE order_id = ? AND status = 'succeeded'
+           WHERE order_id = ? AND status = 'succeeded' AND payment_method = 'card'
            ORDER BY id ASC LIMIT 1`,
         )
         .get(orderId) as { id: number; amount_cents: number } | undefined;
@@ -581,12 +588,14 @@ export function createReturnRepository(db: Database.Database): ReturnRepository 
       const row = db
         .prepare(
           `SELECT
-             COALESCE((SELECT SUM(net_refund_cents) FROM refunds WHERE payment_id = ?), 0) +
-             COALESCE((SELECT SUM(amount_cents) FROM admin_refunds WHERE payment_id = ?), 0)
-             AS amount`,
+             COALESCE((SELECT SUM(net_refund_cents) FROM refunds WHERE payment_id = p.id), 0) +
+             COALESCE((SELECT SUM(amount_cents) FROM admin_refunds WHERE payment_id = p.id), 0)
+             AS amount
+           FROM payments p
+           WHERE p.id = ? AND p.payment_method = 'card'`,
         )
-        .get(paymentId, paymentId) as { amount: number };
-      return row.amount;
+        .get(paymentId) as { amount: number } | undefined;
+      return row?.amount ?? 0;
     },
 
     getPriorRefundedTotals(orderId) {
