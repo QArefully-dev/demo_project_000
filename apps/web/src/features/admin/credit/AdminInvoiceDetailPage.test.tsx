@@ -1,16 +1,27 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { Country } from '@shop/contracts/country';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { Invoice } from '@shop/contracts/trade-credit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { LocaleProvider } from '@/i18n/LocaleContext';
 import { AdminInvoiceDetailPage } from './AdminInvoiceDetailPage';
 
 const api = vi.hoisted(() => ({
   getAdminInvoice: vi.fn(),
   settleAdminInvoice: vi.fn(),
 }));
+const countryState: { activeCountry: Country } = vi.hoisted(() => ({ activeCountry: 'US' }));
 vi.mock('@/api/adminCredit', () => api);
+vi.mock('@/hooks/CountryContext', () => ({
+  useCountry: () => ({
+    activeCountry: countryState.activeCountry,
+    isAccountBound: false,
+    selectCountry: vi.fn(),
+    countryStorage: null,
+  }),
+}));
 
 const invoice = {
   version: 1,
@@ -64,14 +75,25 @@ const invoice = {
   events: [{ id: '301', invoiceId: '101', type: 'issued', occurredAt: '2026-09-01T00:00:00.000Z' }],
 } satisfies Invoice;
 
-function renderPage() {
-  return render(
+function pageElement() {
+  return (
     <MemoryRouter initialEntries={['/admin/invoices/101']}>
       <Routes>
-        <Route path="/admin/invoices/:invoiceId" element={<AdminInvoiceDetailPage />} />
+        <Route
+          path="/admin/invoices/:invoiceId"
+          element={
+            <LocaleProvider>
+              <AdminInvoiceDetailPage />
+            </LocaleProvider>
+          }
+        />
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+}
+
+function renderPage() {
+  return render(pageElement());
 }
 
 function deferred<T>() {
@@ -86,6 +108,7 @@ function deferred<T>() {
 
 describe('AdminInvoiceDetailPage', () => {
   afterEach(() => {
+    countryState.activeCountry = 'US';
     vi.restoreAllMocks();
     vi.resetAllMocks();
   });
@@ -154,5 +177,100 @@ describe('AdminInvoiceDetailPage', () => {
     await user.click(screen.getByRole('button', { name: 'Confirm full settlement' }));
     const secondKey = api.settleAdminInvoice.mock.calls[1]?.[1].idempotencyKey;
     expect(secondKey).toBe(firstKey);
+  });
+
+  it('aborts and ignores a stale prior-country invoice response', async () => {
+    const firstResponse = deferred<Invoice>();
+    const secondResponse = deferred<Invoice>();
+    const deInvoice = {
+      ...invoice,
+      billingEntity: { ...invoice.billingEntity, legalName: 'DE Trading Ltd' },
+    };
+    api.getAdminInvoice
+      .mockReturnValueOnce(firstResponse.promise)
+      .mockReturnValueOnce(secondResponse.promise);
+    const view = renderPage();
+    await waitFor(() => expect(api.getAdminInvoice).toHaveBeenCalledOnce());
+    const oldSignal = api.getAdminInvoice.mock.calls[0]?.[1] as AbortSignal | undefined;
+
+    countryState.activeCountry = 'DE';
+    view.rerender(pageElement());
+    await waitFor(() => expect(api.getAdminInvoice).toHaveBeenCalledTimes(2));
+    expect(oldSignal?.aborted).toBe(true);
+
+    await act(async () => {
+      secondResponse.resolve(deInvoice);
+      await secondResponse.promise;
+    });
+    expect(await screen.findAllByText(/DE Trading Ltd/)).not.toHaveLength(0);
+
+    await act(async () => {
+      firstResponse.resolve({
+        ...invoice,
+        billingEntity: { ...invoice.billingEntity, legalName: 'US Trading Ltd' },
+      });
+      await firstResponse.promise;
+    });
+    expect(screen.queryByText(/US Trading Ltd/)).not.toBeInTheDocument();
+  });
+
+  it('clears the prior-country invoice and suppresses its stale settlement completion', async () => {
+    const secondResponse = deferred<Invoice>();
+    const firstSettlement = deferred<Invoice>();
+    const secondSettlement = deferred<Invoice>();
+    const deInvoice = {
+      ...invoice,
+      billingEntity: { ...invoice.billingEntity, legalName: 'DE Trading Ltd' },
+    };
+    api.getAdminInvoice
+      .mockResolvedValueOnce(invoice)
+      .mockReturnValueOnce(secondResponse.promise)
+      .mockResolvedValue(deInvoice);
+    api.settleAdminInvoice
+      .mockReturnValueOnce(firstSettlement.promise)
+      .mockReturnValueOnce(secondSettlement.promise);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const user = userEvent.setup();
+    const view = renderPage();
+    await screen.findByRole('heading', { name: 'Invoice #101' });
+    await user.click(screen.getByRole('button', { name: 'Confirm full settlement' }));
+    const firstKey = api.settleAdminInvoice.mock.calls[0]?.[1].idempotencyKey;
+    const firstSignal = api.settleAdminInvoice.mock.calls[0]?.[2] as AbortSignal | undefined;
+
+    countryState.activeCountry = 'DE';
+    view.rerender(pageElement());
+    await waitFor(() => expect(api.getAdminInvoice).toHaveBeenCalledTimes(2));
+    expect(firstSignal?.aborted).toBe(true);
+    expect(screen.queryByText(/Example Trading Ltd/)).not.toBeInTheDocument();
+
+    await act(async () => {
+      secondResponse.resolve(deInvoice);
+      await secondResponse.promise;
+    });
+    expect(await screen.findAllByText(/DE Trading Ltd/)).not.toHaveLength(0);
+    await user.click(
+      screen.getByRole('button', {
+        name: /Vollständige Begleichung bestätigen|Confirm full settlement/,
+      }),
+    );
+    const secondKey = api.settleAdminInvoice.mock.calls[1]?.[1].idempotencyKey;
+    expect(secondKey).not.toBe(firstKey);
+
+    await act(async () => {
+      firstSettlement.resolve(invoice);
+      await firstSettlement.promise;
+    });
+    expect(
+      screen.queryByText(/Rechnung vollständig beglichen|Invoice settled in full/),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Wird beglichen|Settling/ })).toBeInTheDocument();
+
+    await act(async () => {
+      secondSettlement.resolve(deInvoice);
+      await secondSettlement.promise;
+    });
+    expect(
+      await screen.findByText(/Rechnung vollständig beglichen|Invoice settled in full/),
+    ).toBeInTheDocument();
   });
 });

@@ -1,16 +1,27 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { Country } from '@shop/contracts/country';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import type { CreditAccountAdminView } from '@shop/contracts/trade-credit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { LocaleProvider } from '@/i18n/LocaleContext';
 import { AdminCreditAccountDetailPage } from './AdminCreditAccountDetailPage';
 
 const api = vi.hoisted(() => ({
   getAdminCreditAccount: vi.fn(),
   updateAdminCreditAccount: vi.fn(),
 }));
+const countryState: { activeCountry: Country } = vi.hoisted(() => ({ activeCountry: 'US' }));
 vi.mock('@/api/adminCredit', () => api);
+vi.mock('@/hooks/CountryContext', () => ({
+  useCountry: () => ({
+    activeCountry: countryState.activeCountry,
+    isAccountBound: false,
+    selectCountry: vi.fn(),
+    countryStorage: null,
+  }),
+}));
 
 const account = {
   id: '7',
@@ -34,18 +45,26 @@ function Location() {
   return <output data-testid="location">{location.pathname}</output>;
 }
 
-function renderPage(initialEntry = '/admin/credit-accounts/7') {
-  return render(
+function pageElement(initialEntry = '/admin/credit-accounts/7') {
+  return (
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
         <Route
           path="/admin/credit-accounts/:creditAccountId"
-          element={<AdminCreditAccountDetailPage />}
+          element={
+            <LocaleProvider>
+              <AdminCreditAccountDetailPage />
+            </LocaleProvider>
+          }
         />
       </Routes>
       <Location />
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+}
+
+function renderPage(initialEntry = '/admin/credit-accounts/7') {
+  return render(pageElement(initialEntry));
 }
 
 function deferred<T>() {
@@ -59,7 +78,10 @@ function deferred<T>() {
 }
 
 describe('AdminCreditAccountDetailPage', () => {
-  afterEach(() => vi.resetAllMocks());
+  afterEach(() => {
+    countryState.activeCountry = 'US';
+    vi.resetAllMocks();
+  });
 
   it('parses GBP exactly, sends one versioned mutation, and reloads account detail', async () => {
     const update = deferred<CreditAccountAdminView>();
@@ -72,7 +94,9 @@ describe('AdminCreditAccountDetailPage', () => {
     await screen.findByRole('heading', { name: 'Credit account #7' });
     const input = screen.getByLabelText('New credit limit (GBP)');
     await user.type(input, '1250.05');
-    await user.click(screen.getByRole('button', { name: 'Update credit limit' }));
+    await user.click(
+      screen.getByRole('button', { name: /Kreditlimit aktualisieren|Update credit limit/ }),
+    );
     expect(api.updateAdminCreditAccount).toHaveBeenCalledWith(
       '7',
       {
@@ -86,7 +110,9 @@ describe('AdminCreditAccountDetailPage', () => {
       update.resolve({ ...account, creditLimitCents: 125_005, version: 4 });
       await update.promise;
     });
-    expect(await screen.findByText('Credit account updated.')).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Kreditkonto aktualisiert|Credit account updated/),
+    ).toBeInTheDocument();
     await waitFor(() => expect(api.getAdminCreditAccount).toHaveBeenCalledTimes(2));
   });
 
@@ -114,6 +140,93 @@ describe('AdminCreditAccountDetailPage', () => {
     expect(thirdKey).not.toBe(secondKey);
   });
 
+  it('aborts and ignores a stale prior-country detail response', async () => {
+    const firstResponse = deferred<CreditAccountAdminView>();
+    const secondResponse = deferred<CreditAccountAdminView>();
+    api.getAdminCreditAccount
+      .mockReturnValueOnce(firstResponse.promise)
+      .mockReturnValueOnce(secondResponse.promise);
+    const view = renderPage();
+    await waitFor(() => expect(api.getAdminCreditAccount).toHaveBeenCalledOnce());
+    const oldSignal = api.getAdminCreditAccount.mock.calls[0]?.[1] as AbortSignal | undefined;
+
+    countryState.activeCountry = 'DE';
+    view.rerender(pageElement());
+    await waitFor(() => expect(api.getAdminCreditAccount).toHaveBeenCalledTimes(2));
+    expect(oldSignal?.aborted).toBe(true);
+
+    await act(async () => {
+      secondResponse.resolve({ ...account, companyName: 'DE Trading Ltd' });
+      await secondResponse.promise;
+    });
+    expect(await screen.findAllByText(/DE Trading Ltd/)).not.toHaveLength(0);
+
+    await act(async () => {
+      firstResponse.resolve({ ...account, companyName: 'US Trading Ltd' });
+      await firstResponse.promise;
+    });
+    expect(screen.queryByText('US Trading Ltd')).not.toBeInTheDocument();
+  });
+
+  it('clears the prior-country account and suppresses its stale mutation completion', async () => {
+    const secondResponse = deferred<CreditAccountAdminView>();
+    const firstUpdate = deferred<CreditAccountAdminView>();
+    const secondUpdate = deferred<CreditAccountAdminView>();
+    const deAccount = { ...account, companyName: 'DE Trading Ltd' };
+    api.getAdminCreditAccount
+      .mockResolvedValueOnce(account)
+      .mockReturnValueOnce(secondResponse.promise)
+      .mockResolvedValue(deAccount);
+    api.updateAdminCreditAccount
+      .mockReturnValueOnce(firstUpdate.promise)
+      .mockReturnValueOnce(secondUpdate.promise);
+    const user = userEvent.setup();
+    const view = renderPage();
+    await screen.findByRole('heading', { name: 'Credit account #7' });
+    await user.type(screen.getByLabelText('New credit limit (GBP)'), '1250.05');
+    await user.click(screen.getByRole('button', { name: 'Update credit limit' }));
+    const firstKey = api.updateAdminCreditAccount.mock.calls[0]?.[1].idempotencyKey;
+    const firstSignal = api.updateAdminCreditAccount.mock.calls[0]?.[2] as AbortSignal | undefined;
+
+    countryState.activeCountry = 'DE';
+    view.rerender(pageElement());
+    await waitFor(() => expect(api.getAdminCreditAccount).toHaveBeenCalledTimes(2));
+    expect(firstSignal?.aborted).toBe(true);
+    expect(screen.queryByText('Example Trading Ltd')).not.toBeInTheDocument();
+
+    await act(async () => {
+      secondResponse.resolve(deAccount);
+      await secondResponse.promise;
+    });
+    expect(await screen.findAllByText(/DE Trading Ltd/)).not.toHaveLength(0);
+    const newInput = screen.getByLabelText(/Kreditlimit|credit limit/i);
+    await user.type(newInput, '1300.00');
+    await user.click(
+      screen.getByRole('button', { name: /Kreditlimit aktualisieren|Update credit limit/ }),
+    );
+    const secondKey = api.updateAdminCreditAccount.mock.calls[1]?.[1].idempotencyKey;
+    expect(secondKey).not.toBe(firstKey);
+
+    await act(async () => {
+      firstUpdate.resolve(account);
+      await firstUpdate.promise;
+    });
+    expect(
+      screen.queryByText(/Kreditkonto aktualisiert|Credit account updated/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Wird aktualisiert|Updating credit limit/ }),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      secondUpdate.resolve(deAccount);
+      await secondUpdate.promise;
+    });
+    expect(
+      await screen.findByText(/Kreditkonto aktualisiert|Credit account updated/),
+    ).toBeInTheDocument();
+  });
+
   it('rotates account mutation identity when the route account changes', async () => {
     api.getAdminCreditAccount.mockResolvedValue(account);
     api.updateAdminCreditAccount.mockResolvedValue(account);
@@ -123,7 +236,11 @@ describe('AdminCreditAccountDetailPage', () => {
         <Routes>
           <Route
             path="/admin/credit-accounts/:creditAccountId"
-            element={<AdminCreditAccountDetailPage />}
+            element={
+              <LocaleProvider>
+                <AdminCreditAccountDetailPage />
+              </LocaleProvider>
+            }
           />
         </Routes>
       </MemoryRouter>,

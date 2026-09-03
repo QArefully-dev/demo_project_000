@@ -59,7 +59,9 @@ export function AdminCreditAccountDetailPage() {
   const mutationGeneration = useRef(0);
   const mutationController = useRef<AbortController | null>(null);
   const currentAccountId = useRef(creditAccountId);
+  const currentAccountCountry = useRef(country);
   currentAccountId.current = creditAccountId;
+  currentAccountCountry.current = country;
 
   useEffect(() => {
     limitKey.current = null;
@@ -74,7 +76,7 @@ export function AdminCreditAccountDetailPage() {
     setLimitInput('');
     setStateInput('');
     setReasonInput('');
-  }, [creditAccountId]);
+  }, [country, creditAccountId]);
 
   useEffect(() => {
     if (!creditAccountId) return;
@@ -125,7 +127,8 @@ export function AdminCreditAccountDetailPage() {
       setError(t('adminCommerce.credit.limitHint'));
       return;
     }
-    const fingerprint = `${account.version}:limit:${normalized}`;
+    const mutationCountry = country;
+    const fingerprint = `${mutationCountry}:${account.version}:limit:${normalized}`;
     const idempotencyKey = keyFor(limitKey, fingerprint);
     const generation = ++mutationGeneration.current;
     const controller = new AbortController();
@@ -142,6 +145,7 @@ export function AdminCreditAccountDetailPage() {
       if (
         generation !== mutationGeneration.current ||
         currentAccountId.current !== creditAccountId ||
+        currentAccountCountry.current !== mutationCountry ||
         controller.signal.aborted
       )
         return;
@@ -151,6 +155,7 @@ export function AdminCreditAccountDetailPage() {
       if (
         generation === mutationGeneration.current &&
         currentAccountId.current === creditAccountId &&
+        currentAccountCountry.current === mutationCountry &&
         !controller.signal.aborted
       )
         setError(
@@ -164,18 +169,20 @@ export function AdminCreditAccountDetailPage() {
     } finally {
       if (
         generation === mutationGeneration.current &&
-        currentAccountId.current === creditAccountId
+        currentAccountId.current === creditAccountId &&
+        currentAccountCountry.current === mutationCountry
       ) {
         mutationController.current = null;
         setWorking(null);
       }
     }
-  }, [account, creditAccountId, limitInput, t, translateApiError, working]);
+  }, [account, country, creditAccountId, limitInput, t, translateApiError, working]);
 
   const submitState = useCallback(async () => {
     if (!account || !creditAccountId || !stateInput || working) return;
     const reason = reasonInput.trim();
-    const fingerprint = `${account.version}:state:${stateInput}:${reason}`;
+    const mutationCountry = country;
+    const fingerprint = `${mutationCountry}:${account.version}:state:${stateInput}:${reason}`;
     const idempotencyKey = keyFor(stateKey, fingerprint);
     const generation = ++mutationGeneration.current;
     const controller = new AbortController();
@@ -197,6 +204,7 @@ export function AdminCreditAccountDetailPage() {
       if (
         generation !== mutationGeneration.current ||
         currentAccountId.current !== creditAccountId ||
+        currentAccountCountry.current !== mutationCountry ||
         controller.signal.aborted
       )
         return;
@@ -206,6 +214,7 @@ export function AdminCreditAccountDetailPage() {
       if (
         generation === mutationGeneration.current &&
         currentAccountId.current === creditAccountId &&
+        currentAccountCountry.current === mutationCountry &&
         !controller.signal.aborted
       )
         setError(
@@ -219,13 +228,14 @@ export function AdminCreditAccountDetailPage() {
     } finally {
       if (
         generation === mutationGeneration.current &&
-        currentAccountId.current === creditAccountId
+        currentAccountId.current === creditAccountId &&
+        currentAccountCountry.current === mutationCountry
       ) {
         mutationController.current = null;
         setWorking(null);
       }
     }
-  }, [account, creditAccountId, reasonInput, stateInput, t, translateApiError, working]);
+  }, [account, country, creditAccountId, reasonInput, stateInput, t, translateApiError, working]);
 
   if (!creditAccountId)
     return (

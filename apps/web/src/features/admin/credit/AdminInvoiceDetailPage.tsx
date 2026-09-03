@@ -54,7 +54,9 @@ export function AdminInvoiceDetailPage() {
   const settlementGeneration = useRef(0);
   const settlementController = useRef<AbortController | null>(null);
   const currentInvoiceId = useRef(invoiceId);
+  const currentInvoiceCountry = useRef(country);
   currentInvoiceId.current = invoiceId;
+  currentInvoiceCountry.current = country;
 
   useEffect(() => {
     settlementKey.current = null;
@@ -65,7 +67,7 @@ export function AdminInvoiceDetailPage() {
     setNotice(null);
     setError(null);
     setInvoice(null);
-  }, [invoiceId]);
+  }, [country, invoiceId]);
 
   useEffect(() => {
     if (!invoiceId) return;
@@ -116,7 +118,8 @@ export function AdminInvoiceDetailPage() {
       )
     )
       return;
-    const fingerprint = `${invoice.id}:${invoice.lifecycleVersion}`;
+    const mutationCountry = country;
+    const fingerprint = `${mutationCountry}:${invoice.id}:${invoice.lifecycleVersion}`;
     const idempotencyKey =
       settlementKey.current?.fingerprint === fingerprint
         ? settlementKey.current.key
@@ -137,6 +140,7 @@ export function AdminInvoiceDetailPage() {
       if (
         generation !== settlementGeneration.current ||
         currentInvoiceId.current !== invoiceId ||
+        currentInvoiceCountry.current !== mutationCountry ||
         controller.signal.aborted
       )
         return;
@@ -146,6 +150,7 @@ export function AdminInvoiceDetailPage() {
       if (
         generation === settlementGeneration.current &&
         currentInvoiceId.current === invoiceId &&
+        currentInvoiceCountry.current === mutationCountry &&
         !controller.signal.aborted
       )
         setError(
@@ -157,7 +162,11 @@ export function AdminInvoiceDetailPage() {
           ),
         );
     } finally {
-      if (generation === settlementGeneration.current && currentInvoiceId.current === invoiceId) {
+      if (
+        generation === settlementGeneration.current &&
+        currentInvoiceId.current === invoiceId &&
+        currentInvoiceCountry.current === mutationCountry
+      ) {
         settlementController.current = null;
         setSettling(false);
       }

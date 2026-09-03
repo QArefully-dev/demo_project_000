@@ -48,7 +48,7 @@ function createQuery(
 export function AdminCreditAccountsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { translate, formatSettlementMoney, formatCount } = useLocalisation();
+  const { country, translate, formatSettlementMoney, formatCount } = useLocalisation();
   const t = (key: AdminCommerceMessageKey, params = {}) =>
     translate(adminCommerceMessages, key, params);
   const adminT = (key: AdminDiagnosticsMessageKey, params = {}) =>
@@ -69,6 +69,13 @@ export function AdminCreditAccountsPage() {
     setCompanyIdInput(searchParams.get('companyId') ?? '');
     setStateInput(readCreditState(searchParams.get('state')) ?? '');
   }, [searchParams]);
+
+  useEffect(() => {
+    // Country is part of the server scope. Do not leave the prior-country list actionable while
+    // the replacement request is in flight.
+    setResult(null);
+    setError(null);
+  }, [country]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -106,7 +113,7 @@ export function AdminCreditAccountsPage() {
       current = false;
       controller.abort();
     };
-  }, [companyId, page, reloadVersion, searchParams, setSearchParams, state]);
+  }, [companyId, country, page, reloadVersion, searchParams, setSearchParams, state]);
 
   const updateFilters = () => {
     const nextCompanyId = companyIdInput.trim();

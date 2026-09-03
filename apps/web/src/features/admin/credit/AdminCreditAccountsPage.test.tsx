@@ -1,14 +1,25 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
+import type { Country } from '@shop/contracts/country';
 import type { CreditAccountAdminView } from '@shop/contracts/trade-credit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { LocaleProvider } from '@/i18n/LocaleContext';
 import { AdminCreditAccountsPage } from './AdminCreditAccountsPage';
 
 const api = vi.hoisted(() => ({
   getAdminCreditAccounts: vi.fn(),
 }));
+const countryState: { activeCountry: Country } = vi.hoisted(() => ({ activeCountry: 'US' }));
 vi.mock('@/api/adminCredit', () => api);
+vi.mock('@/hooks/CountryContext', () => ({
+  useCountry: () => ({
+    activeCountry: countryState.activeCountry,
+    isAccountBound: false,
+    selectCountry: vi.fn(),
+    countryStorage: null,
+  }),
+}));
 
 const account = {
   id: '7',
@@ -36,17 +47,30 @@ function page(overrides: Partial<{ items: CreditAccountAdminView[]; total: numbe
   return { items: [account], total: 1, page: 1, pageSize: 25, ...overrides };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 function renderPage(initialEntry = '/admin/credit-accounts') {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <AdminCreditAccountsPage />
-      <Location />
+      <LocaleProvider>
+        <AdminCreditAccountsPage />
+        <Location />
+      </LocaleProvider>
     </MemoryRouter>,
   );
 }
 
 describe('AdminCreditAccountsPage', () => {
-  afterEach(() => vi.resetAllMocks());
+  afterEach(() => {
+    countryState.activeCountry = 'US';
+    vi.resetAllMocks();
+  });
 
   it('loads URL filters through the strict list client and links to account detail', async () => {
     api.getAdminCreditAccounts.mockResolvedValue(page());
@@ -80,5 +104,47 @@ describe('AdminCreditAccountsPage', () => {
         expect.any(AbortSignal),
       ),
     );
+  });
+
+  it('aborts the prior-country request, clears its list, and keeps only the new response', async () => {
+    const firstResponse = deferred<ReturnType<typeof page>>();
+    const secondResponse = deferred<ReturnType<typeof page>>();
+    api.getAdminCreditAccounts
+      .mockReturnValueOnce(firstResponse.promise)
+      .mockReturnValueOnce(secondResponse.promise);
+    const view = renderPage();
+    await waitFor(() => expect(api.getAdminCreditAccounts).toHaveBeenCalledOnce());
+
+    await act(async () => {
+      firstResponse.resolve(page());
+      await firstResponse.promise;
+    });
+    await screen.findByText('Example Trading Ltd');
+    const oldSignal = api.getAdminCreditAccounts.mock.calls[0]?.[1] as AbortSignal | undefined;
+
+    countryState.activeCountry = 'DE';
+    view.rerender(
+      <MemoryRouter initialEntries={['/admin/credit-accounts']}>
+        <LocaleProvider>
+          <AdminCreditAccountsPage />
+          <Location />
+        </LocaleProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(api.getAdminCreditAccounts).toHaveBeenCalledTimes(2));
+    expect(oldSignal?.aborted).toBe(true);
+    expect(screen.queryByText('Example Trading Ltd')).not.toBeInTheDocument();
+
+    await act(async () => {
+      secondResponse.resolve(page({ items: [{ ...account, companyName: 'DE Trading Ltd' }] }));
+      await secondResponse.promise;
+    });
+    expect(await screen.findByText('DE Trading Ltd')).toBeInTheDocument();
+
+    await act(async () => {
+      firstResponse.resolve(page({ items: [{ ...account, companyName: 'US Trading Ltd' }] }));
+      await firstResponse.promise;
+    });
+    expect(screen.queryByText('US Trading Ltd')).not.toBeInTheDocument();
   });
 });
