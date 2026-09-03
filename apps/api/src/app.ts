@@ -10,8 +10,11 @@ import productsRoutes from './routes/products.js';
 import cartRoutes from './routes/cart.js';
 import promoRoutes from './routes/promo.js';
 import ordersRoutes from './routes/orders.js';
+import type { OwnedOrderInvoiceReader } from './routes/orders.js';
 import authRoutes from './routes/auth.js';
 import paymentRoutes from './routes/payments.js';
+import tradeCreditRoutes from './routes/tradeCredit.js';
+import adminCreditRoutes from './routes/adminCredit.js';
 import mailboxRoutes from './routes/mailbox.js';
 import bundleRoutes from './routes/bundles.js';
 import reorderRoutes from './routes/reorder.js';
@@ -25,6 +28,20 @@ import { createCartRepository } from './features/cart/cartRepository.js';
 import { createCartService, type CartService } from './features/cart/cartService.js';
 import { createOrderRepository } from './features/orders/orderRepository.js';
 import { createOrderService, type OrderService } from './features/orders/orderService.js';
+import { createInvoiceRepository } from './features/invoices/invoiceRepository.js';
+import { createInvoiceService, type InvoiceService } from './features/invoices/invoiceService.js';
+import {
+  createCreditAccountRepository,
+  type CreditAccountRepository,
+} from './features/tradeCredit/creditAccountRepository.js';
+import {
+  createCreditHoldRepository,
+  type CreditHoldRepository,
+} from './features/tradeCredit/creditHoldRepository.js';
+import {
+  createCreditAccountService,
+  type CreditAccountService,
+} from './features/tradeCredit/creditAccountService.js';
 import {
   createOrderAccessService,
   type OrderAccessService,
@@ -250,6 +267,10 @@ export interface AppServices {
   carts: CartService;
   promos: PromoService;
   orders: OrderService;
+  creditAccounts: CreditAccountService;
+  invoices: InvoiceService;
+  /** Owner-scoped invoice lookup adapter used by the order detail route. */
+  invoiceReader?: OwnedOrderInvoiceReader;
   orderAccess: OrderAccessService;
   checkout: CheckoutService;
   audit: AuditReadService;
@@ -297,11 +318,20 @@ function createAppServices(dependencies: AppDependencies): AppServices {
   const products = createProductRepository(dependencies.db);
   const countryProfiles = createCountryProfileService();
   const sessionRepository = createSessionRepository(dependencies.db);
+  const companyMemberships = createCompanyMembershipRepository(dependencies.db);
   const featureFlagRepository = createFeatureFlagRepository(dependencies.db);
   const featureFlagResolver = createFeatureFlagResolver(featureFlagRepository);
   const unitOfWork = createUnitOfWork(dependencies.db);
   const auditRepository = createAuditRepository(dependencies.db);
   const audit = createAuditWriter({ repository: auditRepository, clock });
+  // Trade-credit persistence and workflows are application singletons. They share the same
+  // database, UnitOfWork, clock, and audit writer so checkout, invoice lifecycle, cancellation,
+  // and the account/admin routes cannot observe divergent policy or transaction state.
+  const creditAccountRepository: CreditAccountRepository = createCreditAccountRepository(
+    dependencies.db,
+  );
+  const creditHoldRepository: CreditHoldRepository = createCreditHoldRepository(dependencies.db);
+  const invoiceRepository = createInvoiceRepository(dependencies.db);
   // One resolver instance is shared by cart reads/mutations and the custom-blend routes so every
   // path observes the same live facts, clock, policy, and pricing authority.
   const customBlendResolver = createCustomBlendResolver(
@@ -373,6 +403,20 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     }),
   };
   const deliverySlots = createDeliverySlotService({ cart: cartService, clock });
+  const creditAccounts = createCreditAccountService({
+    accounts: creditAccountRepository,
+    holds: creditHoldRepository,
+    memberships: companyMemberships,
+    unitOfWork,
+    clock,
+    audit,
+  });
+  const invoices = createInvoiceService({
+    repository: invoiceRepository,
+    unitOfWork,
+    clock,
+    audit,
+  });
   // Hoisted: reorder reads owned orders through the very same order service the order endpoints
   // answer from, so ownership can never be decided against a second view of an order.
   const orderService = createOrderService({
@@ -381,10 +425,12 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     clock,
     audit,
     inventory,
+    invoiceRepository,
+    invoices,
   });
   const companyAccounts = createCompanyService({
     companies: createCompanyRepository(dependencies.db),
-    memberships: createCompanyMembershipRepository(dependencies.db),
+    memberships: companyMemberships,
     invites: createCompanyInviteRepository(dependencies.db),
     mailbox,
     unitOfWork,
@@ -505,6 +551,7 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     clock,
     sessions,
     orders,
+    invoices: invoiceRepository,
     savedLists,
     deliverySites: createDeliverySiteRepository(dependencies.db),
     billingEntities: createBillingEntityRepository(dependencies.db),
@@ -518,6 +565,40 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     audit,
     clock,
   });
+  // The adapter starts from the server-owned order identity, then resolves and re-checks the
+  // invoice through the singleton repository. The route adds the request country boundary; this
+  // adapter additionally enforces ownership, trade-credit linkage, company identity, and that
+  // the invoice country agrees with the frozen order country.
+  const invoiceReader = {
+    getOwnedByOrder(orderId: number, userId: number) {
+      const order = orders.findOwnedDetail(orderId, userId);
+      if (
+        !order ||
+        order.paymentMethod !== 'trade_credit' ||
+        order.companyId === undefined ||
+        !Number.isSafeInteger(orderId) ||
+        orderId < 1
+      ) {
+        return undefined;
+      }
+      const now = clock.now().toISOString();
+      const candidate = invoiceRepository.findByOrderId(orderId, now);
+      if (!candidate) return undefined;
+      const invoiceId = Number(candidate.id);
+      if (!Number.isSafeInteger(invoiceId) || invoiceId < 1) return undefined;
+      const owned = invoiceRepository.findOwnedById(invoiceId, userId, now);
+      if (
+        !owned ||
+        owned.id !== candidate.id ||
+        owned.orderId !== order.id ||
+        owned.companyId !== order.companyId ||
+        owned.country !== order.country
+      ) {
+        return undefined;
+      }
+      return owned;
+    },
+  };
   return {
     auth: createAuthService({
       users,
@@ -541,6 +622,9 @@ function createAppServices(dependencies: AppDependencies): AppServices {
     carts: cartService,
     promos: createPromoService({ promos, carts, clock }),
     orders: orderService,
+    creditAccounts,
+    invoices,
+    invoiceReader,
     orderAccess: createOrderAccessService({
       repository: orders,
       clock,
@@ -562,6 +646,8 @@ function createAppServices(dependencies: AppDependencies): AppServices {
       countryProfiles,
       approvals,
       companies: companyAccounts,
+      creditAccounts,
+      invoices,
       tradeAccount,
       deliverySlots,
     }),
@@ -713,7 +799,9 @@ export async function buildApp(dependencies: AppDependencies) {
   await app.register(cartRoutes, context);
   await app.register(promoRoutes, context);
   await app.register(ordersRoutes, context);
+  await app.register(tradeCreditRoutes, context);
   await app.register(adminOrdersRoutes, context);
+  await app.register(adminCreditRoutes, context);
   await app.register(adminInventoryRoutes, context);
   await app.register(adminProductsRoutes, context);
   await app.register(adminVariantsRoutes, context);
