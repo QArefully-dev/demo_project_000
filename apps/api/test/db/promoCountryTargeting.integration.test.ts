@@ -16,14 +16,14 @@ void test('migration 033 adds idempotent promo country targeting with cascading 
   try {
     migrateDatabase(db);
 
-    assert.equal(migrations.at(-1)?.version, '034');
+    assert.equal(migrations.at(-1)?.version, '038');
     assert.equal(
       (
         db.prepare('SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1').get() as {
           version: string;
         }
       ).version,
-      '034',
+      '038',
     );
 
     const columns = (
