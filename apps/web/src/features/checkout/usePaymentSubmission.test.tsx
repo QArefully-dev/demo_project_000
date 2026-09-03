@@ -7,7 +7,7 @@ import { pay } from '@/api/payments';
 import { LocaleProvider, useLocalisation } from '@/i18n/LocaleContext';
 import { cardFields, checkoutReducer, initialCheckoutState } from './checkoutState';
 import { localizeCheckoutError } from './checkoutCopy';
-import { usePaymentSubmission } from './usePaymentSubmission';
+import { buildPaymentBody, usePaymentSubmission } from './usePaymentSubmission';
 
 vi.mock('@/api/payments', () => ({ pay: vi.fn() }));
 const countryState = vi.hoisted(() => ({ activeCountry: 'US' }));
@@ -231,5 +231,41 @@ describe('usePaymentSubmission delivery country conflict', () => {
     );
     expect(screen.getByTestId('conflict-code')).toHaveTextContent('');
     if (code) expect(screen.getByRole('alert')).toHaveTextContent(code);
+  });
+});
+
+describe('usePaymentSubmission payment method payloads', () => {
+  it('builds a strict trade-credit body without card or client accounting fields', () => {
+    const state = {
+      ...initialCheckoutState(),
+      paymentMethod: 'trade_credit' as const,
+      card: { cardNumber: '424242424242', cardExpiry: '01/30', cardCvc: '123' },
+    };
+    const body = buildPaymentBody(state, {
+      cartId: 'cart-1',
+      promoCode: undefined,
+      customerName: 'Buyer',
+      customerEmail: 'buyer@example.test',
+      deliveryDestination: { kind: 'saved', deliverySiteId: 'site-1' },
+      billingSelection: { kind: 'saved', billingEntityId: 'billing-1' },
+      deliverySlot: { date: '2026-08-10', window: 'am' },
+      purchaseOrderReference: '',
+      idempotencyKey: 'credit-key',
+    });
+
+    expect(body).toEqual({
+      cartId: 'cart-1',
+      customerName: 'Buyer',
+      customerEmail: 'buyer@example.test',
+      deliveryDestination: { kind: 'saved', deliverySiteId: 'site-1' },
+      billingSelection: { kind: 'saved', billingEntityId: 'billing-1' },
+      deliverySlot: { date: '2026-08-10', window: 'am' },
+      idempotencyKey: 'credit-key',
+      paymentMethod: 'trade_credit',
+    });
+    expect(body).not.toHaveProperty('cardNumber');
+    expect(body).not.toHaveProperty('companyId');
+    expect(body).not.toHaveProperty('vatCents');
+    expect(body).not.toHaveProperty('availableCreditCents');
   });
 });

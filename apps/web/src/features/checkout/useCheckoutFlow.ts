@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useMemo, useReducer } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { DeliverySlot } from '@shop/contracts/delivery';
 import { useCartContext } from '@/hooks/CartContext';
 import { useAuth } from '@/hooks/AuthContext';
+import { useOptionalCountry } from '@/hooks/CountryContext';
 import { useLocalisation } from '@/i18n/LocaleContext';
 import { checkoutMessages } from '@shop/localisation/messages/checkout';
 import { useTradeProfile } from '@/features/account/useTradeProfile';
 import { toPostalAddressDraft } from '@/features/account/PostalAddressFields';
+import { getTradeCreditSummary } from '@/api/tradeCredit';
+import { ApiError } from '@/api/client';
 import { isEligibleForPromo } from './cartValidation';
 import {
   cardFields,
@@ -15,6 +18,7 @@ import {
   createIdempotencyKey,
   deliveryStepFields,
   initialCheckoutState,
+  paymentMethods,
   scheduleStepFields,
   selectAppliedPromo,
   selectDiscountCents,
@@ -35,15 +39,43 @@ import { useCheckoutNavigation } from './useCheckoutNavigation';
 import { useDeliverySlots } from './useDeliverySlots';
 import { usePaymentSubmission } from './usePaymentSubmission';
 import { usePromoQuote } from './usePromoQuote';
-import { localizeCheckoutError } from './checkoutCopy';
+import { checkoutErrorState, localizeCheckoutError } from './checkoutCopy';
+
+function isAbort(error: unknown): boolean {
+  return (
+    (typeof DOMException !== 'undefined' &&
+      error instanceof DOMException &&
+      error.name === 'AbortError') ||
+    (error instanceof Error && error.name === 'AbortError')
+  );
+}
+
+/** Missing membership/auth is an expected unavailable outcome, not a load failure. */
+function creditResponseMeansUnavailable(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false;
+  if (error.status === 401 || error.status === 403 || error.status === 404) return true;
+  return (
+    error.code === 'AUTH_REQUIRED' ||
+    error.code === 'UNAUTHORIZED' ||
+    error.code === 'FORBIDDEN' ||
+    error.code === 'NO_ACTIVE_MEMBERSHIP' ||
+    error.code === 'CREDIT_ACCOUNT_NOT_FOUND' ||
+    error.code === 'CREDIT_ACCOUNT_FORBIDDEN' ||
+    error.code === 'COMPANY_REQUIRED' ||
+    error.code === 'CREDIT_NOT_ELIGIBLE'
+  );
+}
 
 /** CheckoutPage compatibility facade. Feature concerns live in focused modules. */
 export function useCheckoutFlow() {
   const { cart, cartId, cartGeneration, clearCart, retryCart } = useCartContext();
   const { user } = useAuth();
+  const { activeCountry } = useOptionalCountry();
   const { translate } = useLocalisation();
   const isAuthenticated = user !== null;
+  const cartPresent = Boolean(cart);
   const [state, dispatch] = useReducer(checkoutReducer, undefined, initialCheckoutState);
+  const [creditReloadToken, setCreditReloadToken] = useState(0);
   const quoteKey = createCartQuoteKey(cart);
   const tradeProfile = useTradeProfile();
   const slots = useDeliverySlots(cartId, quoteKey);
@@ -56,7 +88,10 @@ export function useCheckoutFlow() {
     [offeredSlots, state.schedule],
   );
   const billingValidation = useMemo(() => validateBilling(state.billing), [state.billing]);
-  const cardErrors = useMemo(() => validateCard(state.card), [state.card]);
+  const cardErrors = useMemo(
+    () => validateCard(state.card, state.paymentMethod),
+    [state.card, state.paymentMethod],
+  );
 
   const deliveryIsValid =
     Object.keys(contactErrors).length === 0 &&
@@ -69,9 +104,81 @@ export function useCheckoutFlow() {
   const cardIsValid = Object.keys(cardErrors).length === 0;
   const navigation = useCheckoutNavigation(deliveryIsValid, scheduleIsValid);
 
+  // A cart quote change and an account/country change are one checkout-intent transition. Keeping
+  // one previous-context ref prevents either effect from rotating the key twice for one render.
+  const intentContextRef = useRef<{
+    quoteKey: string | null;
+    accountIdentity: string;
+  } | null>(null);
+  const accountIdentity = `${user?.id ?? ''}:${activeCountry}`;
   useEffect(() => {
-    dispatch({ type: 'quote-changed', idempotencyKey: createIdempotencyKey() });
-  }, [quoteKey]);
+    const current = { quoteKey, accountIdentity };
+    const previous = intentContextRef.current;
+    if (previous) {
+      if (previous.quoteKey !== current.quoteKey) {
+        dispatch({ type: 'quote-changed', idempotencyKey: createIdempotencyKey() });
+      } else if (previous.accountIdentity !== current.accountIdentity) {
+        dispatch({ type: 'checkout-identity-changed', idempotencyKey: createIdempotencyKey() });
+      }
+    }
+    intentContextRef.current = current;
+  }, [accountIdentity, quoteKey]);
+
+  const creditGeneration = useRef(0);
+  const creditAbort = useRef<AbortController | null>(null);
+  const creditIdentity = `${accountIdentity}:${cartId ?? ''}:${quoteKey ?? ''}:${state.paymentMethod}`;
+
+  useEffect(() => {
+    const generation = ++creditGeneration.current;
+    creditAbort.current?.abort();
+    creditAbort.current = null;
+
+    // Credit is intentionally not requested for card/anonymous/unavailable-cart states. The
+    // reducer records a safe unavailable result and clears any summary from a previous intent.
+    if (state.paymentMethod !== 'trade_credit' || !isAuthenticated || !cartId || !cartPresent) {
+      dispatch({ type: 'credit-summary-unavailable' });
+      return;
+    }
+
+    const controller = new AbortController();
+    creditAbort.current = controller;
+    const requestId = `${generation}:${creditIdentity}`;
+    dispatch({ type: 'credit-summary-loading', requestId });
+
+    void (async () => {
+      try {
+        const summary = await getTradeCreditSummary({ signal: controller.signal });
+        if (generation !== creditGeneration.current || controller.signal.aborted) return;
+        dispatch({ type: 'credit-summary-loaded', requestId, summary });
+      } catch (error) {
+        if (generation !== creditGeneration.current || controller.signal.aborted || isAbort(error))
+          return;
+        if (creditResponseMeansUnavailable(error)) {
+          dispatch({ type: 'credit-summary-unavailable', requestId });
+        } else {
+          dispatch({
+            type: 'credit-summary-failed',
+            requestId,
+            errorState: checkoutErrorState(error, 'checkout.paymentMethod.tradeCreditLoadError'),
+          });
+        }
+      }
+    })();
+
+    return () => controller.abort();
+  }, [
+    activeCountry,
+    cartId,
+    cartPresent,
+    creditIdentity,
+    creditReloadToken,
+    isAuthenticated,
+    state.paymentMethod,
+  ]);
+
+  const reloadCreditSummary = useCallback(() => {
+    setCreditReloadToken((token) => token + 1);
+  }, []);
 
   // One-shot preselection of the buyer's default trade records. The reducer ignores these once the
   // buyer has touched the group, so a later list reload cannot overwrite an explicit choice.
@@ -113,12 +220,17 @@ export function useCheckoutFlow() {
       : (cart?.subtotalCents ?? 0) - discountCents + deliveryChargeCents;
   const applyPromo = usePromoQuote({
     cartId,
-    cartPresent: Boolean(cart),
+    cartPresent,
     quoteKey,
     promoCode: state.promoCode,
     dispatch,
     retryCart,
   });
+  const tradeCreditAvailable =
+    state.paymentMethod === 'card' ||
+    (state.creditSummaryStatus === 'loaded' &&
+      state.creditSummary !== null &&
+      state.creditSummary.state === 'active');
   const submitPayment = usePaymentSubmission({
     cartId,
     cartGeneration,
@@ -131,6 +243,8 @@ export function useCheckoutFlow() {
     clearCart,
     replaceWithOrder: navigation.replaceWithOrder,
     cardFields,
+    userId: user?.id ?? null,
+    tradeCreditAvailable,
   });
 
   const updateContact = useCallback(
@@ -157,6 +271,17 @@ export function useCheckoutFlow() {
     (field: (typeof cardFields)[number], value: string) =>
       dispatch({ type: 'card-changed', field, value, idempotencyKey: createIdempotencyKey() }),
     [],
+  );
+  const updatePaymentMethod = useCallback(
+    (paymentMethod: (typeof paymentMethods)[number]) => {
+      if (paymentMethod === state.paymentMethod) return;
+      dispatch({
+        type: 'payment-method-changed',
+        paymentMethod,
+        idempotencyKey: createIdempotencyKey(),
+      });
+    },
+    [state.paymentMethod],
   );
   const touchField = useCallback((field: Field) => dispatch({ type: 'field-touched', field }), []);
   const goToSchedule = useCallback(() => {
@@ -228,6 +353,7 @@ export function useCheckoutFlow() {
 
   const paymentError = localizeCheckoutError(state.paymentErrorState, translate);
   const promoError = localizeCheckoutError(state.promoErrorState, translate);
+  const creditSummaryError = localizeCheckoutError(state.creditSummaryErrorState, translate);
 
   const destinationSummary = useMemo(() => {
     if (state.delivery.destinationKind === 'saved') {
@@ -262,6 +388,25 @@ export function useCheckoutFlow() {
     schedule: state.schedule,
     billing: state.billing,
     card: state.card,
+    idempotencyKey: state.idempotencyKey,
+    paymentMethod: state.paymentMethod,
+    creditSummary: state.creditSummary,
+    creditSummaryStatus: state.creditSummaryStatus,
+    creditSummaryLoading: state.creditSummaryStatus === 'loading',
+    creditSummaryError,
+    creditSummaryErrorState: state.creditSummaryErrorState,
+    creditSummaryUnavailable: state.creditSummaryUnavailable,
+    reloadCreditSummary,
+    retryCreditSummary: reloadCreditSummary,
+    tradeCredit: {
+      summary: state.creditSummary,
+      status: state.creditSummaryStatus,
+      loading: state.creditSummaryStatus === 'loading',
+      error: creditSummaryError,
+      errorState: state.creditSummaryErrorState,
+      unavailable: state.creditSummaryUnavailable,
+      reload: reloadCreditSummary,
+    },
     savedSites,
     savedSitesLoading: tradeProfile.deliverySites.loading,
     savedSitesError: tradeProfile.deliverySites.error,
@@ -306,6 +451,9 @@ export function useCheckoutFlow() {
     updateSchedule,
     updateBilling,
     updateCard,
+    updatePaymentMethod,
+    setPaymentMethod: updatePaymentMethod,
+    selectPaymentMethod: updatePaymentMethod,
     touchField,
     goToSchedule,
     goToPayment,

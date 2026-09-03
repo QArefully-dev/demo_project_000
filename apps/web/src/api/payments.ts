@@ -1,6 +1,15 @@
 import { apiFetch } from './client';
 import { PaymentSuccessResponse } from '@shop/contracts/payments';
-import type { PaymentBody } from '@shop/contracts/payments';
+import type {
+  CardPaymentBody,
+  PaymentBody,
+  TradeCreditPaymentBody,
+} from '@shop/contracts/payments';
+
+export interface PaymentRequestOptions {
+  /** Allows checkout to cancel a request that no longer belongs to the active intent. */
+  signal?: AbortSignal;
+}
 
 /**
  * Payment API module.
@@ -18,9 +27,22 @@ import type { PaymentBody } from '@shop/contracts/payments';
  *   carries the current `earliestDate`). No reservation is held and no money moves on a 409.
  */
 
-export function pay(body: PaymentBody) {
-  return apiFetch(PaymentSuccessResponse, '/api/payments/pay', {
+export function pay(body: PaymentBody, options: PaymentRequestOptions = {}) {
+  const requestOptions: RequestInit = {
     method: 'POST',
     body: JSON.stringify(body),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+  };
+  return apiFetch(PaymentSuccessResponse, '/api/payments/pay', {
+    ...requestOptions,
   });
+}
+
+/** Strict branch helpers for callers that already narrowed the checkout discriminator. */
+export function payCard(body: CardPaymentBody, options: PaymentRequestOptions = {}) {
+  return pay(body, options);
+}
+
+export function payTradeCredit(body: TradeCreditPaymentBody, options: PaymentRequestOptions = {}) {
+  return pay(body, options);
 }

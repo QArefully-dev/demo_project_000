@@ -132,4 +132,10 @@ describe('checkout validation', () => {
       cardCvc: 'Enter a valid CVC',
     });
   });
+
+  it('skips card validation for trade-credit checkout', () => {
+    expect(validateCard({ cardNumber: '', cardExpiry: '', cardCvc: '' }, 'trade_credit')).toEqual(
+      {},
+    );
+  });
 });

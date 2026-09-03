@@ -2,6 +2,51 @@ import { describe, expect, it } from 'vitest';
 import { checkoutReducer, createCartQuoteKey, initialCheckoutState } from './checkoutState';
 
 describe('checkoutState', () => {
+  it('changes payment method once, clears card secrets, and ignores duplicate selection', () => {
+    let state = checkoutReducer(initialCheckoutState(), {
+      type: 'card-changed',
+      field: 'cardCvc',
+      value: '123',
+      idempotencyKey: 'card-key',
+    });
+    state = checkoutReducer(state, { type: 'field-touched', field: 'cardCvc' });
+
+    const changed = checkoutReducer(state, {
+      type: 'payment-method-changed',
+      paymentMethod: 'trade_credit',
+      idempotencyKey: 'credit-key',
+    });
+    expect(changed).toMatchObject({
+      paymentMethod: 'trade_credit',
+      card: { cardNumber: '', cardExpiry: '', cardCvc: '' },
+      idempotencyKey: 'credit-key',
+    });
+    expect(changed.touched).not.toHaveProperty('cardCvc');
+    expect(
+      checkoutReducer(changed, {
+        type: 'payment-method-changed',
+        paymentMethod: 'trade_credit',
+        idempotencyKey: 'must-not-rotate',
+      }),
+    ).toBe(changed);
+  });
+
+  it('keeps credit lifecycle events off the payment idempotency key and rejects stale events', () => {
+    let state = initialCheckoutState();
+    state = checkoutReducer(state, { type: 'credit-summary-loading', requestId: 'fresh' });
+    const loadingKey = state.idempotencyKey;
+    state = checkoutReducer(state, {
+      type: 'credit-summary-failed',
+      requestId: 'stale',
+      error: 'stale',
+    });
+    expect(state.creditSummaryStatus).toBe('loading');
+    expect(state.idempotencyKey).toBe(loadingKey);
+    state = checkoutReducer(state, { type: 'credit-summary-unavailable', requestId: 'fresh' });
+    expect(state.creditSummaryStatus).toBe('unavailable');
+    expect(state.creditSummaryUnavailable).toBe(true);
+  });
+
   it('transitions contact, card, promo, quote, and submission state', () => {
     let state = initialCheckoutState();
     state = checkoutReducer(state, {
