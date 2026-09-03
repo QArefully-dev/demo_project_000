@@ -12,6 +12,7 @@ import {
   Order,
   OrderDetailResponse,
   PersistedCheckoutQuote,
+  PersistedCheckoutQuoteV9,
   ResolvedCustomBlendSnapshot,
   type CustomBlendEvaluationResponse as CustomBlendEvaluationResponseType,
 } from '@shop/contracts';
@@ -410,7 +411,8 @@ void test('Custom Blend converges from mixed-group evaluation through V9 immutab
   assert.equal(Value.Check(PersistedCheckoutQuote, quote), true);
   assert.equal(quote.version, 9);
   assert.equal(quote.version, CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION);
-  const quoteLine = quote.variantLines.find((line) => line.customBlend !== undefined);
+  const quoteV9 = Value.Parse(PersistedCheckoutQuoteV9, quote);
+  const quoteLine = quoteV9.variantLines.find((line) => line.customBlend !== undefined);
   assert.ok(quoteLine);
   assert.equal(quoteLine.productId, String(base.productId));
   assert.equal(quoteLine.variantId, base.variantId);
