@@ -11,6 +11,7 @@ import type { AuditWriter } from '../audit/auditService.js';
 import type { Clock } from '../auth/authService.js';
 import type { InvoiceService } from '../invoices/invoiceService.js';
 import type { InvoiceRepository } from '../invoices/invoiceRepository.js';
+import { InvoiceDomainError } from '../invoices/invoiceErrors.js';
 import { OrderDomainError } from './orderErrors.js';
 import {
   aggregateOrderStatus,
@@ -73,8 +74,11 @@ type OrderServiceDependencies = {
   clock?: Clock;
   audit?: AuditWriter;
   inventory?: Pick<InventoryService, 'cancelOrderInventory'>;
-  /** Invoice lookup used to distinguish credit orders from legacy/card orders. */
-  invoiceRepository?: Pick<InvoiceRepository, 'findByOrderId'>;
+  /** Invoice and payment readers used to validate credit-order cancellation identity. */
+  invoiceRepository?: Pick<
+    InvoiceRepository,
+    'findByOrderId' | 'findByPaymentIdempotencyKey' | 'findPaymentForIssue'
+  >;
   /** Canonical invoice lifecycle command used by credit-order cancellation. */
   invoices?: Pick<InvoiceService, 'void'>;
   /** Compatibility alias for composition roots that use the service name. */
@@ -88,6 +92,104 @@ function isBusySnapshot(error: unknown): boolean {
     'code' in error &&
     (error as { code?: unknown }).code === 'SQLITE_BUSY_SNAPSHOT'
   );
+}
+
+type CancellationOrder = NonNullable<ReturnType<OrderRepository['findById']>>;
+type CancellationInvoiceRepository = NonNullable<OrderServiceDependencies['invoiceRepository']>;
+
+function cancellationLinkageMismatch(): never {
+  throw new InvoiceDomainError('INVOICE_TOTAL_MISMATCH');
+}
+
+function validateCancellationOrderAccounting(order: CancellationOrder): void {
+  if (
+    order.paymentMethod !== undefined &&
+    order.paymentMethod !== 'card' &&
+    order.paymentMethod !== 'trade_credit'
+  ) {
+    cancellationLinkageMismatch();
+  }
+
+  const accounting = [order.netCents, order.vatRateBasisPoints, order.vatCents, order.grossCents];
+  const populated = accounting.filter((fact) => fact !== undefined).length;
+  if (populated !== 0 && populated !== accounting.length) cancellationLinkageMismatch();
+
+  if (order.paymentMethod === undefined) {
+    if (order.companyId !== undefined || populated !== 0) cancellationLinkageMismatch();
+    return;
+  }
+  if (order.paymentMethod === 'card') {
+    if (order.companyId !== undefined) cancellationLinkageMismatch();
+    return;
+  }
+  if (order.companyId === undefined || populated !== accounting.length) {
+    cancellationLinkageMismatch();
+  }
+}
+
+function readCancellationInvoice(
+  repository: CancellationInvoiceRepository,
+  order: CancellationOrder,
+  occurredAt: string,
+): ReturnType<InvoiceRepository['findByOrderId']> {
+  let invoice: ReturnType<InvoiceRepository['findByOrderId']>;
+  try {
+    invoice = repository.findByOrderId(Number(order.id), occurredAt);
+  } catch (error) {
+    if (error instanceof InvoiceDomainError) throw error;
+    cancellationLinkageMismatch();
+  }
+
+  if (order.paymentMethod !== 'trade_credit') {
+    // Card and historical orders must never acquire an invoice as a side effect of a lookup.
+    if (invoice) cancellationLinkageMismatch();
+    return undefined;
+  }
+  if (!invoice) cancellationLinkageMismatch();
+
+  if (
+    invoice.orderId !== String(order.id) ||
+    invoice.paymentMethod !== 'trade_credit' ||
+    invoice.country !== order.country ||
+    invoice.companyId !== order.companyId ||
+    invoice.netCents !== order.netCents ||
+    invoice.vatRateBasisPoints !== order.vatRateBasisPoints ||
+    invoice.vatCents !== order.vatCents ||
+    invoice.grossCents !== order.grossCents
+  ) {
+    cancellationLinkageMismatch();
+  }
+
+  const paymentIdempotencyKey = invoice.paymentIdempotencyKey;
+  if (typeof paymentIdempotencyKey !== 'string' || paymentIdempotencyKey.length === 0) {
+    cancellationLinkageMismatch();
+  }
+
+  let byPayment: ReturnType<InvoiceRepository['findByPaymentIdempotencyKey']>;
+  let payment: ReturnType<NonNullable<InvoiceRepository['findPaymentForIssue']>> | undefined;
+  try {
+    byPayment = repository.findByPaymentIdempotencyKey(paymentIdempotencyKey, occurredAt);
+    payment = repository.findPaymentForIssue?.(paymentIdempotencyKey);
+  } catch (error) {
+    if (error instanceof InvoiceDomainError) throw error;
+    cancellationLinkageMismatch();
+  }
+  if (!byPayment || byPayment.id !== invoice.id || byPayment.orderId !== invoice.orderId) {
+    cancellationLinkageMismatch();
+  }
+
+  const companyId = Number(order.companyId);
+  if (
+    !payment ||
+    payment.idempotencyKey !== paymentIdempotencyKey ||
+    payment.orderId !== Number(order.id) ||
+    payment.paymentMethod !== 'trade_credit' ||
+    payment.companyId !== companyId ||
+    payment.amountCents !== order.grossCents
+  ) {
+    cancellationLinkageMismatch();
+  }
+  return invoice;
 }
 
 /** Accepts legacy repository-only construction for pre-P3 read routes. Mutation commands require UoW + audit. */
@@ -317,15 +419,27 @@ export function createOrderService(
           const country = dependencies.repository.country(input.orderId);
           if (!country) throw new OrderDomainError('ORDER_NOT_FOUND');
 
-          // An invoice is the durable discriminator for a finalized trade-credit order: card and
-          // legacy orders have no invoice row. Resolve it before touching inventory/order state so a
-          // paid invoice rejects without any compensating mutation. The invoice command owns its
-          // lifecycle CAS and exposure release; its nested UoW is part of this outer transaction.
-          const invoice = dependencies.invoiceRepository?.findByOrderId(input.orderId, occurredAt);
+          let order: CancellationOrder | undefined;
+          try {
+            order = dependencies.repository.findById(input.orderId);
+          } catch {
+            cancellationLinkageMismatch();
+          }
+          if (!order) throw new OrderDomainError('ORDER_NOT_FOUND');
+          validateCancellationOrderAccounting(order);
+
+          // Resolve and validate the immutable invoice/payment identity before touching inventory,
+          // shipment, exposure, or order state. The invoice command owns its lifecycle CAS and
+          // exposure release; its nested UoW is part of this outer transaction.
+          const invoice = dependencies.invoiceRepository
+            ? readCancellationInvoice(dependencies.invoiceRepository, order, occurredAt)
+            : order.paymentMethod === 'trade_credit'
+              ? cancellationLinkageMismatch()
+              : undefined;
           if (invoice) {
             const invoiceService = dependencies.invoices ?? dependencies.invoiceService;
             if (!invoiceService) {
-              throw new Error('Trade-credit cancellation requires invoice capability');
+              cancellationLinkageMismatch();
             }
             invoiceService.void({
               invoiceId: Number(invoice.id),
