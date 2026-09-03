@@ -68,25 +68,13 @@ void test('composition root wires card and trade-credit journeys exactly once', 
     .get('Acme Materials Ltd') as { id: number; version: number } | undefined;
   if (!company) throw new Error('Expected seeded Acme company');
 
-  const activate = await app.inject({
-    method: 'PATCH',
-    url: `/api/admin/credit-accounts/${company.id}/state`,
-    headers: { cookie: adminCookie },
-    payload: {
-      state: 'active',
-      expectedVersion: company.version,
-      idempotencyKey: '11111111-1111-4111-8111-111111111111',
-    },
-  });
-  assert.equal(activate.statusCode, 200, activate.body);
-  const activeVersion = activate.json<{ version: number }>().version;
   const limit = await app.inject({
     method: 'PATCH',
     url: `/api/admin/credit-accounts/${company.id}/limit`,
     headers: { cookie: adminCookie },
     payload: {
       creditLimitCents: 10_000_000,
-      expectedVersion: activeVersion,
+      expectedVersion: company.version,
       idempotencyKey: '22222222-2222-4222-8222-222222222222',
     },
   });
