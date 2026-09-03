@@ -510,8 +510,12 @@ export function createInvoiceRepository(db: Database.Database): InvoiceRepositor
     commitExposureHold(input) {
       const hold = db
         .prepare(
-          `SELECT id, invoice_id, company_id, amount_cents, status
-           FROM credit_exposure_holds WHERE payment_idempotency_key = ?`,
+          `SELECT hold.id, hold.invoice_id, hold.company_id, hold.amount_cents, hold.status,
+                  payment.status AS payment_status
+           FROM credit_exposure_holds hold
+           JOIN payments payment
+             ON payment.idempotency_key = hold.payment_idempotency_key
+          WHERE hold.payment_idempotency_key = ?`,
         )
         .get(input.paymentIdempotencyKey) as
         | {
@@ -520,6 +524,7 @@ export function createInvoiceRepository(db: Database.Database): InvoiceRepositor
             company_id: number;
             amount_cents: number;
             status: 'prepared' | 'authorized' | 'committed' | 'released';
+            payment_status: string;
           }
         | undefined;
       if (!hold) return false;
@@ -534,13 +539,22 @@ export function createInvoiceRepository(db: Database.Database): InvoiceRepositor
         throw new Error('Credit exposure hold is already released');
       }
       if (hold.invoice_id === input.invoiceId && hold.status === 'committed') return true;
+      if (hold.status === 'committed') {
+        throw new Error('Credit exposure hold is already committed to another invoice');
+      }
+      if (hold.status !== 'authorized') {
+        throw new Error('Credit exposure hold is not authorized');
+      }
+      if (hold.payment_status !== 'authorized_pending_finalize') {
+        throw new Error('Payment is not authorized for invoice finalization');
+      }
       return (
         db
           .prepare(
             `UPDATE credit_exposure_holds
              SET invoice_id = ?, status = 'committed', committed_at = ?, updated_at = ?
              WHERE id = ? AND invoice_id IS NULL
-               AND status IN ('prepared', 'authorized', 'committed')`,
+               AND status = 'authorized'`,
           )
           .run(input.invoiceId, input.committedAt, input.committedAt, hold.id).changes === 1
       );

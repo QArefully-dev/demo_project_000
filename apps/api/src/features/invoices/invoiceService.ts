@@ -315,7 +315,8 @@ function sourceFieldsMatch(
       payment.paymentMethod !== 'trade_credit' ||
       payment.orderId !== order.id ||
       payment.companyId !== order.companyId ||
-      payment.amountCents !== order.grossCents
+      payment.amountCents !== order.grossCents ||
+      payment.status !== 'authorized_pending_finalize'
     ) {
       throw new InvoiceDomainError('INVOICE_TOTAL_MISMATCH');
     }
@@ -487,6 +488,27 @@ function fallbackLines(order: InvoiceOrderReview, netCents: number): InvoiceLine
   ];
 }
 
+/**
+ * Order lines are server-owned invoice facts. A caller may repeat them for compatibility, but
+ * cannot use a reviewed/document alias to replace the persisted order snapshot.
+ */
+function deriveInvoiceLines(
+  sourceOrder: InvoiceOrderReview,
+  netCents: number,
+  requestedLines: unknown,
+): InvoiceLineV1[] {
+  const persistedLines = normalizeLines(
+    fallbackLines(sourceOrder, sourceOrder.netCents ?? netCents),
+  );
+  if (requestedLines !== undefined) {
+    const reviewedLines = normalizeLines(requestedLines);
+    if (JSON.stringify(reviewedLines) !== JSON.stringify(persistedLines)) {
+      throw new InvoiceDomainError('INVOICE_TOTAL_MISMATCH');
+    }
+  }
+  return persistedLines;
+}
+
 function pageNumber(value: unknown, name: 'page' | 'pageSize'): number {
   const fallback = name === 'page' ? 1 : 25;
   const maximum = name === 'page' ? 10_000 : 100;
@@ -516,6 +538,10 @@ function optionalStatus(value: unknown): InvoiceLifecycleStatus | undefined {
     throw new InvoiceDomainError('INVOICE_SETTLEMENT_INVALID', 'Invoice status filter is invalid');
   }
   return value as InvoiceLifecycleStatus;
+}
+
+function isBusySnapshot(error: unknown): boolean {
+  return isRecord(error) && error.code === 'SQLITE_BUSY_SNAPSHOT';
 }
 
 export function createInvoiceService(dependencies: InvoiceServiceDependencies): InvoiceService {
@@ -572,51 +598,62 @@ export function createInvoiceService(dependencies: InvoiceServiceDependencies): 
       );
     }
     const fingerprint = canonicalFingerprint('settle', { invoiceId, expectedVersion });
-    return unitOfWork.run(() => {
-      const replay = replayOrConflict(idempotencyKey, fingerprint, 'settled');
-      if (replay) return replay;
-      repository.lockLifecycle?.(invoiceId);
-      const current = requireInvoice(invoiceId);
-      if (current.lifecycleVersion !== expectedVersion) {
-        throw new InvoiceDomainError('INVOICE_SETTLEMENT_CONFLICT');
-      }
-      if (current.status === 'paid') {
-        throw new InvoiceDomainError('INVOICE_ALREADY_SETTLED');
-      }
-      if (current.status === 'voided') throw new InvoiceDomainError('INVOICE_VOIDED');
-      if (current.status !== 'open' && current.status !== 'overdue') {
-        throw new InvoiceDomainError('INVOICE_NOT_SETTLEABLE');
-      }
-      const occurredAt = now();
-      if (
-        !repository.updateLifecycle({
+    const work = (): Invoice =>
+      unitOfWork.run(() => {
+        // The first statement must be a write. Reading the replay event first can leave a WAL
+        // snapshot that cannot later be upgraded to a writer after a competing lifecycle commit.
+        repository.lockLifecycle?.(invoiceId);
+        const replay = replayOrConflict(idempotencyKey, fingerprint, 'settled');
+        if (replay) return replay;
+        const current = requireInvoice(invoiceId);
+        if (current.lifecycleVersion !== expectedVersion) {
+          throw new InvoiceDomainError('INVOICE_SETTLEMENT_CONFLICT');
+        }
+        if (current.status === 'paid') {
+          throw new InvoiceDomainError('INVOICE_ALREADY_SETTLED');
+        }
+        if (current.status === 'voided') throw new InvoiceDomainError('INVOICE_VOIDED');
+        if (current.status !== 'open' && current.status !== 'overdue') {
+          throw new InvoiceDomainError('INVOICE_NOT_SETTLEABLE');
+        }
+        const occurredAt = now();
+        if (
+          !repository.updateLifecycle({
+            invoiceId,
+            expectedVersion,
+            nextStatus: 'paid',
+            settledAt: occurredAt,
+            updatedAt: occurredAt,
+          })
+        ) {
+          throw new InvoiceDomainError('INVOICE_SETTLEMENT_CONFLICT');
+        }
+        repository.insertEvent({
           invoiceId,
-          expectedVersion,
-          nextStatus: 'paid',
-          settledAt: occurredAt,
-          updatedAt: occurredAt,
-        })
-      ) {
-        throw new InvoiceDomainError('INVOICE_SETTLEMENT_CONFLICT');
+          type: 'settled',
+          occurredAt,
+          idempotencyKey,
+          requestFingerprint: fingerprint,
+          actorUserId: actorId(input),
+        });
+        const release = repository.releaseExposure({
+          invoiceId,
+          grossCents: current.grossCents,
+          releasedAt: occurredAt,
+        });
+        if (release.mismatch) throw new InvoiceDomainError('INVOICE_TOTAL_MISMATCH');
+        const result = repository.findById(invoiceId, now());
+        if (!result) throw new InvoiceDomainError('INVOICE_NOT_FOUND');
+        return result;
+      });
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return work();
+      } catch (error) {
+        if (attempt === 0 && isBusySnapshot(error)) continue;
+        throw error;
       }
-      repository.insertEvent({
-        invoiceId,
-        type: 'settled',
-        occurredAt,
-        idempotencyKey,
-        requestFingerprint: fingerprint,
-        actorUserId: actorId(input),
-      });
-      const release = repository.releaseExposure({
-        invoiceId,
-        grossCents: current.grossCents,
-        releasedAt: occurredAt,
-      });
-      if (release.mismatch) throw new InvoiceDomainError('INVOICE_TOTAL_MISMATCH');
-      const result = repository.findById(invoiceId, now());
-      if (!result) throw new InvoiceDomainError('INVOICE_NOT_FOUND');
-      return result;
-    });
+    }
   };
 
   const voidInvoice = (input: InvoiceVoidInput): Invoice => {
@@ -642,49 +679,59 @@ export function createInvoiceService(dependencies: InvoiceServiceDependencies): 
     }
     const reason = input.reason;
     const fingerprint = canonicalFingerprint('void', { invoiceId, expectedVersion, reason });
-    return unitOfWork.run(() => {
-      const replay = replayOrConflict(idempotencyKey, fingerprint, 'voided');
-      if (replay) return replay;
-      repository.lockLifecycle?.(invoiceId);
-      const current = requireInvoice(invoiceId);
-      if (current.lifecycleVersion !== expectedVersion) {
-        throw new InvoiceDomainError('INVOICE_SETTLEMENT_CONFLICT');
-      }
-      if (current.status === 'paid') throw new InvoiceDomainError('INVOICE_ALREADY_PAID');
-      if (current.status === 'voided') throw new InvoiceDomainError('INVOICE_ALREADY_VOID');
-      if (current.status !== 'open' && current.status !== 'overdue') {
-        throw new InvoiceDomainError('INVOICE_NOT_SETTLEABLE');
-      }
-      const occurredAt = now();
-      if (
-        !repository.updateLifecycle({
+    const work = (): Invoice =>
+      unitOfWork.run(() => {
+        // See settle(): lifecycle replay/version reads must happen after the writer lock.
+        repository.lockLifecycle?.(invoiceId);
+        const replay = replayOrConflict(idempotencyKey, fingerprint, 'voided');
+        if (replay) return replay;
+        const current = requireInvoice(invoiceId);
+        if (current.lifecycleVersion !== expectedVersion) {
+          throw new InvoiceDomainError('INVOICE_SETTLEMENT_CONFLICT');
+        }
+        if (current.status === 'paid') throw new InvoiceDomainError('INVOICE_ALREADY_PAID');
+        if (current.status === 'voided') throw new InvoiceDomainError('INVOICE_ALREADY_VOID');
+        if (current.status !== 'open' && current.status !== 'overdue') {
+          throw new InvoiceDomainError('INVOICE_NOT_SETTLEABLE');
+        }
+        const occurredAt = now();
+        if (
+          !repository.updateLifecycle({
+            invoiceId,
+            expectedVersion,
+            nextStatus: 'voided',
+            settledAt: null,
+            updatedAt: occurredAt,
+          })
+        ) {
+          throw new InvoiceDomainError('INVOICE_SETTLEMENT_CONFLICT');
+        }
+        repository.insertEvent({
           invoiceId,
-          expectedVersion,
-          nextStatus: 'voided',
-          settledAt: null,
-          updatedAt: occurredAt,
-        })
-      ) {
-        throw new InvoiceDomainError('INVOICE_SETTLEMENT_CONFLICT');
+          type: 'voided',
+          occurredAt,
+          idempotencyKey,
+          requestFingerprint: fingerprint,
+          actorUserId: actorId(input),
+        });
+        const release = repository.releaseExposure({
+          invoiceId,
+          grossCents: current.grossCents,
+          releasedAt: occurredAt,
+        });
+        if (release.mismatch) throw new InvoiceDomainError('INVOICE_TOTAL_MISMATCH');
+        const result = repository.findById(invoiceId, now());
+        if (!result) throw new InvoiceDomainError('INVOICE_NOT_FOUND');
+        return result;
+      });
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return work();
+      } catch (error) {
+        if (attempt === 0 && isBusySnapshot(error)) continue;
+        throw error;
       }
-      repository.insertEvent({
-        invoiceId,
-        type: 'voided',
-        occurredAt,
-        idempotencyKey,
-        requestFingerprint: fingerprint,
-        actorUserId: actorId(input),
-      });
-      const release = repository.releaseExposure({
-        invoiceId,
-        grossCents: current.grossCents,
-        releasedAt: occurredAt,
-      });
-      if (release.mismatch) throw new InvoiceDomainError('INVOICE_TOTAL_MISMATCH');
-      const result = repository.findById(invoiceId, now());
-      if (!result) throw new InvoiceDomainError('INVOICE_NOT_FOUND');
-      return result;
-    });
+    }
   };
 
   const issue = (input: InvoiceIssueInput): Invoice => {
@@ -763,11 +810,10 @@ export function createInvoiceService(dependencies: InvoiceServiceDependencies): 
         facts.netCents ?? documentInput.netCents ?? sourceOrder?.netCents,
         'netCents',
       );
-      const linesValue =
-        facts.lines ??
-        documentInput.lines ??
-        (sourceOrder ? fallbackLines(sourceOrder, netCents) : undefined);
-      const lines = normalizeLines(linesValue);
+      const linesValue = facts.lines ?? documentInput.lines;
+      const lines = sourceOrder
+        ? deriveInvoiceLines(sourceOrder, netCents, linesValue)
+        : normalizeLines(linesValue);
       const vatRateBasisPoints = nonNegativeMoney(
         facts.vatRateBasisPoints ??
           documentInput.vatRateBasisPoints ??
@@ -821,7 +867,8 @@ export function createInvoiceService(dependencies: InvoiceServiceDependencies): 
         (sourcePayment.paymentMethod !== 'trade_credit' ||
           sourcePayment.orderId !== orderId ||
           sourcePayment.companyId !== companyId ||
-          sourcePayment.amountCents !== grossCents)
+          sourcePayment.amountCents !== grossCents ||
+          sourcePayment.status !== 'authorized_pending_finalize')
       ) {
         throw new InvoiceDomainError('INVOICE_TOTAL_MISMATCH');
       }
@@ -874,13 +921,14 @@ export function createInvoiceService(dependencies: InvoiceServiceDependencies): 
       repository.insert(invoiceInsert);
       repository.insertState({ invoiceId, updatedAt: timestamp });
       repository.insertEvent({ invoiceId, type: 'issued', occurredAt: timestamp });
-      repository.commitExposureHold({
+      const holdCommitted = repository.commitExposureHold({
         invoiceId,
         paymentIdempotencyKey,
         companyId,
         grossCents,
         committedAt: timestamp,
       });
+      if (!holdCommitted) throw new InvoiceDomainError('INVOICE_TOTAL_MISMATCH');
       const result = repository.findById(invoiceId, now());
       if (!result) throw new InvoiceDomainError('INVOICE_NOT_FOUND');
       return result;
