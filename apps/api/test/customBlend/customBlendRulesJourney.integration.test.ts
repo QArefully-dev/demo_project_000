@@ -12,7 +12,7 @@ import {
   Order,
   OrderDetailResponse,
   PersistedCheckoutQuote,
-  PersistedCheckoutQuoteV9,
+  PersistedCheckoutQuoteV10,
   ResolvedCustomBlendSnapshot,
   type CustomBlendEvaluationResponse as CustomBlendEvaluationResponseType,
 } from '@shop/contracts';
@@ -163,7 +163,7 @@ function componentMoney(value: {
   };
 }
 
-void test('Custom Blend converges from mixed-group evaluation through V9 immutable order', async (t) => {
+void test('Custom Blend converges from mixed-group evaluation through V10 immutable order', async (t) => {
   const gateway = countGateway();
   const { db, app } = await createSeededAppFixture({
     testContext: t,
@@ -409,10 +409,10 @@ void test('Custom Blend converges from mixed-group evaluation through V9 immutab
   assert.ok(paymentRow.quoteJson);
   const quote = parsePersistedCheckoutQuote(JSON.parse(paymentRow.quoteJson));
   assert.equal(Value.Check(PersistedCheckoutQuote, quote), true);
-  assert.equal(quote.version, 9);
+  assert.equal(quote.version, 10);
   assert.equal(quote.version, CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION);
-  const quoteV9 = Value.Parse(PersistedCheckoutQuoteV9, quote);
-  const quoteLine = quoteV9.variantLines.find((line) => line.customBlend !== undefined);
+  const quoteV10 = Value.Parse(PersistedCheckoutQuoteV10, quote);
+  const quoteLine = quoteV10.variantLines.find((line) => line.customBlend !== undefined);
   assert.ok(quoteLine);
   assert.equal(quoteLine.productId, String(base.productId));
   assert.equal(quoteLine.variantId, base.variantId);
