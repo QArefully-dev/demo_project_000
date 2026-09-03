@@ -73,8 +73,9 @@ const AdminOrderDetailFields = Type.Object(
   },
   { additionalProperties: false },
 );
-export const AdminOrderDetailResponse = Object.assign(
+export const AdminOrderDetailResponse = Object.defineProperty(
   Type.Intersect([AdminOrderDetailFields, AdminOrderDetailAccountingIntegrity()]),
-  { properties: AdminOrderDetailFields.properties },
+  'properties',
+  { value: AdminOrderDetailFields.properties },
 );
 export type AdminOrderDetailResponse = Static<typeof AdminOrderDetailResponse>;

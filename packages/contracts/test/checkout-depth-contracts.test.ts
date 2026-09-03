@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { TypeCompiler } from '@sinclair/typebox/compiler';
 import { Value } from '@sinclair/typebox/value';
 import {
   FORMATTED_ADDRESS_MAX_LENGTH,
@@ -492,13 +493,11 @@ void test('order summary and detail share credit attribution and accounting inte
   };
   assert.equal(Value.Check(OrderSummary, summary), true);
   assert.equal(Value.Check(OrderDetailResponse, detail), true);
-  assert.equal(
-    Value.Check(AdminOrderDetailResponse, {
-      ...detail,
-      refundPayment: { paymentId: '501', remainingRefundableCents: 12_000 },
-    }),
-    true,
-  );
+  const creditAdminDetail = {
+    ...detail,
+    refundPayment: { paymentId: '501', remainingRefundableCents: 12_000 },
+  };
+  assert.equal(Value.Check(AdminOrderDetailResponse, creditAdminDetail), true);
   assert.equal(
     Value.Check(AdminOrderDetailResponse, {
       ...detail,
@@ -507,6 +506,30 @@ void test('order summary and detail share credit attribution and accounting inte
     }),
     false,
   );
+
+  // The admin extension is used directly by Fastify response serialization. Keep its merged
+  // object metadata non-enumerable while checking both method-specific accounting shapes.
+  assert.equal(
+    Object.prototype.propertyIsEnumerable.call(AdminOrderDetailResponse, 'properties'),
+    false,
+  );
+  const adminDetailSchema = TypeCompiler.Compile(AdminOrderDetailResponse);
+  assert.equal(adminDetailSchema.Check(creditAdminDetail), true);
+  assert.deepEqual(Value.Parse(AdminOrderDetailResponse, creditAdminDetail), creditAdminDetail);
+  const { companyId: omittedCompanyId, ...cardDetailBase } = detail;
+  assert.equal(omittedCompanyId, '7');
+  const cardAdminDetail = {
+    ...cardDetailBase,
+    paymentMethod: 'card' as const,
+    netCents: 12_000,
+    vatRateBasisPoints: 0,
+    vatCents: 0,
+    grossCents: 12_000,
+    refundPayment: null,
+  };
+  assert.equal(adminDetailSchema.Check(cardAdminDetail), true);
+  assert.deepEqual(Value.Parse(AdminOrderDetailResponse, cardAdminDetail), cardAdminDetail);
+  assert.equal(adminDetailSchema.Check({ ...cardAdminDetail, companyId: '7' }), false);
 
   for (const candidate of [summary, detail]) {
     const schema = candidate === summary ? OrderSummary : OrderDetailResponse;

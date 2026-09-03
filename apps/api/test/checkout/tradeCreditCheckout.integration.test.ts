@@ -28,6 +28,8 @@ import { createCompanyInviteRepository } from '../../src/features/companyAccount
 import { createCompanyService } from '../../src/features/companyAccounts/companyService.js';
 import { createApprovalRepository } from '../../src/features/orderApprovals/approvalRepository.js';
 import { createApprovalService } from '../../src/features/orderApprovals/approvalService.js';
+import { createInvoiceRepository } from '../../src/features/invoices/invoiceRepository.js';
+import { createInvoiceService } from '../../src/features/invoices/invoiceService.js';
 import { createCreditAccountRepository } from '../../src/features/tradeCredit/creditAccountRepository.js';
 import { createCreditHoldRepository } from '../../src/features/tradeCredit/creditHoldRepository.js';
 import { createCreditAccountService } from '../../src/features/tradeCredit/creditAccountService.js';
@@ -136,6 +138,11 @@ function setup(
     payments: createPaymentRepository(db),
     orders: createOrderRepository(db),
     mailbox,
+    invoices: createInvoiceService({
+      repository: createInvoiceRepository(db),
+      unitOfWork,
+      clock,
+    }),
     gateway: {
       process: () => Promise.resolve({ status: 'success' as const, reference: 'gateway-unused' }),
     },
