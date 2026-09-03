@@ -114,6 +114,7 @@ void test('quote writer rejects credit identity or accounting drift', () => {
         inventoryAllocations: [],
         paymentMethod: 'trade_credit',
         country: 'DE',
+        userId: 7,
       }),
     /Trade-credit quote requires a company/,
   );
@@ -134,4 +135,96 @@ void test('quote writer rejects credit identity or accounting drift', () => {
       }),
     /vatCents does not match totals/,
   );
+});
+
+void test('quote writer requires the resolved country and rejects conflicting compatibility aliases', () => {
+  const input = {
+    cart,
+    checkout: { ...checkout, userId: null, paymentMethod: 'card' as const },
+    resolved,
+    promo: undefined,
+    createdAt,
+    inventoryAllocations: [],
+    country: 'UK' as const,
+  };
+  const withoutCountry = { ...input } as Record<string, unknown>;
+  delete withoutCountry.country;
+  assert.throws(
+    () => createCheckoutQuote(withoutCountry as Parameters<typeof createCheckoutQuote>[0]),
+    /Resolved checkout country is required/,
+  );
+
+  assert.throws(
+    () =>
+      createCheckoutQuote({
+        ...input,
+        checkout: { ...input.checkout, country: 'US' as const },
+      }),
+    /country aliases must agree/,
+  );
+  assert.throws(
+    () =>
+      createCheckoutQuote({
+        ...input,
+        paymentMethod: 'trade_credit',
+        checkout: { ...input.checkout, paymentMethod: 'card' as const },
+      }),
+    /paymentMethod aliases must agree/,
+  );
+
+  const creditInput = {
+    ...input,
+    checkout: {
+      ...checkout,
+      paymentMethod: 'trade_credit' as const,
+      companyId: '9',
+    },
+    paymentMethod: 'trade_credit' as const,
+    companyId: '9',
+  };
+  assert.throws(
+    () =>
+      createCheckoutQuote({
+        ...creditInput,
+        checkout: {
+          ...creditInput.checkout,
+          accounting: { paymentMethod: 'trade_credit', companyId: '9', userId: 8 },
+        },
+      }),
+    /quote user aliases must agree/,
+  );
+  assert.throws(
+    () =>
+      createCheckoutQuote({
+        ...creditInput,
+        checkout: {
+          ...creditInput.checkout,
+          accounting: { paymentMethod: 'trade_credit', companyId: '10', userId: 7 },
+        },
+      }),
+    /quote company aliases must agree/,
+  );
+  assert.throws(
+    () =>
+      createCheckoutQuote({
+        ...creditInput,
+        terms: null,
+        checkout: { ...creditInput.checkout, terms: 'net_30' as const },
+      }),
+    /terms aliases must agree/,
+  );
+
+  const cardInput = { ...input, checkout: { ...input.checkout, userId: null } };
+  for (const [name, overrides] of [
+    ['netCents', { netCents: 10_000, invoiceTotals: { netCents: 9_999 } }],
+    ['vatCents', { vatCents: 0, invoiceTotals: { vatCents: 1 } }],
+    ['grossCents', { grossCents: 10_000, invoiceTotals: { grossCents: 9_999 } }],
+    ['totalCents', { totalCents: 10_000, invoiceTotals: { totalCents: 9_999 } }],
+  ] as const) {
+    assert.throws(
+      () => createCheckoutQuote({ ...cardInput, ...overrides }),
+      /aliases must agree/,
+      `${name} aliases must be checked`,
+    );
+  }
 });

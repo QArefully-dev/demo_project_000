@@ -547,6 +547,10 @@ function prepare(
       promo: validPromo,
       createdAt,
       inventoryAllocations,
+      // Cart identity country is resolved from persistence above; freeze that server fact in V10
+      // rather than allowing quote compatibility fields to fall back to a default.
+      country: cartCountry,
+      userId: params.userId,
     });
     if (
       !dependencies.payments.persistQuote({
@@ -555,6 +559,7 @@ function prepare(
         quote,
         updatedAt: createdAt,
         reservationExpiresAt,
+        userId: params.userId,
       })
     ) {
       throw new Error('Checkout intent quote persistence failed');

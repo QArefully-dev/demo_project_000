@@ -306,6 +306,22 @@ void test('V10 quote carries country, method, identity, accounting, and terms wh
     Value.Check(PersistedCheckoutQuoteV10, { ...v10, cardNumber: '424242424242' }),
     false,
   );
+  const cardV10 = {
+    ...v10,
+    userId: null,
+    companyId: null,
+    paymentMethod: 'card' as const,
+    terms: null,
+    totalCents: 10_000,
+    netCents: 10_000,
+    vatRateBasisPoints: 0,
+    vatCents: 0,
+    grossCents: 10_000,
+  };
+  assert.equal(Value.Check(PersistedCheckoutQuoteV10, cardV10), true);
+  assert.equal(Value.Check(PersistedCheckoutQuoteV10, { ...cardV10, terms: 'net_30' }), false);
+  assert.equal(Value.Check(PersistedCheckoutQuoteV10, { ...cardV10, terms: 30 }), false);
+  assert.equal(Value.Check(PersistedCheckoutQuoteV10, { ...cardV10, termsDays: 30 }), false);
 });
 
 void test('invoice settlement, mailbox descriptor, and public metadata are strict', () => {

@@ -301,6 +301,11 @@ void test('omitted and explicit card fingerprints retain legacy normalization wh
     card,
   );
   assert.equal(explicit, omitted);
+  assert.equal(
+    createSafeFingerprint(fingerprintParams({ userId: 7 }), card),
+    createSafeFingerprint(fingerprintParams({ paymentMethod: 'card', userId: 8 }), card),
+    'authenticated legacy card retries must not add buyer identity to the digest',
+  );
 
   const credit = createSafeFingerprint(
     fingerprintParams({
@@ -383,6 +388,31 @@ void test('quote persistence rejects changed method/company and malformed condit
         updatedAt: createdAt,
         reservationExpiresAt: '2026-07-14T10:15:00.000Z',
         companyId: companyId + 1,
+        userId: 1,
+      }),
+    /does not match payment reservation/,
+  );
+
+  assert.throws(
+    () =>
+      payments.persistQuote({
+        idempotencyKey: key,
+        cartId: creditQuote.cartId,
+        quote: creditQuote,
+        updatedAt: createdAt,
+        reservationExpiresAt: '2026-07-14T10:15:00.000Z',
+      }),
+    /user must be bound to payment reservation/,
+  );
+  assert.throws(
+    () =>
+      payments.persistQuote({
+        idempotencyKey: key,
+        cartId: creditQuote.cartId,
+        quote: creditQuote,
+        updatedAt: createdAt,
+        reservationExpiresAt: '2026-07-14T10:15:00.000Z',
+        userId: 2,
       }),
     /does not match payment reservation/,
   );
@@ -394,4 +424,28 @@ void test('quote persistence rejects changed method/company and malformed condit
   ).run(companyId, key);
   db.pragma('ignore_check_constraints = OFF');
   assert.throws(() => payments.load(key), /Invalid persisted payment intent/);
+});
+
+void test('trade-credit reservations require a positive authenticated user', (t) => {
+  const { db } = openSeededDatabase(t);
+  const payments = createPaymentRepository(db);
+  const companyId = (db
+    .prepare('SELECT id FROM company_accounts ORDER BY id LIMIT 1')
+    .pluck()
+    .get() ?? 0) as number;
+  assert.ok(companyId > 0);
+  for (const userId of [undefined, null, 0, '0', -1] as const) {
+    assert.throws(
+      () =>
+        payments.reservePreGateway({
+          idempotencyKey: `00000000-0000-4000-8000-${String(70 + (userId ?? 0)).padStart(12, '0')}`,
+          fingerprint: 'credit-fingerprint',
+          paymentMethod: 'trade_credit',
+          companyId,
+          userId,
+          createdAt,
+        }),
+      /(?:authenticated user|Invalid payment user)/,
+    );
+  }
 });

@@ -510,11 +510,10 @@ const PersistedCheckoutQuoteV10Integrity = TypeSystem.Type<unknown>(
     } else if (quote.paymentMethod === 'card') {
       if (
         quote.companyId !== null ||
-        (quote.terms !== undefined &&
-          quote.terms !== null &&
-          quote.terms !== 'net_30' &&
-          quote.terms !== 30) ||
-        (quote.termsDays !== undefined && quote.termsDays !== null && quote.termsDays !== 30) ||
+        // Card V10 snapshots may omit these optional fields (or carry explicit nulls), but a
+        // non-null credit term must never cross the method discriminator.
+        (quote.terms !== undefined && quote.terms !== null) ||
+        (quote.termsDays !== undefined && quote.termsDays !== null) ||
         quote.vatRateBasisPoints !== 0 ||
         quote.vatCents !== 0 ||
         quote.netCents !== quote.grossCents ||

@@ -165,8 +165,10 @@ export function createSafeFingerprint(
   card?: Pick<ValidCard, 'brand' | 'last4'> | null,
 ): string {
   const paymentMethod = normalizePaymentMethod(params.paymentMethod);
-  const userId = normalizeUserId(params.userId);
   const companyId = normalizeCompanyId(params.companyId);
+  // Buyer identity is deliberately only part of the new trade-credit commitment. Legacy card
+  // retries (including authenticated retries) must retain their historical byte representation.
+  const userId = paymentMethod === 'trade_credit' ? normalizeUserId(params.userId) : undefined;
 
   if (paymentMethod === 'card') {
     if (companyId !== null || !card || typeof params.cardExpiry !== 'string') {
@@ -199,9 +201,6 @@ export function createSafeFingerprint(
     body.cardExpiry = params.cardExpiry!.trim();
     body.cardBrand = card!.brand;
     body.cardLast4 = card!.last4;
-    // Once a caller supplies authenticated identity, include it to prevent cross-user replay. An
-    // omitted/null identity remains the legacy anonymous-card shape.
-    if (userId !== undefined && userId !== null) body.userId = userId;
   } else {
     if (userId === undefined || userId === null || companyId === null) {
       throw new Error('Credit fingerprint requires authenticated buyer and company');
@@ -336,6 +335,13 @@ function quotePaymentFacts(quote: PersistedCheckoutQuote): {
   if (paymentMethod === 'card' && companyId !== null) {
     throw new Error('Invalid persisted checkout quote');
   }
+  if (
+    paymentMethod === 'card' &&
+    ((quote.terms !== undefined && quote.terms !== null) ||
+      (quote.termsDays !== undefined && quote.termsDays !== null))
+  ) {
+    throw new Error('Invalid persisted checkout quote');
+  }
   if (paymentMethod === 'trade_credit' && companyId === null) {
     throw new Error('Invalid persisted checkout quote');
   }
@@ -359,7 +365,7 @@ export interface PaymentRepository {
     paymentMethod: 'trade_credit';
     /** Authenticated company selected by the server; buyer input cannot choose this value. */
     companyId: number | string;
-    userId?: number | string;
+    userId: number | string;
     card?: never;
     createdAt: string;
   }): { reserved: true } | { reserved: false; payment: PaymentRecord };
@@ -409,7 +415,7 @@ export function createPaymentRepository(db: Database.Database): PaymentRepositor
     idempotencyKey: string;
     fingerprint: string;
     paymentMethod?: PaymentMethod;
-    card?: Pick<ValidCard, 'last4' | 'brand'>;
+    card?: Pick<ValidCard, 'last4' | 'brand'> | null;
     companyId?: number | string | null;
     userId?: number | string | null;
     createdAt: string;
@@ -431,8 +437,10 @@ export function createPaymentRepository(db: Database.Database): PaymentRepositor
       ) {
         throw new Error('Card payment reservation requires card metadata');
       }
-    } else if (params.card || companyId === null || userId === null) {
-      throw new Error('Credit payment reservation requires company and no card metadata');
+    } else if (params.card || companyId === null || userId === undefined || userId === null) {
+      throw new Error(
+        'Credit payment reservation requires company, authenticated user, and no card metadata',
+      );
     }
 
     const result = db
@@ -474,6 +482,17 @@ export function createPaymentRepository(db: Database.Database): PaymentRepositor
       const expectedMethod = normalizePaymentMethod(params.paymentMethod);
       const expectedCompany = normalizeCompanyId(params.companyId);
       const expectedUser = normalizeUserId(params.userId);
+      // V10 is the current immutable snapshot. Its buyer identity must be explicitly carried by
+      // the reservation hand-off; older V8/V9 card snapshots remain readable and replayable.
+      if (isV10Quote(params.quote) && params.userId === undefined) {
+        throw new Error('Checkout quote user must be bound to payment reservation');
+      }
+      if (
+        quoteFacts.paymentMethod === 'trade_credit' &&
+        (quoteFacts.userId === null || expectedUser === undefined || expectedUser === null)
+      ) {
+        throw new Error('Trade-credit quote requires an authenticated user binding');
+      }
       if (
         stored.paymentMethod !== quoteFacts.paymentMethod ||
         stored.companyId !== quoteFacts.companyId ||
