@@ -28,13 +28,13 @@ export interface PaymentRequestOptions {
  */
 
 export function pay(body: PaymentBody, options: PaymentRequestOptions = {}) {
-  const requestOptions: RequestInit = {
+  const requestInit: RequestInit = {
     method: 'POST',
     body: JSON.stringify(body),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   };
   return apiFetch(PaymentSuccessResponse, '/api/payments/pay', {
-    ...requestOptions,
+    ...requestInit,
   });
 }
 
