@@ -190,7 +190,7 @@ function injectFailureAfterStage(
 
   switch (stage) {
     case 'order': {
-      const original = deps.orders.create;
+      const original = deps.orders.create.bind(deps.orders);
       deps.orders.create = (input) => {
         const orderId = original(input);
         failOnce();
@@ -199,7 +199,7 @@ function injectFailureAfterStage(
       break;
     }
     case 'inventory': {
-      const original = deps.inventory.commitReservation;
+      const original = deps.inventory.commitReservation.bind(deps.inventory);
       deps.inventory.commitReservation = (input) => {
         original(input);
         failOnce();
@@ -207,7 +207,7 @@ function injectFailureAfterStage(
       break;
     }
     case 'promo': {
-      const original = deps.promos.commitReservation;
+      const original = deps.promos.commitReservation.bind(deps.promos);
       deps.promos.commitReservation = (input) => {
         const committed = original(input);
         failOnce();
@@ -225,7 +225,7 @@ function injectFailureAfterStage(
       break;
     }
     case 'mailbox': {
-      const original = deps.mailbox.add;
+      const original = deps.mailbox.add.bind(deps.mailbox);
       deps.mailbox.add = (input) => {
         original(input);
         failOnce();
@@ -233,7 +233,7 @@ function injectFailureAfterStage(
       break;
     }
     case 'cart': {
-      const original = deps.carts.remove;
+      const original = deps.carts.remove.bind(deps.carts);
       deps.carts.remove = (cartId) => {
         original(cartId);
         failOnce();
@@ -241,7 +241,7 @@ function injectFailureAfterStage(
       break;
     }
     case 'payment': {
-      const original = deps.payments.transition;
+      const original = deps.payments.transition.bind(deps.payments);
       deps.payments.transition = (input) => {
         const transitioned = original(input);
         // Credit finalization first links the payment to its order while retaining the authorized
@@ -252,7 +252,7 @@ function injectFailureAfterStage(
       break;
     }
     case 'audit': {
-      const original = deps.audit.append;
+      const original = deps.audit.append.bind(deps.audit);
       deps.audit.append = (input) => {
         original(input);
         failOnce();
