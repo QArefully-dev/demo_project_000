@@ -42,6 +42,12 @@ import { NotificationsPage } from './features/notifications/NotificationsPage';
 import { StandingOrdersPage } from './features/standingOrders/StandingOrdersPage';
 import { AdminJobsPage, AdminJobDetailPage } from './features/admin/jobs';
 import { AdminWebhooksPage, AdminWebhookDetailPage } from './features/admin/webhooks';
+import {
+  AdminCreditAccountsPage,
+  AdminCreditAccountDetailPage,
+  AdminInvoicesPage,
+  AdminInvoiceDetailPage,
+} from './features/admin/credit';
 
 export default function App() {
   return (
@@ -163,6 +169,13 @@ export default function App() {
           <Route path="promos" element={<AdminPromosPage />} />
           <Route path="users" element={<AdminUsersPage />} />
           <Route path="orders" element={<AdminOrdersPage />} />
+          <Route path="credit-accounts" element={<AdminCreditAccountsPage />} />
+          <Route
+            path="credit-accounts/:creditAccountId"
+            element={<AdminCreditAccountDetailPage />}
+          />
+          <Route path="invoices" element={<AdminInvoicesPage />} />
+          <Route path="invoices/:invoiceId" element={<AdminInvoiceDetailPage />} />
           <Route path="jobs" element={<AdminJobsPage />} />
           <Route path="jobs/:jobId" element={<AdminJobDetailPage />} />
           <Route path="webhooks" element={<AdminWebhooksPage />} />

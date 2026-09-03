@@ -9,6 +9,8 @@ const sections = [
   { label: 'admin.shell.promotions', to: '/admin/promos', global: false },
   { label: 'admin.shell.users', to: '/admin/users', global: false },
   { label: 'admin.shell.orders', to: '/admin/orders', global: false },
+  { label: 'admin.shell.creditAccounts', to: '/admin/credit-accounts', global: false },
+  { label: 'admin.shell.invoices', to: '/admin/invoices', global: false },
   { label: 'admin.shell.jobs', to: '/admin/jobs', global: true },
   { label: 'admin.shell.webhooks', to: '/admin/webhooks', global: true },
   { label: 'admin.shell.featureFlags', to: '/admin/feature-flags', global: true },
