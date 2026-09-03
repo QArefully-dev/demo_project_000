@@ -1,4 +1,4 @@
-import { act, render, renderHook, screen } from '@testing-library/react';
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useReducer } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -61,6 +61,59 @@ function CrossBorderSubmissionHarness() {
       {state.paymentErrorState?.code && <p role="alert">{state.paymentErrorState.code}</p>}
       <output data-testid="payment-localized-error">{localizedPaymentError}</output>
       <output data-testid="conflict-code">{state.conflict?.code}</output>
+    </div>
+  );
+}
+
+function PendingEditSubmissionHarness() {
+  const [state, dispatch] = useReducer(checkoutReducer, {
+    ...initialCheckoutState(),
+    contact: { customerName: 'Buyer', customerEmail: 'buyer@example.test' },
+    delivery: {
+      ...initialCheckoutState().delivery,
+      destinationKind: 'saved',
+      deliverySiteId: 'site-1',
+    },
+    schedule: { slot: { date: '2026-08-10', window: 'am' } },
+    billing: {
+      ...initialCheckoutState().billing,
+      selectionKind: 'saved',
+      billingEntityId: 'billing-1',
+    },
+    card: { cardNumber: '424242424242', cardExpiry: '01/30', cardCvc: '123' },
+  });
+  const submit = usePaymentSubmission({
+    cartId: 'cart-1',
+    cartPresent: true,
+    state,
+    stepsAreValid: true,
+    cardIsValid: true,
+    appliedPromo: null,
+    dispatch,
+    clearCart: vi.fn(),
+    replaceWithOrder: vi.fn(),
+    cardFields,
+  });
+
+  return (
+    <div>
+      <button type="button" onClick={() => void submit()}>
+        Submit payment
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          dispatch({
+            type: 'card-changed',
+            field: 'cardCvc',
+            value: '456',
+            idempotencyKey: 'edited-key',
+          })
+        }
+      >
+        Edit payment
+      </button>
+      <output data-testid="submitting">{String(state.submitting)}</output>
     </div>
   );
 }
@@ -190,6 +243,33 @@ describe('usePaymentSubmission delivery country conflict', () => {
     });
     expect(clearCart).toHaveBeenCalledWith({ country: 'US', cartId: 'cart-us', generation: 7 });
     expect(replaceWithOrder).toHaveBeenCalledWith('order-us');
+  });
+
+  it('releases the submit lock when a payment edit cancels a pending request, then retries', async () => {
+    let resolveFirst!: (value: { id: string }) => void;
+    const first = new Promise<{ id: string }>((resolve) => {
+      resolveFirst = resolve;
+    });
+    vi.mocked(pay)
+      .mockReturnValueOnce(first as never)
+      .mockResolvedValueOnce({ id: 'order-retry' } as never);
+    const user = userEvent.setup();
+    render(<PendingEditSubmissionHarness />);
+
+    await user.click(screen.getByRole('button', { name: 'Submit payment' }));
+    expect(screen.getByTestId('submitting')).toHaveTextContent('true');
+
+    await user.click(screen.getByRole('button', { name: 'Edit payment' }));
+    expect(screen.getByTestId('submitting')).toHaveTextContent('false');
+
+    await act(async () => {
+      resolveFirst({ id: 'stale-order' });
+      await first;
+    });
+    await user.click(screen.getByRole('button', { name: 'Submit payment' }));
+
+    await waitFor(() => expect(pay).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(pay).mock.calls[1]![0].idempotencyKey).toBe('edited-key');
   });
 
   it.each([

@@ -136,29 +136,30 @@ export function useCheckoutFlow() {
     // Credit is intentionally not requested for card/anonymous/unavailable-cart states. The
     // reducer records a safe unavailable result and clears any summary from a previous intent.
     if (state.paymentMethod !== 'trade_credit' || !isAuthenticated || !cartId || !cartPresent) {
-      dispatch({ type: 'credit-summary-unavailable' });
+      dispatch({ type: 'credit-summary-unavailable', creditIdentity });
       return;
     }
 
     const controller = new AbortController();
     creditAbort.current = controller;
     const requestId = `${generation}:${creditIdentity}`;
-    dispatch({ type: 'credit-summary-loading', requestId });
+    dispatch({ type: 'credit-summary-loading', requestId, creditIdentity });
 
     void (async () => {
       try {
         const summary = await getTradeCreditSummary({ signal: controller.signal });
         if (generation !== creditGeneration.current || controller.signal.aborted) return;
-        dispatch({ type: 'credit-summary-loaded', requestId, summary });
+        dispatch({ type: 'credit-summary-loaded', requestId, creditIdentity, summary });
       } catch (error) {
         if (generation !== creditGeneration.current || controller.signal.aborted || isAbort(error))
           return;
         if (creditResponseMeansUnavailable(error)) {
-          dispatch({ type: 'credit-summary-unavailable', requestId });
+          dispatch({ type: 'credit-summary-unavailable', requestId, creditIdentity });
         } else {
           dispatch({
             type: 'credit-summary-failed',
             requestId,
+            creditIdentity,
             errorState: checkoutErrorState(error, 'checkout.paymentMethod.tradeCreditLoadError'),
           });
         }
@@ -226,11 +227,22 @@ export function useCheckoutFlow() {
     dispatch,
     retryCart,
   });
+  // Effects invalidate old credit state after commit. Masking the projection during the render
+  // that first observes a new identity keeps stale balance/eligibility out of the payment gate.
+  const creditSummaryIsCurrent = state.creditSummaryIdentity === creditIdentity;
+  const visibleCreditSummary = creditSummaryIsCurrent ? state.creditSummary : null;
+  const visibleCreditSummaryStatus = creditSummaryIsCurrent ? state.creditSummaryStatus : 'idle';
+  const visibleCreditSummaryErrorState = creditSummaryIsCurrent
+    ? state.creditSummaryErrorState
+    : null;
+  const visibleCreditSummaryUnavailable = creditSummaryIsCurrent
+    ? state.creditSummaryUnavailable
+    : false;
   const tradeCreditAvailable =
     state.paymentMethod === 'card' ||
-    (state.creditSummaryStatus === 'loaded' &&
-      state.creditSummary !== null &&
-      state.creditSummary.state === 'active');
+    (visibleCreditSummaryStatus === 'loaded' &&
+      visibleCreditSummary !== null &&
+      visibleCreditSummary.state === 'active');
   const submitPayment = usePaymentSubmission({
     cartId,
     cartGeneration,
@@ -353,7 +365,7 @@ export function useCheckoutFlow() {
 
   const paymentError = localizeCheckoutError(state.paymentErrorState, translate);
   const promoError = localizeCheckoutError(state.promoErrorState, translate);
-  const creditSummaryError = localizeCheckoutError(state.creditSummaryErrorState, translate);
+  const creditSummaryError = localizeCheckoutError(visibleCreditSummaryErrorState, translate);
 
   const destinationSummary = useMemo(() => {
     if (state.delivery.destinationKind === 'saved') {
@@ -390,21 +402,21 @@ export function useCheckoutFlow() {
     card: state.card,
     idempotencyKey: state.idempotencyKey,
     paymentMethod: state.paymentMethod,
-    creditSummary: state.creditSummary,
-    creditSummaryStatus: state.creditSummaryStatus,
-    creditSummaryLoading: state.creditSummaryStatus === 'loading',
+    creditSummary: visibleCreditSummary,
+    creditSummaryStatus: visibleCreditSummaryStatus,
+    creditSummaryLoading: visibleCreditSummaryStatus === 'loading',
     creditSummaryError,
-    creditSummaryErrorState: state.creditSummaryErrorState,
-    creditSummaryUnavailable: state.creditSummaryUnavailable,
+    creditSummaryErrorState: visibleCreditSummaryErrorState,
+    creditSummaryUnavailable: visibleCreditSummaryUnavailable,
     reloadCreditSummary,
     retryCreditSummary: reloadCreditSummary,
     tradeCredit: {
-      summary: state.creditSummary,
-      status: state.creditSummaryStatus,
-      loading: state.creditSummaryStatus === 'loading',
+      summary: visibleCreditSummary,
+      status: visibleCreditSummaryStatus,
+      loading: visibleCreditSummaryStatus === 'loading',
       error: creditSummaryError,
-      errorState: state.creditSummaryErrorState,
-      unavailable: state.creditSummaryUnavailable,
+      errorState: visibleCreditSummaryErrorState,
+      unavailable: visibleCreditSummaryUnavailable,
       reload: reloadCreditSummary,
     },
     savedSites,

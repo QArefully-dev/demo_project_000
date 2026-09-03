@@ -150,6 +150,44 @@ describe('useCheckoutFlow trade-credit state', () => {
     expect(result.current.paymentMethod).toBe('card');
   });
 
+  it('masks a loaded summary during the first render of a new credit identity', async () => {
+    vi.mocked(getTradeCreditSummary).mockResolvedValue(activeSummary);
+    const snapshots: Array<{
+      creditSummary: unknown;
+      creditSummaryStatus: string;
+      creditSummaryUnavailable: boolean;
+    }> = [];
+    const { result, rerender } = renderHook(() => {
+      const flow = useCheckoutFlow();
+      snapshots.push({
+        creditSummary: flow.creditSummary,
+        creditSummaryStatus: flow.creditSummaryStatus,
+        creditSummaryUnavailable: flow.creditSummaryUnavailable,
+      });
+      return flow;
+    });
+
+    act(() => result.current.updatePaymentMethod('trade_credit'));
+    await waitFor(() => expect(result.current.creditSummaryStatus).toBe('loaded'));
+    const snapshotCountBeforeIdentityChange = snapshots.length;
+    const submissionCallCountBeforeIdentityChange =
+      vi.mocked(usePaymentSubmission).mock.calls.length;
+
+    context.country = 'DE';
+    rerender();
+
+    expect(snapshots[snapshotCountBeforeIdentityChange]).toEqual({
+      creditSummary: null,
+      creditSummaryStatus: 'idle',
+      creditSummaryUnavailable: false,
+    });
+    expect(
+      vi.mocked(usePaymentSubmission).mock.calls[submissionCallCountBeforeIdentityChange]?.[0]
+        ?.tradeCreditAvailable,
+    ).toBe(false);
+    await waitFor(() => expect(result.current.creditSummaryStatus).toBe('loaded'));
+  });
+
   it('rotates the key once for a changed method or checkout context, not for a duplicate method', async () => {
     vi.mocked(getTradeCreditSummary).mockResolvedValue(null);
     const { result, rerender } = renderHook(() => useCheckoutFlow());

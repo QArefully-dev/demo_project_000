@@ -105,6 +105,8 @@ export type CheckoutState = {
   creditSummaryError: string | null;
   creditSummaryErrorState: CheckoutErrorState | null;
   creditSummaryUnavailable: boolean;
+  /** Checkout identity that produced the current credit lifecycle state. */
+  creditSummaryIdentity: string | null;
   /** Internal request identity used to make reducer events stale-safe in addition to hook guards. */
   creditSummaryRequestId: string | null;
   touched: Partial<Record<Field, boolean>>;
@@ -152,15 +154,21 @@ export type CheckoutEvent =
       idempotencyKey: string;
     }
   | { type: 'checkout-identity-changed'; idempotencyKey: string }
-  | { type: 'credit-summary-loading'; requestId?: string }
-  | { type: 'credit-summary-loaded'; requestId?: string; summary: CreditAccountMemberResponse }
+  | { type: 'credit-summary-loading'; requestId?: string; creditIdentity?: string }
+  | {
+      type: 'credit-summary-loaded';
+      requestId?: string;
+      creditIdentity?: string;
+      summary: CreditAccountMemberResponse;
+    }
   | {
       type: 'credit-summary-failed';
       requestId?: string;
+      creditIdentity?: string;
       error?: string;
       errorState?: CheckoutErrorState;
     }
-  | { type: 'credit-summary-unavailable'; requestId?: string }
+  | { type: 'credit-summary-unavailable'; requestId?: string; creditIdentity?: string }
   | { type: 'field-touched'; field: Field }
   | { type: 'fields-touched'; fields: Field[] }
   | { type: 'promo-changed'; value: string; idempotencyKey: string }
@@ -238,6 +246,7 @@ export function initialCheckoutState(): CheckoutState {
     creditSummaryError: null,
     creditSummaryErrorState: null,
     creditSummaryUnavailable: false,
+    creditSummaryIdentity: null,
     creditSummaryRequestId: null,
     touched: {},
     promoCode: '',
@@ -278,6 +287,7 @@ function clearCreditSummary(): Pick<
   | 'creditSummaryError'
   | 'creditSummaryErrorState'
   | 'creditSummaryUnavailable'
+  | 'creditSummaryIdentity'
   | 'creditSummaryRequestId'
 > {
   return {
@@ -286,6 +296,7 @@ function clearCreditSummary(): Pick<
     creditSummaryError: null,
     creditSummaryErrorState: null,
     creditSummaryUnavailable: false,
+    creditSummaryIdentity: null,
     creditSummaryRequestId: null,
   };
 }
@@ -326,6 +337,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         contact: { ...state.contact, [event.field]: event.value },
         paymentError: null,
         paymentErrorState: null,
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
     case 'delivery-changed':
@@ -334,6 +346,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         delivery: { ...state.delivery, ...event.patch, initialized: true },
         paymentError: null,
         paymentErrorState: null,
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
     case 'schedule-changed':
@@ -344,6 +357,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         conflict: state.conflict?.code === 'DELIVERY_SLOT_UNAVAILABLE' ? null : state.conflict,
         paymentError: null,
         paymentErrorState: null,
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
     case 'billing-changed':
@@ -352,6 +366,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         billing: { ...state.billing, ...event.patch, initialized: true },
         paymentError: null,
         paymentErrorState: null,
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
     case 'billing-prefilled':
@@ -362,6 +377,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         billing: { ...state.billing, ...event.patch },
         paymentError: null,
         paymentErrorState: null,
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
     case 'delivery-sites-loaded': {
@@ -375,6 +391,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
             ? {}
             : { destinationKind: 'saved' as const, deliverySiteId: event.defaultSiteId }),
         },
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
     }
@@ -389,6 +406,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
             ? {}
             : { selectionKind: 'saved' as const, billingEntityId: event.defaultEntityId }),
         },
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
     }
@@ -407,6 +425,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         card: { ...state.card, [event.field]: event.value },
         paymentError: null,
         paymentErrorState: null,
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
     case 'payment-method-changed':
@@ -447,6 +466,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         creditSummaryError: null,
         creditSummaryErrorState: null,
         creditSummaryUnavailable: false,
+        creditSummaryIdentity: event.creditIdentity ?? state.creditSummaryIdentity,
         creditSummaryRequestId: event.requestId ?? state.creditSummaryRequestId,
       };
     case 'credit-summary-loaded':
@@ -459,6 +479,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         creditSummaryError: null,
         creditSummaryErrorState: null,
         creditSummaryUnavailable: event.summary === null || event.summary.state !== 'active',
+        creditSummaryIdentity: event.creditIdentity ?? state.creditSummaryIdentity,
       };
     case 'credit-summary-unavailable':
       if (!creditEventIsCurrent(state, event.requestId)) return state;
@@ -469,6 +490,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         creditSummaryError: null,
         creditSummaryErrorState: null,
         creditSummaryUnavailable: true,
+        creditSummaryIdentity: event.creditIdentity ?? state.creditSummaryIdentity,
       };
     case 'credit-summary-failed':
       if (!creditEventIsCurrent(state, event.requestId)) return state;
@@ -479,6 +501,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         creditSummaryError: event.error ?? event.errorState?.code ?? event.errorState?.key ?? null,
         creditSummaryErrorState: event.errorState ?? null,
         creditSummaryUnavailable: false,
+        creditSummaryIdentity: event.creditIdentity ?? state.creditSummaryIdentity,
       };
     case 'field-touched':
       if (state.paymentMethod === 'trade_credit' && cardFields.includes(event.field as CardField))
@@ -511,6 +534,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         promoValidating: false,
         paymentError: null,
         paymentErrorState: null,
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
     case 'promo-started':
@@ -561,6 +585,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         promoErrorCode: null,
         promoMinSubtotalCents: null,
         idempotencyKey: event.idempotencyKey,
+        submitting: false,
       };
     case 'quote-changed':
       return {
@@ -599,6 +624,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
                 key: 'checkout.error.deliveryCountry',
               }
             : null,
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
     case 'submission-started':
