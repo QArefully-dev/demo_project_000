@@ -160,6 +160,12 @@ export interface ReturnRepository {
       }
     | undefined;
 
+  /**
+   * Check the persisted order and all of its linked payments before entering the card return flow.
+   * `undefined` means the order does not exist; `false` means its payment facts are not safe.
+   */
+  hasAuthoritativeCardSettlement(orderId: number): boolean | undefined;
+
   /** All prior refund amounts against one captured payment, across both refund workflows. */
   getPaymentRefundedCents(paymentId: number): number;
 
@@ -411,6 +417,48 @@ export function createReturnRepository(db: Database.Database): ReturnRepository 
     return mapReturnRequest(request, loadItems(returnId), loadRefund(returnId));
   };
 
+  /**
+   * Card returns require an existing card order and a complete card-only payment set. Checking all
+   * linked rows matters because selecting only one succeeded card payment would otherwise let a
+   * mismatched or malformed payment row hide beside it.
+   */
+  const loadAuthoritativeCardSettlement = (
+    orderId: number,
+  ): { orderPaymentMethod: unknown; paymentMethods: unknown[] } | undefined => {
+    const order = db.prepare('SELECT payment_method FROM orders WHERE id = ?').get(orderId) as
+      { payment_method: unknown } | undefined;
+    if (!order) return undefined;
+
+    const payments = db
+      .prepare('SELECT payment_method FROM payments WHERE order_id = ? ORDER BY id ASC')
+      .all(orderId) as Array<{ payment_method: unknown }>;
+
+    return {
+      orderPaymentMethod: order.payment_method,
+      paymentMethods: payments.map((payment) => payment.payment_method),
+    };
+  };
+
+  const hasAuthoritativeCardSettlement = (orderId: number): boolean | undefined => {
+    const settlement = loadAuthoritativeCardSettlement(orderId);
+    if (!settlement) return undefined;
+    return (
+      settlement.orderPaymentMethod === 'card' &&
+      settlement.paymentMethods.length > 0 &&
+      settlement.paymentMethods.every((method) => method === 'card')
+    );
+  };
+
+  const requireAuthoritativeCardSettlement = (orderId: number): void => {
+    const eligible = hasAuthoritativeCardSettlement(orderId);
+    if (eligible === undefined) {
+      throw new ReturnDomainError(ReturnErrorCode.RETURN_DATA_CORRUPT);
+    }
+    if (!eligible) {
+      throw new ReturnDomainError(ReturnErrorCode.PAYMENT_NOT_REFUNDABLE);
+    }
+  };
+
   // ── public API ────────────────────────────────────────────────────
 
   return {
@@ -422,9 +470,9 @@ export function createReturnRepository(db: Database.Database): ReturnRepository 
            FROM orders
            WHERE id = ? AND user_id = ?`,
         )
-        .get(orderId, userId) as { payment_method: string } | undefined;
+        .get(orderId, userId) as { payment_method: unknown } | undefined;
       if (!order) return undefined;
-      if (order.payment_method === 'trade_credit') {
+      if (hasAuthoritativeCardSettlement(orderId) !== true) {
         throw new ReturnDomainError(ReturnErrorCode.PAYMENT_NOT_REFUNDABLE);
       }
 
@@ -469,6 +517,7 @@ export function createReturnRepository(db: Database.Database): ReturnRepository 
       requestFingerprint,
       occurredAt,
     }) {
+      requireAuthoritativeCardSettlement(orderId);
       const result = db
         .prepare(
           `INSERT INTO return_requests
@@ -524,6 +573,10 @@ export function createReturnRepository(db: Database.Database): ReturnRepository 
       statusTimestampField,
       occurredAt,
     }) {
+      const request = db
+        .prepare('SELECT order_id FROM return_requests WHERE id = ?')
+        .get(returnId) as { order_id: number } | undefined;
+      if (request) requireAuthoritativeCardSettlement(request.order_id);
       return (
         db
           .prepare(
@@ -572,7 +625,10 @@ export function createReturnRepository(db: Database.Database): ReturnRepository 
         : undefined;
     },
 
+    hasAuthoritativeCardSettlement,
+
     resolveSucceededPayment(orderId) {
+      if (hasAuthoritativeCardSettlement(orderId) !== true) return undefined;
       const row = db
         .prepare(
           `SELECT id, amount_cents
@@ -585,6 +641,17 @@ export function createReturnRepository(db: Database.Database): ReturnRepository 
     },
 
     getPaymentRefundedCents(paymentId) {
+      const payment = db
+        .prepare('SELECT order_id, payment_method FROM payments WHERE id = ?')
+        .get(paymentId) as { order_id: number | null; payment_method: unknown } | undefined;
+      if (
+        !payment ||
+        payment.order_id === null ||
+        payment.payment_method !== 'card' ||
+        hasAuthoritativeCardSettlement(payment.order_id) !== true
+      ) {
+        return 0;
+      }
       const row = db
         .prepare(
           `SELECT
@@ -627,6 +694,7 @@ export function createReturnRepository(db: Database.Database): ReturnRepository 
       requestFingerprint,
       occurredAt,
     }) {
+      requireAuthoritativeCardSettlement(orderId);
       db.prepare(
         `INSERT INTO return_events
          (return_request_id, order_id, event_type, actor_user_id,
@@ -670,6 +738,17 @@ export function createReturnRepository(db: Database.Database): ReturnRepository 
       items,
       occurredAt,
     }) {
+      const payment = db
+        .prepare('SELECT order_id, payment_method FROM payments WHERE id = ?')
+        .get(paymentId) as { order_id: number | null; payment_method: unknown } | undefined;
+      if (
+        !payment ||
+        payment.order_id === null ||
+        payment.payment_method !== 'card' ||
+        hasAuthoritativeCardSettlement(payment.order_id) !== true
+      ) {
+        throw new ReturnDomainError(ReturnErrorCode.PAYMENT_NOT_REFUNDABLE);
+      }
       const result = db
         .prepare(
           `INSERT INTO refunds

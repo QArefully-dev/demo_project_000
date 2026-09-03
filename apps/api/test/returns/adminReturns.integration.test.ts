@@ -50,6 +50,23 @@ function insertCreditOrder(
   return { orderId, paymentId, companyId };
 }
 
+function setSettlementMethods(
+  db: Parameters<typeof createReturnRepository>[0],
+  orderId: number,
+  paymentId: number,
+  orderMethod: string,
+  paymentMethod: string,
+): void {
+  // Deliberately bypass CHECK constraints to exercise the return boundary's corruption path.
+  db.pragma('ignore_check_constraints = ON');
+  try {
+    db.prepare('UPDATE orders SET payment_method = ? WHERE id = ?').run(orderMethod, orderId);
+    db.prepare('UPDATE payments SET payment_method = ? WHERE id = ?').run(paymentMethod, paymentId);
+  } finally {
+    db.pragma('ignore_check_constraints = OFF');
+  }
+}
+
 function cookie(response: { headers: Record<string, string | string[] | undefined> }): string {
   const h = response.headers['set-cookie'];
   const c = Array.isArray(h) ? h[0] : h;
@@ -102,7 +119,7 @@ async function createReturnForAlice(
       url: `/api/orders/${orderId}/returns`,
       headers: { cookie: aliceCookie },
       payload: {
-        idempotencyKey: 'admin-test-0001-0001-0001-000000000001',
+        idempotencyKey: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         reason: 'damaged',
         selections: [
           {
@@ -493,4 +510,138 @@ void test('trade-credit returns fail before creating rows, restoring stock, or r
   const returnRepository = createReturnRepository(db);
   assert.equal(returnRepository.resolveSucceededPayment(orderId), undefined);
   assert.equal(returnRepository.getPaymentRefundedCents(paymentId), 0);
+});
+
+void test('return replays recheck ownership and the persisted card settlement', async (t) => {
+  const { db, app } = await createSeededFixture({
+    testContext: t,
+    app: { clock: { now: () => new Date('2026-07-29T10:00:00.000Z') } },
+  });
+  const aliceCookie = await login(app, 'alice@example.com');
+  const adminCookie = await login(app, 'admin@example.com');
+  const setup = await createReturnForAlice(app, aliceCookie);
+  assert.ok(setup, 'Expected a seeded delivered card order');
+  if (!setup) return;
+
+  const orderId = Number(setup.orderId);
+  const returnId = Number(setup.returnId);
+  const payment = db
+    .prepare('SELECT id FROM payments WHERE order_id = ? ORDER BY id ASC LIMIT 1')
+    .get(orderId) as { id: number } | undefined;
+  assert.ok(payment, 'Expected a linked payment');
+  if (!payment) return;
+
+  const selection = db
+    .prepare(
+      `SELECT shipment_id AS shipmentId, order_line_item_id AS orderLineItemId, quantity
+       FROM return_request_items WHERE return_request_id = ? LIMIT 1`,
+    )
+    .get(returnId) as { shipmentId: number; orderLineItemId: number; quantity: number } | undefined;
+  assert.ok(selection, 'Expected a persisted return selection');
+  if (!selection) return;
+
+  const requestPayload = {
+    idempotencyKey: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    reason: 'damaged',
+    selections: [
+      {
+        shipmentId: String(selection.shipmentId),
+        orderLineItemId: String(selection.orderLineItemId),
+        quantity: selection.quantity,
+      },
+    ],
+  };
+
+  // Customer request replay cannot bypass an order/payment method mismatch.
+  setSettlementMethods(db, orderId, payment.id, 'trade_credit', 'card');
+  const requestReplay = await app.inject({
+    method: 'POST',
+    url: `/api/orders/${orderId}/returns`,
+    headers: { cookie: aliceCookie },
+    payload: requestPayload,
+  });
+  assert.equal(requestReplay.statusCode, 409);
+  assert.equal(requestReplay.json<{ code: string }>().code, 'PAYMENT_NOT_REFUNDABLE');
+  setSettlementMethods(db, orderId, payment.id, 'card', 'card');
+
+  // A different owner cannot reuse the request event either.
+  const bobCookie = await login(app, 'bob@example.com');
+  const ownerReplay = await app.inject({
+    method: 'POST',
+    url: `/api/orders/${orderId}/returns`,
+    headers: { cookie: bobCookie },
+    payload: requestPayload,
+  });
+  assert.equal(ownerReplay.statusCode, 404);
+
+  const decisionPayload = {
+    version: 0,
+    idempotencyKey: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    decision: 'approve',
+  } as const;
+  const approved = await app.inject({
+    method: 'POST',
+    url: `/api/admin/returns/${returnId}/decision`,
+    headers: { cookie: adminCookie },
+    payload: decisionPayload,
+  });
+  assert.equal(approved.statusCode, 200, approved.body);
+
+  // Lifecycle replay rejects an order/payment mismatch before returning the old event.
+  setSettlementMethods(db, orderId, payment.id, 'card', 'trade_credit');
+  const decisionReplay = await app.inject({
+    method: 'POST',
+    url: `/api/admin/returns/${returnId}/decision`,
+    headers: { cookie: adminCookie },
+    payload: decisionPayload,
+  });
+  assert.equal(decisionReplay.statusCode, 409);
+  assert.equal(decisionReplay.json<{ code: string }>().code, 'PAYMENT_NOT_REFUNDABLE');
+  setSettlementMethods(db, orderId, payment.id, 'card', 'card');
+
+  const receivePayload = {
+    version: 1,
+    idempotencyKey: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  };
+  const received = await app.inject({
+    method: 'POST',
+    url: `/api/admin/returns/${returnId}/receive`,
+    headers: { cookie: adminCookie },
+    payload: receivePayload,
+  });
+  assert.equal(received.statusCode, 200, received.body);
+
+  setSettlementMethods(db, orderId, payment.id, 'mystery', 'card');
+  const receiveReplay = await app.inject({
+    method: 'POST',
+    url: `/api/admin/returns/${returnId}/receive`,
+    headers: { cookie: adminCookie },
+    payload: receivePayload,
+  });
+  assert.equal(receiveReplay.statusCode, 409);
+  assert.equal(receiveReplay.json<{ code: string }>().code, 'PAYMENT_NOT_REFUNDABLE');
+  setSettlementMethods(db, orderId, payment.id, 'card', 'card');
+
+  const refundPayload = {
+    version: 2,
+    idempotencyKey: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+  };
+  const refunded = await app.inject({
+    method: 'POST',
+    url: `/api/admin/returns/${returnId}/refund`,
+    headers: { cookie: adminCookie },
+    payload: refundPayload,
+  });
+  assert.equal(refunded.statusCode, 200, refunded.body);
+
+  setSettlementMethods(db, orderId, payment.id, 'card', 'mystery');
+  const refundReplay = await app.inject({
+    method: 'POST',
+    url: `/api/admin/returns/${returnId}/refund`,
+    headers: { cookie: adminCookie },
+    payload: refundPayload,
+  });
+  assert.equal(refundReplay.statusCode, 409);
+  assert.equal(refundReplay.json<{ code: string }>().code, 'PAYMENT_NOT_REFUNDABLE');
+  setSettlementMethods(db, orderId, payment.id, 'card', 'card');
 });

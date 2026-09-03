@@ -132,11 +132,16 @@ export function createReturnService(deps: ReturnServiceDeps): ReturnService {
 
   /** Returns are a card settlement workflow; reject credit orders before any state or stock write. */
   const requireCardOrder = (orderId: number) => {
-    const order = orderRepository.findDetailById(orderId);
-    if (!order) throw new ReturnDomainError(ReturnErrorCode.RETURN_DATA_CORRUPT);
-    if (order.paymentMethod === 'trade_credit') {
+    const cardSettlement = returnRepository.hasAuthoritativeCardSettlement(orderId);
+    if (cardSettlement === undefined) {
+      throw new ReturnDomainError(ReturnErrorCode.RETURN_DATA_CORRUPT);
+    }
+    if (!cardSettlement) {
       throw new ReturnDomainError(ReturnErrorCode.PAYMENT_NOT_REFUNDABLE);
     }
+
+    const order = orderRepository.findDetailById(orderId);
+    if (!order) throw new ReturnDomainError(ReturnErrorCode.RETURN_DATA_CORRUPT);
     return order;
   };
 
@@ -151,11 +156,12 @@ export function createReturnService(deps: ReturnServiceDeps): ReturnService {
     requestReturn({ orderId, userId, idempotencyKey, reason, note, selections, context }) {
       const fingerprint = returnFingerprint('request', { orderId, selections, reason, note });
       return run(() => {
+        // Re-establish ownership and card settlement eligibility before consulting the global key.
+        const overview = requireOwnedOverview(orderId, userId);
         const replay = replayOrConflict(idempotencyKey, fingerprint);
         if (replay) return replay;
 
-        // Ownership + eligibility recheck inside transaction
-        const overview = requireOwnedOverview(orderId, userId);
+        // Ownership + eligibility were rechecked inside the transaction before replay lookup.
         const now = clock.now();
 
         // Verify window (exclusive close boundary) for every eligible line
@@ -235,6 +241,10 @@ export function createReturnService(deps: ReturnServiceDeps): ReturnService {
       const operation = decision === 'approve' ? 'approve' : 'reject';
       const fingerprint = returnFingerprint(operation, { returnId, version });
       return run(() => {
+        const existing = returnRepository.findById(returnId);
+        if (!existing) throw new ReturnDomainError(ReturnErrorCode.RETURN_NOT_FOUND);
+        requireCardOrder(Number(existing.orderId));
+
         const replay = replayOrConflict(idempotencyKey, fingerprint);
         if (replay) return replay;
 
@@ -299,6 +309,10 @@ export function createReturnService(deps: ReturnServiceDeps): ReturnService {
     receiveReturn({ returnId, version, idempotencyKey, context }) {
       const fingerprint = returnFingerprint('receive', { returnId, version });
       return run(() => {
+        const existing = returnRepository.findById(returnId);
+        if (!existing) throw new ReturnDomainError(ReturnErrorCode.RETURN_NOT_FOUND);
+        requireCardOrder(Number(existing.orderId));
+
         const replay = replayOrConflict(idempotencyKey, fingerprint);
         if (replay) return replay;
 
@@ -370,6 +384,10 @@ export function createReturnService(deps: ReturnServiceDeps): ReturnService {
     refundReturn({ returnId, version, idempotencyKey, context }) {
       const fingerprint = returnFingerprint('refund', { returnId, version });
       return run(() => {
+        const existing = returnRepository.findById(returnId);
+        if (!existing) throw new ReturnDomainError(ReturnErrorCode.RETURN_NOT_FOUND);
+        requireCardOrder(Number(existing.orderId));
+
         const replay = replayOrConflict(idempotencyKey, fingerprint);
         if (replay) return replay;
 
