@@ -146,31 +146,28 @@ void test('migration 035 preserves legacy payment/order facts and adds strict cr
   );
   assert.ok(columnNames(db, 'payments').includes('payment_method'));
   assert.ok(columnNames(db, 'payments').includes('company_id'));
-  assert.deepEqual(
-    db.pragma('foreign_key_list(cart_reservations)') as Array<{ table: string; from: string }>,
-    [
-      {
-        id: 0,
-        seq: 0,
-        table: 'payments',
-        from: 'payment_idempotency_key',
-        to: 'idempotency_key',
-        on_update: 'NO ACTION',
-        on_delete: 'NO ACTION',
-        match: 'NONE',
-      },
-      {
-        id: 1,
-        seq: 0,
-        table: 'carts',
-        from: 'cart_id',
-        to: 'id',
-        on_update: 'NO ACTION',
-        on_delete: 'CASCADE',
-        match: 'NONE',
-      },
-    ],
-  );
+  assert.deepEqual(db.pragma('foreign_key_list(cart_reservations)'), [
+    {
+      id: 0,
+      seq: 0,
+      table: 'payments',
+      from: 'payment_idempotency_key',
+      to: 'idempotency_key',
+      on_update: 'NO ACTION',
+      on_delete: 'NO ACTION',
+      match: 'NONE',
+    },
+    {
+      id: 1,
+      seq: 0,
+      table: 'carts',
+      from: 'cart_id',
+      to: 'id',
+      on_update: 'NO ACTION',
+      on_delete: 'CASCADE',
+      match: 'NONE',
+    },
+  ]);
   assert.ok(indexNames(db, 'payments').includes('payments_status_idx'));
   assert.ok(indexNames(db, 'payments').includes('payments_order_id_status_idx'));
   assert.equal(

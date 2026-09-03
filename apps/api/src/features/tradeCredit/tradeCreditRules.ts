@@ -530,7 +530,7 @@ function readBooleanFact(
   let value: boolean | undefined;
   for (const name of names) {
     if (typeof input[name] !== 'boolean') continue;
-    const candidate = input[name] as boolean;
+    const candidate = input[name];
     if (value !== undefined && value !== candidate) return undefined;
     value = candidate;
   }
@@ -550,14 +550,14 @@ function readStringFact(
   let value: string | undefined;
   for (const name of names) {
     if (typeof input[name] !== 'string') continue;
-    const candidate = input[name] as string;
+    const candidate = input[name];
     if (value !== undefined && value !== candidate) return undefined;
     value = candidate;
   }
   if (nested) {
     for (const name of nestedNames) {
       if (typeof nested[name] !== 'string') continue;
-      const candidate = nested[name] as string;
+      const candidate = nested[name];
       if (value !== undefined && value !== candidate) return undefined;
       value = candidate;
     }

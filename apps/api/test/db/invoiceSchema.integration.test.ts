@@ -174,11 +174,12 @@ void test('migration 036 creates strict invoice documents, lifecycle projections
     );
     assert.deepEqual(db.pragma('foreign_key_check'), []);
     assert.deepEqual(
-      db.pragma('foreign_key_list(credit_exposure_holds)').map((row) => ({
-        table: (row as { table: string }).table,
-        from: (row as { from: string }).from,
-        to: (row as { to: string }).to,
-      })),
+      db
+        .prepare<[], { table: string; from: string; to: string }>(
+          'PRAGMA foreign_key_list(credit_exposure_holds)',
+        )
+        .all()
+        .map(({ table, from, to }) => ({ table, from, to })),
       [
         { table: 'invoices', from: 'invoice_id', to: 'id' },
         { table: 'payments', from: 'payment_idempotency_key', to: 'idempotency_key' },
