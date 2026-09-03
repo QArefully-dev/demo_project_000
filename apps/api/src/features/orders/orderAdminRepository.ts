@@ -140,7 +140,7 @@ export function createOrderAdminRepository(db: Database.Database): OrderAdminRep
                     COALESCE((SELECT SUM(amount_cents) FROM admin_refunds WHERE payment_id = p.id), 0)
                     AS remaining_refundable_cents
            FROM payments p
-           WHERE p.order_id = ? AND p.status = 'succeeded'
+           WHERE p.order_id = ? AND p.status = 'succeeded' AND p.payment_method = 'card'
            ORDER BY p.created_at DESC, p.id DESC
            LIMIT 1`,
         )

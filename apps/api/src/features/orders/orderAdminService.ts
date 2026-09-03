@@ -91,7 +91,11 @@ export function createOrderAdminService(deps: {
         throw new OrderAdminError('ORDER_NOT_FOUND');
       const order = deps.orderRepository.findDetailById(orderId, country);
       if (!order) throw new OrderAdminError('ORDER_NOT_FOUND');
-      return { ...order, refundPayment: deps.repository.findRefundPayment(orderId) };
+      // Credit orders expose their frozen invoice/accounting tuple on the order detail, but are
+      // never card-refund candidates. Undefined remains the historical/card-compatible branch.
+      const refundPayment =
+        order.paymentMethod === 'trade_credit' ? null : deps.repository.findRefundPayment(orderId);
+      return { ...order, refundPayment };
     },
   };
 }
