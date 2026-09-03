@@ -1,16 +1,65 @@
 import { parsePersistedCheckoutQuote } from '../payments/paymentRepository.js';
 import type { Country } from '@shop/contracts/country';
+import type { PersistedCheckoutQuoteV10 } from '@shop/contracts/payments';
 import type {
   ResolvedCustomBlendComponent,
   ResolvedCustomBlendSnapshot,
 } from '@shop/contracts/custom-blends';
-import type { AuditContext } from '../audit/auditEvent.js';
+import { AUDIT_ACTIONS, type AuditContext } from '../audit/auditEvent.js';
 import type { CreateOrderLineVariantSnapshot } from '../orders/orderTypes.js';
+import type { InvoiceService } from '../invoices/invoiceService.js';
 import type { CheckoutDependencies, CheckoutResult } from './checkoutTypes.js';
+
+/**
+ * Invoice issuance was added after the card finalizer. Keep the dependency optional for direct
+ * legacy callers while allowing the application composition root to provide the canonical
+ * invoice service for V10 trade-credit orders.
+ */
+type FinalizerDependencies = Omit<CheckoutDependencies, 'invoices' | 'invoiceService'> & {
+  invoices?: Pick<InvoiceService, 'issue'>;
+  invoiceService?: Pick<InvoiceService, 'issue'>;
+};
+
+function normalizeSnapshotId(value: unknown, name: string): number;
+function normalizeSnapshotId(value: unknown, name: string, nullable: true): number | null;
+function normalizeSnapshotId(value: unknown, name: string, nullable = false): number | null {
+  if (value === null && nullable) return null;
+  const normalized =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string' && /^[1-9][0-9]*$/.test(value)
+        ? Number(value)
+        : NaN;
+  if (!Number.isSafeInteger(normalized) || normalized < 1) {
+    throw new Error(`Invalid persisted checkout ${name}`);
+  }
+  return normalized;
+}
+
+function currentQuote(
+  quote: ReturnType<typeof parsePersistedCheckoutQuote>,
+): PersistedCheckoutQuoteV10 | undefined {
+  return quote.version === 10 ? quote : undefined;
+}
+
+/** P13 extends the closed audit union with invoice actions. The capability check keeps this
+ * finalizer source-compatible while the two packets converge in the shared worktree. */
+function appendInvoiceIssuedAudit(
+  dependencies: FinalizerDependencies,
+  context: AuditContext,
+  input: { invoiceId: number; orderId: number; companyId: number; grossCents: number },
+): void {
+  if (!(AUDIT_ACTIONS as readonly string[]).includes('invoice.issued')) return;
+  dependencies.audit.append({
+    action: 'invoice.issued',
+    context,
+    ...input,
+  } as never);
+}
 
 /** Finalizes only an already-authorized intent; rollback leaves it resumable. */
 export function finalizeAuthorizedCheckout(
-  dependencies: CheckoutDependencies,
+  dependencies: FinalizerDependencies,
   idempotencyKey: string,
   auditContext: AuditContext,
   /** Identity country captured from the cart during checkout preparation. */
@@ -27,6 +76,22 @@ export function finalizeAuthorizedCheckout(
       return { success: false, error: 'CHECKOUT_FAILED' };
     }
     const quote = parsePersistedCheckoutQuote(payment.quoteJson);
+    const v10 = currentQuote(quote);
+    const paymentMethod = v10?.paymentMethod ?? 'card';
+    const orderCountry = v10?.country ?? country;
+    const userId = normalizeSnapshotId(quote.userId, 'user id', true);
+    const companyId = normalizeSnapshotId(v10?.companyId ?? null, 'company id', true);
+    if (payment.paymentMethod !== paymentMethod) {
+      throw new Error('Payment intent method disagrees with its persisted checkout quote');
+    }
+    if (
+      paymentMethod === 'trade_credit' &&
+      (payment.companyId !== companyId ||
+        payment.userId !== userId ||
+        payment.amountCents !== v10?.grossCents)
+    ) {
+      throw new Error('Payment intent facts disagree with its persisted trade-credit quote');
+    }
     const createdAt = dependencies.clock.now().toISOString();
 
     const orderItems = quote.variantLines.map((v) => {
@@ -69,7 +134,7 @@ export function finalizeAuthorizedCheckout(
     });
 
     const orderId = dependencies.orders.create({
-      country,
+      country: orderCountry,
       customerName: quote.customer.name,
       customerEmail: quote.customer.email,
       shippingAddress: quote.customer.shippingAddress,
@@ -79,13 +144,19 @@ export function finalizeAuthorizedCheckout(
       discountBaseCents: quote.discountBaseCents,
       discountCents: quote.discountCents,
       totalCents: quote.totalCents,
-      userId: quote.userId,
+      paymentMethod,
+      companyId,
+      netCents: v10?.netCents ?? null,
+      vatRateBasisPoints: v10?.vatRateBasisPoints ?? null,
+      vatCents: v10?.vatCents ?? null,
+      grossCents: v10?.grossCents ?? null,
+      userId,
       items: orderItems,
       deliveryMode: quote.deliverySummary.mode,
       deliveryChargeCents: quote.deliverySummary.chargeCents,
       deliveryWeightGrams: quote.deliverySummary.weightGrams,
       // An anonymous checkout owns no saved records, so it can never stamp a site reference.
-      deliverySiteId: quote.userId === null ? null : deliverySiteId,
+      deliverySiteId: userId === null ? null : deliverySiteId,
       deliveryAddress: quote.customer.deliveryAddress,
       billingEntity: quote.billingEntity,
       deliverySlot: quote.deliverySlot,
@@ -115,16 +186,68 @@ export function finalizeAuthorizedCheckout(
 
     if (quote.promoCode)
       dependencies.promos.commitReservation({ paymentIdempotencyKey: idempotencyKey, orderId });
-    // Order receipts are rendered from the structured order snapshot by the mailbox reader.
-    // Keep legacy identity columns empty so checkout never persists generated prose or a locale.
-    dependencies.mailbox.add({
-      recipient: quote.customer.email,
-      subject: '',
-      body: '',
-      kind: 'order_receipt',
-      orderId,
-      createdAt,
-    });
+
+    const invoiceService = dependencies.invoices ?? dependencies.invoiceService;
+    let invoiceId: number | undefined;
+    if (paymentMethod === 'trade_credit' && v10 !== undefined && invoiceService !== undefined) {
+      if (companyId === null || userId === null) {
+        throw new Error('Trade-credit quote is missing immutable company or user identity');
+      }
+
+      // Invoice issuance verifies the authorized hold against the payment row. Link the payment
+      // to this newly-created order first, in the same outer transaction; a nested invoice
+      // savepoint then atomically creates the document/event/state and commits the exact hold.
+      if (
+        !dependencies.payments.transition({
+          idempotencyKey,
+          expectedStatus: 'authorized_pending_finalize',
+          nextStatus: 'authorized_pending_finalize',
+          orderId,
+          amountCents: v10.grossCents,
+          updatedAt: createdAt,
+        })
+      ) {
+        throw new Error('Checkout authorization state changed during invoice finalization');
+      }
+
+      const invoice = invoiceService.issue({
+        orderId,
+        paymentIdempotencyKey: idempotencyKey,
+        companyId,
+        userId,
+        country: v10.country,
+        billingEntity: v10.billingEntity,
+        purchaseOrderReference: v10.purchaseOrderReference,
+        netCents: v10.netCents,
+        vatRateBasisPoints: v10.vatRateBasisPoints,
+        vatCents: v10.vatCents,
+        grossCents: v10.grossCents,
+        issuedAt: createdAt,
+      });
+      invoiceId = normalizeSnapshotId(invoice.id, 'invoice id') ?? undefined;
+
+      // Invoice notifications carry only the immutable document identity. The mailbox repository
+      // deliberately discards subject/body prose and hydrates the document when read.
+      dependencies.mailbox.add({
+        recipient: quote.customer.email,
+        subject: '',
+        body: '',
+        kind: 'invoice_issued',
+        invoiceId,
+        createdAt,
+      });
+    } else {
+      // Order receipts are rendered from the structured order snapshot by the mailbox reader.
+      // Keep legacy identity columns empty so checkout never persists generated prose or a locale.
+      dependencies.mailbox.add({
+        recipient: quote.customer.email,
+        subject: '',
+        body: '',
+        kind: 'order_receipt',
+        orderId,
+        createdAt,
+      });
+    }
     dependencies.carts.remove(quote.cartId);
     const result: CheckoutResult = {
       success: true,
@@ -150,13 +273,23 @@ export function finalizeAuthorizedCheckout(
       totalCents: quote.totalCents,
       itemCount: quote.variantLines.reduce((total, item) => total + item.quantity, 0),
     });
-    dependencies.audit.append({
-      action: 'payment.succeeded',
-      context: auditContext,
-      paymentId: payment.id,
-      orderId,
-      amountCents: quote.totalCents,
-    });
+    if (invoiceId !== undefined && companyId !== null) {
+      appendInvoiceIssuedAudit(dependencies, auditContext, {
+        invoiceId,
+        orderId,
+        companyId,
+        grossCents: quote.totalCents,
+      });
+    }
+    if (paymentMethod === 'card') {
+      dependencies.audit.append({
+        action: 'payment.succeeded',
+        context: auditContext,
+        paymentId: payment.id,
+        orderId,
+        amountCents: quote.totalCents,
+      });
+    }
     dependencies.audit.append({
       action: 'checkout.cart_consumed',
       context: auditContext,

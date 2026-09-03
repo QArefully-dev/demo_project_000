@@ -32,6 +32,13 @@ export interface CreateOrderParams {
   discountBaseCents?: number | null;
   discountCents: number;
   totalCents: number;
+  /** Payment/accounting facts frozen by the checkout quote. Historic callers may omit these. */
+  paymentMethod?: 'card' | 'trade_credit';
+  companyId?: number | null;
+  netCents?: number | null;
+  vatRateBasisPoints?: number | null;
+  vatCents?: number | null;
+  grossCents?: number | null;
   userId: number | null;
   items: Array<{
     productId: string;

@@ -30,6 +30,12 @@ interface OrderRow {
   discount_base_cents: number | null;
   discount_cents: number;
   total_cents: number;
+  payment_method: 'card' | 'trade_credit';
+  company_id: number | null;
+  net_cents: number | null;
+  vat_rate_basis_points: number | null;
+  vat_cents: number | null;
+  gross_cents: number | null;
   created_at: string;
   lifecycle_status: OrderStatus;
   version: number;
@@ -247,6 +253,34 @@ function hydrateOrderSlot(row: OrderRow): DeliverySlot | undefined {
 }
 
 function mapOrder(row: OrderRow, items: ProductLineRow[]): Order {
+  // Keep the historic card transport stable while exposing the complete accounting tuple on
+  // credit orders. The database still persists the V10 card tuple for integrity/backfills.
+  if (
+    row.payment_method === 'trade_credit' &&
+    (row.company_id === null ||
+      row.net_cents === null ||
+      row.vat_rate_basis_points === null ||
+      row.vat_cents === null ||
+      row.gross_cents === null)
+  ) {
+    throw new Error(`Order ${row.id} has incomplete trade-credit accounting facts`);
+  }
+  const accounting =
+    row.payment_method === 'trade_credit' &&
+    row.company_id !== null &&
+    row.net_cents !== null &&
+    row.vat_rate_basis_points !== null &&
+    row.vat_cents !== null &&
+    row.gross_cents !== null
+      ? {
+          paymentMethod: row.payment_method as 'trade_credit',
+          companyId: String(row.company_id),
+          netCents: row.net_cents,
+          vatRateBasisPoints: row.vat_rate_basis_points,
+          vatCents: row.vat_cents,
+          grossCents: row.gross_cents,
+        }
+      : {};
   return {
     id: String(row.id),
     status: row.lifecycle_status,
@@ -293,6 +327,7 @@ function mapOrder(row: OrderRow, items: ProductLineRow[]): Order {
     subtotalCents: row.subtotal_cents,
     discountCents: row.discount_cents,
     totalCents: row.total_cents,
+    ...accounting,
     promoApplied: row.promo_code_applied,
     promoCategoryScope: row.promo_category_scope ?? undefined,
     discountBaseCents: row.discount_base_cents ?? undefined,
@@ -340,7 +375,8 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
   const loadOrder = (orderId: number, country?: Country): OrderRow | undefined =>
     db
       .prepare(
-        `SELECT id, country, promo_code_applied, promo_category_scope, subtotal_cents, discount_base_cents, discount_cents, total_cents, created_at,
+        `SELECT id, country, promo_code_applied, promo_category_scope, subtotal_cents, discount_base_cents, discount_cents, total_cents,
+            payment_method, company_id, net_cents, vat_rate_basis_points, vat_cents, gross_cents, created_at,
             lifecycle_status, version, cancelled_at, user_id,
             delivery_mode, delivery_charge_cents, delivery_weight_grams,
             delivery_site_id, delivery_address_json, billing_entity_json,
@@ -366,7 +402,8 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
     const rows = db
       .prepare(
         `SELECT id, country, promo_code_applied, promo_category_scope, subtotal_cents, discount_base_cents,
-                discount_cents, total_cents, created_at, lifecycle_status, version, cancelled_at,
+                discount_cents, total_cents, payment_method, company_id, net_cents,
+                vat_rate_basis_points, vat_cents, gross_cents, created_at, lifecycle_status, version, cancelled_at,
                 user_id, delivery_mode, delivery_charge_cents, delivery_weight_grams,
                 delivery_site_id, delivery_address_json, billing_entity_json, delivery_slot_date,
                 delivery_slot_window, purchase_order_reference
@@ -461,8 +498,9 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
              delivery_mode, delivery_charge_cents, delivery_weight_grams,
              delivery_site_id, delivery_address_json, billing_entity_json,
              delivery_slot_date, delivery_slot_window, purchase_order_reference,
-             user_id, created_at, lifecycle_status, version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0)`,
+             user_id, created_at, lifecycle_status, version,
+             payment_method, company_id, net_cents, vat_rate_basis_points, vat_cents, gross_cents)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           country,
@@ -486,6 +524,12 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
           params.purchaseOrderReference ?? null,
           params.userId,
           params.createdAt,
+          params.paymentMethod ?? 'card',
+          params.companyId ?? null,
+          params.netCents ?? null,
+          params.vatRateBasisPoints ?? null,
+          params.vatCents ?? null,
+          params.grossCents ?? null,
         );
       const orderId = Number(result.lastInsertRowid);
       const addItem = db.prepare(
@@ -539,7 +583,9 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
       const offset = (page - 1) * pageSize;
       const items = db
         .prepare(
-          `SELECT o.id, o.lifecycle_status, o.version, o.total_cents, o.created_at,
+          `SELECT o.id, o.lifecycle_status, o.version, o.total_cents,
+          o.payment_method, o.company_id, o.net_cents, o.vat_rate_basis_points, o.vat_cents,
+          o.gross_cents, o.created_at,
           o.purchase_order_reference,
           COALESCE((SELECT SUM(quantity) FROM order_line_items WHERE order_id = o.id), 0) AS total_items,
           EXISTS(SELECT 1 FROM order_inventory_allocations allocation
@@ -552,6 +598,12 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
         lifecycle_status: OrderStatus;
         version: number;
         total_cents: number;
+        payment_method: 'card' | 'trade_credit';
+        company_id: number | null;
+        net_cents: number | null;
+        vat_rate_basis_points: number | null;
+        vat_cents: number | null;
+        gross_cents: number | null;
         total_items: number;
         has_backorder: number;
         created_at: string;
@@ -561,17 +613,44 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
         .prepare('SELECT COUNT(*) AS count FROM orders WHERE user_id = ?')
         .get(userId) as { count: number };
       return {
-        items: items.map((row) => ({
-          id: String(row.id),
-          status: row.lifecycle_status,
-          version: row.version,
-          totalCents: row.total_cents,
-          totalItems: row.total_items,
-          hasBackorder: row.has_backorder === 1,
-          createdAt: row.created_at,
-          // Contract-optional: absent on every order placed before checkout captured a reference.
-          purchaseOrderReference: row.purchase_order_reference ?? undefined,
-        })),
+        items: items.map((row) => {
+          if (
+            row.payment_method === 'trade_credit' &&
+            (row.company_id === null ||
+              row.net_cents === null ||
+              row.vat_rate_basis_points === null ||
+              row.vat_cents === null ||
+              row.gross_cents === null)
+          ) {
+            throw new Error(`Order ${row.id} has incomplete trade-credit accounting facts`);
+          }
+          return {
+            id: String(row.id),
+            status: row.lifecycle_status,
+            version: row.version,
+            totalCents: row.total_cents,
+            ...(row.payment_method === 'trade_credit' &&
+            row.company_id !== null &&
+            row.net_cents !== null &&
+            row.vat_rate_basis_points !== null &&
+            row.vat_cents !== null &&
+            row.gross_cents !== null
+              ? {
+                  paymentMethod: row.payment_method,
+                  companyId: String(row.company_id),
+                  netCents: row.net_cents,
+                  vatRateBasisPoints: row.vat_rate_basis_points,
+                  vatCents: row.vat_cents,
+                  grossCents: row.gross_cents,
+                }
+              : {}),
+            totalItems: row.total_items,
+            hasBackorder: row.has_backorder === 1,
+            createdAt: row.created_at,
+            // Contract-optional: absent on every order placed before checkout captured a reference.
+            purchaseOrderReference: row.purchase_order_reference ?? undefined,
+          };
+        }),
         total: count.count,
       };
     },
