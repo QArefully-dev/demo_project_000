@@ -92,10 +92,33 @@ export function finalizeAuthorizedCheckout(
     ) {
       throw new Error('Payment intent facts disagree with its persisted trade-credit quote');
     }
+    const invoiceService = dependencies.invoices ?? dependencies.invoiceService;
+    // A credit order is not valid without the canonical invoice capability. Check this before
+    // creating an order or touching any reservation so a miswired composition leaves the
+    // authorized intent and hold resumable with no artifacts.
+    if (
+      paymentMethod === 'trade_credit' &&
+      (v10 === undefined ||
+        invoiceService === undefined ||
+        typeof invoiceService.issue !== 'function')
+    ) {
+      throw new Error('Trade-credit finalization requires invoice capability');
+    }
     const createdAt = dependencies.clock.now().toISOString();
 
-    const orderItems = quote.variantLines.map((v) => {
-      const variant = dependencies.products.findVariantById(v.variantId);
+    const orderItems = quote.variantLines.map((v, index) => {
+      // V10 is a complete immutable snapshot. Do not consult the live catalogue for its line
+      // identity; only V8/V9 finalization retains the historical lookup fallback.
+      const v10Line = v10?.variantLines[index];
+      if (v10 !== undefined && v10Line === undefined) {
+        throw new Error('Persisted V10 quote line is missing');
+      }
+      const variant = v10 === undefined ? dependencies.products.findVariantById(v.variantId) : null;
+      const frozenSku =
+        v10Line && 'sku' in v10Line && typeof v10Line.sku === 'string' ? v10Line.sku : undefined;
+      if (v10 !== undefined && frozenSku === undefined) {
+        throw new Error('Persisted V10 quote line is missing an immutable SKU');
+      }
       // Plain V9 lines do not carry customBlend; V8 and configured V9 lines do. Keep the
       // structural narrowing at the storage boundary so both legacy and resolved snapshots flow
       // through unchanged.
@@ -109,7 +132,7 @@ export function finalizeAuthorizedCheckout(
         // V9 already contains the base facts used to price the line. Keep those facts frozen in
         // the order even if a catalogue edit lands after authorization; V8 retains its historic
         // product lookup fallback.
-        sku: resolvedBase?.sku ?? variant?.sku ?? `SKU-${v.productId}-${v.variantId}`,
+        sku: frozenSku ?? resolvedBase?.sku ?? variant?.sku ?? `SKU-${v.productId}-${v.variantId}`,
         label: resolvedBase?.variantLabel ?? v.variantLabel,
         weightGrams: v.weightGrams,
         // A resolved V9 recipe owns the resulting classification. V8/legacy lines retain the
@@ -187,7 +210,6 @@ export function finalizeAuthorizedCheckout(
     if (quote.promoCode)
       dependencies.promos.commitReservation({ paymentIdempotencyKey: idempotencyKey, orderId });
 
-    const invoiceService = dependencies.invoices ?? dependencies.invoiceService;
     let invoiceId: number | undefined;
     if (paymentMethod === 'trade_credit' && v10 !== undefined && invoiceService !== undefined) {
       if (companyId === null || userId === null) {

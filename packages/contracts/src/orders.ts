@@ -6,6 +6,7 @@ import { CustomBlendSnapshot, ResolvedCustomBlendSnapshot } from './customBlends
 import { PostalAddress } from './address.js';
 import { BillingEntitySnapshot } from './tradeAccount.js';
 import { PaymentMethod } from './tradeCredit.js';
+import { Country } from './country.js';
 
 const UtcIsoInstant = Type.String({
   minLength: 24,
@@ -168,6 +169,8 @@ const OrderFields = Type.Object(
     id: PositiveIntegerString,
     status: OrderStatus,
     version: NonNegativeVersion,
+    /** Identity country frozen at checkout; omitted only by pre-localisation transport fixtures. */
+    country: Type.Optional(Country),
     items: Type.Array(OrderLineItem),
     subtotalCents: MoneyCents,
     discountCents: MoneyCents,
@@ -204,6 +207,7 @@ const OrderAccountingIntegrity = TypeSystem.Type<unknown>(
     const order = value as {
       paymentMethod?: unknown;
       companyId?: unknown;
+      country?: unknown;
       totalCents?: unknown;
       netCents?: unknown;
       vatRateBasisPoints?: unknown;
@@ -213,10 +217,16 @@ const OrderAccountingIntegrity = TypeSystem.Type<unknown>(
     const fields = [order.netCents, order.vatRateBasisPoints, order.vatCents, order.grossCents];
     const anyVatField = fields.some((field) => field !== undefined);
     if (!anyVatField) {
-      // Legacy/card orders may omit the new accounting fields. A company id is only valid on a
-      // credit order, and a credit order must carry the complete accounting tuple.
-      return order.paymentMethod !== 'trade_credit' && order.companyId === undefined;
+      // A legacy row has no method, company, or accounting fields. Once a method/company is
+      // exposed, all four accounting fields must be present together; a partial tuple must never
+      // be mistaken for a legacy row.
+      return order.paymentMethod === undefined && order.companyId === undefined;
     }
+    if (order.paymentMethod !== 'trade_credit' && order.paymentMethod !== 'card') return false;
+    // Every non-legacy accounting tuple carries the checkout identity country that owns its VAT
+    // basis. The outer object schema validates the supported-country value; this callback makes
+    // omission fail closed while still allowing old null-column rows through.
+    if (typeof order.country !== 'string') return false;
     const safeMoney = (candidate: unknown): candidate is number =>
       typeof candidate === 'number' && Number.isSafeInteger(candidate) && candidate >= 0;
     if (
@@ -230,7 +240,7 @@ const OrderAccountingIntegrity = TypeSystem.Type<unknown>(
       order.vatRateBasisPoints > 10_000 ||
       (order.paymentMethod === 'trade_credit' && typeof order.companyId !== 'string') ||
       (order.paymentMethod === 'card' && order.companyId !== undefined) ||
-      (order.paymentMethod !== 'trade_credit' && order.paymentMethod !== 'card')
+      order.paymentMethod === undefined
     ) {
       return false;
     }
@@ -265,6 +275,8 @@ const OrderSummaryFields = Type.Object(
     id: PositiveIntegerString,
     status: OrderStatus,
     version: NonNegativeVersion,
+    /** Identity country frozen at checkout; omitted only by pre-localisation transport fixtures. */
+    country: Type.Optional(Country),
     totalCents: MoneyCents,
     paymentMethod: Type.Optional(PaymentMethod),
     companyId: Type.Optional(PositiveIntegerString),
@@ -280,9 +292,13 @@ const OrderSummaryFields = Type.Object(
   },
   { additionalProperties: false },
 );
-export const OrderSummary = Object.assign(
+// Keep `.properties` available to schema extensions (admin order responses) without making it a
+// second enumerable object schema beside `allOf`; fast-json-stringify cannot merge those duplicate
+// nested object trees when serializing order details.
+export const OrderSummary = Object.defineProperty(
   Type.Intersect([OrderSummaryFields, OrderAccountingIntegrity()]),
-  { properties: OrderSummaryFields.properties },
+  'properties',
+  { value: OrderSummaryFields.properties },
 );
 export type OrderSummary = Static<typeof OrderSummary>;
 
@@ -354,9 +370,10 @@ const OrderDetailFields = Type.Object(
   },
   { additionalProperties: false },
 );
-export const OrderDetailResponse = Object.assign(
+export const OrderDetailResponse = Object.defineProperty(
   Type.Intersect([OrderDetailFields, OrderAccountingIntegrity()]),
-  { properties: OrderDetailFields.properties },
+  'properties',
+  { value: OrderDetailFields.properties },
 );
 export type OrderDetailResponse = Static<typeof OrderDetailResponse>;
 

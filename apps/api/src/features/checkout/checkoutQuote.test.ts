@@ -102,6 +102,76 @@ void test('card quote stays VAT-free and company-free while using V10 facts', ()
   assert.equal('terms' in quote, false);
 });
 
+void test('V10 plain quote lines freeze their SKU and reject a missing immutable SKU', () => {
+  const skuCart = {
+    ...cart,
+    items: [
+      {
+        productId: '1',
+        configKey: '',
+        product: {
+          name: 'Material sacks',
+          category: 'Trade & Creative Materials',
+          consumptionClassification: 'non-food',
+        },
+        variantSnap: {
+          variantId: 1,
+          sku: 'MAT-FROZEN-001',
+          label: '25kg sack',
+          weightGrams: 25_000,
+          deliveryClass: 'freight' as const,
+        },
+        perTonneCents: 10_000,
+        resolvedUnitPriceCents: 10_000,
+        quantity: 1,
+        materialSubtotalCents: 10_000,
+        blendingFeeCents: 0,
+        discountableTotalCents: 10_000,
+        lineTotalCents: 10_000,
+      },
+    ],
+    subtotalCents: 10_000,
+    discountableSubtotalCents: 10_000,
+    blendingFeeTotalCents: 0,
+    totalItems: 1,
+  } as unknown as Cart;
+  const quote = createCheckoutQuote({
+    cart: skuCart,
+    checkout: { ...checkout, userId: null, paymentMethod: 'card' },
+    resolved,
+    promo: undefined,
+    createdAt,
+    inventoryAllocations: [],
+    country: 'UK',
+    paymentMethod: 'card',
+  });
+  assert.equal(quote.variantLines[0]?.sku, 'MAT-FROZEN-001');
+
+  const missingSkuCart = {
+    ...skuCart,
+    items: [
+      {
+        ...skuCart.items[0],
+        variantSnap: { ...skuCart.items[0]!.variantSnap!, sku: '   ' },
+      },
+    ],
+  } as unknown as Cart;
+  assert.throws(
+    () =>
+      createCheckoutQuote({
+        cart: missingSkuCart,
+        checkout: { ...checkout, userId: null, paymentMethod: 'card' },
+        resolved,
+        promo: undefined,
+        createdAt,
+        inventoryAllocations: [],
+        country: 'UK',
+        paymentMethod: 'card',
+      }),
+    /missing an immutable SKU/,
+  );
+});
+
 void test('quote writer rejects credit identity or accounting drift', () => {
   assert.throws(
     () =>

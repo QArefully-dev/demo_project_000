@@ -27,6 +27,7 @@ import type { CompanyService } from '../companyAccounts/companyService.js';
 import type { CountryProfileService } from '../countryProfile/countryProfileService.js';
 import type { CustomBlendResolver } from '../customBlend/customBlendResolver.js';
 import type { CreditAccountService } from '../tradeCredit/creditAccountService.js';
+import type { InvoiceService } from '../invoices/invoiceService.js';
 
 export type CheckoutErrorCode =
   | 'CART_NOT_FOUND'
@@ -169,6 +170,10 @@ export interface CheckoutDependencies {
   payments: PaymentRepository;
   orders: OrderRepository;
   mailbox: MailboxRepository;
+  /** Canonical invoice capability required before a trade-credit finalization can write. */
+  invoices?: Pick<InvoiceService, 'issue'>;
+  /** Compatibility alias used while composition roots converge on the `invoices` name. */
+  invoiceService?: Pick<InvoiceService, 'issue'>;
   gateway: PaymentGateway;
   clock: Clock;
   products: ProductRepository;

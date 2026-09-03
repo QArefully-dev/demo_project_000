@@ -457,6 +457,7 @@ void test('order summary carries an optional PO reference so history rows can sh
 
 void test('order summary and detail share credit attribution and accounting integrity', () => {
   const accounting = {
+    country: 'UK' as const,
     paymentMethod: 'trade_credit' as const,
     companyId: '7',
     netCents: 10_000,
@@ -526,6 +527,22 @@ void test('order summary and detail share credit attribution and accounting inte
   }
   assert.equal(Value.Check(OrderSummary, { ...summary, netCents: undefined }), false);
   assert.equal(Value.Check(OrderDetailResponse, { ...detail, netCents: undefined }), false);
+  for (const candidate of [summary, detail]) {
+    const schema = candidate === summary ? OrderSummary : OrderDetailResponse;
+    assert.equal(Value.Check(schema, { ...candidate, country: undefined }), false);
+    assert.equal(
+      Value.Check(schema, {
+        ...candidate,
+        paymentMethod: 'card',
+        companyId: undefined,
+        netCents: undefined,
+        vatRateBasisPoints: undefined,
+        vatCents: undefined,
+        grossCents: undefined,
+      }),
+      false,
+    );
+  }
 });
 
 void test('persisted quote version advanced and never restarted', () => {

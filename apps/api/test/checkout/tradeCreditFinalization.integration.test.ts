@@ -38,7 +38,9 @@ import { adhocBilling, adhocDestination, bookableSlot } from './checkoutDepthFix
 
 const NOW = new Date('2026-09-03T09:00:00.000Z');
 
-function setup(t: test.TestContext) {
+type FinalizationSetupOptions = { withPromo?: boolean };
+
+function setup(t: test.TestContext, options: FinalizationSetupOptions = {}) {
   const { db } = openSeededDatabase(t);
   const clock = { now: () => NOW };
   const unitOfWork = createUnitOfWork(db);
@@ -75,8 +77,10 @@ function setup(t: test.TestContext) {
   const carts = createCartRepository(db);
   const cartId = createCart(carts, 'UK').cartId;
   const variant = db
-    .prepare('SELECT id, moq_sacks FROM product_variants WHERE active = 1 ORDER BY id LIMIT 1')
-    .get() as { id: number; moq_sacks: number };
+    .prepare(
+      'SELECT id, moq_sacks, stock_count FROM product_variants WHERE active = 1 ORDER BY id LIMIT 1',
+    )
+    .get() as { id: number; moq_sacks: number; stock_count: number };
   carts.addLineQuantity(cartId, String(variant.id), variant.moq_sacks);
 
   const inventory = createInventoryService({ repository: createInventoryRepository(db) });
@@ -144,6 +148,7 @@ function setup(t: test.TestContext) {
   };
   const params: CheckoutParams = {
     cartId,
+    ...(options.withPromo ? { promoCode: 'WELCOME5' } : {}),
     customerName: 'Finalization Buyer',
     customerEmail: 'finalization-buyer@example.test',
     deliveryDestination: adhocDestination,
@@ -154,7 +159,314 @@ function setup(t: test.TestContext) {
     userId,
     auditContext: { actor: { type: 'user', userId }, requestId: 'credit-finalization-request' },
   };
-  return { db, deps, params };
+  return { db, deps, params, variantId: variant.id, stockBefore: variant.stock_count };
+}
+
+type FinalizationFailureStage =
+  'order' | 'inventory' | 'promo' | 'invoice' | 'mailbox' | 'cart' | 'payment' | 'audit';
+
+const FINALIZATION_FAILURE_STAGES: readonly FinalizationFailureStage[] = [
+  'order',
+  'inventory',
+  'promo',
+  'invoice',
+  'mailbox',
+  'cart',
+  'payment',
+  'audit',
+];
+
+function injectFailureAfterStage(
+  deps: ReturnType<typeof setup>['deps'],
+  stage: FinalizationFailureStage,
+): void {
+  let fail = true;
+  const failOnce = (): void => {
+    if (!fail) return;
+    fail = false;
+    throw new Error(`injected finalization failure after ${stage}`);
+  };
+
+  switch (stage) {
+    case 'order': {
+      const original = deps.orders.create;
+      deps.orders.create = (input) => {
+        const orderId = original(input);
+        failOnce();
+        return orderId;
+      };
+      break;
+    }
+    case 'inventory': {
+      const original = deps.inventory.commitReservation;
+      deps.inventory.commitReservation = (input) => {
+        original(input);
+        failOnce();
+      };
+      break;
+    }
+    case 'promo': {
+      const original = deps.promos.commitReservation;
+      deps.promos.commitReservation = (input) => {
+        const committed = original(input);
+        failOnce();
+        return committed;
+      };
+      break;
+    }
+    case 'invoice': {
+      const original = deps.invoices.issue.bind(deps.invoices);
+      deps.invoices.issue = (input) => {
+        const invoice = original(input);
+        failOnce();
+        return invoice;
+      };
+      break;
+    }
+    case 'mailbox': {
+      const original = deps.mailbox.add;
+      deps.mailbox.add = (input) => {
+        original(input);
+        failOnce();
+      };
+      break;
+    }
+    case 'cart': {
+      const original = deps.carts.remove;
+      deps.carts.remove = (cartId) => {
+        original(cartId);
+        failOnce();
+      };
+      break;
+    }
+    case 'payment': {
+      const original = deps.payments.transition;
+      deps.payments.transition = (input) => {
+        const transitioned = original(input);
+        // Credit finalization first links the payment to its order while retaining the authorized
+        // status; inject only after the terminal succeeded transition.
+        if (input.nextStatus === 'succeeded') failOnce();
+        return transitioned;
+      };
+      break;
+    }
+    case 'audit': {
+      const original = deps.audit.append;
+      deps.audit.append = (input) => {
+        original(input);
+        failOnce();
+      };
+      break;
+    }
+  }
+}
+
+function count(db: ReturnType<typeof setup>['db'], sql: string, ...params: unknown[]): number {
+  return Number((db.prepare(sql).get(...params) as { count: number }).count);
+}
+
+function finalizationArtifacts(fixture: ReturnType<typeof setup>) {
+  const { db, params, variantId } = fixture;
+  const orderWhere = 'customer_email = ?';
+  return {
+    orders: count(
+      db,
+      `SELECT COUNT(*) AS count FROM orders WHERE ${orderWhere}`,
+      params.customerEmail,
+    ),
+    orderLines: count(
+      db,
+      `SELECT COUNT(*) AS count FROM order_line_items
+       WHERE order_id IN (SELECT id FROM orders WHERE ${orderWhere})`,
+      params.customerEmail,
+    ),
+    orderEvents: count(
+      db,
+      `SELECT COUNT(*) AS count FROM order_lifecycle_events
+       WHERE order_id IN (SELECT id FROM orders WHERE ${orderWhere})`,
+      params.customerEmail,
+    ),
+    invoices: count(
+      db,
+      'SELECT COUNT(*) AS count FROM invoices WHERE payment_idempotency_key = ?',
+      params.idempotencyKey,
+    ),
+    invoiceStates: count(
+      db,
+      `SELECT COUNT(*) AS count FROM invoice_states
+       WHERE invoice_id IN (SELECT id FROM invoices WHERE payment_idempotency_key = ?)`,
+      params.idempotencyKey,
+    ),
+    invoiceEvents: count(
+      db,
+      `SELECT COUNT(*) AS count FROM invoice_events
+       WHERE invoice_id IN (SELECT id FROM invoices WHERE payment_idempotency_key = ?)`,
+      params.idempotencyKey,
+    ),
+    mailbox: count(
+      db,
+      `SELECT COUNT(*) AS count FROM dev_mailbox
+       WHERE recipient = ? AND kind IN ('invoice_issued', 'order_receipt')`,
+      params.customerEmail,
+    ),
+    payment: count(
+      db,
+      'SELECT COUNT(*) AS count FROM payments WHERE idempotency_key = ?',
+      params.idempotencyKey,
+    ),
+    paymentStatus: db
+      .prepare('SELECT status FROM payments WHERE idempotency_key = ?')
+      .pluck()
+      .get(params.idempotencyKey) as string | undefined,
+    hold: count(
+      db,
+      'SELECT COUNT(*) AS count FROM credit_exposure_holds WHERE payment_idempotency_key = ?',
+      params.idempotencyKey,
+    ),
+    holdStatus: db
+      .prepare('SELECT status FROM credit_exposure_holds WHERE payment_idempotency_key = ?')
+      .pluck()
+      .get(params.idempotencyKey) as string | undefined,
+    holdInvoiceId: db
+      .prepare('SELECT invoice_id FROM credit_exposure_holds WHERE payment_idempotency_key = ?')
+      .pluck()
+      .get(params.idempotencyKey) as number | null | undefined,
+    cartLines: count(
+      db,
+      'SELECT COUNT(*) AS count FROM cart_line_items WHERE cart_id = ?',
+      params.cartId,
+    ),
+    cartReservation: count(
+      db,
+      'SELECT COUNT(*) AS count FROM cart_reservations WHERE payment_idempotency_key = ?',
+      params.idempotencyKey,
+    ),
+    inventoryReservations: count(
+      db,
+      'SELECT COUNT(*) AS count FROM inventory_reservations WHERE payment_idempotency_key = ?',
+      params.idempotencyKey,
+    ),
+    inventoryAllocations: count(
+      db,
+      `SELECT COUNT(*) AS count FROM order_inventory_allocations allocation
+       JOIN order_line_items line ON line.id = allocation.order_line_item_id
+       JOIN orders ON orders.id = line.order_id
+       WHERE orders.customer_email = ?`,
+      params.customerEmail,
+    ),
+    inventoryMovements: count(
+      db,
+      `SELECT COUNT(*) AS count FROM inventory_stock_movements
+       WHERE payment_idempotency_key = ? OR order_id IN
+         (SELECT id FROM orders WHERE ${orderWhere})`,
+      params.idempotencyKey,
+      params.customerEmail,
+    ),
+    promoReservation: count(
+      db,
+      'SELECT COUNT(*) AS count FROM promo_reservations WHERE payment_idempotency_key = ?',
+      params.idempotencyKey,
+    ),
+    promoRedemption: count(
+      db,
+      `SELECT COUNT(*) AS count FROM promo_redemptions
+       WHERE order_id IN (SELECT id FROM orders WHERE ${orderWhere})`,
+      params.customerEmail,
+    ),
+    audit: count(
+      db,
+      'SELECT COUNT(*) AS count FROM audit_events WHERE request_id = ?',
+      params.auditContext.requestId,
+    ),
+    stock: Number(
+      (
+        db.prepare('SELECT stock_count FROM product_variants WHERE id = ?').get(variantId) as {
+          stock_count: number;
+        }
+      ).stock_count,
+    ),
+    stockConsumed: Number(
+      (
+        db
+          .prepare(
+            'SELECT COALESCE(-SUM(quantity_delta), 0) AS consumed FROM inventory_stock_movements WHERE payment_idempotency_key = ?',
+          )
+          .get(params.idempotencyKey) as { consumed: number }
+      ).consumed,
+    ),
+  };
+}
+
+function assertAuthorizedRollback(fixture: ReturnType<typeof setup>): void {
+  const artifacts = finalizationArtifacts(fixture);
+  assert.deepEqual(
+    artifacts,
+    {
+      orders: 0,
+      orderLines: 0,
+      orderEvents: 0,
+      invoices: 0,
+      invoiceStates: 0,
+      invoiceEvents: 0,
+      mailbox: 0,
+      payment: 1,
+      paymentStatus: 'authorized_pending_finalize',
+      hold: 1,
+      holdStatus: 'authorized',
+      holdInvoiceId: null,
+      cartLines: 1,
+      cartReservation: 1,
+      inventoryReservations: 1,
+      inventoryAllocations: 0,
+      inventoryMovements: 0,
+      promoReservation: fixture.params.promoCode ? 1 : 0,
+      promoRedemption: 0,
+      audit: 0,
+      stock: fixture.stockBefore,
+      stockConsumed: 0,
+    },
+    'post-order failure must roll back all finalization artifacts but retain authorization',
+  );
+}
+
+function assertSuccessfulUniqueness(fixture: ReturnType<typeof setup>): void {
+  const artifacts = finalizationArtifacts(fixture);
+  assert.deepEqual(
+    artifacts,
+    {
+      orders: 1,
+      orderLines: 1,
+      orderEvents: 1,
+      invoices: 1,
+      invoiceStates: 1,
+      invoiceEvents: 1,
+      mailbox: 1,
+      payment: 1,
+      paymentStatus: 'succeeded',
+      hold: 1,
+      holdStatus: 'committed',
+      holdInvoiceId: artifacts.holdInvoiceId,
+      cartLines: 0,
+      cartReservation: 0,
+      inventoryReservations: 0,
+      inventoryAllocations: 1,
+      inventoryMovements: 1,
+      promoReservation: 0,
+      promoRedemption: fixture.params.promoCode ? 1 : 0,
+      audit: 2,
+      stock: artifacts.stock,
+      stockConsumed: artifacts.stockConsumed,
+    },
+    'same-key retry must create exactly one set of finalization artifacts',
+  );
+  assert.equal(
+    artifacts.stock,
+    fixture.stockBefore - artifacts.stockConsumed,
+    'inventory stock must change only by the committed movement',
+  );
+  assert.equal(typeof artifacts.holdInvoiceId, 'number');
+  assert.ok(artifacts.holdInvoiceId > 0);
+  assert.ok(artifacts.stockConsumed > 0, 'successful finalization must debit reserved stock');
 }
 
 void test('trade-credit finalization atomically issues one invoice and hydrates one mailbox descriptor', async (t) => {
@@ -291,3 +603,81 @@ void test('credit finalization failure after invoice/mailbox writes rolls everyt
   );
   assert.equal(deps.payments.load(params.idempotencyKey)?.status, 'succeeded');
 });
+
+void test('credit finalization without the canonical invoice capability preserves intent and hold before writes', async (t) => {
+  const fixture = setup(t);
+  const { db, deps, params } = fixture;
+  const result = await createCheckoutService({ ...deps, invoices: undefined }).process(params);
+
+  assert.deepEqual(result, { success: false, error: 'IDEMPOTENT_IN_PROGRESS' });
+  assertAuthorizedRollback(fixture);
+  assert.equal(
+    (
+      db
+        .prepare('SELECT COUNT(*) AS count FROM invoices WHERE payment_idempotency_key = ?')
+        .get(params.idempotencyKey) as { count: number }
+    ).count,
+    0,
+  );
+});
+
+void test('V10 finalization uses the frozen line SKU after the live variant is edited and retired', async (t) => {
+  const fixture = setup(t);
+  const { db, deps, params, variantId } = fixture;
+  const originalSku = (
+    db.prepare('SELECT sku FROM product_variants WHERE id = ?').get(variantId) as { sku: string }
+  ).sku;
+  const originalIssue = deps.invoices.issue.bind(deps.invoices);
+  let failFirstAttempt = true;
+  deps.invoices.issue = (input) => {
+    if (failFirstAttempt) {
+      failFirstAttempt = false;
+      throw new Error('pause before invoice so catalogue can change');
+    }
+    return originalIssue(input);
+  };
+
+  const service = createCheckoutService(deps);
+  assert.deepEqual(await service.process(params), {
+    success: false,
+    error: 'IDEMPOTENT_IN_PROGRESS',
+  });
+  assertAuthorizedRollback(fixture);
+
+  db.prepare('UPDATE product_variants SET sku = ?, active = 0 WHERE id = ?').run(
+    'SKU-RETIRED-AFTER-AUTH',
+    variantId,
+  );
+  const retry = await service.process(params);
+  assert.equal(retry.success, true);
+  const line = db
+    .prepare(
+      `SELECT line.sku FROM order_line_items line
+       JOIN orders ON orders.id = line.order_id
+       WHERE orders.customer_email = ?`,
+    )
+    .get(params.customerEmail) as { sku: string };
+  assert.equal(line.sku, originalSku);
+});
+
+for (const stage of FINALIZATION_FAILURE_STAGES) {
+  void test(`credit finalization rolls back exactly after ${stage} and retries idempotently`, async (t) => {
+    const fixture = setup(t, { withPromo: stage === 'promo' });
+    const { deps, params } = fixture;
+    injectFailureAfterStage(deps, stage);
+    const service = createCheckoutService(deps);
+
+    const first = await service.process(params);
+    assert.deepEqual(first, { success: false, error: 'IDEMPOTENT_IN_PROGRESS' });
+    assertAuthorizedRollback(fixture);
+
+    const retry = await service.process(params);
+    assert.equal(retry.success, true);
+    assertSuccessfulUniqueness(fixture);
+
+    // A second same-key call is a replay, not another finalization transaction.
+    const replay = await service.process(params);
+    assert.equal(replay.success, true);
+    assertSuccessfulUniqueness(fixture);
+  });
+}

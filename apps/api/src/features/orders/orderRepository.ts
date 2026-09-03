@@ -94,6 +94,18 @@ interface EventRow {
   request_fingerprint: string | null;
 }
 
+type AccountingRow = Pick<
+  OrderRow,
+  | 'id'
+  | 'payment_method'
+  | 'company_id'
+  | 'net_cents'
+  | 'vat_rate_basis_points'
+  | 'vat_cents'
+  | 'gross_cents'
+  | 'total_cents'
+>;
+
 export interface OrderAccessRepository {
   replaceAccessGrant(input: {
     orderId: number;
@@ -252,39 +264,108 @@ function hydrateOrderSlot(row: OrderRow): DeliverySlot | undefined {
   return slot;
 }
 
-function mapOrder(row: OrderRow, items: ProductLineRow[]): Order {
-  // Keep the historic card transport stable while exposing the complete accounting tuple on
-  // credit orders. The database still persists the V10 card tuple for integrity/backfills.
+function hydrateOrderAccounting(
+  row: AccountingRow,
+): Pick<
+  Order,
+  'paymentMethod' | 'companyId' | 'netCents' | 'vatRateBasisPoints' | 'vatCents' | 'grossCents'
+> {
+  if (row.payment_method !== 'card' && row.payment_method !== 'trade_credit') {
+    throw new Error(`Order ${row.id} has an invalid payment method`);
+  }
+  const facts = [row.net_cents, row.vat_rate_basis_points, row.vat_cents, row.gross_cents];
+  const populated = facts.filter((fact) => fact !== null).length;
+  if (populated === 0) {
+    // Null accounting columns identify a historic card row. A company id alongside those nulls
+    // is a malformed partial snapshot, not a legacy row that can safely be downgraded.
+    if (row.payment_method !== 'card' || row.company_id !== null) {
+      throw new Error(
+        row.payment_method === 'trade_credit'
+          ? `Order ${row.id} has incomplete trade-credit accounting facts`
+          : `Order ${row.id} has incomplete accounting facts`,
+      );
+    }
+    return {};
+  }
+  if (populated !== facts.length) {
+    throw new Error(
+      row.payment_method === 'trade_credit'
+        ? `Order ${row.id} has incomplete trade-credit accounting facts`
+        : `Order ${row.id} has incomplete accounting facts`,
+    );
+  }
+  const {
+    net_cents: netCents,
+    vat_rate_basis_points: vatRate,
+    vat_cents: vatCents,
+    gross_cents: grossCents,
+  } = row;
   if (
-    row.payment_method === 'trade_credit' &&
-    (row.company_id === null ||
-      row.net_cents === null ||
-      row.vat_rate_basis_points === null ||
-      row.vat_cents === null ||
-      row.gross_cents === null)
+    !isSafeNonNegativeInteger(netCents) ||
+    !isSafeNonNegativeInteger(vatRate) ||
+    vatRate > 10_000 ||
+    !isSafeNonNegativeInteger(vatCents) ||
+    !isSafeNonNegativeInteger(grossCents) ||
+    !isSafeNonNegativeInteger(row.total_cents)
   ) {
+    throw new Error(`Order ${row.id} has invalid accounting facts`);
+  }
+  if (vatRate > 0 && netCents > Math.floor(Number.MAX_SAFE_INTEGER / vatRate)) {
+    throw new Error(`Order ${row.id} has invalid accounting facts`);
+  }
+  const vatNumerator = netCents * vatRate;
+  if (!Number.isSafeInteger(vatNumerator) || vatNumerator > Number.MAX_SAFE_INTEGER - 5_000) {
+    throw new Error(`Order ${row.id} has invalid accounting facts`);
+  }
+  const expectedVat = Math.floor((vatNumerator + 5_000) / 10_000);
+  if (
+    expectedVat !== vatCents ||
+    netCents > Number.MAX_SAFE_INTEGER - vatCents ||
+    netCents + vatCents !== grossCents ||
+    grossCents !== row.total_cents
+  ) {
+    throw new Error(`Order ${row.id} has invalid accounting facts`);
+  }
+  if (row.payment_method === 'card') {
+    if (row.company_id !== null || vatRate !== 0) {
+      throw new Error(`Order ${row.id} has invalid card accounting facts`);
+    }
+    return {
+      paymentMethod: 'card',
+      netCents,
+      vatRateBasisPoints: vatRate,
+      vatCents,
+      grossCents,
+    };
+  }
+  if (!isSafePositiveInteger(row.company_id)) {
     throw new Error(`Order ${row.id} has incomplete trade-credit accounting facts`);
   }
-  const accounting =
-    row.payment_method === 'trade_credit' &&
-    row.company_id !== null &&
-    row.net_cents !== null &&
-    row.vat_rate_basis_points !== null &&
-    row.vat_cents !== null &&
-    row.gross_cents !== null
-      ? {
-          paymentMethod: row.payment_method as 'trade_credit',
-          companyId: String(row.company_id),
-          netCents: row.net_cents,
-          vatRateBasisPoints: row.vat_rate_basis_points,
-          vatCents: row.vat_cents,
-          grossCents: row.gross_cents,
-        }
-      : {};
+  return {
+    paymentMethod: 'trade_credit',
+    companyId: String(row.company_id),
+    netCents,
+    vatRateBasisPoints: vatRate,
+    vatCents,
+    grossCents,
+  };
+}
+
+function isSafeNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isSafePositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
+}
+
+function mapOrder(row: OrderRow, items: ProductLineRow[]): Order {
+  const accounting = hydrateOrderAccounting(row);
   return {
     id: String(row.id),
     status: row.lifecycle_status,
     version: row.version,
+    country: row.country,
     items: items.map((item): OrderLineItem => {
       const customBlend = hydrateOrderCustomBlend(item);
       return {
@@ -583,7 +664,7 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
       const offset = (page - 1) * pageSize;
       const items = db
         .prepare(
-          `SELECT o.id, o.lifecycle_status, o.version, o.total_cents,
+          `SELECT o.id, o.country, o.lifecycle_status, o.version, o.total_cents,
           o.payment_method, o.company_id, o.net_cents, o.vat_rate_basis_points, o.vat_cents,
           o.gross_cents, o.created_at,
           o.purchase_order_reference,
@@ -595,6 +676,7 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
         )
         .all(userId, pageSize, offset) as Array<{
         id: number;
+        country: Country;
         lifecycle_status: OrderStatus;
         version: number;
         total_cents: number;
@@ -614,36 +696,14 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
         .get(userId) as { count: number };
       return {
         items: items.map((row) => {
-          if (
-            row.payment_method === 'trade_credit' &&
-            (row.company_id === null ||
-              row.net_cents === null ||
-              row.vat_rate_basis_points === null ||
-              row.vat_cents === null ||
-              row.gross_cents === null)
-          ) {
-            throw new Error(`Order ${row.id} has incomplete trade-credit accounting facts`);
-          }
+          const accounting = hydrateOrderAccounting(row);
           return {
             id: String(row.id),
             status: row.lifecycle_status,
             version: row.version,
+            country: row.country,
             totalCents: row.total_cents,
-            ...(row.payment_method === 'trade_credit' &&
-            row.company_id !== null &&
-            row.net_cents !== null &&
-            row.vat_rate_basis_points !== null &&
-            row.vat_cents !== null &&
-            row.gross_cents !== null
-              ? {
-                  paymentMethod: row.payment_method,
-                  companyId: String(row.company_id),
-                  netCents: row.net_cents,
-                  vatRateBasisPoints: row.vat_rate_basis_points,
-                  vatCents: row.vat_cents,
-                  grossCents: row.gross_cents,
-                }
-              : {}),
+            ...accounting,
             totalItems: row.total_items,
             hasBackorder: row.has_backorder === 1,
             createdAt: row.created_at,

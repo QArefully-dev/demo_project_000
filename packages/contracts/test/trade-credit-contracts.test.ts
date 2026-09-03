@@ -260,6 +260,19 @@ void test('invoice responses retain V1 document integrity and link lifecycle rec
 });
 
 void test('V10 quote carries country, method, identity, accounting, and terms while V8/V9 read', () => {
+  const frozenLine = {
+    productId: '1',
+    variantId: 1,
+    productName: 'Material sacks',
+    variantLabel: '25kg sack',
+    sku: 'MAT-001',
+    unitPriceCents: 10_000,
+    weightGrams: 25_000,
+    deliveryClass: 'freight' as const,
+    quantity: 1,
+    lineTotalCents: 10_000,
+    consumptionClassification: 'non-food' as const,
+  };
   const v10 = {
     version: 10,
     cartId: uuid,
@@ -285,7 +298,7 @@ void test('V10 quote carries country, method, identity, accounting, and terms wh
     vatCents: 2_000,
     grossCents: 12_000,
     lines: [],
-    variantLines: [],
+    variantLines: [frozenLine],
     deliverySummary: { mode: 'freight', chargeCents: 0, weightGrams: 1_000, reason: 'Freight' },
     inventoryAllocations: [],
     billingEntity: invoice.billingEntity,
@@ -295,6 +308,13 @@ void test('V10 quote carries country, method, identity, accounting, and terms wh
   } as const;
   assert.equal(Value.Check(PersistedCheckoutQuoteV10, v10), true);
   assert.equal(Value.Check(PersistedCheckoutQuote, v10), true);
+  assert.equal(
+    Value.Check(PersistedCheckoutQuoteV10, {
+      ...v10,
+      variantLines: [{ ...frozenLine, sku: undefined }],
+    }),
+    false,
+  );
   assert.equal(Value.Check(PersistedCheckoutQuoteV10, { ...v10, grossCents: 12_001 }), false);
   assert.equal(Value.Check(PersistedCheckoutQuoteV10, { ...v10, totalCents: 10_000 }), false);
   assert.equal(Value.Check(PersistedCheckoutQuoteV10, { ...v10, terms: null }), false);

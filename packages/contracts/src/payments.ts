@@ -384,6 +384,36 @@ const PersistedCheckoutVariantLineV9 = Type.Union([
   PersistedCheckoutVariantLineV9Configured,
 ]);
 
+/** Current V10 lines freeze the catalogue SKU used by finalization. */
+const PersistedCheckoutVariantLineV10Plain = Type.Object(
+  {
+    ...PersistedCheckoutVariantLineFields,
+    sku: Type.String({ minLength: 1, maxLength: 64 }),
+  },
+  { additionalProperties: false },
+);
+
+const PersistedCheckoutVariantLineV10Configured = Type.Intersect([
+  Type.Object(
+    {
+      ...PersistedCheckoutVariantLineFields,
+      sku: Type.String({ minLength: 1, maxLength: 64 }),
+      materialSubtotalCents: MoneyCents,
+      blendingFeeCents: MoneyCents,
+      discountableTotalCents: MoneyCents,
+      customBlend: ResolvedCustomBlendSnapshot,
+    },
+    { additionalProperties: false },
+  ),
+  PersistedCheckoutVariantLineV9Integrity(),
+]);
+
+/** V10 keeps plain and configured lines strict while retaining V8/V9 readers unchanged. */
+const PersistedCheckoutVariantLineV10 = Type.Union([
+  PersistedCheckoutVariantLineV10Plain,
+  PersistedCheckoutVariantLineV10Configured,
+]);
+
 /** Historical V7 schema retained for callers that reference its transport type. */
 export const PersistedCheckoutQuoteV7 = Type.Object(
   {
@@ -445,6 +475,7 @@ const PersistedCheckoutQuoteV10Facts = Type.Object(
   {
     ...PersistedCheckoutQuoteV9.properties,
     version: Type.Literal(10),
+    variantLines: Type.Array(PersistedCheckoutVariantLineV10),
     // Existing persisted rows use a number; transport writers may use the canonical string form.
     // Both forms remain safe and are normalized by the persistence owner.
     userId: Type.Union([

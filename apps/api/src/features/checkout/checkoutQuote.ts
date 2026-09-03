@@ -4,7 +4,6 @@ import {
   parsePersistedCheckoutQuote as parseContractPersistedCheckoutQuote,
   type PaymentMethod,
   type PersistedCheckoutQuoteV10,
-  type PersistedCheckoutQuoteV8,
 } from '@shop/contracts/payments';
 import { SUPPORTED_COUNTRIES, type Country } from '@shop/contracts/country';
 import { countryProfile } from '@shop/contracts/country-profiles';
@@ -506,13 +505,17 @@ export function createCheckoutQuote(params: {
       })
     : 0;
 
-  const variantLines: PersistedCheckoutQuoteV8['variantLines'] = params.cart.items.map((item) => {
+  const variantLines: PersistedCheckoutQuoteV10['variantLines'] = params.cart.items.map((item) => {
     const snap = item.variantSnap;
+    if (!snap || snap.sku.trim() === '') {
+      throw new Error('Checkout quote line is missing an immutable SKU');
+    }
     const line = {
       productId: item.productId,
       variantId: snap?.variantId ?? 0,
       productName: item.product.name,
       variantLabel: snap?.label ?? item.product.name,
+      sku: snap.sku,
       unitPriceCents: resolvedLineUnitPrice(item),
       weightGrams: snap?.weightGrams ?? 1000,
       deliveryClass: snap?.deliveryClass ?? 'parcel',
@@ -520,8 +523,8 @@ export function createCheckoutQuote(params: {
       lineTotalCents: item.lineTotalCents,
       consumptionClassification: item.product.consumptionClassification ?? 'non-food',
     };
-    // Plain lines keep the historical shape: the money split and specification are written only
-    // where a configured blend exists, so ordinary quotes stay byte-identical to prior releases.
+    // V10 freezes the SKU on every line. Plain lines still omit the configured-only money split
+    // and specification so their pricing shape stays unchanged apart from this identity fact.
     if (!item.customBlend) return line;
     return {
       ...line,
