@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { vi } from 'vitest';
 import type { DeliverySlotOptionsResponse } from '@shop/contracts/delivery';
 import type { BillingEntity, DeliverySite } from '@shop/contracts/trade-account';
+import type { CreditAccountMemberView } from '@shop/contracts/trade-credit';
 import { listBillingEntities, listDeliverySites } from '@/api/tradeAccount';
 import { useAuth } from '@/hooks/AuthContext';
 import type { useCart } from '@/hooks/useCart';
@@ -68,6 +69,29 @@ export const signedInUser = {
   displayName: 'Trade Buyer',
   role: 'customer' as const,
   country: 'UK' as const,
+};
+
+export const activeCreditSummary: CreditAccountMemberView = {
+  companyId: '3',
+  state: 'active',
+  status: 'active',
+  creditLimitCents: 1_000_000,
+  outstandingCents: 250_000,
+  heldCents: 0,
+  exposureCents: 250_000,
+  availableCreditCents: 750_000,
+  terms: 'net_30',
+  termsDays: 30,
+  holdReason: null,
+  version: 1,
+  updatedAt: '2026-07-01T00:00:00.000Z',
+};
+
+export const onHoldCreditSummary: CreditAccountMemberView = {
+  ...activeCreditSummary,
+  state: 'on_hold',
+  status: 'on_hold',
+  holdReason: 'Credit review in progress',
 };
 
 export function mockAnonymous() {
@@ -208,15 +232,19 @@ export async function completeDeliveryStep(
   if (options.keyboard) {
     await user.type(screen.getByLabelText('Full name'), 'Checkout Test');
     await user.type(screen.getByLabelText('Email'), 'checkout@example.test');
-    await user.type(screen.getByLabelText('Address line 1'), '1 Test Street');
-    await user.type(screen.getByLabelText('City'), 'Testville');
-    await user.type(screen.getByLabelText('Postcode'), 'TE1 1ST');
+    if (screen.queryByLabelText('Address line 1')) {
+      await user.type(screen.getByLabelText('Address line 1'), '1 Test Street');
+      await user.type(screen.getByLabelText('City'), 'Testville');
+      await user.type(screen.getByLabelText('Postcode'), 'TE1 1ST');
+    }
   } else {
     setInputValue('Full name', 'Checkout Test');
     setInputValue('Email', 'checkout@example.test');
-    setInputValue('Address line 1', '1 Test Street');
-    setInputValue('City', 'Testville');
-    setInputValue('Postcode', 'TE1 1ST');
+    if (screen.queryByLabelText('Address line 1')) {
+      setInputValue('Address line 1', '1 Test Street');
+      setInputValue('City', 'Testville');
+      setInputValue('Postcode', 'TE1 1ST');
+    }
   }
   await user.click(screen.getByRole('button', { name: 'Continue to schedule' }));
   await screen.findByRole('heading', { name: 'Schedule and billing' });
@@ -249,6 +277,11 @@ export async function completeCard(
     setInputValue('Expiry (MM/YY)', '12/99');
     setInputValue('CVC', '123');
   }
+}
+
+export async function completeTradeCredit(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('radio', { name: 'Trade credit' }));
+  await screen.findByTestId('checkout-credit-summary');
 }
 
 export async function settleCheckoutMount() {

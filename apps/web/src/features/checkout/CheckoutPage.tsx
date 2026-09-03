@@ -11,12 +11,17 @@ import { ScheduleBillingStep } from './ScheduleBillingStep';
 import { useCheckoutFlow } from './useCheckoutFlow';
 import { useLocalisation } from '@/i18n/LocaleContext';
 import { checkoutMessages } from '@shop/localisation/messages/checkout';
+import { localizeTradeCreditError } from './checkoutCopy';
 
 export function CheckoutPage() {
   const { translate, formatCivilDate } = useLocalisation();
   const t = (key: keyof typeof checkoutMessages, params?: Record<string, string | number>) =>
     translate(checkoutMessages, key, params);
   const flow = useCheckoutFlow();
+  const renderedPaymentError =
+    flow.paymentMethod === 'trade_credit' && flow.paymentErrorState
+      ? (localizeTradeCreditError(flow.paymentErrorState, translate) ?? flow.paymentError)
+      : flow.paymentError;
   const {
     isInitializing: isCartInitializing,
     isLoading: isCartLoading,
@@ -198,6 +203,14 @@ export function CheckoutPage() {
             )}
             {flow.step === 'payment' && (
               <PaymentDetailsStep
+                paymentMethod={flow.paymentMethod}
+                onPaymentMethodChange={flow.updatePaymentMethod}
+                isAuthenticated={flow.isAuthenticated}
+                creditSummary={flow.creditSummary}
+                creditSummaryStatus={flow.creditSummaryStatus}
+                creditSummaryError={flow.creditSummaryError}
+                creditSummaryUnavailable={flow.creditSummaryUnavailable}
+                onRetryCreditSummary={flow.retryCreditSummary}
                 card={flow.card}
                 fieldError={flow.fieldError}
                 onChange={flow.updateCard}
@@ -208,12 +221,12 @@ export function CheckoutPage() {
                 disabled={flow.submitting || !isCartAvailable}
               />
             )}
-            {flow.paymentError && (
+            {renderedPaymentError && (
               <p
                 role="alert"
                 className="mt-4 rounded-md bg-destructive/5 p-3 text-sm text-destructive"
               >
-                {flow.paymentError}
+                {renderedPaymentError}
               </p>
             )}
           </CardContent>
