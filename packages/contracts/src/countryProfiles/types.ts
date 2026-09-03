@@ -29,12 +29,7 @@ export type VatRateBasisPoints = number & {
  * widen the domain back to arbitrary numbers while the runtime representation stays a number.
  */
 export function createVatRateBasisPoints(value: unknown): VatRateBasisPoints {
-  if (
-    typeof value !== 'number' ||
-    !Number.isSafeInteger(value) ||
-    value < 0 ||
-    value > 10_000
-  ) {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > 10_000) {
     throw new RangeError('VAT rate basis points must be a safe integer from 0 through 10000');
   }
 
