@@ -107,7 +107,7 @@ void test('migration 035 preserves legacy payment/order facts and adds strict cr
 
   assert.equal(
     db.prepare('SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1').pluck().get(),
-    '037',
+    '038',
   );
   assert.deepEqual(
     db
@@ -229,9 +229,9 @@ void test('migration 035 preserves legacy payment/order facts and adds strict cr
   db.prepare(
     `INSERT INTO payments
       (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand,
-       payment_method, company_id, created_at)
+       payment_method, company_id, user_id, created_at)
      VALUES ('credit-schema-trade-payment', 'credit-trade-fingerprint', 'authorized_pending_finalize',
-             12000, NULL, NULL, 'trade_credit', 3501, '2026-09-01T09:01:00.000Z')`,
+             12000, NULL, NULL, 'trade_credit', 3501, 3501, '2026-09-01T09:01:00.000Z')`,
   ).run();
   assert.throws(
     () =>
@@ -239,9 +239,9 @@ void test('migration 035 preserves legacy payment/order facts and adds strict cr
         .prepare(
           `INSERT INTO payments
             (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand,
-             payment_method, company_id)
+             payment_method, company_id, user_id)
            VALUES ('credit-schema-bad-payment', 'bad-payment-fingerprint', 'prepared', 12000,
-                   '4242', NULL, 'trade_credit', 3501)`,
+                  '4242', NULL, 'trade_credit', 3501, 3501)`,
         )
         .run(),
     /CHECK constraint failed/,
@@ -365,8 +365,8 @@ void test('migration 035 preserves legacy payment/order facts and adds strict cr
     db.prepare(
       `INSERT INTO payments
         (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand,
-         payment_method, company_id, created_at)
-       VALUES (?, ?, 'authorized_pending_finalize', 100, NULL, NULL, 'trade_credit', 3501, ?)`,
+         payment_method, company_id, user_id, created_at)
+       VALUES (?, ?, 'authorized_pending_finalize', 100, NULL, NULL, 'trade_credit', 3501, 3501, ?)`,
     ).run(paymentKey, `${paymentKey}-fingerprint`, '2026-09-01T09:05:00.000Z');
     db.prepare(
       `INSERT INTO credit_exposure_holds

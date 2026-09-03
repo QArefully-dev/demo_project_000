@@ -57,6 +57,7 @@ const expectedVersions = [
   '035',
   '036',
   '037',
+  '038',
 ];
 
 /** Every migration up to but excluding `021`, i.e. the schema powderizer still existed in. */
@@ -198,7 +199,7 @@ void test('migrations create a fresh schema, record every version, and remain id
       'company_accounts',
       ['credit_limit_cents', 'credit_terms_days', 'credit_state', 'credit_version'],
     ],
-    ['payments', ['payment_method', 'company_id']],
+    ['payments', ['payment_method', 'company_id', 'user_id']],
     [
       'orders',
       [

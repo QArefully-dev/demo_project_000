@@ -47,7 +47,9 @@ const invoiceDocument = {
   dueAt: '2026-10-01T09:00:00.000Z',
 } as const;
 
-function createFixture(db: Database.Database): void {
+function createFixture(db: Database.Database, includePaymentUserId = false): void {
+  const paymentUserColumn = includePaymentUserId ? ', user_id' : '';
+  const paymentUserValue = includePaymentUserId ? ', 3601' : '';
   db.exec(`
     INSERT INTO users
       (id, email, display_name, password_hash, password_salt, role, country)
@@ -68,10 +70,10 @@ function createFixture(db: Database.Database): void {
 
     INSERT INTO payments
       (id, order_id, idempotency_key, request_fingerprint, status, amount_cents,
-       card_last4, card_brand, created_at, payment_method, company_id)
+       card_last4, card_brand, created_at, payment_method, company_id${paymentUserColumn})
     VALUES (3601, 3601, 'invoice-schema-payment-3601', 'invoice-schema-fingerprint-3601',
             'authorized_pending_finalize', 12000, NULL, NULL, '2026-09-01T09:00:00.000Z',
-            'trade_credit', 3601);
+            'trade_credit', 3601${paymentUserValue});
 
     INSERT INTO credit_exposure_holds
       (id, company_id, payment_idempotency_key, amount_cents, status, expires_at,
@@ -163,7 +165,7 @@ void test('migration 036 creates strict invoice documents, lifecycle projections
         .prepare('SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1')
         .pluck()
         .get(),
-      '037',
+      '038',
     );
     assert.deepEqual(
       db.prepare('SELECT * FROM credit_exposure_holds ORDER BY id').all(),
@@ -346,7 +348,7 @@ void test('invoice document checks reject malformed V1 facts and duplicate ident
   db.pragma('foreign_keys = ON');
   try {
     migrateDatabase(db);
-    createFixture(db);
+    createFixture(db, true);
     db.exec(`
       INSERT INTO users
         (id, email, display_name, password_hash, password_salt, role, country)
@@ -378,9 +380,9 @@ void test('invoice document checks reject malformed V1 facts and duplicate ident
       db.prepare(
         `INSERT INTO payments
           (id, order_id, idempotency_key, request_fingerprint, status, amount_cents,
-           card_last4, card_brand, created_at, payment_method, company_id)
+           card_last4, card_brand, created_at, payment_method, company_id, user_id)
           VALUES (?, ?, ?, ?, 'authorized_pending_finalize', ?, NULL, NULL,
-                  '2026-09-01T09:00:00.000Z', 'trade_credit', 3601)`,
+                  '2026-09-01T09:00:00.000Z', 'trade_credit', 3601, 3601)`,
       ).run(id, id, key, `${key}-fingerprint`, amountCents);
     };
     addOrderPayment(3602, 'invoice-schema-payment-3602');

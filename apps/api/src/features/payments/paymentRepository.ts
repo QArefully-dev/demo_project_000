@@ -35,6 +35,8 @@ export interface PaymentRecord {
   paymentMethod: PaymentMethod;
   /** Server-resolved company authority for a credit intent; cards have no company. */
   companyId: number | null;
+  /** Authenticated buyer identity for a credit intent; legacy cards remain anonymous here. */
+  userId: number | null;
   /** Display-safe card metadata; both values are null for trade-credit intents. */
   cardLast4: string | null;
   cardBrand: string | null;
@@ -60,6 +62,7 @@ interface PaymentRow {
   card_brand: unknown;
   payment_method: unknown;
   company_id: unknown;
+  user_id: unknown;
   order_id: number | null;
   cart_id: string | null;
   quote_json: string | null;
@@ -235,17 +238,22 @@ function toRecord(row: PaymentRow): PaymentRecord {
   if (companyId !== null && (typeof companyId !== 'number' || !isSafePositiveInteger(companyId))) {
     throw new Error('Invalid persisted payment intent');
   }
+  const userId = row.user_id;
+  if (userId !== null && !isSafePositiveInteger(userId)) {
+    throw new Error('Invalid persisted payment intent');
+  }
   if (paymentMethod === 'card') {
     if (
       typeof cardLast4 !== 'string' ||
       !/^\d{4}$/.test(cardLast4) ||
       typeof cardBrand !== 'string' ||
       cardBrand.trim() === '' ||
-      companyId !== null
+      companyId !== null ||
+      userId !== null
     ) {
       throw new Error('Invalid persisted payment intent');
     }
-  } else if (cardLast4 !== null || cardBrand !== null || companyId === null) {
+  } else if (cardLast4 !== null || cardBrand !== null || companyId === null || userId === null) {
     throw new Error('Invalid persisted payment intent');
   }
 
@@ -256,8 +264,9 @@ function toRecord(row: PaymentRow): PaymentRecord {
     status: row.status as IntentPaymentStatus,
     paymentMethod,
     companyId,
-    cardLast4: cardLast4 as string | null,
-    cardBrand: cardBrand as string | null,
+    userId,
+    cardLast4,
+    cardBrand,
     amountCents: row.amount_cents,
     orderId: row.order_id,
     cartId: row.cart_id,
@@ -273,7 +282,7 @@ function toRecord(row: PaymentRow): PaymentRecord {
 
 const paymentColumns = `id, idempotency_key, request_fingerprint, status, order_id, cart_id,
   quote_json, gateway_reference, failure_reason, response_json, reservation_expires_at, created_at,
-  updated_at, amount_cents, card_last4, card_brand, payment_method, company_id`;
+  updated_at, amount_cents, card_last4, card_brand, payment_method, company_id, user_id`;
 
 function isSafePositiveInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
@@ -447,8 +456,8 @@ export function createPaymentRepository(db: Database.Database): PaymentRepositor
       .prepare(
         `INSERT INTO payments
           (idempotency_key, request_fingerprint, status, amount_cents, card_last4, card_brand,
-           cart_id, quote_json, created_at, updated_at, payment_method, company_id)
-         VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
+           cart_id, quote_json, created_at, updated_at, payment_method, company_id, user_id)
+         VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(idempotency_key) DO NOTHING`,
       )
       .run(
@@ -463,6 +472,7 @@ export function createPaymentRepository(db: Database.Database): PaymentRepositor
         params.createdAt,
         paymentMethod,
         companyId,
+        paymentMethod === 'trade_credit' ? userId : null,
       );
     if (result.changes === 1) return { reserved: true };
     const payment = load(params.idempotencyKey);
@@ -496,6 +506,7 @@ export function createPaymentRepository(db: Database.Database): PaymentRepositor
       if (
         stored.paymentMethod !== quoteFacts.paymentMethod ||
         stored.companyId !== quoteFacts.companyId ||
+        (quoteFacts.paymentMethod === 'trade_credit' && stored.userId !== quoteFacts.userId) ||
         (params.paymentMethod !== undefined && expectedMethod !== quoteFacts.paymentMethod) ||
         (params.companyId !== undefined && expectedCompany !== quoteFacts.companyId) ||
         (params.userId !== undefined && expectedUser !== quoteFacts.userId) ||

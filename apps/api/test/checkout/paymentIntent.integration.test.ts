@@ -271,6 +271,7 @@ void test('method-aware reservations persist conditional card and company metada
   const cardRecord = payments.load('00000000-0000-4000-8000-000000000062');
   assert.equal(cardRecord?.paymentMethod, 'card');
   assert.equal(cardRecord?.companyId, null);
+  assert.equal(cardRecord?.userId, null);
   assert.equal(cardRecord?.cardLast4, '4242');
   assert.equal(cardRecord?.cardBrand, 'Visa');
 
@@ -289,6 +290,7 @@ void test('method-aware reservations persist conditional card and company metada
   const creditRecord = payments.load(creditKey);
   assert.equal(creditRecord?.paymentMethod, 'trade_credit');
   assert.equal(creditRecord?.companyId, companyId);
+  assert.equal(creditRecord?.userId, 1);
   assert.equal(creditRecord?.cardLast4, null);
   assert.equal(creditRecord?.cardBrand, null);
 });
@@ -424,6 +426,57 @@ void test('quote persistence rejects changed method/company and malformed condit
   ).run(companyId, key);
   db.pragma('ignore_check_constraints = OFF');
   assert.throws(() => payments.load(key), /Invalid persisted payment intent/);
+});
+
+void test('credit quote persistence binds the quote buyer to the stored reservation buyer', (t) => {
+  const { db } = openSeededDatabase(t);
+  const payments = createPaymentRepository(db);
+  const companyId = (db
+    .prepare('SELECT id FROM company_accounts ORDER BY id LIMIT 1')
+    .pluck()
+    .get() ?? 0) as number;
+  assert.ok(companyId > 0);
+
+  const key = '00000000-0000-4000-8000-000000000066';
+  payments.reservePreGateway({
+    idempotencyKey: key,
+    fingerprint: 'credit-buyer-a-fingerprint',
+    paymentMethod: 'trade_credit',
+    companyId,
+    userId: 1,
+    createdAt,
+  });
+  const quoteForBuyerB = {
+    ...quote('00000000-0000-4000-8000-000000000067', 1200),
+    version: 10,
+    userId: 2,
+    companyId: String(companyId),
+    country: 'UK' as const,
+    paymentMethod: 'trade_credit' as const,
+    netCents: 1200,
+    vatRateBasisPoints: 2000,
+    vatCents: 240,
+    grossCents: 1440,
+    totalCents: 1440,
+    terms: 'net_30' as const,
+  } as unknown as PersistedCheckoutQuote;
+
+  assert.throws(
+    () =>
+      payments.persistQuote({
+        idempotencyKey: key,
+        cartId: quoteForBuyerB.cartId,
+        quote: quoteForBuyerB,
+        updatedAt: createdAt,
+        reservationExpiresAt: '2026-07-14T10:15:00.000Z',
+        paymentMethod: 'trade_credit',
+        companyId,
+        // The caller assertion agrees with the quote, but not with the stored reservation.
+        userId: 2,
+      }),
+    /does not match payment reservation/,
+  );
+  assert.equal(payments.load(key)?.quoteJson, null);
 });
 
 void test('trade-credit reservations require a positive authenticated user', (t) => {

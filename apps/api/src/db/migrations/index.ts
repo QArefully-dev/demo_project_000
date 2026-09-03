@@ -36,6 +36,7 @@ import { mailboxOrderReceiptMigration } from './034_mailbox_order_receipt.js';
 import { tradeCreditAccountsAndIntentsMigration } from './035_trade_credit_accounts_and_intents.js';
 import { creditInvoicesMigration } from './036_credit_invoices.js';
 import { invoiceMailboxMigration } from './037_invoice_mailbox.js';
+import { paymentUserIdentityMigration } from './038_payment_user_identity.js';
 
 export const migrations: readonly Migration[] = [
   initialMigration,
@@ -75,4 +76,5 @@ export const migrations: readonly Migration[] = [
   tradeCreditAccountsAndIntentsMigration,
   creditInvoicesMigration,
   invoiceMailboxMigration,
+  paymentUserIdentityMigration,
 ];

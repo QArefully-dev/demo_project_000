@@ -82,10 +82,10 @@ function createInvoiceFixture(db: Database.Database): number {
 
     INSERT INTO payments
       (id, order_id, idempotency_key, request_fingerprint, status, amount_cents,
-       card_last4, card_brand, created_at, payment_method, company_id)
+       card_last4, card_brand, created_at, payment_method, company_id, user_id)
     VALUES (3702, 3702, 'invoice-mailbox-payment', 'invoice-mailbox-fingerprint',
             'authorized_pending_finalize', 12000, NULL, NULL, '2026-09-01T10:00:00.000Z',
-            'trade_credit', 3702);
+            'trade_credit', 3702, 3702);
   `);
 
   const invoiceId = 3702;
@@ -203,7 +203,7 @@ void test('migration 037 preserves mailbox rows, sequence, and indexes while add
 
   migrateDatabase(db);
 
-  assert.equal(migrationVersions(db).at(-1), '037');
+  assert.equal(migrationVersions(db).at(-1), '038');
   assert.deepEqual(columnNames(db), [
     'id',
     'recipient',
@@ -384,7 +384,7 @@ void test('migration 037 rejects a wrong-shape same-name index before rebuilding
 
   db.exec('DROP INDEX dev_mailbox_invoice_id_idx;');
   migrateDatabase(db);
-  assert.equal(migrationVersions(db).at(-1), '037');
+  assert.equal(migrationVersions(db).at(-1), '038');
   assert.deepEqual(
     (db.pragma('index_info(dev_mailbox_invoice_id_idx)') as { name: string }[]).map(
       (column) => column.name,
