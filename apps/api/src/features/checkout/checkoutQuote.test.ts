@@ -145,6 +145,7 @@ void test('V10 plain quote lines freeze their SKU and reject a missing immutable
     country: 'UK',
     paymentMethod: 'card',
   });
+  assert.strictEqual(quote.version, 10);
   assert.equal(quote.variantLines[0]?.sku, 'MAT-FROZEN-001');
 
   const missingSkuCart = {
