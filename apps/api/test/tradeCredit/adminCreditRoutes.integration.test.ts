@@ -80,7 +80,12 @@ const invoice = {
 } satisfies Invoice;
 
 function createApp() {
-  const calls: { creditQuery?: unknown; invoiceQuery?: unknown; context?: unknown } = {};
+  const calls: {
+    creditQuery?: unknown;
+    invoiceQuery?: unknown;
+    context?: unknown;
+    invoiceCommand?: unknown;
+  } = {};
   const app = Fastify({ ajv: { customOptions: { removeAdditional: false } } });
   app.decorateRequest('authenticatedUser', null);
   app.decorateRequest('sessionToken', null);
@@ -135,8 +140,20 @@ function createApp() {
     getAdmin: () => {
       throw new InvoiceDomainError('INVOICE_NOT_FOUND');
     },
-    settle: () => invoice,
-    void: () => invoice,
+    settle: (input: unknown) => {
+      calls.invoiceCommand = input;
+      if ((input as { standingCountry?: string }).standingCountry !== invoice.country) {
+        throw new InvoiceDomainError('INVOICE_NOT_FOUND');
+      }
+      return invoice;
+    },
+    void: (input: unknown) => {
+      calls.invoiceCommand = input;
+      if ((input as { standingCountry?: string }).standingCountry !== invoice.country) {
+        throw new InvoiceDomainError('INVOICE_NOT_FOUND');
+      }
+      return invoice;
+    },
   } as unknown as Pick<InvoiceService, 'listAdmin' | 'getAdmin' | 'settle' | 'void'>;
   app.register(adminCreditRoutes, { services: { sessions, creditAccounts, invoices } });
   return { app, calls };
@@ -229,4 +246,63 @@ void test('admin credit and invoice routes are country-scoped, typed, and mutati
   });
   assert.equal(invalid.statusCode, 400);
   assert.equal(JSON.stringify(invalid.json()).includes('expectedVersion'), false);
+
+  const settled = await app.inject({
+    method: 'POST',
+    url: '/api/admin/invoices/101/settle',
+    headers: { 'x-test-role': 'admin' },
+    payload: {
+      expectedVersion: 0,
+      idempotencyKey: '223e4567-e89b-42d3-a456-426614174000',
+    },
+  });
+  assert.equal(settled.statusCode, 200);
+  assert.equal((calls.invoiceCommand as { standingCountry: string }).standingCountry, 'UK');
+  assert.deepEqual((calls.invoiceCommand as { context: unknown }).context, {
+    actor: { type: 'user', userId: 9 },
+    requestId: (calls.invoiceCommand as { context: { requestId: string } }).context.requestId,
+    standingCountry: 'UK',
+  });
+
+  const foreignSettle = await app.inject({
+    method: 'POST',
+    url: '/api/admin/invoices/101/settle',
+    headers: { 'x-test-role': 'admin', 'x-shop-country': 'DE' },
+    payload: {
+      expectedVersion: 0,
+      idempotencyKey: '323e4567-e89b-42d3-a456-426614174000',
+    },
+  });
+  assert.equal(foreignSettle.statusCode, 404);
+  assert.equal(foreignSettle.json<{ code: string }>().code, 'INVOICE_NOT_FOUND');
+
+  const voided = await app.inject({
+    method: 'POST',
+    url: '/api/admin/invoices/101/void',
+    headers: { 'x-test-role': 'admin' },
+    payload: {
+      expectedVersion: 0,
+      idempotencyKey: '423e4567-e89b-42d3-a456-426614174000',
+      reason: 'Admin correction',
+    },
+  });
+  assert.equal(voided.statusCode, 200);
+  assert.equal((calls.invoiceCommand as { standingCountry: string }).standingCountry, 'UK');
+  assert.equal(
+    (calls.invoiceCommand as { context: { standingCountry: string } }).context.standingCountry,
+    'UK',
+  );
+
+  const foreignVoid = await app.inject({
+    method: 'POST',
+    url: '/api/admin/invoices/101/void',
+    headers: { 'x-test-role': 'admin', 'x-shop-country': 'DE' },
+    payload: {
+      expectedVersion: 0,
+      idempotencyKey: '523e4567-e89b-42d3-a456-426614174000',
+      reason: 'Foreign attempt',
+    },
+  });
+  assert.equal(foreignVoid.statusCode, 404);
+  assert.equal(foreignVoid.json<{ code: string }>().code, 'INVOICE_NOT_FOUND');
 });

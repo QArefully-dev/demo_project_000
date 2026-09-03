@@ -121,6 +121,7 @@ function setup(t: test.TestContext, options: FinalizationSetupOptions = {}) {
       repository: createInvoiceRepository(db),
       unitOfWork,
       clock,
+      audit,
     }),
     gateway: {
       process: () => Promise.resolve({ status: 'success' as const, reference: 'unused' }),
@@ -453,7 +454,7 @@ function assertSuccessfulUniqueness(fixture: ReturnType<typeof setup>): void {
       inventoryMovements: 1,
       promoReservation: 0,
       promoRedemption: fixture.params.promoCode ? 1 : 0,
-      audit: 2,
+      audit: 3,
       stock: artifacts.stock,
       stockConsumed: artifacts.stockConsumed,
     },

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { openSeededDatabase } from '../support/seededDatabase.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
+import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
+import { createAuditWriter } from '../../src/features/audit/auditService.js';
 import { createInvoiceRepository } from '../../src/features/invoices/invoiceRepository.js';
 import { createInvoiceService } from '../../src/features/invoices/invoiceService.js';
 import { createOrderRepository } from '../../src/features/orders/orderRepository.js';
@@ -62,6 +64,10 @@ void test('credit order repository exposes frozen accounting facts and invoice i
     repository: createInvoiceRepository(db),
     unitOfWork: createUnitOfWork(db),
     clock: { now: () => current },
+    audit: createAuditWriter({
+      repository: createAuditRepository(db),
+      clock: { now: () => current },
+    }),
   });
   const invoice = invoiceService.issue({
     orderId: 9201,

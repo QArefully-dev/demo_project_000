@@ -531,6 +531,8 @@ export default function adminCreditRoutes(
           invoiceId,
           expectedVersion: request.body.expectedVersion,
           idempotencyKey: request.body.idempotencyKey,
+          context: auditContext(request.authenticatedUser!.id, request.id, request.resolvedCountry),
+          standingCountry: request.resolvedCountry,
           actorUserId: request.authenticatedUser!.id,
         }),
       );
@@ -601,6 +603,12 @@ export default function adminCreditRoutes(
             expectedVersion: request.body.expectedVersion,
             idempotencyKey: request.body.idempotencyKey,
             reason: request.body.reason,
+            context: auditContext(
+              request.authenticatedUser!.id,
+              request.id,
+              request.resolvedCountry,
+            ),
+            standingCountry: request.resolvedCountry,
             actorUserId: request.authenticatedUser!.id,
           }),
         );

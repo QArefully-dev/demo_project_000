@@ -5,9 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import Database from 'better-sqlite3';
+import type { Country } from '@shop/contracts/country';
 import { migrateDatabase } from '../../src/db/index.js';
 import { migrations } from '../../src/db/migrations/index.js';
 import { createUnitOfWork } from '../../src/db/unitOfWork.js';
+import { createAuditRepository } from '../../src/features/audit/auditRepository.js';
+import { createAuditWriter } from '../../src/features/audit/auditService.js';
 import { createInvoiceRepository } from '../../src/features/invoices/invoiceRepository.js';
 import { createInvoiceService } from '../../src/features/invoices/invoiceService.js';
 import { InvoiceDomainError } from '../../src/features/invoices/invoiceErrors.js';
@@ -21,6 +24,14 @@ const billingEntity = {
   address: { line1: '1 Invoice Lane', city: 'London', postcode: 'EC1A 1BB', countryCode: 'GB' },
 } as const;
 const paymentKey = '123e4567-e89b-42d3-a456-426614174000';
+
+function lifecycleContext(requestId: string, standingCountry: Country = 'UK') {
+  return {
+    actor: { type: 'user' as const, userId: 9101 },
+    requestId,
+    standingCountry,
+  };
+}
 
 function createFixture(databasePath = ':memory:') {
   const db = new Database(databasePath);
@@ -46,9 +57,9 @@ function createFixture(databasePath = ':memory:') {
     VALUES (9101, 9101, 1, 'Material sacks', 10000, 1, 10000);
     INSERT INTO payments
       (id, order_id, idempotency_key, request_fingerprint, status, amount_cents,
-       card_last4, card_brand, created_at, payment_method, company_id)
+       card_last4, card_brand, created_at, payment_method, company_id, user_id)
     VALUES (9101, 9101, '${paymentKey}', 'invoice-fingerprint', 'authorized_pending_finalize',
-            12000, NULL, NULL, '${issuedAt}', 'trade_credit', 9101);
+            12000, NULL, NULL, '${issuedAt}', 'trade_credit', 9101, 9101);
     INSERT INTO credit_exposure_holds
       (id, company_id, payment_idempotency_key, amount_cents, status,
        authorized_at, created_at, updated_at)
@@ -56,12 +67,23 @@ function createFixture(databasePath = ':memory:') {
   `);
   let current = new Date('2026-09-02T09:00:00.000Z');
   const repository = createInvoiceRepository(db);
+  const audit = createAuditWriter({
+    repository: createAuditRepository(db),
+    clock: { now: () => current },
+  });
   const service = createInvoiceService({
     repository,
     unitOfWork: createUnitOfWork(db),
     clock: { now: () => current },
+    audit,
   });
-  return { db, repository, service, setNow: (value: string) => (current = new Date(value)) };
+  return {
+    db,
+    repository,
+    service,
+    audit,
+    setNow: (value: string) => (current = new Date(value)),
+  };
 }
 
 interface RaceWorker {
@@ -87,6 +109,9 @@ function startRaceWorker(input: {
     .href;
   const serviceUrl = new URL('../../src/features/invoices/invoiceService.ts', import.meta.url).href;
   const unitOfWorkUrl = new URL('../../src/db/unitOfWork.ts', import.meta.url).href;
+  const auditRepositoryUrl = new URL('../../src/features/audit/auditRepository.ts', import.meta.url)
+    .href;
+  const auditServiceUrl = new URL('../../src/features/audit/auditService.ts', import.meta.url).href;
   const code = `
     import { parentPort, workerData } from 'node:worker_threads';
     import Database from 'better-sqlite3';
@@ -98,14 +123,21 @@ function startRaceWorker(input: {
       const { createInvoiceRepository } = await tsImport(workerData.repositoryUrl, import.meta.url);
       const { createInvoiceService } = await tsImport(workerData.serviceUrl, import.meta.url);
       const { createUnitOfWork } = await tsImport(workerData.unitOfWorkUrl, import.meta.url);
+      const { createAuditRepository } = await tsImport(workerData.auditRepositoryUrl, import.meta.url);
+      const { createAuditWriter } = await tsImport(workerData.auditServiceUrl, import.meta.url);
       db = new Database(workerData.databasePath);
       db.pragma('journal_mode = WAL');
       db.pragma('foreign_keys = ON');
       const repository = createInvoiceRepository(db);
+      const audit = createAuditWriter({
+        repository: createAuditRepository(db),
+        clock: { now: () => new Date('2026-09-02T09:00:00.000Z') },
+      });
       const service = createInvoiceService({
         repository,
         unitOfWork: createUnitOfWork(db),
         clock: { now: () => new Date('2026-09-02T09:00:00.000Z') },
+        audit,
       });
       Atomics.store(started, 0, 1);
       Atomics.notify(started, 0);
@@ -144,6 +176,8 @@ function startRaceWorker(input: {
       repositoryUrl,
       serviceUrl,
       unitOfWorkUrl,
+      auditRepositoryUrl,
+      auditServiceUrl,
     },
   });
   const done = new Promise<{
@@ -217,6 +251,8 @@ void test('issues immutable V1 invoice, commits its hold, and replays settlement
       invoiceId: Number(invoice.id),
       expectedVersion: 0,
       idempotencyKey: '223e4567-e89b-42d3-a456-426614174000',
+      context: lifecycleContext('invoice-settlement-request'),
+      standingCountry: 'UK' as const,
     };
     const settled = fixture.service.settle(settlementInput);
     assert.equal(settled.status, 'paid');
@@ -266,6 +302,8 @@ void test('paid invoices cannot be voided and amount input is rejected', () => {
       invoiceId: Number(invoice.id),
       expectedVersion: 0,
       idempotencyKey: '323e4567-e89b-42d3-a456-426614174000',
+      context: lifecycleContext('paid-invoice-settlement-request'),
+      standingCountry: 'UK',
     });
     assert.throws(
       () =>
@@ -274,6 +312,8 @@ void test('paid invoices cannot be voided and amount input is rejected', () => {
           expectedVersion: 1,
           idempotencyKey: '423e4567-e89b-42d3-a456-426614174000',
           reason: 'Cancellation',
+          context: lifecycleContext('paid-invoice-void-request'),
+          standingCountry: 'UK',
         }),
       (error: unknown) =>
         error instanceof InvoiceDomainError && error.code === 'INVOICE_ALREADY_PAID',
@@ -285,6 +325,8 @@ void test('paid invoices cannot be voided and amount input is rejected', () => {
           expectedVersion: 1,
           idempotencyKey: '523e4567-e89b-42d3-a456-426614174000',
           amountCents: 1,
+          context: lifecycleContext('invalid-invoice-settlement-request'),
+          standingCountry: 'UK',
         }),
       (error: unknown) =>
         error instanceof InvoiceDomainError && error.code === 'INVOICE_SETTLEMENT_INVALID',
@@ -303,6 +345,8 @@ void test('voids an open invoice, releases its hold once, and replays by key', (
       expectedVersion: 0,
       idempotencyKey: '623e4567-e89b-42d3-a456-426614174000',
       reason: 'Order cancelled before dispatch',
+      context: lifecycleContext('invoice-void-request'),
+      standingCountry: 'UK' as const,
     };
     const voided = fixture.service.void(voidInput);
     assert.equal(voided.status, 'voided');
@@ -328,6 +372,196 @@ void test('voids an open invoice, releases its hold once, and replays by key', (
   }
 });
 
+void test('settle and void reject foreign standing countries without replay or audit leakage', () => {
+  const settleFixture = createFixture();
+  try {
+    const invoice = settleFixture.service.issue(issueInput());
+    const settlementKey = '723e4567-e89b-42d3-a456-426614174099';
+    assert.throws(
+      () =>
+        settleFixture.service.settle({
+          invoiceId: Number(invoice.id),
+          expectedVersion: 0,
+          idempotencyKey: settlementKey,
+          context: lifecycleContext('foreign-settlement-request', 'DE'),
+          standingCountry: 'DE',
+        }),
+      (error: unknown) => error instanceof InvoiceDomainError && error.code === 'INVOICE_NOT_FOUND',
+    );
+    assert.equal(settleFixture.service.get(Number(invoice.id)).status, 'open');
+    assert.equal(
+      (
+        settleFixture.db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM invoice_events WHERE event_type = 'settled' OR idempotency_key = ?",
+          )
+          .get(settlementKey) as { count: number }
+      ).count,
+      0,
+    );
+    assert.equal(
+      (
+        settleFixture.db
+          .prepare("SELECT COUNT(*) AS count FROM audit_events WHERE action = 'invoice.settled'")
+          .get() as { count: number }
+      ).count,
+      0,
+    );
+
+    const settled = settleFixture.service.settle({
+      invoiceId: Number(invoice.id),
+      expectedVersion: 0,
+      idempotencyKey: settlementKey,
+      context: lifecycleContext('same-key-settlement-request', 'UK'),
+      standingCountry: 'UK',
+    });
+    assert.equal(settled.status, 'paid');
+    assert.equal(
+      (
+        settleFixture.db
+          .prepare("SELECT COUNT(*) AS count FROM audit_events WHERE action = 'invoice.settled'")
+          .get() as { count: number }
+      ).count,
+      1,
+    );
+    assert.throws(
+      () =>
+        settleFixture.service.settle({
+          invoiceId: Number(invoice.id),
+          expectedVersion: 0,
+          idempotencyKey: settlementKey,
+          context: lifecycleContext('foreign-settlement-replay-request', 'DE'),
+          standingCountry: 'DE',
+        }),
+      (error: unknown) => error instanceof InvoiceDomainError && error.code === 'INVOICE_NOT_FOUND',
+    );
+    assert.equal(
+      (
+        settleFixture.db
+          .prepare("SELECT COUNT(*) AS count FROM audit_events WHERE action = 'invoice.settled'")
+          .get() as { count: number }
+      ).count,
+      1,
+    );
+  } finally {
+    settleFixture.db.close();
+  }
+
+  const voidFixture = createFixture();
+  try {
+    const invoice = voidFixture.service.issue(issueInput());
+    const voidKey = '823e4567-e89b-42d3-a456-426614174099';
+    const voidRequest = {
+      invoiceId: Number(invoice.id),
+      expectedVersion: 0,
+      idempotencyKey: voidKey,
+      reason: 'Foreign replay check',
+      context: lifecycleContext('same-key-void-request', 'UK'),
+      standingCountry: 'UK' as const,
+    };
+    assert.throws(
+      () =>
+        voidFixture.service.void({
+          ...voidRequest,
+          context: lifecycleContext('foreign-void-request', 'DE'),
+          standingCountry: 'DE',
+        }),
+      (error: unknown) => error instanceof InvoiceDomainError && error.code === 'INVOICE_NOT_FOUND',
+    );
+    assert.equal(voidFixture.service.get(Number(invoice.id)).status, 'open');
+    assert.deepEqual(
+      voidFixture.db
+        .prepare(
+          `SELECT status FROM credit_exposure_holds
+           WHERE payment_idempotency_key = ?`,
+        )
+        .get(paymentKey),
+      { status: 'committed' },
+    );
+    assert.equal(voidFixture.service.void(voidRequest).status, 'voided');
+    assert.throws(
+      () =>
+        voidFixture.service.void({
+          ...voidRequest,
+          context: lifecycleContext('foreign-void-replay-request', 'DE'),
+          standingCountry: 'DE',
+        }),
+      (error: unknown) => error instanceof InvoiceDomainError && error.code === 'INVOICE_NOT_FOUND',
+    );
+    assert.equal(
+      (
+        voidFixture.db
+          .prepare("SELECT COUNT(*) AS count FROM audit_events WHERE action = 'invoice.voided'")
+          .get() as { count: number }
+      ).count,
+      1,
+    );
+    assert.equal(voidFixture.service.get(Number(invoice.id)).status, 'voided');
+  } finally {
+    voidFixture.db.close();
+  }
+});
+
+void test('rolls back lifecycle state and exposure when its audit append fails', () => {
+  const fixture = createFixture();
+  try {
+    const invoice = fixture.service.issue(issueInput());
+    const service = createInvoiceService({
+      repository: fixture.repository,
+      unitOfWork: createUnitOfWork(fixture.db),
+      clock: { now: () => new Date('2026-09-02T09:00:00.000Z') },
+      audit: {
+        append: () => {
+          throw new Error('audit append failed');
+        },
+      },
+    });
+    assert.throws(
+      () =>
+        service.settle({
+          invoiceId: Number(invoice.id),
+          expectedVersion: 0,
+          idempotencyKey: '923e4567-e89b-42d3-a456-426614174099',
+          context: lifecycleContext('failed-audit-settlement-request'),
+          standingCountry: 'UK',
+        }),
+      /audit append failed/,
+    );
+    assert.equal(fixture.service.get(Number(invoice.id)).status, 'open');
+    assert.equal(
+      (
+        fixture.db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM invoice_events WHERE invoice_id = ? AND event_type = 'settled'",
+          )
+          .get(Number(invoice.id)) as { count: number }
+      ).count,
+      0,
+    );
+    assert.equal(
+      (
+        fixture.db
+          .prepare(
+            `SELECT status FROM credit_exposure_holds
+             WHERE payment_idempotency_key = ?`,
+          )
+          .get(paymentKey) as { status: string }
+      ).status,
+      'committed',
+    );
+    assert.equal(
+      (
+        fixture.db
+          .prepare("SELECT COUNT(*) AS count FROM audit_events WHERE action = 'invoice.settled'")
+          .get() as { count: number }
+      ).count,
+      0,
+    );
+  } finally {
+    fixture.db.close();
+  }
+});
+
 void test('lifecycle CAS gives one settlement winner for stale concurrent callers', () => {
   const fixture = createFixture();
   try {
@@ -336,6 +570,8 @@ void test('lifecycle CAS gives one settlement winner for stale concurrent caller
       invoiceId: Number(invoice.id),
       expectedVersion: 0,
       idempotencyKey: '723e4567-e89b-42d3-a456-426614174000',
+      context: lifecycleContext('cas-winning-settlement-request'),
+      standingCountry: 'UK',
     });
     assert.throws(
       () =>
@@ -343,6 +579,8 @@ void test('lifecycle CAS gives one settlement winner for stale concurrent caller
           invoiceId: Number(invoice.id),
           expectedVersion: 0,
           idempotencyKey: '823e4567-e89b-42d3-a456-426614174000',
+          context: lifecycleContext('cas-losing-settlement-request'),
+          standingCountry: 'UK',
         }),
       (error: unknown) =>
         error instanceof InvoiceDomainError && error.code === 'INVOICE_SETTLEMENT_CONFLICT',
@@ -465,6 +703,8 @@ void test('settle wins a two-connection settle-versus-void race', async () => {
         expectedVersion: 0,
         idempotencyKey: '923e4567-e89b-42d3-a456-426614174000',
         reason: 'Concurrent cancellation',
+        context: lifecycleContext('concurrent-void-request'),
+        standingCountry: 'UK' as const,
       },
     });
     const lockedRepository = {
@@ -483,11 +723,14 @@ void test('settle wins a two-connection settle-versus-void race', async () => {
       repository: lockedRepository,
       unitOfWork: createUnitOfWork(fixture.db),
       clock: { now: () => new Date('2026-09-02T09:00:00.000Z') },
+      audit: fixture.audit,
     });
     const settled = service.settle({
       invoiceId: Number(invoice.id),
       expectedVersion: 0,
       idempotencyKey: 'a23e4567-e89b-42d3-a456-426614174000',
+      context: lifecycleContext('concurrent-settlement-request'),
+      standingCountry: 'UK',
     });
     const raced = await worker.done;
     assert.equal(Atomics.load(worker.started, 0), 1, raced.message);
@@ -524,6 +767,8 @@ void test('same-key settlement replay waits for the first connection and returns
       invoiceId: Number(invoice.id),
       expectedVersion: 0,
       idempotencyKey: 'b23e4567-e89b-42d3-a456-426614174000',
+      context: lifecycleContext('replay-settlement-request'),
+      standingCountry: 'UK' as const,
     };
     const worker = startRaceWorker({
       databasePath,
@@ -546,6 +791,7 @@ void test('same-key settlement replay waits for the first connection and returns
       repository: lockedRepository,
       unitOfWork: createUnitOfWork(fixture.db),
       clock: { now: () => new Date('2026-09-02T09:00:00.000Z') },
+      audit: fixture.audit,
     });
     const settled = service.settle(settlementRequest);
     const replayed = await worker.done;

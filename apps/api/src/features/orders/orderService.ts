@@ -441,11 +441,18 @@ export function createOrderService(
             if (!invoiceService) {
               cancellationLinkageMismatch();
             }
+            const standingCountry = input.context.standingCountry ?? country;
+            const invoiceContext =
+              input.context.standingCountry === undefined
+                ? { ...input.context, standingCountry }
+                : input.context;
             invoiceService.void({
               invoiceId: Number(invoice.id),
               expectedVersion: invoice.lifecycleVersion,
               idempotencyKey: input.idempotencyKey,
               reason: 'Order cancellation',
+              context: invoiceContext,
+              standingCountry,
               actorUserId: input.context.actor.userId,
             });
           }

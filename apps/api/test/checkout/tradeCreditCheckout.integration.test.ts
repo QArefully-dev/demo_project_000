@@ -142,6 +142,7 @@ function setup(
       repository: createInvoiceRepository(db),
       unitOfWork,
       clock,
+      audit,
     }),
     gateway: {
       process: () => Promise.resolve({ status: 'success' as const, reference: 'gateway-unused' }),

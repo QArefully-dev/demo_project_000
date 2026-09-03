@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Value } from '@sinclair/typebox/value';
-import type { Country } from '@shop/contracts/country';
+import { SUPPORTED_COUNTRIES, type Country } from '@shop/contracts/country';
 import {
   BillingEntitySnapshot,
   type BillingEntitySnapshot as BillingEntitySnapshotType,
@@ -13,7 +13,8 @@ import {
   type InvoiceLifecycleStatus,
 } from '@shop/contracts/trade-credit';
 import type { UnitOfWork } from '../../db/unitOfWork.js';
-import type { Clock } from '../audit/auditService.js';
+import type { AuditContext } from '../audit/auditEvent.js';
+import type { AuditWriter, Clock } from '../audit/auditService.js';
 import { calculateInvoiceDueAt } from '../tradeCredit/tradeCreditRules.js';
 import { InvoiceDomainError } from './invoiceErrors.js';
 import type {
@@ -73,6 +74,10 @@ export interface InvoiceIssueInput extends Partial<InvoiceReviewedFacts> {
 
 export interface InvoiceSettlementInput extends InvoiceSettlementBody {
   invoiceId: number;
+  /** Request-scoped actor and standing-country facts used by the lifecycle audit event. */
+  context: AuditContext;
+  /** Country boundary supplied by the authenticated/admin request. */
+  standingCountry: Country;
   actorUserId?: number | null;
   userId?: number | null;
   /** Compatibility alias for internal callers that call this field version. */
@@ -85,6 +90,10 @@ export interface InvoiceVoidInput {
   expectedVersion: number;
   idempotencyKey: string;
   reason: string;
+  /** Request-scoped actor and standing-country facts used by the lifecycle audit event. */
+  context: AuditContext;
+  /** Country boundary supplied by the authenticated/admin request. */
+  standingCountry: Country;
   actorUserId?: number | null;
   userId?: number | null;
   version?: number;
@@ -116,6 +125,7 @@ export interface InvoiceServiceDependencies {
   repository: InvoiceRepository;
   unitOfWork: UnitOfWork;
   clock: Clock;
+  audit: AuditWriter;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -544,8 +554,48 @@ function isBusySnapshot(error: unknown): boolean {
   return isRecord(error) && error.code === 'SQLITE_BUSY_SNAPSHOT';
 }
 
+function lifecycleContext(input: { context?: unknown; standingCountry?: unknown }): {
+  context: AuditContext;
+  standingCountry: Country;
+} {
+  if (!isRecord(input.context)) {
+    throw new InvoiceDomainError(
+      'INVOICE_SETTLEMENT_INVALID',
+      'Invoice lifecycle audit context is required',
+    );
+  }
+  const context = input.context as unknown as AuditContext;
+  const standingCountry = input.standingCountry;
+  if (
+    typeof standingCountry !== 'string' ||
+    !(SUPPORTED_COUNTRIES as readonly string[]).includes(standingCountry)
+  ) {
+    throw new InvoiceDomainError(
+      'INVOICE_SETTLEMENT_INVALID',
+      'Invoice standing country is required',
+    );
+  }
+  if (context.standingCountry !== undefined && context.standingCountry !== standingCountry) {
+    throw new InvoiceDomainError(
+      'INVOICE_SETTLEMENT_INVALID',
+      'Invoice standing country does not match audit context',
+    );
+  }
+  const country = standingCountry as Country;
+  return {
+    context: {
+      ...context,
+      ...(context.standingCountry === undefined ? { standingCountry: country } : {}),
+    },
+    standingCountry: country,
+  };
+}
+
 export function createInvoiceService(dependencies: InvoiceServiceDependencies): InvoiceService {
-  const { repository, unitOfWork, clock } = dependencies;
+  const { repository, unitOfWork, clock, audit } = dependencies;
+  if (!audit || typeof audit.append !== 'function') {
+    throw new Error('Invoice lifecycle mutations require audit dependencies');
+  }
   const now = (): string => clock.now().toISOString();
 
   const requireInvoice = (invoiceId: number, standingCountry?: Country): Invoice => {
@@ -561,20 +611,24 @@ export function createInvoiceService(dependencies: InvoiceServiceDependencies): 
     idempotencyKey: string,
     fingerprint: string,
     operation: 'settled' | 'voided',
+    standingCountry: Country,
   ): Invoice | undefined => {
     const event = repository.findEventByIdempotencyKey(idempotencyKey);
     if (!event) return undefined;
+    // Scope the replay row before checking its operation/fingerprint. A key owned by another
+    // standing country is indistinguishable from a missing key to this caller.
+    const invoice = repository.findAdminById(event.invoice_id, standingCountry, now());
+    if (!invoice) throw new InvoiceDomainError('INVOICE_NOT_FOUND');
     if (event.event_type !== operation || event.request_fingerprint !== fingerprint) {
       throw new InvoiceDomainError(
         operation === 'settled' ? 'INVOICE_SETTLEMENT_CONFLICT' : 'IDEMPOTENCY_CONFLICT',
       );
     }
-    const invoice = repository.findById(event.invoice_id, now());
-    if (!invoice) throw new InvoiceDomainError('INVOICE_NOT_FOUND');
     return invoice;
   };
 
   const settle = (input: InvoiceSettlementInput): Invoice => {
+    const { context, standingCountry } = lifecycleContext(input);
     const invoiceId = positiveId(input.invoiceId, 'invoice id');
     if (Object.prototype.hasOwnProperty.call(input, 'amountCents')) {
       throw new InvoiceDomainError(
@@ -603,9 +657,12 @@ export function createInvoiceService(dependencies: InvoiceServiceDependencies): 
         // The first statement must be a write. Reading the replay event first can leave a WAL
         // snapshot that cannot later be upgraded to a writer after a competing lifecycle commit.
         repository.lockLifecycle?.(invoiceId);
-        const replay = replayOrConflict(idempotencyKey, fingerprint, 'settled');
+        // Scope the requested invoice before consulting the global replay ledger. A foreign
+        // invoice must be indistinguishable from a missing invoice, even when its key has replayed.
+        const initial = requireInvoice(invoiceId, standingCountry);
+        const replay = replayOrConflict(idempotencyKey, fingerprint, 'settled', standingCountry);
         if (replay) return replay;
-        const current = requireInvoice(invoiceId);
+        const current = initial;
         if (current.lifecycleVersion !== expectedVersion) {
           throw new InvoiceDomainError('INVOICE_SETTLEMENT_CONFLICT');
         }
@@ -642,7 +699,15 @@ export function createInvoiceService(dependencies: InvoiceServiceDependencies): 
           releasedAt: occurredAt,
         });
         if (release.mismatch) throw new InvoiceDomainError('INVOICE_TOTAL_MISMATCH');
-        const result = repository.findById(invoiceId, now());
+        audit.append({
+          action: 'invoice.settled',
+          context,
+          invoiceId,
+          orderId: Number(current.orderId),
+          companyId: Number(current.companyId),
+          amountCents: current.grossCents,
+        });
+        const result = repository.findAdminById(invoiceId, standingCountry, now());
         if (!result) throw new InvoiceDomainError('INVOICE_NOT_FOUND');
         return result;
       });
@@ -657,6 +722,7 @@ export function createInvoiceService(dependencies: InvoiceServiceDependencies): 
   };
 
   const voidInvoice = (input: InvoiceVoidInput): Invoice => {
+    const { context, standingCountry } = lifecycleContext(input);
     const invoiceId = positiveId(input.invoiceId, 'invoice id');
     const expectedVersion = input.expectedVersion ?? input.version;
     if (
@@ -683,9 +749,12 @@ export function createInvoiceService(dependencies: InvoiceServiceDependencies): 
       unitOfWork.run(() => {
         // See settle(): lifecycle replay/version reads must happen after the writer lock.
         repository.lockLifecycle?.(invoiceId);
-        const replay = replayOrConflict(idempotencyKey, fingerprint, 'voided');
+        // Scope the requested invoice before consulting the global replay ledger. A foreign
+        // invoice must be indistinguishable from a missing invoice, even when its key has replayed.
+        const initial = requireInvoice(invoiceId, standingCountry);
+        const replay = replayOrConflict(idempotencyKey, fingerprint, 'voided', standingCountry);
         if (replay) return replay;
-        const current = requireInvoice(invoiceId);
+        const current = initial;
         if (current.lifecycleVersion !== expectedVersion) {
           throw new InvoiceDomainError('INVOICE_SETTLEMENT_CONFLICT');
         }
@@ -720,7 +789,16 @@ export function createInvoiceService(dependencies: InvoiceServiceDependencies): 
           releasedAt: occurredAt,
         });
         if (release.mismatch) throw new InvoiceDomainError('INVOICE_TOTAL_MISMATCH');
-        const result = repository.findById(invoiceId, now());
+        audit.append({
+          action: 'invoice.voided',
+          context,
+          invoiceId,
+          orderId: Number(current.orderId),
+          companyId: Number(current.companyId),
+          grossCents: current.grossCents,
+          reason,
+        });
+        const result = repository.findAdminById(invoiceId, standingCountry, now());
         if (!result) throw new InvoiceDomainError('INVOICE_NOT_FOUND');
         return result;
       });

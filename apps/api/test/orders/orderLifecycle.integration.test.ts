@@ -92,6 +92,7 @@ function createCreditCancellationFixture(t: test.TestContext) {
     repository: invoiceRepository,
     unitOfWork: createUnitOfWork(db),
     clock: { now: () => now },
+    audit: createAuditWriter({ repository: createAuditRepository(db), clock: { now: () => now } }),
   });
   const invoice = invoiceService.issue({
     orderId,
@@ -713,6 +714,17 @@ void test('unpaid credit cancellation voids its invoice and releases exposure ex
     ).count,
     1,
   );
+  assert.equal(
+    (
+      fixture.db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM audit_events
+           WHERE action = 'invoice.voided' AND entity_id = ?`,
+        )
+        .get(String(fixture.invoice.id)) as { count: number }
+    ).count,
+    1,
+  );
 
   const replay = fixture.service.cancel({
     orderId: fixture.orderId,
@@ -729,6 +741,17 @@ void test('unpaid credit cancellation voids its invoice and releases exposure ex
            WHERE invoice_id = ? AND event_type = 'voided'`,
         )
         .get(Number(fixture.invoice.id)) as { count: number }
+    ).count,
+    1,
+  );
+  assert.equal(
+    (
+      fixture.db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM audit_events
+           WHERE action = 'invoice.voided' AND entity_id = ?`,
+        )
+        .get(String(fixture.invoice.id)) as { count: number }
     ).count,
     1,
   );
@@ -750,6 +773,12 @@ void test('paid credit cancellation rejects before order or exposure mutation', 
     invoiceId: Number(fixture.invoice.id),
     expectedVersion: 0,
     idempotencyKey: '423e4567-e89b-42d3-a456-426614174901',
+    context: {
+      actor: { type: 'user' as const, userId: 9301 },
+      requestId: 'paid-invoice-settlement-request',
+      standingCountry: 'UK',
+    },
+    standingCountry: 'UK',
   });
   assert.throws(
     () =>
