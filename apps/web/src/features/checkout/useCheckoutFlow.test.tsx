@@ -146,8 +146,14 @@ describe('useCheckoutFlow trade-credit state', () => {
     await waitFor(() => expect(result.current.creditSummaryStatus).toBe('loaded'));
 
     act(() => result.current.updatePaymentMethod('card'));
-    await waitFor(() => expect(result.current.creditSummaryUnavailable).toBe(true));
+    expect(result.current.creditSummary).toBe(activeSummary);
+    expect(result.current.creditSummaryStatus).toBe('loaded');
+    expect(result.current.creditSummaryUnavailable).toBe(false);
     expect(result.current.paymentMethod).toBe('card');
+
+    act(() => result.current.updatePaymentMethod('trade_credit'));
+    expect(result.current.creditSummary).toBe(activeSummary);
+    expect(getTradeCreditSummary).toHaveBeenCalledTimes(2);
   });
 
   it('masks a loaded summary during the first render of a new credit identity', async () => {

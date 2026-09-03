@@ -9,6 +9,7 @@ import { useTradeProfile } from '@/features/account/useTradeProfile';
 import { toPostalAddressDraft } from '@/features/account/PostalAddressFields';
 import { getTradeCreditSummary } from '@/api/tradeCredit';
 import { ApiError } from '@/api/client';
+import type { CreditAccountMemberResponse } from '@shop/contracts/trade-credit';
 import { isEligibleForPromo } from './cartValidation';
 import {
   cardFields,
@@ -24,6 +25,8 @@ import {
   selectDiscountCents,
   type CheckoutBilling,
   type CheckoutDelivery,
+  type CheckoutErrorState,
+  type CreditSummaryStatus,
   type Field,
 } from './checkoutState';
 import {
@@ -65,6 +68,15 @@ function creditResponseMeansUnavailable(error: unknown): boolean {
     error.code === 'CREDIT_NOT_ELIGIBLE'
   );
 }
+
+type CreditSnapshot = {
+  identity: string;
+  reloadToken: number;
+  summary: CreditAccountMemberResponse;
+  status: CreditSummaryStatus;
+  errorState: CheckoutErrorState | null;
+  unavailable: boolean;
+};
 
 /** CheckoutPage compatibility facade. Feature concerns live in focused modules. */
 export function useCheckoutFlow() {
@@ -126,19 +138,45 @@ export function useCheckoutFlow() {
 
   const creditGeneration = useRef(0);
   const creditAbort = useRef<AbortController | null>(null);
-  const creditIdentity = `${accountIdentity}:${cartId ?? ''}:${quoteKey ?? ''}:${state.paymentMethod}`;
+  const creditSnapshotRef = useRef<CreditSnapshot | null>(null);
+  // Credit eligibility belongs to the buyer/cart quote, not to the currently selected payment
+  // method. This lets a blocked or ineligible result continue to disable the option after the
+  // buyer temporarily switches to card, without carrying it into a new checkout intent.
+  const creditIdentity = `${accountIdentity}:${cartId ?? ''}:${quoteKey ?? ''}`;
 
   useEffect(() => {
     const generation = ++creditGeneration.current;
     creditAbort.current?.abort();
     creditAbort.current = null;
 
-    // Credit is intentionally not requested for card/anonymous/unavailable-cart states. The
-    // reducer records a safe unavailable result and clears any summary from a previous intent.
-    if (state.paymentMethod !== 'trade_credit' || !isAuthenticated || !cartId || !cartPresent) {
+    const cachedSnapshot = creditSnapshotRef.current;
+    if (cachedSnapshot && cachedSnapshot.identity !== creditIdentity) {
+      creditSnapshotRef.current = null;
+    }
+
+    // Credit is intentionally not requested for card/anonymous/unavailable-cart states. A settled
+    // result for this same checkout intent is retained while card is selected so the radio cannot
+    // become selectable again merely because the reducer resets method-local credit state.
+    if (state.paymentMethod !== 'trade_credit') return;
+
+    if (!isAuthenticated || !cartId || !cartPresent) {
+      creditSnapshotRef.current = null;
       dispatch({ type: 'credit-summary-unavailable', creditIdentity });
       return;
     }
+
+    const currentSnapshot = creditSnapshotRef.current;
+    if (
+      currentSnapshot?.identity === creditIdentity &&
+      currentSnapshot.reloadToken === creditReloadToken &&
+      (currentSnapshot.status === 'loaded' || currentSnapshot.status === 'unavailable')
+    ) {
+      return;
+    }
+
+    // A retry must not expose the previous settled result while the fresh server check is in
+    // flight. The reducer's loading state remains the source for that transient projection.
+    creditSnapshotRef.current = null;
 
     const controller = new AbortController();
     creditAbort.current = controller;
@@ -149,18 +187,47 @@ export function useCheckoutFlow() {
       try {
         const summary = await getTradeCreditSummary({ signal: controller.signal });
         if (generation !== creditGeneration.current || controller.signal.aborted) return;
+        const status = summary !== null && summary.state === 'active' ? 'loaded' : 'unavailable';
+        creditSnapshotRef.current = {
+          identity: creditIdentity,
+          reloadToken: creditReloadToken,
+          summary,
+          status,
+          errorState: null,
+          unavailable: summary === null || summary.state !== 'active',
+        };
         dispatch({ type: 'credit-summary-loaded', requestId, creditIdentity, summary });
       } catch (error) {
         if (generation !== creditGeneration.current || controller.signal.aborted || isAbort(error))
           return;
         if (creditResponseMeansUnavailable(error)) {
+          creditSnapshotRef.current = {
+            identity: creditIdentity,
+            reloadToken: creditReloadToken,
+            summary: null,
+            status: 'unavailable',
+            errorState: null,
+            unavailable: true,
+          };
           dispatch({ type: 'credit-summary-unavailable', requestId, creditIdentity });
         } else {
+          const errorState = checkoutErrorState(
+            error,
+            'checkout.paymentMethod.tradeCreditLoadError',
+          );
+          creditSnapshotRef.current = {
+            identity: creditIdentity,
+            reloadToken: creditReloadToken,
+            summary: null,
+            status: 'error',
+            errorState,
+            unavailable: false,
+          };
           dispatch({
             type: 'credit-summary-failed',
             requestId,
             creditIdentity,
-            errorState: checkoutErrorState(error, 'checkout.paymentMethod.tradeCreditLoadError'),
+            errorState,
           });
         }
       }
@@ -229,15 +296,32 @@ export function useCheckoutFlow() {
   });
   // Effects invalidate old credit state after commit. Masking the projection during the render
   // that first observes a new identity keeps stale balance/eligibility out of the payment gate.
+  const cachedCreditSnapshot =
+    creditSnapshotRef.current?.identity === creditIdentity &&
+    creditSnapshotRef.current.reloadToken === creditReloadToken
+      ? creditSnapshotRef.current
+      : null;
   const creditSummaryIsCurrent = state.creditSummaryIdentity === creditIdentity;
-  const visibleCreditSummary = creditSummaryIsCurrent ? state.creditSummary : null;
-  const visibleCreditSummaryStatus = creditSummaryIsCurrent ? state.creditSummaryStatus : 'idle';
-  const visibleCreditSummaryErrorState = creditSummaryIsCurrent
-    ? state.creditSummaryErrorState
-    : null;
-  const visibleCreditSummaryUnavailable = creditSummaryIsCurrent
-    ? state.creditSummaryUnavailable
-    : false;
+  const visibleCreditSummary = cachedCreditSnapshot
+    ? cachedCreditSnapshot.summary
+    : creditSummaryIsCurrent
+      ? state.creditSummary
+      : null;
+  const visibleCreditSummaryStatus = cachedCreditSnapshot
+    ? cachedCreditSnapshot.status
+    : creditSummaryIsCurrent
+      ? state.creditSummaryStatus
+      : 'idle';
+  const visibleCreditSummaryErrorState = cachedCreditSnapshot
+    ? cachedCreditSnapshot.errorState
+    : creditSummaryIsCurrent
+      ? state.creditSummaryErrorState
+      : null;
+  const visibleCreditSummaryUnavailable = cachedCreditSnapshot
+    ? cachedCreditSnapshot.unavailable
+    : creditSummaryIsCurrent
+      ? state.creditSummaryUnavailable
+      : false;
   const tradeCreditAvailable =
     state.paymentMethod === 'card' ||
     (visibleCreditSummaryStatus === 'loaded' &&

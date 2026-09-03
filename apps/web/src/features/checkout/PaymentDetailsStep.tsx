@@ -58,10 +58,12 @@ export function PaymentDetailsStep({
   const creditIsLoading = creditSummaryStatus === 'loading';
   const creditIsActive = creditSummaryStatus === 'loaded' && creditState === 'active';
   const creditHasBlockedState = creditState === 'on_hold' || creditState === 'suspended';
-  const creditOptionDisabled =
-    !isAuthenticated ||
-    creditHasBlockedState ||
-    (paymentMethod === 'trade_credit' && creditSummaryUnavailable && !creditSummary);
+  const creditResultUnavailable =
+    creditSummaryUnavailable ||
+    creditSummaryStatus === 'unavailable' ||
+    (creditSummaryStatus === 'loaded' && creditSummary === null) ||
+    creditHasBlockedState;
+  const creditOptionDisabled = !isAuthenticated || creditResultUnavailable;
   const creditSubmitDisabled =
     paymentMethod === 'trade_credit' && (!creditIsActive || creditSummaryError !== null);
 
@@ -202,7 +204,7 @@ export function PaymentDetailsStep({
         </div>
       )}
 
-      {creditSummary && (
+      {paymentMethod === 'trade_credit' && creditSummary && (
         <section
           aria-labelledby="checkout-credit-summary-title"
           className="space-y-2 rounded-lg border border-border bg-muted/40 p-3"

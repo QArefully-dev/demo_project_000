@@ -36,6 +36,13 @@ vi.mock('@/api/tradeAccount', () => ({
   retireBillingEntity: vi.fn(),
 }));
 
+const suspendedCreditSummary = {
+  ...onHoldCreditSummary,
+  state: 'suspended' as const,
+  status: 'suspended' as const,
+  holdReason: 'Account suspended',
+};
+
 beforeEach(() => {
   vi.mocked(useCartContext).mockReturnValue(cartContext);
   vi.mocked(pay).mockReset();
@@ -109,6 +116,30 @@ describe('Checkout trade-credit payment method', { timeout: 20_000 }, () => {
 
     await user.click(screen.getByRole('radio', { name: 'Card' }));
     expect(screen.getByLabelText('Card number')).toBeInTheDocument();
+  });
+
+  it.each([
+    { label: 'null', summary: null },
+    { label: 'on-hold', summary: onHoldCreditSummary },
+    { label: 'suspended', summary: suspendedCreditSummary },
+  ])('keeps $label trade credit disabled after switching to card', async ({ summary }) => {
+    mockSignedIn();
+    vi.mocked(getTradeCreditSummary).mockResolvedValue(summary);
+    const user = userEvent.setup();
+
+    await renderCheckout();
+    await continueToPayment(user);
+    const tradeCredit = screen.getByRole('radio', { name: 'Trade credit' });
+    await user.click(tradeCredit);
+    await waitFor(() => expect(getTradeCreditSummary).toHaveBeenCalledOnce());
+    await waitFor(() => expect(tradeCredit).toBeDisabled());
+
+    await user.click(screen.getByRole('radio', { name: 'Card' }));
+    expect(screen.getByLabelText('Card number')).toBeInTheDocument();
+    expect(tradeCredit).toBeDisabled();
+
+    await user.click(tradeCredit);
+    expect(getTradeCreditSummary).toHaveBeenCalledOnce();
   });
 
   it('announces credit loading and offers a retry after a load error', async () => {
