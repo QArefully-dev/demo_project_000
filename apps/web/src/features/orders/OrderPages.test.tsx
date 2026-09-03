@@ -3,9 +3,10 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OrderDetailResponse, OrderListResponse } from '@shop/contracts/orders';
+import type { InvoiceDetailResponse } from '@shop/contracts/trade-credit';
 import type { ResolvedCustomBlendSnapshot } from '@shop/contracts/custom-blends';
 import { ApiError } from '@/api/client';
-import { cancelOrder, getOrder, getOrders } from '@/api/orders';
+import { cancelOrder, getOrder, getOrderInvoice, getOrders } from '@/api/orders';
 import { fetchReturnOverview } from '@/api/returns';
 import { useCartContext } from '@/hooks/CartContext';
 import { OrderDetailPage } from './OrderDetailPage';
@@ -23,7 +24,12 @@ import {
 } from './orderPresentation';
 import { formatDualTotal } from '@shop/localisation';
 
-vi.mock('@/api/orders', () => ({ getOrders: vi.fn(), getOrder: vi.fn(), cancelOrder: vi.fn() }));
+vi.mock('@/api/orders', () => ({
+  getOrders: vi.fn(),
+  getOrder: vi.fn(),
+  getOrderInvoice: vi.fn(),
+  cancelOrder: vi.fn(),
+}));
 vi.mock('@/api/returns', () => ({ fetchReturnOverview: vi.fn(), createReturnRequest: vi.fn() }));
 vi.mock('@/hooks/CartContext', () => ({ useCartContext: vi.fn() }));
 
@@ -152,6 +158,53 @@ const tradeDetail: OrderDetailResponse = {
   purchaseOrderReference: 'PO-55120',
 };
 
+const creditDetail: OrderDetailResponse = {
+  ...tradeDetail,
+  paymentMethod: 'trade_credit',
+  companyId: '1',
+  country: 'UK',
+  netCents: 2200,
+  vatRateBasisPoints: 0,
+  vatCents: 0,
+  grossCents: 2200,
+};
+
+const invoice: InvoiceDetailResponse = {
+  version: 1,
+  id: '301',
+  invoiceNumber: 'QME-2026-000301',
+  orderId: '12',
+  companyId: '1',
+  userId: '1',
+  country: 'UK',
+  paymentMethod: 'trade_credit',
+  currency: 'GBP',
+  terms: 'net_30',
+  termsDays: 30,
+  billingEntity: tradeDetail.billingEntity!,
+  purchaseOrderReference: 'PO-55120',
+  lines: [
+    {
+      lineId: '31',
+      description: 'Oat powder',
+      productId: 'oat',
+      quantity: 1,
+      unitPriceCents: 1000,
+      netCents: 1000,
+    },
+  ],
+  netCents: 2200,
+  vatRateBasisPoints: 0,
+  vatCents: 0,
+  grossCents: 2200,
+  issuedAt: '2026-07-14T00:00:00.000Z',
+  dueAt: '2026-08-13T00:00:00.000Z',
+  status: 'open',
+  lifecycleStatus: 'open',
+  lifecycleVersion: 1,
+  settledAt: null,
+};
+
 const resolvedOrderBlend: ResolvedCustomBlendSnapshot = {
   configKey: 'e'.repeat(64),
   basePercentage: 75,
@@ -243,6 +296,7 @@ describe('customer order UI', () => {
   beforeEach(() => {
     vi.mocked(getOrders).mockReset();
     vi.mocked(getOrder).mockReset();
+    vi.mocked(getOrderInvoice).mockReset();
     vi.mocked(cancelOrder).mockReset();
     vi.mocked(fetchReturnOverview).mockReset();
     vi.mocked(useCartContext).mockReset();
@@ -740,6 +794,32 @@ describe('customer order UI', () => {
     expect(screen.getByText('PO-55120')).toBeInTheDocument();
   });
 
+  it('loads an immutable credit invoice for an owned order and hides returns', async () => {
+    vi.mocked(getOrder).mockResolvedValue({ ...creditDetail, status: 'delivered' });
+    vi.mocked(getOrderInvoice).mockResolvedValue(invoice);
+
+    render(
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders/12']}
+      >
+        <Routes>
+          <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(getOrderInvoice).toHaveBeenCalled());
+    expect(await screen.findByText(/Invoice number: QME-2026-000301/)).toBeInTheDocument();
+    expect(screen.getByText('Trade credit')).toBeInTheDocument();
+    expect(screen.getByTestId('invoice-status')).toHaveAttribute(
+      'aria-label',
+      'Invoice status: Open',
+    );
+    expect(screen.getByText('Payment terms: net 30 days')).toBeInTheDocument();
+    expect(screen.queryByText('Return items')).not.toBeInTheDocument();
+  });
+
   it('omits the delivery and billing section entirely for a legacy order', async () => {
     vi.mocked(getOrder).mockResolvedValue(detail);
     render(
@@ -792,6 +872,7 @@ describe('Buy Again placement on the order surfaces', () => {
   beforeEach(() => {
     vi.mocked(getOrders).mockReset();
     vi.mocked(getOrder).mockReset();
+    vi.mocked(getOrderInvoice).mockReset();
     vi.mocked(useCartContext).mockReset();
     vi.mocked(useCartContext).mockReturnValue(cartStub());
     vi.mocked(fetchReturnOverview).mockReset();

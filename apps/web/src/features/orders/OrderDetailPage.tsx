@@ -180,7 +180,9 @@ export function OrderDetailPage() {
         <ReorderOutcomeList orderId={order.id} state={buyAgainState} />
       </section>
       <SaveOrderAsListButton orderId={order.id} />
-      <ReturnErrorBoundary>{orderId && <ReturnPanel orderId={orderId} />}</ReturnErrorBoundary>
+      {order.paymentMethod !== 'trade_credit' && (
+        <ReturnErrorBoundary>{orderId && <ReturnPanel orderId={orderId} />}</ReturnErrorBoundary>
+      )}
       {confirming && (
         <div
           role="dialog"

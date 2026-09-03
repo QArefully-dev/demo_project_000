@@ -1,8 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CreditAccountMemberView } from '@shop/contracts/trade-credit';
 import { CompanyPage } from './CompanyPage';
 import * as companyApi from '@/api/companyAccounts';
+import { getTradeCreditSummary } from '@/api/tradeCredit';
 
 vi.mock('@/api/companyAccounts', () => ({
   getCompany: vi.fn(),
@@ -15,6 +17,7 @@ vi.mock('@/api/companyAccounts', () => ({
   updateMemberRole: vi.fn(),
   updateThreshold: vi.fn(),
 }));
+vi.mock('@/api/tradeCredit', () => ({ getTradeCreditSummary: vi.fn() }));
 const owner = {
   company: {
     id: '1',
@@ -34,9 +37,23 @@ const owner = {
     createdAt: '2026-07-01T00:00:00.000Z',
   },
 };
+const creditSummary = {
+  companyId: '1',
+  state: 'active' as const,
+  creditLimitCents: 100_000,
+  outstandingCents: 20_000,
+  heldCents: 5_000,
+  exposureCents: 25_000,
+  availableCreditCents: 75_000,
+  terms: 'net_30' as const,
+  holdReason: null,
+  version: 1,
+  updatedAt: '2026-07-01T00:00:00.000Z',
+} satisfies CreditAccountMemberView;
 describe('CompanyPage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(getTradeCreditSummary).mockResolvedValue(null);
   });
   it('creates a company for a non-member', async () => {
     vi.mocked(companyApi.getCompany).mockResolvedValue(null);
@@ -53,6 +70,31 @@ describe('CompanyPage', () => {
     vi.mocked(companyApi.listInvites).mockResolvedValue([]);
     render(<CompanyPage />);
     expect(await screen.findByRole('heading', { name: 'Invite a member' })).toBeInTheDocument();
+  });
+  it('shows server credit values for a non-owner company role', async () => {
+    vi.mocked(companyApi.getCompany).mockResolvedValue({
+      ...owner,
+      membership: { ...owner.membership, role: 'buyer' as const },
+    });
+    vi.mocked(companyApi.listMembers).mockResolvedValue([owner.membership]);
+    vi.mocked(getTradeCreditSummary).mockResolvedValue(creditSummary);
+    render(<CompanyPage />);
+    expect(await screen.findByRole('heading', { name: 'Trade credit' })).toBeInTheDocument();
+    expect(screen.getByText('Credit limit (GBP): £1,000.00')).toBeInTheDocument();
+    expect(screen.getByText('Available credit (GBP): £750.00')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Invite a member' })).not.toBeInTheDocument();
+  });
+  it('distinguishes company load failure from no company and retries the primary load', async () => {
+    vi.mocked(companyApi.getCompany)
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValueOnce(null);
+    const user = userEvent.setup();
+    render(<CompanyPage />);
+    expect(await screen.findByText('Unable to load company details.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(
+      await screen.findByText('Join or create a company to view trade-credit details.'),
+    ).toBeInTheDocument();
   });
   it('uses exact decimal cents and rejects fractions beyond pence precision', async () => {
     vi.mocked(companyApi.getCompany).mockResolvedValue(owner);

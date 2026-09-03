@@ -25,9 +25,12 @@ import {
   hasOrderTradeDetails,
   orderStatusLabel,
 } from './orderPresentation';
+import { InvoiceDetails } from './InvoiceDetails';
 
 type Props = {
   order: OrderDetailResponse;
+  /** Guest confirmation uses an exact-order capability and must not load the invoice endpoint. */
+  showInvoice?: boolean;
   allowCancellation?: boolean;
   isCancelling?: boolean;
   onRequestCancellation?: () => void;
@@ -233,6 +236,7 @@ function OrderCustomBlendDetails({
 
 export function OrderDetailView({
   order,
+  showInvoice = true,
   allowCancellation = false,
   isCancelling = false,
   onRequestCancellation,
@@ -375,6 +379,8 @@ export function OrderDetailView({
           </div>
         </CardContent>
       </Card>
+
+      {showInvoice && <InvoiceDetails order={order} />}
 
       {hasOrderTradeDetails(order) && (
         <Card>
