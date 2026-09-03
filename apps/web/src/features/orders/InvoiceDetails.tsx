@@ -47,10 +47,9 @@ function isInvoiceNotFound(error: unknown): boolean {
   );
 }
 
-/** Render one authoritative GBP amount together with its country-local presentation. */
+/** Invoice labels identify authoritative GBP amounts; local display belongs on the neutral total. */
 function formatInvoiceMoney(cents: number, locale: ReturnType<typeof useLocalisation>): string {
-  const total = locale.formatDualTotal(cents);
-  return total.settlement ? `${total.display} (${total.settlement})` : total.display;
+  return locale.formatSettlementMoney(cents);
 }
 
 function invoiceTerms(invoice: InvoiceDetailResponse): string {
@@ -143,6 +142,7 @@ export function InvoiceDetails({ order, enabled = true }: InvoiceDetailsProps) {
   const billingIdentifiers = formatBillingIdentifiers(invoice.billingEntity, locale);
   const terms = invoiceTerms(invoice);
   const vatRate = locale.number.decimal(invoice.vatRateBasisPoints / 100);
+  const total = locale.formatDualTotal(invoice.grossCents);
 
   return (
     <Card data-testid="invoice-details" aria-label={t('order.invoice.heading')}>
@@ -222,9 +222,17 @@ export function InvoiceDetails({ order, enabled = true }: InvoiceDetailsProps) {
               {t('order.invoice.vatRate', { rate: vatRate })}
             </span>
           </p>
-          <p className="text-base font-bold">
-            {t('order.invoice.gross', { money: formatInvoiceMoney(invoice.grossCents, locale) })}
-          </p>
+          <div className="flex items-center justify-between text-base font-bold">
+            <span>{t('order.total')}</span>
+            <span>
+              {total.display}
+              {total.settlement && (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  {t('order.settlementTotal', { money: total.settlement })}
+                </span>
+              )}
+            </span>
+          </div>
           {invoice.settlement && (
             <p>
               {t('order.invoice.settlement', {

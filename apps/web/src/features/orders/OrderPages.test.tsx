@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -290,6 +290,26 @@ function ConfirmationRoutes() {
       </Routes>
     </>
   );
+}
+
+function OrderNavigationRoutes() {
+  const navigate = useNavigate();
+  return (
+    <>
+      <button onClick={() => navigate('/orders/13')}>Open order 13</button>
+      <Routes>
+        <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+      </Routes>
+    </>
+  );
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
 }
 
 describe('customer order UI', () => {
@@ -818,6 +838,65 @@ describe('customer order UI', () => {
     );
     expect(screen.getByText('Payment terms: net 30 days')).toBeInTheDocument();
     expect(screen.queryByText('Return items')).not.toBeInTheDocument();
+  });
+
+  it('keeps a non-UK invoice total local and qualifies its GBP settlement separately', async () => {
+    vi.mocked(getOrder).mockResolvedValue({ ...creditDetail, status: 'delivered' });
+    vi.mocked(getOrderInvoice).mockResolvedValue(invoice);
+
+    render(
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders/12']}
+      >
+        <Routes>
+          <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const invoiceCard = await screen.findByTestId('invoice-details');
+    expect(within(invoiceCard).getByText('$27.50')).toBeInTheDocument();
+    expect(within(invoiceCard).getByText('GBP settlement: £22.00')).toBeInTheDocument();
+    expect(within(invoiceCard).getByText('Net (GBP): £22.00')).toBeInTheDocument();
+    expect(within(invoiceCard).queryByText(/Net \(GBP\): \$27\.50/)).not.toBeInTheDocument();
+  });
+
+  it('does not carry the previous invoice across deferred order navigation', async () => {
+    const nextOrder = deferred<OrderDetailResponse>();
+    vi.mocked(getOrder)
+      .mockResolvedValueOnce({ ...creditDetail, status: 'delivered' })
+      .mockReturnValueOnce(nextOrder.promise);
+    vi.mocked(getOrderInvoice).mockImplementation((id) =>
+      Promise.resolve(
+        id === '13'
+          ? { ...invoice, id: '302', invoiceNumber: 'QME-2026-000302', orderId: '13' }
+          : invoice,
+      ),
+    );
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders/12']}
+      >
+        <OrderNavigationRoutes />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/Invoice number: QME-2026-000301/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Open order 13' }));
+    await waitFor(() => expect(getOrder).toHaveBeenCalledWith('13'));
+    expect(screen.queryByText(/Invoice number: QME-2026-000301/)).not.toBeInTheDocument();
+    expect(getOrderInvoice).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      nextOrder.resolve({ ...creditDetail, id: '13', status: 'delivered' });
+      await nextOrder.promise;
+    });
+    expect(await screen.findByText(/Invoice number: QME-2026-000302/)).toBeInTheDocument();
+    expect(getOrderInvoice).toHaveBeenCalledWith('13', expect.anything());
   });
 
   it('omits the delivery and billing section entirely for a legacy order', async () => {

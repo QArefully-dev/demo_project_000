@@ -143,6 +143,7 @@ export function OrderDetailPage() {
     );
   }
   if (!order) return <ErrorMessage message={t('order.error.notFound')} />;
+  const isCurrentOrder = order.id === orderId;
   const buyAgainState = stateFor(order.id);
   return (
     <div className="mx-auto max-w-3xl space-y-5">
@@ -162,6 +163,7 @@ export function OrderDetailPage() {
       )}
       <OrderDetailView
         order={order}
+        showInvoice={isCurrentOrder}
         allowCancellation
         isCancelling={cancelling}
         onRequestCancellation={() => setConfirming(true)}

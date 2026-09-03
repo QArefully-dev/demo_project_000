@@ -380,7 +380,7 @@ export function OrderDetailView({
         </CardContent>
       </Card>
 
-      {showInvoice && <InvoiceDetails order={order} />}
+      {showInvoice && <InvoiceDetails key={order.id} order={order} />}
 
       {hasOrderTradeDetails(order) && (
         <Card>
