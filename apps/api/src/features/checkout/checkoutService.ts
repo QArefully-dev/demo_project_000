@@ -4,6 +4,7 @@ import type { CartRepository } from '../cart/cartRepository.js';
 import type { PostalAddress } from '@shop/contracts/address';
 import type { Country } from '@shop/contracts/country';
 import { countryProfile } from '@shop/contracts/country-profiles';
+import type { PaymentMethod } from '@shop/contracts/payments';
 import type { BillingEntitySnapshot } from '@shop/contracts/trade-account';
 import type { ResolvedCustomBlendSnapshot } from '@shop/contracts/custom-blends';
 import { isDeepStrictEqual } from 'node:util';
@@ -28,6 +29,8 @@ import { quoteCartDelivery } from '../delivery/deliveryRules.js';
 import { createCheckoutQuote } from './checkoutQuote.js';
 import { finalizeAuthorizedCheckout } from './checkoutFinalizer.js';
 import { InventoryError } from '../inventory/inventoryTypes.js';
+import { CreditAccountError } from '../tradeCredit/creditAccountService.js';
+import { calculateInvoiceTotals } from '../tradeCredit/tradeCreditRules.js';
 import {
   minimumOrderQuantity,
   resolveTierDiscountPct,
@@ -55,7 +58,139 @@ type Preparation =
   | { quoteTotalCents: number; card: ValidCard; country: Country }
   | { resume: true; country: Country };
 type PreparationStatus = 'prepared' | 'failed_pre_gateway';
+type RequestedPaymentMethod = PaymentMethod | 'invalid';
+type CreditPreparationError =
+  | 'CREDIT_LIMIT_EXCEEDED'
+  | 'CREDIT_ACCOUNT_ON_HOLD'
+  | 'CREDIT_ACCOUNT_SUSPENDED'
+  | 'CREDIT_NOT_ELIGIBLE'
+  | 'CREDIT_PAYMENT_UNAVAILABLE'
+  | 'COMPANY_REQUIRED'
+  | 'PAYMENT_METHOD_INVALID'
+  | 'CARD_FIELDS_FORBIDDEN'
+  | 'NO_ACTIVE_MEMBERSHIP'
+  | 'MEMBERSHIP_ROLE_NOT_ELIGIBLE';
+type PaymentPreparationContext =
+  | { paymentMethod: 'card'; card: ValidCard; companyId: null }
+  | { paymentMethod: 'trade_credit'; card: null; companyId: number; userId: number };
 const RESERVATION_LEASE_MS = 15 * 60_000;
+
+function requestedPaymentMethod(params: CheckoutParams): RequestedPaymentMethod {
+  const value = (params as { paymentMethod?: unknown }).paymentMethod;
+  if (value === undefined || value === 'card') return 'card';
+  if (value === 'trade_credit') return 'trade_credit';
+  return 'invalid';
+}
+
+function hasCardFields(params: CheckoutParams): boolean {
+  return (
+    params.cardNumber !== undefined ||
+    params.cardExpiry !== undefined ||
+    params.cardCvc !== undefined
+  );
+}
+
+function positiveCompanyId(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  }
+  if (typeof value !== 'string' || !/^[1-9][0-9]*$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+/**
+ * Company identity is resolved from the authenticated membership, never from checkout input. An
+ * existing intent's stored company is a safe replay fallback: an authorized intent must remain
+ * resumable even if the member is later retired before finalization retries.
+ */
+function resolveCreditCompanyId(
+  params: CheckoutParams,
+  existing: PaymentRecord | undefined,
+  dependencies: CheckoutDependencies,
+): number | null {
+  if (existing?.paymentMethod === 'trade_credit' && existing.companyId !== null) {
+    return existing.companyId;
+  }
+  if (params.userId === null || !Number.isSafeInteger(params.userId) || params.userId < 1)
+    return null;
+  const active = dependencies.companies?.findActiveByUser(params.userId);
+  const activeCompanyId = positiveCompanyId(active?.company.id);
+  if (activeCompanyId !== null) return activeCompanyId;
+  // Keep direct service compositions useful while the app composition converges on the company
+  // service. The member read is still server-owned and does not accept a caller company id.
+  const member = dependencies.creditAccounts?.getMember?.(params.userId);
+  return positiveCompanyId(member?.companyId);
+}
+
+function mapCreditFailure(
+  error: CreditPreparationError,
+  requestedCents: number,
+  availableCreditCents?: number,
+): CheckoutResult {
+  switch (error) {
+    case 'CREDIT_LIMIT_EXCEEDED':
+      return {
+        success: false,
+        error,
+        requestedCents,
+        availableCreditCents: availableCreditCents ?? 0,
+      };
+    case 'CREDIT_ACCOUNT_ON_HOLD':
+    case 'CREDIT_ACCOUNT_SUSPENDED':
+    case 'CREDIT_NOT_ELIGIBLE':
+    case 'CREDIT_PAYMENT_UNAVAILABLE':
+    case 'COMPANY_REQUIRED':
+    case 'PAYMENT_METHOD_INVALID':
+    case 'CARD_FIELDS_FORBIDDEN':
+      return { success: false, error };
+    case 'NO_ACTIVE_MEMBERSHIP':
+    case 'MEMBERSHIP_ROLE_NOT_ELIGIBLE':
+      return { success: false, error: 'CREDIT_NOT_ELIGIBLE' };
+    default:
+      return { success: false, error: 'CHECKOUT_FAILED' };
+  }
+}
+
+function mapCreditAccountError(error: CreditAccountError, requestedCents: number): CheckoutResult {
+  switch (error.code) {
+    case 'CREDIT_LIMIT_EXCEEDED':
+      return mapCreditFailure(
+        error.code,
+        requestedCents,
+        typeof error.meta?.availableCreditCents === 'number'
+          ? error.meta.availableCreditCents
+          : undefined,
+      );
+    case 'CREDIT_ACCOUNT_ON_HOLD':
+    case 'CREDIT_ACCOUNT_SUSPENDED':
+      return mapCreditFailure(error.code, requestedCents);
+    case 'NO_ACTIVE_MEMBERSHIP':
+    case 'MEMBERSHIP_ROLE_NOT_ELIGIBLE':
+    case 'CREDIT_NOT_ELIGIBLE':
+      return mapCreditFailure('CREDIT_NOT_ELIGIBLE', requestedCents);
+    case 'IDEMPOTENCY_CONFLICT':
+      return { success: false, error: 'IDEMPOTENT_CONFLICT' };
+    default:
+      return mapCreditFailure('CREDIT_PAYMENT_UNAVAILABLE', requestedCents);
+  }
+}
+
+/** Releases a hold only while it is still in the prepared phase. */
+function releasePreparedCreditHold(
+  idempotencyKey: string,
+  dependencies: CheckoutDependencies,
+): void {
+  if (!dependencies.creditAccounts) return;
+  try {
+    dependencies.creditAccounts.releaseHold(idempotencyKey, dependencies.clock.now().toISOString());
+  } catch (error) {
+    // A hold may already have been released by expiry maintenance. Other transitions are a real
+    // invariant failure and must roll back the preparation transaction rather than being hidden.
+    if (error instanceof CreditAccountError && error.code === 'HOLD_INVALID_TRANSITION') return;
+    throw error;
+  }
+}
 
 function preGatewayFailureCode(result: CheckoutResult): PreGatewayFailureCode {
   if (!result.success) {
@@ -109,7 +244,12 @@ function isPendingApprovalPayment(payment: PaymentRecord): boolean {
   }
 }
 
-function quoteTotalBeforeReservation(cart: Cart, promo: PromoValidation | undefined): number {
+function quoteTotalBeforeReservation(
+  cart: Cart,
+  promo: PromoValidation | undefined,
+  paymentMethod: PaymentMethod,
+  country: Country,
+): number {
   const validPromo = promo && promo.valid ? promo.promoCode : undefined;
   const promoScope = validPromo ? resolvePromoScope({ promo: validPromo, cart }) : undefined;
   const discountCents = validPromo
@@ -118,7 +258,16 @@ function quoteTotalBeforeReservation(cart: Cart, promo: PromoValidation | undefi
         discountableSubtotalCents: promoScope!.discountBaseCents,
       })
     : 0;
-  return cart.subtotalCents - discountCents + quoteCartDelivery(cart).chargeCents;
+  const deliveryChargeCents = quoteCartDelivery(cart).chargeCents;
+  if (paymentMethod === 'card') {
+    return cart.subtotalCents - discountCents + deliveryChargeCents;
+  }
+  return calculateInvoiceTotals({
+    merchandiseCents: cart.subtotalCents,
+    promoDiscountCents: discountCents,
+    deliveryCents: deliveryChargeCents,
+    vatRateBasisPoints: countryProfile(country).vatRateBasisPoints,
+  }).grossCents;
 }
 
 /**
@@ -275,27 +424,45 @@ function resolveCommitments(
 
 function prepare(
   params: CheckoutParams,
-  card: ValidCard,
+  method: PaymentPreparationContext,
   dependencies: CheckoutDependencies,
 ): Preparation {
-  const fingerprint = createSafeFingerprint(params, card);
+  const fingerprint = createSafeFingerprint(
+    method.paymentMethod === 'trade_credit'
+      ? { ...params, paymentMethod: 'trade_credit', companyId: method.companyId }
+      : params,
+    method.card,
+  );
   expirePreparedReservations(dependencies);
   const existing = dependencies.payments.load(params.idempotencyKey);
   const approvalRetry = existing !== undefined && isPendingApprovalPayment(existing);
   let preparationStatus: PreparationStatus = approvalRetry ? 'failed_pre_gateway' : 'prepared';
   if (existing) {
+    if (existing.paymentMethod !== method.paymentMethod)
+      return { success: false, error: 'IDEMPOTENT_CONFLICT' };
     if (existing.fingerprint !== fingerprint)
       return { success: false, error: 'IDEMPOTENT_CONFLICT' };
     if (!approvalRetry) return replay(existing, fingerprint, dependencies);
   }
   return dependencies.unitOfWork.run(() => {
     if (!approvalRetry) {
-      const reservation = dependencies.payments.reservePreGateway({
-        idempotencyKey: params.idempotencyKey,
-        fingerprint,
-        card,
-        createdAt: dependencies.clock.now().toISOString(),
-      });
+      const createdAt = dependencies.clock.now().toISOString();
+      const reservation =
+        method.paymentMethod === 'trade_credit'
+          ? dependencies.payments.reservePreGateway({
+              idempotencyKey: params.idempotencyKey,
+              fingerprint,
+              paymentMethod: 'trade_credit',
+              companyId: method.companyId,
+              userId: method.userId,
+              createdAt,
+            })
+          : dependencies.payments.reservePreGateway({
+              idempotencyKey: params.idempotencyKey,
+              fingerprint,
+              card: method.card,
+              createdAt,
+            });
       if (!reservation.reserved) return replay(reservation.payment, fingerprint, dependencies);
     }
     const cart = getCart(
@@ -417,10 +584,18 @@ function prepare(
         preparationStatus,
       );
     const validPromo = promo?.valid ? promo.promoCode : undefined;
+    // Approval must see the exact method-specific amount. Credit uses one invoice-level VAT
+    // calculation in GBP pence; card retains the historical merchandise/discount/delivery total.
+    const quoteTotalCents = quoteTotalBeforeReservation(
+      cart,
+      promo,
+      method.paymentMethod,
+      cartCountry,
+    );
     const approval = dependencies.approvals?.evaluate({
       userId: params.userId,
       cartId: params.cartId,
-      quoteTotalCents: quoteTotalBeforeReservation(cart, promo),
+      quoteTotalCents,
       resolvedCommitments: commitments.resolved,
       idempotencyKey: params.idempotencyKey,
       context: params.auditContext,
@@ -470,6 +645,7 @@ function prepare(
           idempotencyKey: params.idempotencyKey,
           expectedStatus: 'failed_pre_gateway',
           nextStatus: 'prepared',
+          ...(method.paymentMethod === 'trade_credit' ? { amountCents: quoteTotalCents } : {}),
           updatedAt: dependencies.clock.now().toISOString(),
         })
       ) {
@@ -481,7 +657,82 @@ function prepare(
       preparationStatus = 'prepared';
     }
     const createdAt = dependencies.clock.now().toISOString();
+    const reservationExpiresAt = new Date(
+      Date.parse(createdAt) + RESERVATION_LEASE_MS,
+    ).toISOString();
+
+    // Credit exposure is a second money-side reservation. It is acquired only after all buyer,
+    // cart, delivery, promo, and approval gates have passed, while the payment amount is already
+    // set to the exact gross invoice total required by the hold repository.
+    let creditHoldPrepared = false;
+    if (method.paymentMethod === 'trade_credit') {
+      if (!dependencies.creditAccounts) {
+        return failPreparation(
+          params.idempotencyKey,
+          { success: false, error: 'CREDIT_PAYMENT_UNAVAILABLE' },
+          params.auditContext,
+          dependencies,
+          preparationStatus,
+        );
+      }
+      if (
+        !dependencies.payments.transition({
+          idempotencyKey: params.idempotencyKey,
+          expectedStatus: 'prepared',
+          nextStatus: 'prepared',
+          amountCents: quoteTotalCents,
+          updatedAt: createdAt,
+        })
+      ) {
+        const current = dependencies.payments.load(params.idempotencyKey);
+        return current
+          ? replay(current, fingerprint, dependencies)
+          : { success: false, error: 'CHECKOUT_FAILED' };
+      }
+
+      let creditFailure: CheckoutResult | undefined;
+      try {
+        const acquired = dependencies.creditAccounts.tryAcquireHoldInTransaction(method.userId, {
+          paymentIdempotencyKey: params.idempotencyKey,
+          companyId: method.companyId,
+          amountCents: quoteTotalCents,
+          createdAt,
+          expiresAt: reservationExpiresAt,
+        });
+        if (!acquired.ok) {
+          creditFailure = mapCreditFailure(
+            acquired.code,
+            quoteTotalCents,
+            acquired.availableCreditCents,
+          );
+        } else if (acquired.hold.status !== 'prepared') {
+          // An approval retry cannot legitimately encounter an already-authorized hold because
+          // pending approval creates no hold. Treat any such persisted drift as a deterministic
+          // idempotency failure rather than extending exposure silently.
+          creditFailure = { success: false, error: 'IDEMPOTENT_CONFLICT' };
+        } else {
+          creditHoldPrepared = true;
+        }
+      } catch (error) {
+        if (error instanceof CreditAccountError) {
+          creditFailure = mapCreditAccountError(error, quoteTotalCents);
+        } else {
+          throw error;
+        }
+      }
+      if (creditFailure) {
+        return failPreparation(
+          params.idempotencyKey,
+          creditFailure,
+          params.auditContext,
+          dependencies,
+          preparationStatus,
+        );
+      }
+    }
+
     if (!dependencies.carts.reserve(params.cartId, params.idempotencyKey, createdAt)) {
+      if (creditHoldPrepared) releasePreparedCreditHold(params.idempotencyKey, dependencies);
       return failPreparation(
         params.idempotencyKey,
         { success: false, error: 'CHECKOUT_FAILED' },
@@ -500,6 +751,7 @@ function prepare(
       })
     ) {
       dependencies.carts.releaseReservation(params.idempotencyKey);
+      if (creditHoldPrepared) releasePreparedCreditHold(params.idempotencyKey, dependencies);
       return failPreparation(
         params.idempotencyKey,
         { success: false, error: 'PROMO_INVALID' },
@@ -508,9 +760,6 @@ function prepare(
         preparationStatus,
       );
     }
-    const reservationExpiresAt = new Date(
-      Date.parse(createdAt) + RESERVATION_LEASE_MS,
-    ).toISOString();
     let inventoryAllocations;
     try {
       inventoryAllocations = dependencies.inventory.reserveCheckout({
@@ -525,6 +774,7 @@ function prepare(
     } catch (error) {
       dependencies.carts.releaseReservation(params.idempotencyKey);
       dependencies.promos.releaseReservation(params.idempotencyKey);
+      if (creditHoldPrepared) releasePreparedCreditHold(params.idempotencyKey, dependencies);
       if (error instanceof InventoryError && error.code === 'INSUFFICIENT_STOCK') {
         return failPreparation(
           params.idempotencyKey,
@@ -542,7 +792,16 @@ function prepare(
     }
     const quote = createCheckoutQuote({
       cart,
-      checkout: params,
+      checkout:
+        method.paymentMethod === 'trade_credit'
+          ? {
+              ...params,
+              paymentMethod: 'trade_credit',
+              companyId: method.companyId,
+              terms: 'net_30' as const,
+              termsDays: 30 as const,
+            }
+          : { ...params, paymentMethod: 'card' as const },
       resolved: commitments.resolved,
       promo: validPromo,
       createdAt,
@@ -550,7 +809,15 @@ function prepare(
       // Cart identity country is resolved from persistence above; freeze that server fact in V10
       // rather than allowing quote compatibility fields to fall back to a default.
       country: cartCountry,
+      paymentMethod: method.paymentMethod,
       userId: params.userId,
+      ...(method.paymentMethod === 'trade_credit'
+        ? {
+            companyId: method.companyId,
+            terms: 'net_30' as const,
+            termsDays: 30 as const,
+          }
+        : {}),
     });
     if (
       !dependencies.payments.persistQuote({
@@ -559,12 +826,51 @@ function prepare(
         quote,
         updatedAt: createdAt,
         reservationExpiresAt,
+        paymentMethod: method.paymentMethod,
+        ...(method.paymentMethod === 'trade_credit' ? { companyId: method.companyId } : {}),
         userId: params.userId,
       })
     ) {
       throw new Error('Checkout intent quote persistence failed');
     }
-    return { quoteTotalCents: quote.totalCents, card, country: cartCountry };
+    if (method.paymentMethod === 'trade_credit') {
+      try {
+        dependencies.inventory.authorizeReservation(params.idempotencyKey, createdAt);
+      } catch (error) {
+        if (!(error instanceof InventoryError) || error.code !== 'RESERVATION_EXPIRED') throw error;
+        return terminalizePreparedExpiry(
+          params.idempotencyKey,
+          reservationExpiresAt,
+          createdAt,
+          dependencies,
+        );
+      }
+      try {
+        dependencies.creditAccounts!.authorizeHold(params.idempotencyKey, createdAt);
+      } catch (error) {
+        if (!(error instanceof CreditAccountError) || error.code !== 'HOLD_INVALID_TRANSITION')
+          throw error;
+        return terminalizePreparedExpiry(
+          params.idempotencyKey,
+          reservationExpiresAt,
+          createdAt,
+          dependencies,
+        );
+      }
+      if (
+        !dependencies.payments.transition({
+          idempotencyKey: params.idempotencyKey,
+          expectedStatus: 'prepared',
+          nextStatus: 'authorized_pending_finalize',
+          amountCents: quote.totalCents,
+          updatedAt: createdAt,
+        })
+      ) {
+        throw new Error('Checkout intent state changed during credit authorization');
+      }
+      return { resume: true, country: cartCountry };
+    }
+    return { quoteTotalCents: quote.totalCents, card: method.card, country: cartCountry };
   });
 }
 
@@ -746,9 +1052,46 @@ function providerFailure(
 export function createCheckoutService(dependencies: CheckoutDependencies): CheckoutService {
   return {
     async process(params) {
-      const card = validateCard({ ...params, now: dependencies.clock.now() });
+      const paymentMethod = requestedPaymentMethod(params);
+      if (paymentMethod === 'invalid') return { success: false, error: 'PAYMENT_METHOD_INVALID' };
+      if (paymentMethod === 'trade_credit') {
+        if (hasCardFields(params)) return { success: false, error: 'CARD_FIELDS_FORBIDDEN' };
+        const userId = params.userId;
+        if (userId === null) return { success: false, error: 'COMPANY_REQUIRED' };
+        if (!dependencies.creditAccounts)
+          return { success: false, error: 'CREDIT_PAYMENT_UNAVAILABLE' };
+        const existing = dependencies.payments.load(params.idempotencyKey);
+        const companyId = resolveCreditCompanyId(params, existing, dependencies);
+        if (companyId === null) return { success: false, error: 'CREDIT_NOT_ELIGIBLE' };
+        const prepared = prepare(
+          params,
+          { paymentMethod: 'trade_credit', card: null, companyId, userId },
+          dependencies,
+        );
+        if ('success' in prepared) return prepared;
+        if ('resume' in prepared)
+          return resumeFinalization(
+            dependencies,
+            params.idempotencyKey,
+            params.auditContext,
+            prepared.country,
+            selectedDeliverySiteId(params),
+          );
+        return { success: false, error: 'CHECKOUT_FAILED' };
+      }
+
+      const card = validateCard({
+        cardNumber: params.cardNumber ?? '',
+        cardExpiry: params.cardExpiry ?? '',
+        cardCvc: params.cardCvc ?? '',
+        now: dependencies.clock.now(),
+      });
       if (!card) return { success: false, error: 'CARD_INVALID' };
-      const prepared = prepare(params, card, dependencies);
+      const prepared = prepare(
+        params,
+        { paymentMethod: 'card', card, companyId: null },
+        dependencies,
+      );
       if ('success' in prepared) return prepared;
       if ('resume' in prepared)
         return resumeFinalization(
@@ -875,6 +1218,9 @@ function terminalizePreparedExpiry(
   dependencies.carts.releaseReservation(idempotencyKey);
   dependencies.promos.releaseReservation(idempotencyKey);
   dependencies.inventory.releaseReservation(idempotencyKey);
+  if (dependencies.payments.load(idempotencyKey)?.paymentMethod === 'trade_credit') {
+    releasePreparedCreditHold(idempotencyKey, dependencies);
+  }
   return result;
 }
 
