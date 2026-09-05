@@ -108,6 +108,46 @@ void test('error response is a strict legacy/new union', () => {
   );
   assert.equal(
     Value.Check(PublicErrorResponse, {
+      error: 'Pigment cap exceeded',
+      code: 'CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED',
+      meta: { maxPercentage: 10, actualPercentage: 15 },
+    }),
+    true,
+  );
+  assert.equal(
+    Value.Check(PublicErrorResponse, {
+      error: 'Pigment cap exceeded',
+      code: 'CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED',
+      meta: { maxPercentage: 10 },
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(PublicErrorResponse, {
+      error: 'Pigment cap exceeded',
+      code: 'CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED',
+      meta: { maxPercentage: 10, actualPercentage: 15, variantId: '7' },
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(PublicErrorResponse, {
+      error: 'Pigment cap exceeded',
+      code: 'CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED',
+      meta: { maxPercentage: Number.MAX_SAFE_INTEGER + 1, actualPercentage: 15 },
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(PublicErrorResponse, {
+      error: 'Incompatible ingredients',
+      code: 'CUSTOM_BLEND_INCOMPATIBLE',
+      meta: { maxPercentage: 10, actualPercentage: 15 },
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(PublicErrorResponse, {
       error: 'Coded response',
       code: 'RATE_LIMITED',
       details: { retryAfterSeconds: 5 },

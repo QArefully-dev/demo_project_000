@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { Value } from '@sinclair/typebox/value';
 import { Country, type Country as CountryType } from '@shop/contracts/country';
 import { DeliverySlot } from '@shop/contracts/delivery';
+import { parseInvoiceV1 } from '@shop/contracts/trade-credit';
 import {
   MailboxMessage,
   SystemMailboxTemplateKey,
@@ -22,6 +23,8 @@ interface MailboxRow {
   template_key: string | null;
   template_params_json: string | null;
   template_country: string | null;
+  invoice_id: number | null;
+  invoice_document_json: string | null;
   owning_order_id: number | null;
   owning_country: unknown;
   owning_subtotal_cents: number | null;
@@ -49,7 +52,8 @@ export type MailboxAddInput =
       templateParams: unknown;
       country: CountryType;
     })
-  | (MailboxCommonInput & { kind: 'order_receipt'; orderId: number });
+  | (MailboxCommonInput & { kind: 'order_receipt'; orderId: number })
+  | (MailboxCommonInput & { kind: 'invoice_issued'; invoiceId: number });
 
 /** Narrow persisted legacy discriminants before exposing the strict mailbox union. */
 function parseLegacyMailboxKind(kind: unknown): LegacyMailboxKind {
@@ -101,7 +105,8 @@ function mapTemplateRow(row: MailboxRow): MailboxMessageType {
     row.order_id !== null ||
     row.template_key === null ||
     row.template_params_json === null ||
-    row.template_country === null
+    row.template_country === null ||
+    row.invoice_id !== null
   ) {
     return failInvalidMailboxRow(row.id, 'template metadata is incomplete or mixed');
   }
@@ -129,7 +134,8 @@ function mapReceiptRow(row: MailboxRow): MailboxMessageType {
     row.order_id === null ||
     row.template_key !== null ||
     row.template_params_json !== null ||
-    row.template_country !== null
+    row.template_country !== null ||
+    row.invoice_id !== null
   ) {
     return failInvalidMailboxRow(row.id, 'receipt metadata is incomplete or mixed');
   }
@@ -168,15 +174,53 @@ function mapReceiptRow(row: MailboxRow): MailboxMessageType {
   });
 }
 
+/** Invoice mailbox rows store only an immutable document identity. Read the document at the
+ * mailbox boundary so a corrupt/deleted invoice can never be presented as a valid notification;
+ * the transport intentionally exposes no localized or mutable invoice prose. */
+function mapInvoiceRow(row: MailboxRow): MailboxMessageType {
+  if (
+    row.invoice_id === null ||
+    row.order_id !== null ||
+    row.template_key !== null ||
+    row.template_params_json !== null ||
+    row.template_country !== null ||
+    row.invoice_document_json === null
+  ) {
+    return failInvalidMailboxRow(row.id, 'invoice metadata is incomplete or mixed');
+  }
+
+  let document: ReturnType<typeof parseInvoiceV1>;
+  try {
+    document = parseInvoiceV1(JSON.parse(row.invoice_document_json));
+  } catch {
+    return failInvalidMailboxRow(row.id, `invoice ${row.invoice_id} is missing or invalid`);
+  }
+  if (document.id !== String(row.invoice_id)) {
+    return failInvalidMailboxRow(row.id, `invoice ${row.invoice_id} does not match its document`);
+  }
+
+  return assertMessage(row.id, {
+    id: String(row.id),
+    recipient: row.recipient,
+    subject: '',
+    body: '',
+    created: row.created_at,
+    kind: 'invoice_issued',
+    invoiceId: String(row.invoice_id),
+  });
+}
+
 function mapMailboxRow(row: MailboxRow): MailboxMessageType {
   if (row.kind === 'template') return mapTemplateRow(row);
   if (row.kind === 'order_receipt') return mapReceiptRow(row);
+  if (row.kind === 'invoice_issued') return mapInvoiceRow(row);
 
   if (
     row.order_id !== null ||
     row.template_key !== null ||
     row.template_params_json !== null ||
-    row.template_country !== null
+    row.template_country !== null ||
+    row.invoice_id !== null
   ) {
     return failInvalidMailboxRow(row.id, 'legacy metadata is unexpectedly populated');
   }
@@ -198,6 +242,20 @@ export interface MailboxRepository {
 export function createMailboxRepository(db: Database.Database): MailboxRepository {
   return {
     add(input) {
+      if (input.kind === 'invoice_issued') {
+        if (!Number.isSafeInteger(input.invoiceId) || input.invoiceId < 1) {
+          throw new Error(`Invalid mailbox invoice id: ${String(input.invoiceId)}`);
+        }
+        // Subject/body remain blank by design. Readers hydrate the immutable invoice document by
+        // id; persisting generated/localized prose would create a second mutable source of truth.
+        db.prepare(
+          `INSERT INTO dev_mailbox
+             (recipient, subject, body, kind, created_at, invoice_id)
+           VALUES (?, ?, ?, 'invoice_issued', ?, ?)`,
+        ).run(input.recipient, '', '', input.createdAt, input.invoiceId);
+        return;
+      }
+
       if (input.kind === 'template') {
         if (!Value.Check(SystemMailboxTemplateKey, input.templateKey)) {
           throw new Error(`Unsupported mailbox template key: ${String(input.templateKey)}`);
@@ -250,6 +308,7 @@ export function createMailboxRepository(db: Database.Database): MailboxRepositor
         .prepare(
           `SELECT m.id, m.recipient, m.subject, m.body, m.kind, m.created_at,
                   m.order_id, m.template_key, m.template_params_json, m.template_country,
+                  m.invoice_id, i.document_json AS invoice_document_json,
                   o.id AS owning_order_id, o.country AS owning_country,
                   o.subtotal_cents AS owning_subtotal_cents,
                   o.discount_cents AS owning_discount_cents,
@@ -260,6 +319,7 @@ export function createMailboxRepository(db: Database.Database): MailboxRepositor
                   o.purchase_order_reference AS owning_purchase_order_reference
            FROM dev_mailbox m
            LEFT JOIN orders o ON o.id = m.order_id
+           LEFT JOIN invoices i ON i.id = m.invoice_id
            ORDER BY m.created_at DESC, m.id DESC`,
         )
         .all() as MailboxRow[];

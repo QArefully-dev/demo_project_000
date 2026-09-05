@@ -1,4 +1,4 @@
-import type { CustomBlendSnapshot } from '@shop/contracts';
+import type { CustomBlendSnapshot, ResolvedCustomBlendSnapshot } from '@shop/contracts';
 import { resolveClearance } from '../pricing/clearanceRules.js';
 import { resolveUnitPriceCents, validateMoq } from '../pricing/pricingRules.js';
 
@@ -39,7 +39,10 @@ export interface BulkAddOutcome {
   reason?: BulkAddSkipReason;
   /** Post-add cumulative quantity of the `(variantId, configKey)` line. Added outcomes only. */
   resultingQuantity?: number;
-  /** Tier- and clearance-resolved unit price at `resultingQuantity`. Added outcomes only. */
+  /**
+   * Tier- and clearance-resolved unit price at `resultingQuantity`. Added outcomes always carry
+   * this; policy-valid configured skips carry it when their requested quantity was resolvable.
+   */
   resolvedUnitPriceCents?: number;
 }
 
@@ -81,12 +84,14 @@ export interface ClassifyBulkAddGroupInput {
   availability: BulkAddAvailability | undefined;
   /** `undefined` when the group carries no configured blend. */
   blendValid?: boolean;
+  /** Resolver-owned component pricing for a configured group at the resulting quantity. */
+  resolvedBlend?: Pick<ResolvedCustomBlendSnapshot, 'materialUnitPriceCents'>;
   now: Date;
 }
 
 export type BulkAddClassification =
   | { status: 'added'; resultingQuantity: number; resolvedUnitPriceCents: number }
-  | { status: 'skipped'; reason: BulkAddSkipReason };
+  | { status: 'skipped'; reason: BulkAddSkipReason; resolvedUnitPriceCents?: number };
 
 function configKeyOf(request: BulkAddRequest): string {
   return request.customBlend?.configKey ?? '';
@@ -150,12 +155,32 @@ export function classifyBulkAddGroup({
   requestedQuantity,
   availability,
   blendValid,
+  resolvedBlend,
   now,
 }: ClassifyBulkAddGroupInput): BulkAddClassification {
-  if (blockedInCountry) return { status: 'skipped', reason: 'BLOCKED_IN_COUNTRY' };
-  if (!variantRow || variantRow.active !== 1)
-    return { status: 'skipped', reason: 'VARIANT_RETIRED' };
-  if (blendValid === false) return { status: 'skipped', reason: 'BLEND_UNAVAILABLE' };
+  // A configured line can still have a valid, resolver-derived price when policy blocks the
+  // country. Keep that price on the outcome so reorder can disclose configured price drift without
+  // falling back to the base variant price. Ordinary lines have no resolved blend and stay as-is.
+  const skipped = (reason: BulkAddSkipReason): BulkAddClassification => {
+    const carriesResolvedBlendPrice =
+      resolvedBlend !== undefined &&
+      blendValid !== false &&
+      variantRow?.active === 1 &&
+      (reason === 'BLOCKED_IN_COUNTRY' ||
+        reason === 'INSUFFICIENT_STOCK' ||
+        reason === 'BELOW_MOQ');
+    return {
+      status: 'skipped',
+      reason,
+      ...(carriesResolvedBlendPrice
+        ? { resolvedUnitPriceCents: resolvedBlend.materialUnitPriceCents }
+        : {}),
+    };
+  };
+
+  if (blockedInCountry) return skipped('BLOCKED_IN_COUNTRY');
+  if (!variantRow || variantRow.active !== 1) return skipped('VARIANT_RETIRED');
+  if (blendValid === false) return skipped('BLEND_UNAVAILABLE');
   if (
     !Number.isSafeInteger(existingQuantity) ||
     existingQuantity < 0 ||
@@ -164,21 +189,21 @@ export function classifyBulkAddGroup({
     !Number.isSafeInteger(variantRow.moq_sacks) ||
     variantRow.moq_sacks < 1
   ) {
-    return { status: 'skipped', reason: 'INVALID_QUANTITY' };
+    return skipped('INVALID_QUANTITY');
   }
   const resultingQuantity = existingQuantity + requestedQuantity;
   if (!supportsCartLineArithmetic(variantRow, resultingQuantity)) {
-    return { status: 'skipped', reason: 'INVALID_QUANTITY' };
+    return skipped('INVALID_QUANTITY');
   }
 
   // Backorderable stock never blocks; only a non-backorderable shortfall does.
   const backorderable = availability?.backorderable === true;
   if (!backorderable && (availability?.availableToSell ?? 0) < resultingQuantity) {
-    return { status: 'skipped', reason: 'INSUFFICIENT_STOCK' };
+    return skipped('INSUFFICIENT_STOCK');
   }
 
   if (!validateMoq(resultingQuantity, variantRow.weight_grams, variantRow.moq_sacks)) {
-    return { status: 'skipped', reason: 'BELOW_MOQ' };
+    return skipped('BELOW_MOQ');
   }
 
   const clearanceResolution = resolveClearance({
@@ -194,11 +219,9 @@ export function classifyBulkAddGroup({
   return {
     status: 'added',
     resultingQuantity,
-    resolvedUnitPriceCents: resolveUnitPriceCents(
-      resolvedBasePriceCents,
-      resultingQuantity,
-      variantRow.weight_grams,
-    ),
+    resolvedUnitPriceCents:
+      resolvedBlend?.materialUnitPriceCents ??
+      resolveUnitPriceCents(resolvedBasePriceCents, resultingQuantity, variantRow.weight_grams),
   };
 }
 
@@ -215,6 +238,13 @@ export function fanOutBulkAddOutcome(
           resultingQuantity: classification.resultingQuantity,
           resolvedUnitPriceCents: classification.resolvedUnitPriceCents,
         }
-      : { key, status: 'skipped' as const, reason: classification.reason },
+      : {
+          key,
+          status: 'skipped' as const,
+          reason: classification.reason,
+          ...(classification.resolvedUnitPriceCents === undefined
+            ? {}
+            : { resolvedUnitPriceCents: classification.resolvedUnitPriceCents }),
+        },
   );
 }

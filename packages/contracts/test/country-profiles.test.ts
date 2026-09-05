@@ -4,6 +4,7 @@ import { SUPPORTED_COUNTRIES, type Country } from '../src/country.js';
 import {
   COUNTRY_PROFILES,
   countryProfile,
+  createVatRateBasisPoints,
   type CountryProfile,
 } from '../src/countryProfiles/index.js';
 
@@ -23,6 +24,7 @@ const expectedDisplayMetadata = {
     numberLocale: 'en-GB',
     dateLocale: 'en-GB',
     displayCurrency: 'GBP',
+    vatRateBasisPoints: createVatRateBasisPoints(2000),
     exchangeRate: [1, 1],
     bannerMessageKey: undefined,
   },
@@ -31,6 +33,7 @@ const expectedDisplayMetadata = {
     numberLocale: 'en-US',
     dateLocale: 'en-US',
     displayCurrency: 'USD',
+    vatRateBasisPoints: createVatRateBasisPoints(0),
     exchangeRate: [5, 4],
     bannerMessageKey: undefined,
   },
@@ -39,6 +42,7 @@ const expectedDisplayMetadata = {
     numberLocale: 'zh-CN',
     dateLocale: 'zh-CN',
     displayCurrency: 'CNY',
+    vatRateBasisPoints: createVatRateBasisPoints(1300),
     exchangeRate: [9, 1],
     bannerMessageKey: undefined,
   },
@@ -47,6 +51,7 @@ const expectedDisplayMetadata = {
     numberLocale: 'pl-PL',
     dateLocale: 'pl-PL',
     displayCurrency: 'PLN',
+    vatRateBasisPoints: createVatRateBasisPoints(2300),
     exchangeRate: [5, 1],
     bannerMessageKey: undefined,
   },
@@ -55,6 +60,7 @@ const expectedDisplayMetadata = {
     numberLocale: 'es-ES',
     dateLocale: 'es-ES',
     displayCurrency: 'EUR',
+    vatRateBasisPoints: createVatRateBasisPoints(2100),
     exchangeRate: [117, 100],
     bannerMessageKey: 'country.banner',
   },
@@ -63,6 +69,7 @@ const expectedDisplayMetadata = {
     numberLocale: 'de-DE',
     dateLocale: 'de-DE',
     displayCurrency: 'EUR',
+    vatRateBasisPoints: createVatRateBasisPoints(1900),
     exchangeRate: [117, 100],
     bannerMessageKey: undefined,
   },
@@ -71,13 +78,17 @@ const expectedDisplayMetadata = {
     numberLocale: 'fr-FR',
     dateLocale: 'fr-FR',
     displayCurrency: 'EUR',
+    vatRateBasisPoints: createVatRateBasisPoints(2000),
     exchangeRate: [117, 100],
     bannerMessageKey: undefined,
   },
 } as const satisfies Readonly<
   Record<
     Country,
-    Pick<CountryProfile, 'language' | 'numberLocale' | 'dateLocale' | 'displayCurrency'> & {
+    Pick<
+      CountryProfile,
+      'language' | 'numberLocale' | 'dateLocale' | 'displayCurrency' | 'vatRateBasisPoints'
+    > & {
       exchangeRate: readonly [number, number];
       bannerMessageKey: string | undefined;
     }
@@ -104,12 +115,33 @@ void test('display metadata has the exact seven-country fixtures', () => {
         numberLocale: profile.numberLocale,
         dateLocale: profile.dateLocale,
         displayCurrency: profile.displayCurrency,
+        vatRateBasisPoints: profile.vatRateBasisPoints,
         exchangeRate: [profile.exchangeRate.numerator, profile.exchangeRate.denominator],
         bannerMessageKey: profile.bannerMessageKey,
       },
       expected,
     );
   }
+});
+
+void test('VAT rates are immutable integer basis-point values in the inclusive 0..10000 range', () => {
+  for (const country of SUPPORTED_COUNTRIES) {
+    const profile = countryProfile(country);
+    const value = profile.vatRateBasisPoints;
+
+    assert.equal(Number.isSafeInteger(value), true, `${country} VAT rate integer`);
+    assert.ok(value >= 0, `${country} VAT rate lower bound`);
+    assert.ok(value <= 10_000, `${country} VAT rate upper bound`);
+  }
+});
+
+void test('VAT rate construction rejects values outside the safe 0..10000 integer range', () => {
+  for (const value of [1.5, -1, 10_001, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => createVatRateBasisPoints(value), RangeError, `${value} is rejected`);
+  }
+
+  assert.equal(createVatRateBasisPoints(0), 0);
+  assert.equal(createVatRateBasisPoints(10_000), 10_000);
 });
 
 void test('display metadata has constructible Intl locales/currencies/time zones and positive rates', () => {

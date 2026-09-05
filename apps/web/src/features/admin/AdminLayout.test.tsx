@@ -67,6 +67,8 @@ describe('AdminLayout', () => {
     expect(navigation).toHaveTextContent('Aktionen');
     expect(navigation).toHaveTextContent('Benutzer');
     expect(navigation).toHaveTextContent('Bestellungen');
+    expect(navigation).toHaveTextContent('Kreditkonten');
+    expect(navigation).toHaveTextContent('Rechnungen');
     expect(navigation).toHaveTextContent('Jobs');
     expect(navigation).toHaveTextContent('Webhooks');
     expect(navigation).toHaveTextContent('Feature-Flags');
@@ -80,5 +82,20 @@ describe('AdminLayout', () => {
       'href',
       '/admin/reviews',
     );
+    expect(within(navigation).getByRole('link', { name: 'Kreditkonten' })).toHaveAttribute(
+      'href',
+      '/admin/credit-accounts',
+    );
+    expect(within(navigation).getByRole('link', { name: 'Rechnungen' })).toHaveAttribute(
+      'href',
+      '/admin/invoices',
+    );
+    expect(screen.getByRole('link', { name: 'Firmenkredit' })).toHaveAttribute(
+      'href',
+      '/admin/credit-accounts',
+    );
+    expect(
+      screen.getByRole('link', { name: 'Rechnungen aus dem Kauf auf Rechnung' }),
+    ).toHaveAttribute('href', '/admin/invoices');
   });
 });

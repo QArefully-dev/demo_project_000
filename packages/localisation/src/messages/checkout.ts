@@ -534,6 +534,176 @@ export const checkoutMessages = defineMessages({
     ES: 'Mezcla personalizada',
     FR: 'Mélange personnalisé',
   }),
+  'checkout.customBlend.resultFood': text('Food-grade blend', 'Lebensmittelgeeignete Mischung', {
+    CN: '食品级混合',
+    PL: 'Mieszanka przeznaczona do kontaktu z żywnością',
+    ES: 'Mezcla apta para alimentos',
+    FR: 'Mélange de qualité alimentaire',
+  }),
+  'checkout.customBlend.resultNonFood': text(
+    'Non-food blend',
+    'Nicht für Lebensmittel bestimmte Mischung',
+    {
+      CN: '非食品混合',
+      PL: 'Mieszanka nieżywnościowa',
+      ES: 'Mezcla no alimentaria',
+      FR: 'Mélange non alimentaire',
+    },
+  ),
+  'checkout.customBlend.notForConsumption': text(
+    'Not for consumption',
+    'Nicht zum Verzehr geeignet',
+    {
+      CN: '不可食用',
+      PL: 'Nie do spożycia',
+      ES: 'No apto para el consumo',
+      FR: 'Ne pas consommer',
+    },
+  ),
+  'checkout.customBlend.safetyWarning': text(
+    'This blend contains a non-food material. Follow the handling guidance shown for the materials.',
+    'Diese Mischung enthält ein nicht für Lebensmittel bestimmtes Material. Befolgen Sie die angezeigten Hinweise zum Umgang mit den Materialien.',
+    {
+      CN: '此混合物含有非食品材料。请遵循材料显示的处理指南。',
+      PL: 'Ta mieszanka zawiera materiał nieżywnościowy. Postępuj zgodnie z podanymi zaleceniami dotyczącymi obchodzenia się z materiałami.',
+      ES: 'Esta mezcla contiene un material no alimentario. Sigue las indicaciones de manipulación mostradas para los materiales.',
+      FR: 'Ce mélange contient un matériau non alimentaire. Suivez les consignes de manipulation affichées pour les matériaux.',
+    },
+  ),
+  'checkout.customBlend.componentRole': text(
+    'Component role: {role}',
+    'Rolle der Komponente: {role}',
+    {
+      CN: '成分角色：{role}',
+      PL: 'Rola składnika: {role}',
+      ES: 'Función del componente: {role}',
+      FR: 'Rôle du composant : {role}',
+    },
+  ),
+  'checkout.customBlend.componentBase': text('Base', 'Basis', {
+    CN: '基础材料',
+    PL: 'Baza',
+    ES: 'Base',
+    FR: 'Base',
+  }),
+  'checkout.customBlend.componentIngredient': text('Ingredient', 'Zutat', {
+    CN: '成分',
+    PL: 'Składnik',
+    ES: 'Ingrediente',
+    FR: 'Ingrédient',
+  }),
+  'checkout.customBlend.componentWeight': text(
+    'Component weight: {weight}',
+    'Gewicht der Komponente: {weight}',
+    {
+      CN: '成分重量：{weight}',
+      PL: 'Masa składnika: {weight}',
+      ES: 'Peso del componente: {weight}',
+      FR: 'Poids du composant : {weight}',
+    },
+  ),
+  'checkout.customBlend.componentSourcePrice': text(
+    'Source price: {money} per sack',
+    'Quellpreis: {money} pro Sack',
+    {
+      CN: '来源价格：每袋 {money}',
+      PL: 'Cena źródłowa: {money} za worek',
+      ES: 'Precio de origen: {money} por saco',
+      FR: 'Prix source : {money} par sac',
+    },
+  ),
+  'checkout.customBlend.componentClearance': text(
+    'Clearance price applied: {money} per sack',
+    'Ausverkaufspreis angewendet: {money} pro Sack',
+    {
+      CN: '已应用清仓价：每袋 {money}',
+      PL: 'Zastosowano cenę wyprzedażową: {money} za worek',
+      ES: 'Precio de liquidación aplicado: {money} por saco',
+      FR: 'Prix de liquidation appliqué : {money} par sac',
+    },
+  ),
+  'checkout.customBlend.componentTier': text(
+    'Volume tier discount: {discountPct}% off',
+    'Mengenrabatt: {discountPct}%',
+    {
+      CN: '数量等级折扣：优惠 {discountPct}%',
+      PL: 'Rabat z progu ilościowego: {discountPct}%',
+      ES: 'Descuento por volumen: {discountPct}%',
+      FR: 'Remise par palier de volume : {discountPct} %',
+    },
+  ),
+  'checkout.customBlend.componentNextTier': text(
+    '{sacksToNextTier} sacks to the {minTonnes}-tonne tier ({discountPct}% off)',
+    '{sacksToNextTier} Säcke bis zur {minTonnes}-Tonnen-Stufe ({discountPct}% Rabatt)',
+    {
+      CN: '距 {minTonnes} 吨等级还差 {sacksToNextTier} 袋（优惠 {discountPct}%）',
+      PL: 'Do progu {minTonnes} ton brakuje {sacksToNextTier} worków ({discountPct}% rabatu)',
+      ES: 'Faltan {sacksToNextTier} sacos para el nivel de {minTonnes} toneladas ({discountPct}% de descuento)',
+      FR: '{sacksToNextTier} sacs avant le palier de {minTonnes} tonnes ({discountPct} % de remise)',
+    },
+  ),
+  'checkout.customBlend.componentUnitContribution': text(
+    'Unit contribution: {money}',
+    'Einzelbeitrag: {money}',
+    {
+      CN: '单位贡献：{money}',
+      PL: 'Wkład jednostkowy: {money}',
+      ES: 'Contribución por unidad: {money}',
+      FR: 'Contribution unitaire : {money}',
+    },
+  ),
+  'checkout.customBlend.componentSubtotal': text(
+    'Component subtotal: {money}',
+    'Zwischensumme der Komponente: {money}',
+    {
+      CN: '成分小计：{money}',
+      PL: 'Suma częściowa składnika: {money}',
+      ES: 'Subtotal del componente: {money}',
+      FR: 'Sous-total du composant : {money}',
+    },
+  ),
+  'checkout.customBlend.materialUnitPrice': text(
+    'Material price per sack: {money}',
+    'Materialpreis pro Sack: {money}',
+    {
+      CN: '材料每袋价格：{money}',
+      PL: 'Cena materiału za worek: {money}',
+      ES: 'Precio del material por saco: {money}',
+      FR: 'Prix du matériau par sac : {money}',
+    },
+  ),
+  'checkout.customBlend.materialSubtotal': text(
+    'Material total: {money}',
+    'Materialsumme: {money}',
+    {
+      CN: '材料总额：{money}',
+      PL: 'Suma materiałów: {money}',
+      ES: 'Total de materiales: {money}',
+      FR: 'Total des matériaux : {money}',
+    },
+  ),
+  'checkout.customBlend.blendingFee': text('Blending fee: {money}', 'Mischgebühr: {money}', {
+    CN: '混合费用：{money}',
+    PL: 'Opłata za mieszanie: {money}',
+    ES: 'Tarifa de mezcla: {money}',
+    FR: 'Frais de mélange : {money}',
+  }),
+  'checkout.customBlend.lineTotal': text('Blend total: {money}', 'Mischungssumme: {money}', {
+    CN: '混合总额：{money}',
+    PL: 'Suma mieszanki: {money}',
+    ES: 'Total de la mezcla: {money}',
+    FR: 'Total du mélange : {money}',
+  }),
+  'checkout.customBlend.legacyFallback': text(
+    'Pricing and safety details are unavailable for this historic blend.',
+    'Preis- und Sicherheitsangaben für diese historische Mischung sind nicht verfügbar.',
+    {
+      CN: '此历史混合没有可用的价格和安全详情。',
+      PL: 'Szczegóły ceny i bezpieczeństwa tej historycznej mieszanki są niedostępne.',
+      ES: 'Los detalles de precio y seguridad de esta mezcla histórica no están disponibles.',
+      FR: 'Les détails de prix et de sécurité de ce mélange historique sont indisponibles.',
+    },
+  ),
   'checkout.baseMaterial': text('Base material: {money}', 'Basismaterial: {money}', {
     CN: '基础材料：{money}',
     PL: 'Materiał bazowy: {money}',
@@ -1063,6 +1233,277 @@ export const checkoutMessages = defineMessages({
       PL: 'Płatność nie powiodła się. Ponowienie zachowuje bezpieczeństwo próby; zmień dane, aby rozpocząć nową.',
       ES: 'El pago ha fallado. Reintentar mantiene segura esta operación; cambia los datos para iniciar otra.',
       FR: 'Le paiement a échoué. Réessayer conserve cette tentative en sécurité ; modifiez les informations pour en démarrer une nouvelle.',
+    },
+  ),
+
+  // Payment method and trade-credit eligibility. Amounts in these messages are rendered by the
+  // caller; the GBP qualifier keeps the authoritative settlement currency distinct from display.
+  'checkout.paymentMethod.heading': text('Payment method', 'Zahlungsart', {
+    CN: '付款方式',
+    PL: 'Metoda płatności',
+    ES: 'Método de pago',
+    FR: 'Mode de paiement',
+  }),
+  'checkout.paymentMethod.card': text('Card', 'Karte', {
+    CN: '银行卡',
+    PL: 'Karta',
+    ES: 'Tarjeta',
+    FR: 'Carte',
+  }),
+  'checkout.paymentMethod.cardDescription': text(
+    'Pay now with a simulated card',
+    'Jetzt mit einer simulierten Karte bezahlen',
+    {
+      CN: '使用模拟银行卡立即付款',
+      PL: 'Zapłać teraz za pomocą symulowanej karty',
+      ES: 'Paga ahora con una tarjeta simulada',
+      FR: 'Payez maintenant avec une carte simulée',
+    },
+  ),
+  'checkout.paymentMethod.tradeCredit': text('Trade credit', 'Kauf auf Rechnung', {
+    CN: '贸易赊账',
+    PL: 'Kredyt kupiecki',
+    ES: 'Crédito comercial',
+    FR: 'Crédit commercial',
+  }),
+  'checkout.paymentMethod.tradeCreditDescription': text(
+    'Invoice your company in GBP on net-30 terms',
+    'Ihre Firma erhält eine GBP-Rechnung mit Zahlungsziel 30 Tage',
+    {
+      CN: '以英镑开具公司发票，账期为 30 天',
+      PL: 'Otrzymaj fakturę dla firmy w GBP z terminem 30 dni',
+      ES: 'Recibe una factura para tu empresa en GBP con vencimiento a 30 días',
+      FR: 'Recevez une facture d’entreprise en GBP payable sous 30 jours',
+    },
+  ),
+  'checkout.paymentMethod.tradeCreditTerms': text('Net 30 terms', 'Zahlungsziel 30 Tage netto', {
+    CN: '30 天净额账期',
+    PL: 'Termin płatności netto 30 dni',
+    ES: 'Condiciones neto a 30 días',
+    FR: 'Conditions nettes à 30 jours',
+  }),
+  'checkout.paymentMethod.tradeCreditDue': text(
+    'Due 30 days after the invoice is issued',
+    'Fällig 30 Tage nach Ausstellung der Rechnung',
+    {
+      CN: '发票开具后 30 天到期',
+      PL: 'Płatność wymagana 30 dni po wystawieniu faktury',
+      ES: 'Vence 30 días después de emitir la factura',
+      FR: 'Échéance 30 jours après l’émission de la facture',
+    },
+  ),
+  'checkout.paymentMethod.tradeCreditDueOn': text('Due on {date}', 'Fällig am {date}', {
+    CN: '到期日：{date}',
+    PL: 'Termin płatności: {date}',
+    ES: 'Vence el {date}',
+    FR: 'Échéance le {date}',
+  }),
+  'checkout.paymentMethod.tradeCreditAvailable': text(
+    'Available credit (GBP): {money}',
+    'Verfügbarer Kredit (GBP): {money}',
+    {
+      CN: '可用信用额度（GBP）：{money}',
+      PL: 'Dostępny kredyt (GBP): {money}',
+      ES: 'Crédito disponible (GBP): {money}',
+      FR: 'Crédit disponible (GBP) : {money}',
+    },
+  ),
+  'checkout.paymentMethod.tradeCreditUnavailable': text(
+    'Trade credit is unavailable for this order.',
+    'Kauf auf Rechnung ist für diese Bestellung nicht verfügbar.',
+    {
+      CN: '此订单无法使用贸易赊账。',
+      PL: 'Kredyt kupiecki jest niedostępny dla tego zamówienia.',
+      ES: 'El crédito comercial no está disponible para este pedido.',
+      FR: 'Le crédit commercial n’est pas disponible pour cette commande.',
+    },
+  ),
+  'checkout.paymentMethod.tradeCreditIneligible': text(
+    'Trade credit is not available for your company account.',
+    'Kauf auf Rechnung ist für Ihr Firmenkonto nicht verfügbar.',
+    {
+      CN: '您的公司账户无法使用贸易赊账。',
+      PL: 'Kredyt kupiecki nie jest dostępny dla Twojego konta firmowego.',
+      ES: 'El crédito comercial no está disponible para tu cuenta de empresa.',
+      FR: 'Le crédit commercial n’est pas disponible pour votre compte d’entreprise.',
+    },
+  ),
+  'checkout.paymentMethod.tradeCreditOnHold': text(
+    'Trade credit is on hold. Choose card payment or contact your account administrator.',
+    'Kauf auf Rechnung ist vorübergehend gesperrt. Wählen Sie Kartenzahlung oder wenden Sie sich an Ihre Kontoverwaltung.',
+    {
+      CN: '贸易赊账已暂停。请选择银行卡付款或联系账户管理员。',
+      PL: 'Kredyt kupiecki jest wstrzymany. Wybierz płatność kartą lub skontaktuj się z administratorem konta.',
+      ES: 'El crédito comercial está retenido. Elige pagar con tarjeta o contacta con el administrador de tu cuenta.',
+      FR: 'Le crédit commercial est suspendu. Choisissez le paiement par carte ou contactez l’administrateur du compte.',
+    },
+  ),
+  'checkout.paymentMethod.tradeCreditSuspended': text(
+    'Trade credit is suspended. Choose card payment or contact your account administrator.',
+    'Kauf auf Rechnung ist ausgesetzt. Wählen Sie Kartenzahlung oder wenden Sie sich an Ihre Kontoverwaltung.',
+    {
+      CN: '贸易赊账已停用。请选择银行卡付款或联系账户管理员。',
+      PL: 'Kredyt kupiecki jest zawieszony. Wybierz płatność kartą lub skontaktuj się z administratorem konta.',
+      ES: 'El crédito comercial está suspendido. Elige pagar con tarjeta o contacta con el administrador de tu cuenta.',
+      FR: 'Le crédit commercial est désactivé. Choisissez le paiement par carte ou contactez l’administrateur du compte.',
+    },
+  ),
+  'checkout.paymentMethod.tradeCreditLoading': text(
+    'Checking trade-credit availability…',
+    'Verfügbarkeit des Kaufs auf Rechnung wird geprüft …',
+    {
+      CN: '正在检查贸易赊账可用性……',
+      PL: 'Sprawdzanie dostępności kredytu kupieckiego…',
+      ES: 'Comprobando la disponibilidad del crédito comercial…',
+      FR: 'Vérification de la disponibilité du crédit commercial…',
+    },
+  ),
+  'checkout.paymentMethod.tradeCreditLoadError': text(
+    'Trade-credit availability could not be loaded.',
+    'Die Verfügbarkeit des Kaufs auf Rechnung konnte nicht geladen werden.',
+    {
+      CN: '无法加载贸易赊账可用性。',
+      PL: 'Nie można załadować dostępności kredytu kupieckiego.',
+      ES: 'No se pudo cargar la disponibilidad del crédito comercial.',
+      FR: 'Impossible de charger la disponibilité du crédit commercial.',
+    },
+  ),
+  'checkout.paymentMethod.retryTradeCredit': text(
+    'Retry trade-credit check',
+    'Prüfung des Kaufs auf Rechnung wiederholen',
+    {
+      CN: '重试贸易赊账检查',
+      PL: 'Ponów sprawdzanie kredytu kupieckiego',
+      ES: 'Reintentar comprobación del crédito comercial',
+      FR: 'Réessayer la vérification du crédit commercial',
+    },
+  ),
+  'checkout.paymentMethod.tradeCreditNotice': text(
+    'No card payment will be taken. Your company will be invoiced in GBP.',
+    'Es wird keine Kartenzahlung vorgenommen. Ihre Firma erhält eine Rechnung in GBP.',
+    {
+      CN: '不会收取银行卡款项。您的公司将收到 GBP 发票。',
+      PL: 'Płatność kartą nie zostanie pobrana. Twoja firma otrzyma fakturę w GBP.',
+      ES: 'No se cobrará la tarjeta. Tu empresa recibirá una factura en GBP.',
+      FR: 'Aucun paiement par carte ne sera prélevé. Votre entreprise recevra une facture en GBP.',
+    },
+  ),
+  'checkout.creditSummary': text('Company credit summary', 'Kreditübersicht des Unternehmens', {
+    CN: '公司信用额度摘要',
+    PL: 'Podsumowanie kredytu firmy',
+    ES: 'Resumen del crédito de la empresa',
+    FR: 'Résumé du crédit de l’entreprise',
+  }),
+  'checkout.creditState.active': text('Active', 'Aktiv', {
+    CN: '启用',
+    PL: 'Aktywne',
+    ES: 'Activo',
+    FR: 'Actif',
+  }),
+  'checkout.creditState.on_hold': text('On hold', 'Vorübergehend gesperrt', {
+    CN: '暂停',
+    PL: 'Wstrzymane',
+    ES: 'Retenido',
+    FR: 'Suspendu',
+  }),
+  'checkout.creditState.suspended': text('Suspended', 'Ausgesetzt', {
+    CN: '停用',
+    PL: 'Zawieszony',
+    ES: 'Suspendido',
+    FR: 'Désactivé',
+  }),
+  'checkout.credit.limit': text('Credit limit (GBP): {money}', 'Kreditlimit (GBP): {money}', {
+    CN: '信用额度上限（GBP）：{money}',
+    PL: 'Limit kredytowy (GBP): {money}',
+    ES: 'Límite de crédito (GBP): {money}',
+    FR: 'Limite de crédit (GBP) : {money}',
+  }),
+  'checkout.credit.outstanding': text(
+    'Outstanding invoices (GBP): {money}',
+    'Offene Rechnungen (GBP): {money}',
+    {
+      CN: '未结发票（GBP）：{money}',
+      PL: 'Niezapłacone faktury (GBP): {money}',
+      ES: 'Facturas pendientes (GBP): {money}',
+      FR: 'Factures impayées (GBP) : {money}',
+    },
+  ),
+  'checkout.credit.held': text(
+    'Held for checkout (GBP): {money}',
+    'Für den Checkout zurückgehalten (GBP): {money}',
+    {
+      CN: '结账预留（GBP）：{money}',
+      PL: 'Zarezerwowane przy kasie (GBP): {money}',
+      ES: 'Retenido para el pago (GBP): {money}',
+      FR: 'Réservé pour le paiement (GBP) : {money}',
+    },
+  ),
+  'checkout.credit.exposure': text('Total exposure (GBP): {money}', 'Gesamtrisiko (GBP): {money}', {
+    CN: '总风险敞口（GBP）：{money}',
+    PL: 'Łączna ekspozycja (GBP): {money}',
+    ES: 'Exposición total (GBP): {money}',
+    FR: 'Exposition totale (GBP) : {money}',
+  }),
+  'checkout.credit.available': text(
+    'Available credit (GBP): {money}',
+    'Verfügbarer Kredit (GBP): {money}',
+    {
+      CN: '可用信用额度（GBP）：{money}',
+      PL: 'Dostępny kredyt (GBP): {money}',
+      ES: 'Crédito disponible (GBP): {money}',
+      FR: 'Crédit disponible (GBP) : {money}',
+    },
+  ),
+  'checkout.credit.reason': text('Account note: {reason}', 'Kontonotiz: {reason}', {
+    CN: '账户备注：{reason}',
+    PL: 'Uwagi do konta: {reason}',
+    ES: 'Nota de la cuenta: {reason}',
+    FR: 'Note du compte : {reason}',
+  }),
+  'checkout.credit.retry': text('Retry credit payment', 'Zahlung auf Rechnung wiederholen', {
+    CN: '重试信用付款',
+    PL: 'Ponów płatność kredytową',
+    ES: 'Reintentar pago a crédito',
+    FR: 'Réessayer le paiement à crédit',
+  }),
+  'checkout.credit.error': text(
+    'Trade-credit payment could not be completed. Try again or choose card payment.',
+    'Die Zahlung per Kauf auf Rechnung konnte nicht abgeschlossen werden. Versuchen Sie es erneut oder wählen Sie Kartenzahlung.',
+    {
+      CN: '贸易赊账付款无法完成。请重试或选择银行卡付款。',
+      PL: 'Nie można ukończyć płatności kredytem kupieckim. Spróbuj ponownie lub wybierz płatność kartą.',
+      ES: 'No se pudo completar el pago con crédito comercial. Inténtalo de nuevo o elige pagar con tarjeta.',
+      FR: 'Le paiement par crédit commercial n’a pas pu être terminé. Réessayez ou choisissez le paiement par carte.',
+    },
+  ),
+  'checkout.credit.error.limitExceeded': text(
+    'This order exceeds the available company credit. Choose card payment or reduce the order.',
+    'Diese Bestellung überschreitet den verfügbaren Firmenkredit. Wählen Sie Kartenzahlung oder reduzieren Sie die Bestellung.',
+    {
+      CN: '此订单超出公司的可用信用额度。请选择银行卡付款或减少订单数量。',
+      PL: 'To zamówienie przekracza dostępny kredyt firmy. Wybierz płatność kartą lub zmniejsz zamówienie.',
+      ES: 'Este pedido supera el crédito disponible de la empresa. Elige pagar con tarjeta o reduce el pedido.',
+      FR: 'Cette commande dépasse le crédit disponible de l’entreprise. Choisissez le paiement par carte ou réduisez la commande.',
+    },
+  ),
+  'checkout.credit.error.onHold': text(
+    'Trade credit is on hold. Choose card payment or try again later.',
+    'Kauf auf Rechnung ist vorübergehend gesperrt. Wählen Sie Kartenzahlung oder versuchen Sie es später erneut.',
+    {
+      CN: '贸易赊账已暂停。请选择银行卡付款或稍后重试。',
+      PL: 'Kredyt kupiecki jest wstrzymany. Wybierz płatność kartą lub spróbuj ponownie później.',
+      ES: 'El crédito comercial está retenido. Elige pagar con tarjeta o inténtalo más tarde.',
+      FR: 'Le crédit commercial est suspendu. Choisissez le paiement par carte ou réessayez plus tard.',
+    },
+  ),
+  'checkout.credit.error.suspended': text(
+    'Trade credit is suspended. Choose card payment or contact your account administrator.',
+    'Kauf auf Rechnung ist ausgesetzt. Wählen Sie Kartenzahlung oder wenden Sie sich an Ihre Kontoverwaltung.',
+    {
+      CN: '贸易赊账已停用。请选择银行卡付款或联系账户管理员。',
+      PL: 'Kredyt kupiecki jest zawieszony. Wybierz płatność kartą lub skontaktuj się z administratorem konta.',
+      ES: 'El crédito comercial está suspendido. Elige pagar con tarjeta o contacta con el administrador de tu cuenta.',
+      FR: 'Le crédit commercial est désactivé. Choisissez le paiement par carte ou contactez l’administrateur du compte.',
     },
   ),
 });

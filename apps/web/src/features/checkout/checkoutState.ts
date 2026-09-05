@@ -1,6 +1,11 @@
 import type { DeliverySlot } from '@shop/contracts/delivery';
+import type { PaymentMethod } from '@shop/contracts/payments';
 import type { PromoValidationErrorCode } from '@shop/contracts/promos';
 import type { PublicErrorCode } from '@shop/contracts/public-errors';
+import type {
+  CreditAccountMemberResponse,
+  CreditAccountMemberView,
+} from '@shop/contracts/trade-credit';
 import type { ApiErrorMeta } from '@/api/client';
 import type { MessageParams } from '@shop/localisation';
 import { checkoutMessages } from '@shop/localisation/messages/checkout';
@@ -21,6 +26,12 @@ export type BillingField =
 export type CardField = 'cardNumber' | 'cardExpiry' | 'cardCvc';
 export type Field = ContactField | DeliveryField | ScheduleField | BillingField | CardField;
 export type FieldErrors = Partial<Record<Field, string>>;
+
+/** Payment method selected for this checkout intent. */
+export type CheckoutPaymentMethod = PaymentMethod;
+
+/** Credit summary lifecycle; `unavailable` is a safe no-account/non-active outcome, not an error. */
+export type CreditSummaryStatus = 'idle' | 'loading' | 'loaded' | 'error' | 'unavailable';
 
 /** Stable checkout failure identity. Copy resolves at render time for active country. */
 export type CheckoutMessageKey = keyof typeof checkoutMessages;
@@ -87,6 +98,17 @@ export type CheckoutState = {
   schedule: CheckoutSchedule;
   billing: CheckoutBilling;
   card: Record<CardField, string>;
+  paymentMethod: CheckoutPaymentMethod;
+  /** Server-owned member summary; never a client-derived balance or company projection. */
+  creditSummary: CreditAccountMemberView | null;
+  creditSummaryStatus: CreditSummaryStatus;
+  creditSummaryError: string | null;
+  creditSummaryErrorState: CheckoutErrorState | null;
+  creditSummaryUnavailable: boolean;
+  /** Checkout identity that produced the current credit lifecycle state. */
+  creditSummaryIdentity: string | null;
+  /** Internal request identity used to make reducer events stale-safe in addition to hook guards. */
+  creditSummaryRequestId: string | null;
   touched: Partial<Record<Field, boolean>>;
   promoCode: string;
   appliedPromo: string | null;
@@ -121,6 +143,32 @@ export type CheckoutEvent =
   | { type: 'delivery-sites-loaded'; defaultSiteId: string | null; idempotencyKey: string }
   | { type: 'billing-entities-loaded'; defaultEntityId: string | null; idempotencyKey: string }
   | { type: 'card-changed'; field: CardField; value: string; idempotencyKey: string }
+  | {
+      type: 'payment-method-changed';
+      paymentMethod: CheckoutPaymentMethod;
+      idempotencyKey: string;
+    }
+  | {
+      type: 'payment-method-selected';
+      paymentMethod: CheckoutPaymentMethod;
+      idempotencyKey: string;
+    }
+  | { type: 'checkout-identity-changed'; idempotencyKey: string }
+  | { type: 'credit-summary-loading'; requestId?: string; creditIdentity?: string }
+  | {
+      type: 'credit-summary-loaded';
+      requestId?: string;
+      creditIdentity?: string;
+      summary: CreditAccountMemberResponse;
+    }
+  | {
+      type: 'credit-summary-failed';
+      requestId?: string;
+      creditIdentity?: string;
+      error?: string;
+      errorState?: CheckoutErrorState;
+    }
+  | { type: 'credit-summary-unavailable'; requestId?: string; creditIdentity?: string }
   | { type: 'field-touched'; field: Field }
   | { type: 'fields-touched'; fields: Field[] }
   | { type: 'promo-changed'; value: string; idempotencyKey: string }
@@ -160,6 +208,7 @@ export const billingFields: BillingField[] = [
   'purchaseOrderReference',
 ];
 export const cardFields: CardField[] = ['cardNumber', 'cardExpiry', 'cardCvc'];
+export const paymentMethods: CheckoutPaymentMethod[] = ['card', 'trade_credit'];
 
 /** Fields validated before the delivery step may be left. */
 export const deliveryStepFields: Field[] = [...contactFields, ...deliveryFields];
@@ -191,6 +240,14 @@ export function initialCheckoutState(): CheckoutState {
       initialized: false,
     },
     card: { cardNumber: '', cardExpiry: '', cardCvc: '' },
+    paymentMethod: 'card',
+    creditSummary: null,
+    creditSummaryStatus: 'idle',
+    creditSummaryError: null,
+    creditSummaryErrorState: null,
+    creditSummaryUnavailable: false,
+    creditSummaryIdentity: null,
+    creditSummaryRequestId: null,
     touched: {},
     promoCode: '',
     appliedPromo: null,
@@ -211,6 +268,41 @@ export function initialCheckoutState(): CheckoutState {
     cartRecoveryMessage: null,
     conflict: null,
   };
+}
+
+const EMPTY_CARD = { cardNumber: '', cardExpiry: '', cardCvc: '' } as const;
+
+function withoutCardTouches(
+  touched: Partial<Record<Field, boolean>>,
+): Partial<Record<Field, boolean>> {
+  const next = { ...touched };
+  for (const field of cardFields) delete next[field];
+  return next;
+}
+
+function clearCreditSummary(): Pick<
+  CheckoutState,
+  | 'creditSummary'
+  | 'creditSummaryStatus'
+  | 'creditSummaryError'
+  | 'creditSummaryErrorState'
+  | 'creditSummaryUnavailable'
+  | 'creditSummaryIdentity'
+  | 'creditSummaryRequestId'
+> {
+  return {
+    creditSummary: null,
+    creditSummaryStatus: 'idle',
+    creditSummaryError: null,
+    creditSummaryErrorState: null,
+    creditSummaryUnavailable: false,
+    creditSummaryIdentity: null,
+    creditSummaryRequestId: null,
+  };
+}
+
+function creditEventIsCurrent(state: CheckoutState, requestId?: string): boolean {
+  return requestId === undefined || requestId === state.creditSummaryRequestId;
 }
 
 function billingDraftIsEmpty(billing: CheckoutBilling): boolean {
@@ -245,6 +337,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         contact: { ...state.contact, [event.field]: event.value },
         paymentError: null,
         paymentErrorState: null,
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
     case 'delivery-changed':
@@ -253,6 +346,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         delivery: { ...state.delivery, ...event.patch, initialized: true },
         paymentError: null,
         paymentErrorState: null,
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
     case 'schedule-changed':
@@ -263,6 +357,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         conflict: state.conflict?.code === 'DELIVERY_SLOT_UNAVAILABLE' ? null : state.conflict,
         paymentError: null,
         paymentErrorState: null,
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
     case 'billing-changed':
@@ -271,6 +366,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         billing: { ...state.billing, ...event.patch, initialized: true },
         paymentError: null,
         paymentErrorState: null,
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
     case 'billing-prefilled':
@@ -281,6 +377,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         billing: { ...state.billing, ...event.patch },
         paymentError: null,
         paymentErrorState: null,
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
     case 'delivery-sites-loaded': {
@@ -294,6 +391,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
             ? {}
             : { destinationKind: 'saved' as const, deliverySiteId: event.defaultSiteId }),
         },
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
     }
@@ -308,25 +406,121 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
             ? {}
             : { selectionKind: 'saved' as const, billingEntityId: event.defaultEntityId }),
         },
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
     }
     case 'card-changed':
+      // A trade-credit checkout has no card form. Ignore any stale/UI event and make the safe
+      // invariant explicit so a card secret can never remain attached to that method.
+      if (state.paymentMethod === 'trade_credit') {
+        return {
+          ...state,
+          card: { ...EMPTY_CARD },
+          touched: withoutCardTouches(state.touched),
+        };
+      }
       return {
         ...state,
         card: { ...state.card, [event.field]: event.value },
         paymentError: null,
         paymentErrorState: null,
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
+    case 'payment-method-changed':
+    case 'payment-method-selected': {
+      if (event.paymentMethod === state.paymentMethod) return state;
+      const card = event.paymentMethod === 'trade_credit' ? { ...EMPTY_CARD } : state.card;
+      return {
+        ...state,
+        paymentMethod: event.paymentMethod,
+        card,
+        touched:
+          event.paymentMethod === 'trade_credit'
+            ? withoutCardTouches(state.touched)
+            : state.touched,
+        ...clearCreditSummary(),
+        paymentError: null,
+        paymentErrorState: null,
+        conflict: null,
+        submitting: false,
+        idempotencyKey: event.idempotencyKey,
+      };
+    }
+    case 'checkout-identity-changed':
+      return {
+        ...state,
+        ...clearCreditSummary(),
+        paymentError: null,
+        paymentErrorState: null,
+        conflict: null,
+        submitting: false,
+        idempotencyKey: event.idempotencyKey,
+      };
+    case 'credit-summary-loading':
+      return {
+        ...state,
+        creditSummary: null,
+        creditSummaryStatus: 'loading',
+        creditSummaryError: null,
+        creditSummaryErrorState: null,
+        creditSummaryUnavailable: false,
+        creditSummaryIdentity: event.creditIdentity ?? state.creditSummaryIdentity,
+        creditSummaryRequestId: event.requestId ?? state.creditSummaryRequestId,
+      };
+    case 'credit-summary-loaded':
+      if (!creditEventIsCurrent(state, event.requestId)) return state;
+      return {
+        ...state,
+        creditSummary: event.summary,
+        creditSummaryStatus:
+          event.summary !== null && event.summary.state === 'active' ? 'loaded' : 'unavailable',
+        creditSummaryError: null,
+        creditSummaryErrorState: null,
+        creditSummaryUnavailable: event.summary === null || event.summary.state !== 'active',
+        creditSummaryIdentity: event.creditIdentity ?? state.creditSummaryIdentity,
+      };
+    case 'credit-summary-unavailable':
+      if (!creditEventIsCurrent(state, event.requestId)) return state;
+      return {
+        ...state,
+        creditSummary: null,
+        creditSummaryStatus: 'unavailable',
+        creditSummaryError: null,
+        creditSummaryErrorState: null,
+        creditSummaryUnavailable: true,
+        creditSummaryIdentity: event.creditIdentity ?? state.creditSummaryIdentity,
+      };
+    case 'credit-summary-failed':
+      if (!creditEventIsCurrent(state, event.requestId)) return state;
+      return {
+        ...state,
+        creditSummary: null,
+        creditSummaryStatus: 'error',
+        creditSummaryError: event.error ?? event.errorState?.code ?? event.errorState?.key ?? null,
+        creditSummaryErrorState: event.errorState ?? null,
+        creditSummaryUnavailable: false,
+        creditSummaryIdentity: event.creditIdentity ?? state.creditSummaryIdentity,
+      };
     case 'field-touched':
+      if (state.paymentMethod === 'trade_credit' && cardFields.includes(event.field as CardField))
+        return state;
       return { ...state, touched: { ...state.touched, [event.field]: true } };
     case 'fields-touched':
       return {
         ...state,
         touched: {
           ...state.touched,
-          ...Object.fromEntries(event.fields.map((field) => [field, true])),
+          ...Object.fromEntries(
+            event.fields
+              .filter(
+                (field) =>
+                  state.paymentMethod !== 'trade_credit' ||
+                  !cardFields.includes(field as CardField),
+              )
+              .map((field) => [field, true]),
+          ),
         },
       };
     case 'promo-changed':
@@ -340,6 +534,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         promoValidating: false,
         paymentError: null,
         paymentErrorState: null,
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
     case 'promo-started':
@@ -390,10 +585,12 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
         promoErrorCode: null,
         promoMinSubtotalCents: null,
         idempotencyKey: event.idempotencyKey,
+        submitting: false,
       };
     case 'quote-changed':
       return {
         ...state,
+        ...clearCreditSummary(),
         appliedPromo: null,
         appliedPromoQuoteKey: null,
         discountCents: 0,
@@ -427,6 +624,7 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
                 key: 'checkout.error.deliveryCountry',
               }
             : null,
+        submitting: false,
         idempotencyKey: event.idempotencyKey,
       };
     case 'submission-started':
@@ -442,7 +640,18 @@ export function checkoutReducer(state: CheckoutState, event: CheckoutEvent): Che
   }
 }
 
-type QuoteItem = { productId: string; quantity: number; lineTotalCents: number };
+type QuoteItem = {
+  productId: string;
+  quantity: number;
+  lineTotalCents: number;
+  configKey?: string;
+  variantSnap?: { variantId?: number };
+  sku?: string;
+  resolvedUnitPriceCents?: number;
+  materialSubtotalCents?: number;
+  blendingFeeCents?: number;
+  discountableTotalCents?: number;
+};
 type QuoteCart = {
   id: string;
   subtotalCents: number;
@@ -453,8 +662,25 @@ type QuoteCart = {
 export function createCartQuoteKey(cart: QuoteCart | null): string | null {
   if (!cart) return null;
   const lines = [...cart.items]
-    .sort((left, right) => left.productId.localeCompare(right.productId))
-    .map(({ productId, quantity, lineTotalCents }) => `${productId}:${quantity}:${lineTotalCents}`);
+    .sort((left, right) => {
+      const leftKey = `${left.productId}:${left.variantSnap?.variantId ?? ''}:${left.configKey ?? ''}`;
+      const rightKey = `${right.productId}:${right.variantSnap?.variantId ?? ''}:${right.configKey ?? ''}`;
+      return leftKey.localeCompare(rightKey);
+    })
+    .map((item) =>
+      JSON.stringify([
+        item.productId,
+        item.variantSnap?.variantId ?? null,
+        item.sku ?? null,
+        item.configKey ?? '',
+        item.quantity,
+        item.resolvedUnitPriceCents ?? null,
+        item.materialSubtotalCents ?? null,
+        item.blendingFeeCents ?? null,
+        item.discountableTotalCents ?? null,
+        item.lineTotalCents,
+      ]),
+    );
   return `${cart.id}:${cart.subtotalCents}:${lines.join('|')}`;
 }
 

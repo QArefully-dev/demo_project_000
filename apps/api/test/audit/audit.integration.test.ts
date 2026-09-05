@@ -134,3 +134,57 @@ void test('audit writer obtains persisted occurrence time from injected clock', 
     occurredAt: '2026-02-03T04:05:06.000Z',
   });
 });
+
+void test('credit and invoice audit vocabulary is allowlisted and queryable', (t) => {
+  const { writer, read } = createAuditFixture(t);
+  const context = { actor: { type: 'user' as const, userId: 9 }, requestId: 'credit-audit' };
+  writer.append({
+    action: 'company.credit_limit_changed',
+    context,
+    companyId: 7,
+    oldCreditLimitCents: 100_000,
+    newCreditLimitCents: 125_000,
+  });
+  writer.append({
+    action: 'company.credit_state_changed',
+    context,
+    companyId: 7,
+    oldState: 'active',
+    newState: 'on_hold',
+    reason: 'Review required',
+  });
+  writer.append({
+    action: 'invoice.issued',
+    context,
+    invoiceId: 101,
+    orderId: 55,
+    companyId: 7,
+    grossCents: 12_000,
+  });
+
+  const creditEvents = read.list({ entityType: 'company', page: 1, pageSize: 10 });
+  assert.equal(creditEvents.total, 2);
+  assert.deepEqual(
+    creditEvents.items.map((event) => event.action),
+    ['company.credit_state_changed', 'company.credit_limit_changed'],
+  );
+  const invoiceEvents = read.list({ action: 'invoice.issued', entityType: 'invoice' });
+  assert.equal(invoiceEvents.total, 1);
+  assert.deepEqual(invoiceEvents.items[0]?.metadata, {
+    orderId: 55,
+    companyId: 7,
+    grossCents: 12_000,
+  });
+
+  assert.throws(() =>
+    writer.append({
+      action: 'invoice.voided',
+      context,
+      invoiceId: 101,
+      orderId: 55,
+      companyId: 7,
+      grossCents: 12_000,
+      reason: '<unsafe>',
+    }),
+  );
+});

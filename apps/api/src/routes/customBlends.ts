@@ -2,7 +2,11 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { Type } from '@sinclair/typebox';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import {
+  CustomBlendBaseListQuery,
+  CustomBlendBaseListResponse,
   CustomBlendErrorResponse,
+  CustomBlendEvaluationBody,
+  CustomBlendEvaluationResponse,
   CustomBlendOptionsQuery,
   CustomBlendOptionsResponse,
   CreateCustomBlendBody,
@@ -35,6 +39,30 @@ export default function customBlendRoutes(app: FastifyInstance, { services }: Ap
   const typed = app.withTypeProvider<TypeBoxTypeProvider>();
 
   typed.get(
+    '/api/custom-blends/bases',
+    {
+      schema: {
+        querystring: CustomBlendBaseListQuery,
+        response: {
+          200: CustomBlendBaseListResponse,
+          400: ErrorResponse,
+        },
+      },
+    },
+    (request, reply) => {
+      try {
+        return services.customBlends.listBases(request.query, request.resolvedCountry);
+      } catch (error) {
+        if (error instanceof CustomBlendInvalidError) {
+          sendCustomBlendError(request, reply, error);
+          return;
+        }
+        throw error;
+      }
+    },
+  );
+
+  typed.get(
     '/api/custom-blends/options',
     {
       schema: {
@@ -47,10 +75,37 @@ export default function customBlendRoutes(app: FastifyInstance, { services }: Ap
     },
     (request, reply) => {
       try {
-        return services.customBlends.listOptions(request.query.baseVariantId);
+        return services.customBlends.listOptions(
+          request.query.baseVariantId,
+          request.resolvedCountry,
+        );
       } catch (error) {
         if (error instanceof CustomBlendInvalidError) {
-          sendPublicError(request, reply, 400, 'CUSTOM_BLEND_INVALID');
+          sendCustomBlendError(request, reply, error);
+          return;
+        }
+        throw error;
+      }
+    },
+  );
+
+  typed.post(
+    '/api/custom-blends/evaluate',
+    {
+      schema: {
+        body: CustomBlendEvaluationBody,
+        response: {
+          200: CustomBlendEvaluationResponse,
+          400: ErrorResponse,
+        },
+      },
+    },
+    (request, reply) => {
+      try {
+        return services.customBlends.evaluate(request.body, request.resolvedCountry);
+      } catch (error) {
+        if (error instanceof CustomBlendInvalidError) {
+          sendCustomBlendError(request, reply, error);
           return;
         }
         throw error;
@@ -87,7 +142,7 @@ export default function customBlendRoutes(app: FastifyInstance, { services }: Ap
         return sendMutationResult(request, reply, result, request.body.quantity, minQuantity);
       } catch (error) {
         if (error instanceof CustomBlendInvalidError) {
-          sendPublicError(request, reply, 400, 'CUSTOM_BLEND_INVALID');
+          sendCustomBlendError(request, reply, error);
           return;
         }
         throw error;
@@ -124,13 +179,41 @@ export default function customBlendRoutes(app: FastifyInstance, { services }: Ap
         return sendMutationResult(request, reply, result, undefined, minQuantity);
       } catch (error) {
         if (error instanceof CustomBlendInvalidError) {
-          sendPublicError(request, reply, 400, 'CUSTOM_BLEND_INVALID');
+          sendCustomBlendError(request, reply, error);
           return;
         }
         throw error;
       }
     },
   );
+}
+
+function sendCustomBlendError(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  error: CustomBlendInvalidError,
+): void {
+  if (error.resolverCode === 'CUSTOM_BLEND_INCOMPATIBLE') {
+    sendPublicError(request, reply, 400, 'CUSTOM_BLEND_INCOMPATIBLE');
+    return;
+  }
+  if (
+    error.resolverCode === 'CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED' &&
+    isSafePercentage(error.maxPercentage) &&
+    isSafePercentage(error.actualPercentage)
+  ) {
+    sendPublicError(request, reply, 400, 'CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED', {
+      maxPercentage: error.maxPercentage,
+      actualPercentage: error.actualPercentage,
+    });
+    return;
+  }
+  // Unavailable, corrupt, or unrecognised resolver failures retain the legacy non-disclosing code.
+  sendPublicError(request, reply, 400, 'CUSTOM_BLEND_INVALID');
+}
+
+function isSafePercentage(value: number | undefined): value is number {
+  return value !== undefined && Number.isSafeInteger(value) && value >= 0 && value <= 100;
 }
 
 function sendMutationResult(
@@ -173,13 +256,11 @@ function sendMutationResult(
     sendPublicError(request, reply, 400, 'BELOW_MOQ', { minQuantity });
     return;
   }
-  sendPublicError(
-    request,
-    reply,
-    400,
-    'INVALID_QUANTITY',
-    quantity === undefined ? undefined : { quantity },
-  );
+  if (quantity === undefined) {
+    sendPublicError(request, reply, 400, 'INTERNAL_ERROR');
+    return;
+  }
+  sendPublicError(request, reply, 400, 'INVALID_QUANTITY', { quantity });
 }
 
 function customBlendMinimumQuantity(

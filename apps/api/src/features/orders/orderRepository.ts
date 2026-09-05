@@ -16,6 +16,7 @@ import type {
   OrderSummary,
   ShipmentStatus,
 } from '@shop/contracts/orders';
+import type { ResolvedCustomBlendSnapshot } from '@shop/contracts/custom-blends';
 import type { Country } from '@shop/contracts/country';
 import { orderLifecycleTitle } from '@shop/localisation/messages/asyncContent';
 import type { CreateOrderParams, LifecycleEventInput, PersistedShipment } from './orderTypes.js';
@@ -29,6 +30,12 @@ interface OrderRow {
   discount_base_cents: number | null;
   discount_cents: number;
   total_cents: number;
+  payment_method: 'card' | 'trade_credit';
+  company_id: number | null;
+  net_cents: number | null;
+  vat_rate_basis_points: number | null;
+  vat_cents: number | null;
+  gross_cents: number | null;
   created_at: string;
   lifecycle_status: OrderStatus;
   version: number;
@@ -86,6 +93,18 @@ interface EventRow {
   idempotency_key: string | null;
   request_fingerprint: string | null;
 }
+
+type AccountingRow = Pick<
+  OrderRow,
+  | 'id'
+  | 'payment_method'
+  | 'company_id'
+  | 'net_cents'
+  | 'vat_rate_basis_points'
+  | 'vat_cents'
+  | 'gross_cents'
+  | 'total_cents'
+>;
 
 export interface OrderAccessRepository {
   replaceAccessGrant(input: {
@@ -168,7 +187,45 @@ function hydrateOrderCustomBlend(row: ProductLineRow): CustomBlendSnapshot | und
       `Order line ${row.id} Custom Blend fee disagrees with its persisted line money`,
     );
   }
+  if (isResolvedCustomBlendSnapshot(parsed) && !resolvedSnapshotMatchesOrderLine(row, parsed)) {
+    throw new Error(
+      `Order line ${row.id} Custom Blend resolved snapshot disagrees with its persisted line facts`,
+    );
+  }
   return parsed;
+}
+
+function isResolvedCustomBlendSnapshot(
+  value: CustomBlendSnapshot,
+): value is ResolvedCustomBlendSnapshot {
+  return 'ruleVersion' in value && value.ruleVersion === 1;
+}
+
+/**
+ * A resolved snapshot is a frozen financial outcome. Its quantity, classification, base identity,
+ * and all line money must remain paired with the order columns; legacy specification-only snapshots
+ * deliberately skip this check so historic rows remain readable.
+ */
+function resolvedSnapshotMatchesOrderLine(
+  row: ProductLineRow,
+  snapshot: ResolvedCustomBlendSnapshot,
+): boolean {
+  const base = snapshot.components.find((component) => component.role === 'base');
+  return (
+    base !== undefined &&
+    base.variantId === row.variant_id &&
+    base.productId === String(row.product_id) &&
+    base.productName === row.product_name &&
+    (base.sku === undefined || base.sku === row.sku) &&
+    (base.variantLabel === undefined || base.variantLabel === row.variant_label) &&
+    snapshot.quantity === row.quantity &&
+    snapshot.resultClassification === row.consumption_classification &&
+    snapshot.materialUnitPriceCents === row.product_price_cents &&
+    snapshot.materialSubtotalCents === row.discountable_total_cents &&
+    snapshot.discountableTotalCents === row.discountable_total_cents &&
+    snapshot.blendingFeeCents === row.blending_fee_cents &&
+    snapshot.lineTotalCents === row.line_total_cents
+  );
 }
 
 /**
@@ -207,11 +264,108 @@ function hydrateOrderSlot(row: OrderRow): DeliverySlot | undefined {
   return slot;
 }
 
+function hydrateOrderAccounting(
+  row: AccountingRow,
+): Pick<
+  Order,
+  'paymentMethod' | 'companyId' | 'netCents' | 'vatRateBasisPoints' | 'vatCents' | 'grossCents'
+> {
+  if (row.payment_method !== 'card' && row.payment_method !== 'trade_credit') {
+    throw new Error(`Order ${row.id} has an invalid payment method`);
+  }
+  const facts = [row.net_cents, row.vat_rate_basis_points, row.vat_cents, row.gross_cents];
+  const populated = facts.filter((fact) => fact !== null).length;
+  if (populated === 0) {
+    // Null accounting columns identify a historic card row. A company id alongside those nulls
+    // is a malformed partial snapshot, not a legacy row that can safely be downgraded.
+    if (row.payment_method !== 'card' || row.company_id !== null) {
+      throw new Error(
+        row.payment_method === 'trade_credit'
+          ? `Order ${row.id} has incomplete trade-credit accounting facts`
+          : `Order ${row.id} has incomplete accounting facts`,
+      );
+    }
+    return {};
+  }
+  if (populated !== facts.length) {
+    throw new Error(
+      row.payment_method === 'trade_credit'
+        ? `Order ${row.id} has incomplete trade-credit accounting facts`
+        : `Order ${row.id} has incomplete accounting facts`,
+    );
+  }
+  const {
+    net_cents: netCents,
+    vat_rate_basis_points: vatRate,
+    vat_cents: vatCents,
+    gross_cents: grossCents,
+  } = row;
+  if (
+    !isSafeNonNegativeInteger(netCents) ||
+    !isSafeNonNegativeInteger(vatRate) ||
+    vatRate > 10_000 ||
+    !isSafeNonNegativeInteger(vatCents) ||
+    !isSafeNonNegativeInteger(grossCents) ||
+    !isSafeNonNegativeInteger(row.total_cents)
+  ) {
+    throw new Error(`Order ${row.id} has invalid accounting facts`);
+  }
+  if (vatRate > 0 && netCents > Math.floor(Number.MAX_SAFE_INTEGER / vatRate)) {
+    throw new Error(`Order ${row.id} has invalid accounting facts`);
+  }
+  const vatNumerator = netCents * vatRate;
+  if (!Number.isSafeInteger(vatNumerator) || vatNumerator > Number.MAX_SAFE_INTEGER - 5_000) {
+    throw new Error(`Order ${row.id} has invalid accounting facts`);
+  }
+  const expectedVat = Math.floor((vatNumerator + 5_000) / 10_000);
+  if (
+    expectedVat !== vatCents ||
+    netCents > Number.MAX_SAFE_INTEGER - vatCents ||
+    netCents + vatCents !== grossCents ||
+    grossCents !== row.total_cents
+  ) {
+    throw new Error(`Order ${row.id} has invalid accounting facts`);
+  }
+  if (row.payment_method === 'card') {
+    if (row.company_id !== null || vatRate !== 0) {
+      throw new Error(`Order ${row.id} has invalid card accounting facts`);
+    }
+    return {
+      paymentMethod: 'card',
+      netCents,
+      vatRateBasisPoints: vatRate,
+      vatCents,
+      grossCents,
+    };
+  }
+  if (!isSafePositiveInteger(row.company_id)) {
+    throw new Error(`Order ${row.id} has incomplete trade-credit accounting facts`);
+  }
+  return {
+    paymentMethod: 'trade_credit',
+    companyId: String(row.company_id),
+    netCents,
+    vatRateBasisPoints: vatRate,
+    vatCents,
+    grossCents,
+  };
+}
+
+function isSafeNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isSafePositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
+}
+
 function mapOrder(row: OrderRow, items: ProductLineRow[]): Order {
+  const accounting = hydrateOrderAccounting(row);
   return {
     id: String(row.id),
     status: row.lifecycle_status,
     version: row.version,
+    country: row.country,
     items: items.map((item): OrderLineItem => {
       const customBlend = hydrateOrderCustomBlend(item);
       return {
@@ -254,6 +408,7 @@ function mapOrder(row: OrderRow, items: ProductLineRow[]): Order {
     subtotalCents: row.subtotal_cents,
     discountCents: row.discount_cents,
     totalCents: row.total_cents,
+    ...accounting,
     promoApplied: row.promo_code_applied,
     promoCategoryScope: row.promo_category_scope ?? undefined,
     discountBaseCents: row.discount_base_cents ?? undefined,
@@ -301,7 +456,8 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
   const loadOrder = (orderId: number, country?: Country): OrderRow | undefined =>
     db
       .prepare(
-        `SELECT id, country, promo_code_applied, promo_category_scope, subtotal_cents, discount_base_cents, discount_cents, total_cents, created_at,
+        `SELECT id, country, promo_code_applied, promo_category_scope, subtotal_cents, discount_base_cents, discount_cents, total_cents,
+            payment_method, company_id, net_cents, vat_rate_basis_points, vat_cents, gross_cents, created_at,
             lifecycle_status, version, cancelled_at, user_id,
             delivery_mode, delivery_charge_cents, delivery_weight_grams,
             delivery_site_id, delivery_address_json, billing_entity_json,
@@ -327,7 +483,8 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
     const rows = db
       .prepare(
         `SELECT id, country, promo_code_applied, promo_category_scope, subtotal_cents, discount_base_cents,
-                discount_cents, total_cents, created_at, lifecycle_status, version, cancelled_at,
+                discount_cents, total_cents, payment_method, company_id, net_cents,
+                vat_rate_basis_points, vat_cents, gross_cents, created_at, lifecycle_status, version, cancelled_at,
                 user_id, delivery_mode, delivery_charge_cents, delivery_weight_grams,
                 delivery_site_id, delivery_address_json, billing_entity_json, delivery_slot_date,
                 delivery_slot_window, purchase_order_reference
@@ -422,8 +579,9 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
              delivery_mode, delivery_charge_cents, delivery_weight_grams,
              delivery_site_id, delivery_address_json, billing_entity_json,
              delivery_slot_date, delivery_slot_window, purchase_order_reference,
-             user_id, created_at, lifecycle_status, version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0)`,
+             user_id, created_at, lifecycle_status, version,
+             payment_method, company_id, net_cents, vat_rate_basis_points, vat_cents, gross_cents)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', 0, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           country,
@@ -447,6 +605,12 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
           params.purchaseOrderReference ?? null,
           params.userId,
           params.createdAt,
+          params.paymentMethod ?? 'card',
+          params.companyId ?? null,
+          params.netCents ?? null,
+          params.vatRateBasisPoints ?? null,
+          params.vatCents ?? null,
+          params.grossCents ?? null,
         );
       const orderId = Number(result.lastInsertRowid);
       const addItem = db.prepare(
@@ -500,7 +664,9 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
       const offset = (page - 1) * pageSize;
       const items = db
         .prepare(
-          `SELECT o.id, o.lifecycle_status, o.version, o.total_cents, o.created_at,
+          `SELECT o.id, o.country, o.lifecycle_status, o.version, o.total_cents,
+          o.payment_method, o.company_id, o.net_cents, o.vat_rate_basis_points, o.vat_cents,
+          o.gross_cents, o.created_at,
           o.purchase_order_reference,
           COALESCE((SELECT SUM(quantity) FROM order_line_items WHERE order_id = o.id), 0) AS total_items,
           EXISTS(SELECT 1 FROM order_inventory_allocations allocation
@@ -510,9 +676,16 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
         )
         .all(userId, pageSize, offset) as Array<{
         id: number;
+        country: Country;
         lifecycle_status: OrderStatus;
         version: number;
         total_cents: number;
+        payment_method: 'card' | 'trade_credit';
+        company_id: number | null;
+        net_cents: number | null;
+        vat_rate_basis_points: number | null;
+        vat_cents: number | null;
+        gross_cents: number | null;
         total_items: number;
         has_backorder: number;
         created_at: string;
@@ -522,17 +695,22 @@ export function createOrderRepository(db: Database.Database): OrderRepository {
         .prepare('SELECT COUNT(*) AS count FROM orders WHERE user_id = ?')
         .get(userId) as { count: number };
       return {
-        items: items.map((row) => ({
-          id: String(row.id),
-          status: row.lifecycle_status,
-          version: row.version,
-          totalCents: row.total_cents,
-          totalItems: row.total_items,
-          hasBackorder: row.has_backorder === 1,
-          createdAt: row.created_at,
-          // Contract-optional: absent on every order placed before checkout captured a reference.
-          purchaseOrderReference: row.purchase_order_reference ?? undefined,
-        })),
+        items: items.map((row) => {
+          const accounting = hydrateOrderAccounting(row);
+          return {
+            id: String(row.id),
+            status: row.lifecycle_status,
+            version: row.version,
+            country: row.country,
+            totalCents: row.total_cents,
+            ...accounting,
+            totalItems: row.total_items,
+            hasBackorder: row.has_backorder === 1,
+            createdAt: row.created_at,
+            // Contract-optional: absent on every order placed before checkout captured a reference.
+            purchaseOrderReference: row.purchase_order_reference ?? undefined,
+          };
+        }),
         total: count.count,
       };
     },

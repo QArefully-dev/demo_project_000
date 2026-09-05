@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import type { CustomBlendOption } from '@shop/contracts/custom-blends';
+import type { CustomBlendOption, ResolvedCustomBlendSnapshot } from '@shop/contracts/custom-blends';
 import { describe, expect, it } from 'vitest';
 import { CustomBlendPreview, toPreviewBlend } from './CustomBlendPreview';
 
@@ -41,6 +41,73 @@ const ingredient: CustomBlendOption = {
   productId: '11',
   productName: 'Chalk Filler',
   variant: { ...base.variant, variantId: 601, productId: 11 },
+};
+
+const resolved: ResolvedCustomBlendSnapshot = {
+  configKey: 'f'.repeat(64),
+  basePercentage: 80,
+  mixingGroup: 'mineral',
+  basePresentation: {
+    category: base.category,
+    consumptionClassification: 'non-food',
+    categoryFacts: base.categoryFacts,
+  },
+  ingredients: [
+    {
+      variantId: 601,
+      productId: '11',
+      productName: 'Chalk Filler',
+      productDescription: 'Ingredient from the server',
+      mixingGroup: 'mineral',
+      percentage: 20,
+    },
+  ],
+  blendingFeeCents: 2_500,
+  madeToOrder: true,
+  returnable: false,
+  ruleVersion: 1,
+  resultClassification: 'non-food',
+  quantity: 4,
+  components: [
+    {
+      role: 'base',
+      variantId: 501,
+      productId: '9',
+      productName: 'Portland Cement',
+      productDescription: 'Base from the server',
+      sku: 'MAT-501',
+      variantLabel: '25 kg sack',
+      mixingGroup: 'mineral',
+      consumptionClassification: 'non-food',
+      percentage: 80,
+      weightGrams: 800_000,
+      sourceUnitPriceCents: 1_200,
+      tierDiscountPct: 0,
+      unitContributionCents: 960,
+      subtotalCents: 3_840,
+    },
+    {
+      role: 'ingredient',
+      variantId: 601,
+      productId: '11',
+      productName: 'Chalk Filler',
+      productDescription: 'Ingredient from the server',
+      sku: 'MAT-601',
+      variantLabel: '25 kg sack',
+      mixingGroup: 'mineral',
+      consumptionClassification: 'non-food',
+      percentage: 20,
+      weightGrams: 200_000,
+      sourceUnitPriceCents: 1_200,
+      tierDiscountPct: 0,
+      unitContributionCents: 240,
+      subtotalCents: 960,
+    },
+  ],
+  materialUnitPriceCents: 1_200,
+  materialSubtotalCents: 4_800,
+  discountableTotalCents: 4_800,
+  lineTotalCents: 7_300,
 };
 
 describe('CustomBlendPreview', () => {
@@ -187,5 +254,24 @@ describe('CustomBlendPreview', () => {
         ingredients: [{ option: ingredient, percentage: 20 }],
       }).ingredients,
     ).toEqual([expect.objectContaining({ productName: 'Chalk Filler', percentage: 20 })]);
+  });
+
+  it('renders a successful server snapshot without rebuilding its composition', () => {
+    const snapshot = toPreviewBlend({
+      base,
+      basePercentage: 50,
+      ingredients: [],
+      resolved,
+    });
+    expect(snapshot).toBe(resolved);
+
+    render(
+      <CustomBlendPreview base={base} basePercentage={50} ingredients={[]} resolved={resolved} />,
+    );
+    expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute(
+      'data-result-classification',
+      'non-food',
+    );
+    expect(screen.getByText(/80% Portland Cement.*20% Chalk Filler/)).toBeInTheDocument();
   });
 });

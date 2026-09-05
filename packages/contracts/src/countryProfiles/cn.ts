@@ -1,10 +1,11 @@
-import type { CountryProfile } from './types.js';
+import { createVatRateBasisPoints, type CountryProfile } from './types.js';
 
 export const CN_COUNTRY_PROFILE = {
   language: 'zh',
   numberLocale: 'zh-CN',
   dateLocale: 'zh-CN',
   displayCurrency: 'CNY',
+  vatRateBasisPoints: createVatRateBasisPoints(1300),
   exchangeRate: { numerator: 9, denominator: 1 },
   blockedCategories: ['Sports Nutrition'],
   blockedProductSlugs: [],

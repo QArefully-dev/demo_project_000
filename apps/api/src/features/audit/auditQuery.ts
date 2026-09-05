@@ -36,8 +36,13 @@ export class AuditQueryError extends Error {
 const actionSet = new Set<string>(AUDIT_ACTIONS);
 const entityTypeSet = new Set<AuditEntityType>([
   'user',
+  'company',
+  'membership',
+  'invite',
+  'approval',
   'cart',
   'payment',
+  'invoice',
   'order',
   'shipment',
   'review',

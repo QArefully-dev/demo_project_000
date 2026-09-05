@@ -84,13 +84,12 @@ export default function bundleRoutes(app: FastifyInstance, { services }: AppCont
           request.params.cartId,
           result.variantIds.map((variantId) => Number(variantId)),
         );
-        sendPublicError(
-          request,
-          reply,
-          409,
-          'BUNDLE_UNAVAILABLE',
-          blockedInCountry ? undefined : { variantIds: result.variantIds },
-        );
+        // Keep the parameterized call type-safe while letting the public-error validator omit
+        // diagnostics when a country-blocked component must remain opaque.
+        const disclosedVariantIds = blockedInCountry ? [] : result.variantIds;
+        sendPublicError(request, reply, 409, 'BUNDLE_UNAVAILABLE', {
+          variantIds: disclosedVariantIds,
+        });
         return;
       }
       return result;

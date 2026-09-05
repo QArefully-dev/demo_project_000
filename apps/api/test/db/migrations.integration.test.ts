@@ -54,6 +54,10 @@ const expectedVersions = [
   '032',
   '033',
   '034',
+  '035',
+  '036',
+  '037',
+  '038',
 ];
 
 /** Every migration up to but excluding `021`, i.e. the schema powderizer still existed in. */
@@ -184,6 +188,37 @@ void test('migrations create a fresh schema, record every version, and remain id
       (column) => column.name === 'response_json',
     ),
   );
+  for (const table of ['company_credit_events', 'credit_exposure_holds']) {
+    assert.deepEqual(
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table),
+      { name: table },
+    );
+  }
+  for (const [table, columns] of [
+    [
+      'company_accounts',
+      ['credit_limit_cents', 'credit_terms_days', 'credit_state', 'credit_version'],
+    ],
+    ['payments', ['payment_method', 'company_id', 'user_id']],
+    [
+      'orders',
+      [
+        'payment_method',
+        'company_id',
+        'net_cents',
+        'vat_rate_basis_points',
+        'vat_cents',
+        'gross_cents',
+      ],
+    ],
+  ] as const) {
+    const actual = new Set(
+      (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map(
+        (column) => column.name,
+      ),
+    );
+    for (const column of columns) assert.ok(actual.has(column), `${table}.${column}`);
+  }
   assert.deepEqual(
     db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'audit_events'")
@@ -693,6 +728,31 @@ void test('migrations upgrade the legacy schema without losing known data', (t) 
       )
       .get('legacy-payment'),
     { status: 'success', response_json: '{"success":true}', cart_id: null, quote_json: null },
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT payment_method, company_id, card_last4, card_brand
+         FROM payments WHERE idempotency_key = ?`,
+      )
+      .get('legacy-payment'),
+    { payment_method: 'card', company_id: null, card_last4: '4242', card_brand: 'Visa' },
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT payment_method, company_id, net_cents, vat_rate_basis_points, vat_cents, gross_cents
+         FROM orders WHERE id = 1`,
+      )
+      .get(),
+    {
+      payment_method: 'card',
+      company_id: null,
+      net_cents: 1234,
+      vat_rate_basis_points: 0,
+      vat_cents: 0,
+      gross_cents: 1234,
+    },
   );
 });
 

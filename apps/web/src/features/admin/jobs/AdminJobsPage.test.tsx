@@ -75,6 +75,12 @@ describe('AdminJobsPage', () => {
     await waitFor(() =>
       expect(screen.getByTestId('location')).toHaveTextContent('status=dead&kind=webhook.process'),
     );
+    await waitFor(() =>
+      expect(api.getAdminJobs).toHaveBeenLastCalledWith(
+        { status: 'dead', kind: 'webhook.process', page: 1, pageSize: 10 },
+        expect.any(AbortSignal),
+      ),
+    );
   });
   it('reports drain counts', async () => {
     api.getAdminJobs.mockResolvedValue(page());

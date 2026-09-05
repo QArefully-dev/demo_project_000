@@ -6,7 +6,9 @@ import {
   moqShortfallSacks,
   nextTierProgress,
   perTonneCents,
+  resolveTierDiscountPctForWeight,
   resolveTierDiscountPct,
+  roundHalfUp,
   resolveUnitPriceCents,
   validateMoq,
 } from './pricingRules.js';
@@ -26,6 +28,28 @@ void test('uses the highest qualifying tier for pallet and zero/one quantities',
   assert.equal(resolveTierDiscountPct(1, SACK_WEIGHT_GRAMS), 0);
   assert.equal(resolveTierDiscountPct(1, PALLET_WEIGHT_GRAMS), 0);
   assert.equal(resolveTierDiscountPct(10, PALLET_WEIGHT_GRAMS), 10);
+});
+
+void test('resolves gram-based tiers at exact and minus-one-gram boundaries', () => {
+  for (const [tonnes, discountPct, precedingDiscountPct] of [
+    [1, 0, 0],
+    [5, 5, 0],
+    [10, 10, 5],
+  ] as const) {
+    const boundary = tonnes * PALLET_WEIGHT_GRAMS;
+    assert.equal(resolveTierDiscountPctForWeight(boundary - 1), precedingDiscountPct);
+    assert.equal(resolveTierDiscountPctForWeight(boundary), discountPct);
+  }
+});
+
+void test('rounds non-negative integer ratios half-up without unsafe intermediate arithmetic', () => {
+  assert.equal(roundHalfUp(1, 2), 1);
+  assert.equal(roundHalfUp(2, 3), 1);
+  assert.equal(roundHalfUp(Number.MAX_SAFE_INTEGER, 2), 4_503_599_627_370_496);
+  assert.throws(() => roundHalfUp(-1, 2), RangeError);
+  assert.throws(() => roundHalfUp(1.5, 2), RangeError);
+  assert.throws(() => roundHalfUp(1, 0), RangeError);
+  assert.throws(() => roundHalfUp(Number.MAX_SAFE_INTEGER + 1, 2), RangeError);
 });
 
 void test('reports the next tier at exact and minus-one tonne boundaries', () => {

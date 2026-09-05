@@ -9,6 +9,8 @@ const sections = [
   ['admin.shell.promotions', 'admin.index.promotionsDescription', '/admin/promos'],
   ['admin.shell.users', 'admin.index.usersDescription', '/admin/users'],
   ['admin.shell.orders', 'admin.index.ordersDescription', '/admin/orders'],
+  ['admin.index.creditTitle', 'admin.index.creditDescription', '/admin/credit-accounts'],
+  ['admin.index.invoicesTitle', 'admin.index.invoicesDescription', '/admin/invoices'],
   ['admin.shell.jobs', 'admin.index.jobsDescription', '/admin/jobs'],
   ['admin.shell.webhooks', 'admin.index.webhooksDescription', '/admin/webhooks'],
   ['admin.shell.featureFlags', 'admin.index.featureFlagsDescription', '/admin/feature-flags'],

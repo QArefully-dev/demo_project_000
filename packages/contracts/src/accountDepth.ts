@@ -1,4 +1,5 @@
 import { Type, type Static } from '@sinclair/typebox';
+import { TypeSystem } from '@sinclair/typebox/system';
 import { Password, PositiveIntegerString } from './common.js';
 import { PublicUser } from './auth.js';
 import { DeliverySite, BillingEntity } from './tradeAccount.js';
@@ -6,6 +7,12 @@ import { Order } from './orders.js';
 import { CustomBlendSnapshot } from './customBlends.js';
 import { CompanyMembership } from './companyAccounts.js';
 import { SavedListDetail } from './savedLists.js';
+import {
+  CreditUtcIsoInstant,
+  InvoiceDocumentV1Facts,
+  InvoiceDocumentV1Integrity,
+  InvoiceLifecycleStatus,
+} from './tradeCredit.js';
 
 const UtcIsoInstant = Type.String({
   minLength: 24,
@@ -60,6 +67,55 @@ export const UpdatePreferencesBody = Type.Object(
 );
 export type UpdatePreferencesBody = Static<typeof UpdatePreferencesBody>;
 
+const ExportedInvoiceLifecycleIntegrity = TypeSystem.Type<unknown>(
+  'ExportedInvoiceLifecycleIntegrity',
+  (_options, value) => {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+    const invoice = value as { status?: unknown; settledAt?: unknown };
+    if (invoice.status === 'paid') return invoice.settledAt !== null;
+    if (invoice.status === 'open' || invoice.status === 'overdue' || invoice.status === 'voided')
+      return invoice.settledAt === null;
+    return false;
+  },
+);
+
+/** Export keeps the immutable document plus only safe lifecycle settlement state. */
+const ExportedInvoiceFacts = Type.Object(
+  {
+    // Keep this allowlist explicit: paymentIdempotencyKey is a checkout secret and must never
+    // cross the account export boundary, even when the immutable document gains new fields.
+    version: InvoiceDocumentV1Facts.properties.version,
+    id: InvoiceDocumentV1Facts.properties.id,
+    invoiceNumber: InvoiceDocumentV1Facts.properties.invoiceNumber,
+    orderId: InvoiceDocumentV1Facts.properties.orderId,
+    companyId: InvoiceDocumentV1Facts.properties.companyId,
+    userId: InvoiceDocumentV1Facts.properties.userId,
+    country: InvoiceDocumentV1Facts.properties.country,
+    paymentMethod: InvoiceDocumentV1Facts.properties.paymentMethod,
+    currency: InvoiceDocumentV1Facts.properties.currency,
+    terms: InvoiceDocumentV1Facts.properties.terms,
+    termsDays: InvoiceDocumentV1Facts.properties.termsDays,
+    billingEntity: InvoiceDocumentV1Facts.properties.billingEntity,
+    purchaseOrderReference: InvoiceDocumentV1Facts.properties.purchaseOrderReference,
+    lines: InvoiceDocumentV1Facts.properties.lines,
+    netCents: InvoiceDocumentV1Facts.properties.netCents,
+    vatRateBasisPoints: InvoiceDocumentV1Facts.properties.vatRateBasisPoints,
+    vatCents: InvoiceDocumentV1Facts.properties.vatCents,
+    grossCents: InvoiceDocumentV1Facts.properties.grossCents,
+    issuedAt: InvoiceDocumentV1Facts.properties.issuedAt,
+    dueAt: InvoiceDocumentV1Facts.properties.dueAt,
+    status: InvoiceLifecycleStatus,
+    settledAt: Type.Union([CreditUtcIsoInstant, Type.Null()]),
+  },
+  { additionalProperties: false },
+);
+export const ExportedInvoice = Type.Intersect([
+  ExportedInvoiceFacts,
+  InvoiceDocumentV1Integrity(),
+  ExportedInvoiceLifecycleIntegrity(),
+]);
+export type ExportedInvoice = Static<typeof ExportedInvoice>;
+
 /**
  * A synchronous, buyer-owned snapshot. It deliberately contains session summaries rather than
  * session tokens and only public user fields, so the response remains safe to mail via dev inbox.
@@ -71,6 +127,8 @@ export const DataExportResponse = Type.Object(
     deliverySites: Type.Array(DeliverySite),
     billingEntities: Type.Array(BillingEntity),
     orders: Type.Array(Order),
+    /** Caller-owned invoice snapshots only; legacy exports may omit this newly added field. */
+    invoices: Type.Optional(Type.Array(ExportedInvoice)),
     savedLists: Type.Array(SavedListDetail),
     customBlends: Type.Array(CustomBlendSnapshot),
     sessions: Type.Array(SessionSummary),

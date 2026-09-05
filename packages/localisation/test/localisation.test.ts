@@ -15,11 +15,19 @@ import {
 } from '../src/index.js';
 import { commonMessages } from '../src/messages/common.js';
 import { countryMessages } from '../src/messages/country.js';
+import { cartMessages } from '../src/messages/cart.js';
+import { checkoutMessages } from '../src/messages/checkout.js';
+import { customBlendMessages } from '../src/messages/customBlend.js';
+import { orderLifecycleMessages } from '../src/messages/orderLifecycle.js';
+import { tradeAsyncMessages } from '../src/messages/tradeAsync.js';
+import { adminCommerceMessages } from '../src/messages/adminCommerce.js';
+import { adminDiagnosticsMessages } from '../src/messages/adminDiagnostics.js';
 import {
   adminCatalogMessages,
   adminDateTimeInputValue,
   localizeAdminError,
 } from '../src/messages/adminCatalog.js';
+import type { MessageCatalog } from '../src/messages/defineMessages.js';
 
 void test('shared catalogs are exhaustive across all supported countries', () => {
   for (const catalog of [countryMessages, commonMessages]) {
@@ -58,6 +66,91 @@ void test('admin errors expose only coded copy or selected-country safe fallback
     '请求失败。',
   );
   assert.equal(adminDateTimeInputValue('2026-01-01T12:34:56.789Z'), '2026-01-01T12:34');
+});
+
+void test('blend disclosure catalogs are exhaustive across all supported countries', () => {
+  const catalogs: readonly MessageCatalog[] = [
+    customBlendMessages,
+    cartMessages,
+    checkoutMessages,
+    orderLifecycleMessages,
+    tradeAsyncMessages,
+    adminCommerceMessages,
+    adminDiagnosticsMessages,
+  ];
+  for (const catalog of catalogs) {
+    assert.ok(Object.keys(catalog).length > 0);
+    for (const [key, entries] of Object.entries(catalog)) {
+      assert.deepEqual(Object.keys(entries).sort(), [...SUPPORTED_COUNTRIES].sort(), key);
+      for (const country of SUPPORTED_COUNTRIES) {
+        const template = entries[country];
+        assert.ok(template !== undefined, `${key}.${country}`);
+        if (typeof template === 'string') assert.notEqual(template.trim(), '', `${key}.${country}`);
+      }
+    }
+  }
+});
+
+void test('trade-credit message surfaces resolve in every supported country', () => {
+  const cases = [
+    [checkoutMessages, 'checkout.paymentMethod.tradeCreditDueOn', { date: '2026-10-01' }],
+    [checkoutMessages, 'checkout.credit.available', { money: '£12.34' }],
+    [orderLifecycleMessages, 'order.invoice.number', { invoiceNumber: 'QME-2026-000001' }],
+    [orderLifecycleMessages, 'order.invoice.gross', { money: '£12.34' }],
+    [orderLifecycleMessages, 'order.invoice.termsDue', { date: '2026-10-01' }],
+    [tradeAsyncMessages, 'company.credit.available', { money: '£12.34' }],
+    [tradeAsyncMessages, 'company.credit.reason', { reason: 'Review required' }],
+    [
+      adminCommerceMessages,
+      'adminCommerce.invoice.settle.confirmation',
+      {
+        invoiceNumber: 'QME-2026-000001',
+        money: '£12.34',
+      },
+    ],
+    [adminDiagnosticsMessages, 'admin.shell.standingCountry', { country: 'UK' }],
+  ] as const;
+  for (const [catalog, key, params] of cases) {
+    for (const country of SUPPORTED_COUNTRIES) {
+      assert.notEqual(translate(catalog, country, key, params), '', `${key}.${country}`);
+    }
+  }
+});
+
+void test('credit-limit hints describe GBP decimal input in every country', () => {
+  const expectedHints = {
+    UK: 'Enter the credit limit in GBP, using at most two decimal places.',
+    US: 'Enter the credit limit in GBP, using at most two decimal places.',
+    CN: '请输入以 GBP 计价的额度上限，最多保留两位小数。',
+    PL: 'Wpisz limit kredytowy w GBP, używając najwyżej dwóch miejsc po przecinku.',
+    ES: 'Introduce el límite de crédito en GBP, con un máximo de dos decimales.',
+    DE: 'Geben Sie das Kreditlimit in GBP mit höchstens zwei Dezimalstellen ein.',
+    FR: 'Saisissez la limite de crédit en GBP avec au plus deux décimales.',
+  } as const;
+
+  for (const country of SUPPORTED_COUNTRIES) {
+    const hint = translate(adminCommerceMessages, country, 'adminCommerce.credit.limitHint');
+    assert.equal(hint, expectedHints[country], `${country} credit-limit hint`);
+  }
+});
+
+void test('blend rule and pricing copy interpolates in every country', () => {
+  const cases = [
+    [customBlendMessages, 'customBlend.evaluationCurrentPrice', { money: '£12.34' }],
+    [
+      customBlendMessages,
+      'customBlend.componentNextTier',
+      { sacksToNextTier: 2, minTonnes: 5, discountPct: 5 },
+    ],
+    [cartMessages, 'cart.customBlend.componentSubtotal', { money: '£12.34' }],
+    [checkoutMessages, 'checkout.customBlend.componentSourcePrice', { money: '£12.34' }],
+    [orderLifecycleMessages, 'order.customBlend.componentWeight', { weight: '25 kg' }],
+  ] as const;
+  for (const [catalog, key, params] of cases) {
+    for (const country of SUPPORTED_COUNTRIES) {
+      assert.notEqual(translate(catalog, country, key, params), '', `${key}.${country}`);
+    }
+  }
 });
 
 void test('translation interpolates plain text and selects plural category', () => {

@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 import type Database from 'better-sqlite3';
+import { Value } from '@sinclair/typebox/value';
 import {
   CUSTOM_BLEND_FEE_CENTS,
+  ResolvedCustomBlendSnapshot,
   SACK_WEIGHT_GRAMS,
   type CustomBlendSnapshot,
 } from '@shop/contracts';
@@ -15,9 +17,11 @@ import { createCartService } from '../../src/features/cart/cartService.js';
 import { createProductRepository } from '../../src/features/catalog/productRepository.js';
 import {
   createCheckoutService,
+  type CheckoutDependencies,
   type CheckoutParams,
 } from '../../src/features/checkout/checkoutService.js';
 import { createCustomBlendRepository } from '../../src/features/customBlend/customBlendRepository.js';
+import { createCustomBlendResolver } from '../../src/features/customBlend/customBlendResolver.js';
 import { createCustomBlendService } from '../../src/features/customBlend/customBlendService.js';
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
@@ -32,10 +36,7 @@ import { createOrderRepository } from '../../src/features/orders/orderRepository
 import type { PaymentGateway } from '../../src/features/payments/paymentGateway.js';
 import { createPaymentRepository } from '../../src/features/payments/paymentRepository.js';
 import { createPromoRepository } from '../../src/features/promos/promoRepository.js';
-import {
-  resolveTierDiscountPct,
-  resolveUnitPriceCents,
-} from '../../src/features/pricing/pricingRules.js';
+import { resolveTierDiscountPct } from '../../src/features/pricing/pricingRules.js';
 import { createSeededAppFixture, openSeededDatabase } from '../support/seededDatabase.js';
 
 interface Lot {
@@ -64,6 +65,22 @@ function eligiblePair(db: Database.Database): { base: Lot; ingredient: Lot } {
   return { base: rows[0]!, ingredient: rows[1]! };
 }
 
+function eligibleLotForGroup(db: Database.Database, mixingGroup: string): Lot {
+  const row = db
+    .prepare(
+      `SELECT pv.id AS variantId, p.id AS productId, pv.price_cents AS priceCents,
+              pv.weight_grams AS weightGrams
+         FROM product_variants pv
+         INNER JOIN products p ON p.id = pv.product_id
+        WHERE p.active = 1 AND pv.active = 1 AND pv.sort_order = 1
+          AND pv.weight_grams = ${SACK_WEIGHT_GRAMS} AND p.mixing_group = ?
+        ORDER BY pv.id ASC LIMIT 1`,
+    )
+    .get(mixingGroup) as Lot | undefined;
+  if (!row) throw new Error(`Expected an eligible ${mixingGroup} lot`);
+  return row;
+}
+
 interface CountingGateway extends PaymentGateway {
   calls: number;
 }
@@ -80,13 +97,18 @@ function countingGateway(): CountingGateway {
   return gateway;
 }
 
-function services(db: Database.Database, gateway: PaymentGateway) {
+function services(
+  db: Database.Database,
+  gateway: PaymentGateway,
+  approvals?: CheckoutDependencies['approvals'],
+) {
   const carts = createCartRepository(db);
   const clock = { now: () => new Date('2026-07-25T10:00:00.000Z') };
+  const customBlendResolver = createCustomBlendResolver(createCustomBlendRepository(db), clock);
   const audit = createAuditWriter({ repository: createAuditRepository(db), clock });
   return {
-    carts: createCartService(carts),
-    blends: createCustomBlendService(createCustomBlendRepository(db)),
+    carts: createCartService(carts, undefined, undefined, customBlendResolver),
+    blends: createCustomBlendService(customBlendResolver),
     checkout: createCheckoutService({
       unitOfWork: createUnitOfWork(db),
       carts,
@@ -99,6 +121,8 @@ function services(db: Database.Database, gateway: PaymentGateway) {
       products: createProductRepository(db),
       audit,
       inventory: createInventoryService({ repository: createInventoryRepository(db) }),
+      customBlendResolver,
+      approvals,
       ...checkoutDepthDependencies(db, clock),
     }),
   };
@@ -185,11 +209,7 @@ void test('Custom Blend checkout money, promotion, and revalidation', async (t) 
           expectedDiscountPct,
           `tier ladder for ${quantity} sacks`,
         );
-        const unitPriceCents = resolveUnitPriceCents(
-          lots.base.priceCents,
-          quantity,
-          SACK_WEIGHT_GRAMS,
-        );
+        const unitPriceCents = line.resolvedUnitPriceCents;
         assert.equal(line.resolvedUnitPriceCents, unitPriceCents);
         assert.equal(line.materialSubtotalCents, unitPriceCents * quantity);
         // Flat, never tiered, never scaled by quantity.
@@ -335,6 +355,81 @@ void test('Custom Blend checkout money, promotion, and revalidation', async (t) 
     },
   );
 
+  await t.test(
+    'an approved retry terminalizes a stale blend so restoring facts cannot charge the key',
+    async (testContext) => {
+      const { db, lots } = setupFresh(testContext);
+      const gateway = countingGateway();
+      let approved = false;
+      const approvals = {
+        evaluate: () =>
+          approved
+            ? { gate: 'approved-retry' as const, approvedApprovalRequestId: 'approval-1' }
+            : { gate: 'defer' as const, approvalRequestId: 'approval-1' },
+      } as NonNullable<CheckoutDependencies['approvals']>;
+      const api = services(db, gateway, approvals);
+      const cartId = configure(api, lots, 5);
+      const params = paymentParams(cartId, 'stale-after-approval');
+      const orderCountBefore = (
+        db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }
+      ).count;
+
+      const pending = await api.checkout.process(params);
+      assert.equal(pending.success === false && pending.error, 'PENDING_APPROVAL');
+      assert.equal(gateway.calls, 0);
+
+      approved = true;
+      db.prepare('UPDATE product_variants SET active = 0 WHERE id = ?').run(
+        lots.ingredient.variantId,
+      );
+      const rejected = await api.checkout.process(params);
+      assert.deepEqual(rejected, { success: false, error: 'CUSTOM_BLEND_INVALID' });
+      assert.equal(gateway.calls, 0);
+
+      assert.deepEqual(
+        db
+          .prepare('SELECT status, response_json, order_id FROM payments WHERE idempotency_key = ?')
+          .get(params.idempotencyKey),
+        {
+          status: 'failed_pre_gateway',
+          response_json: JSON.stringify(rejected),
+          order_id: null,
+        },
+      );
+      assert.equal(
+        (
+          db
+            .prepare(
+              'SELECT COUNT(*) AS count FROM inventory_reservations WHERE payment_idempotency_key = ?',
+            )
+            .get(params.idempotencyKey) as { count: number }
+        ).count,
+        0,
+      );
+      assert.equal(
+        (
+          db
+            .prepare('SELECT stock_count FROM product_variants WHERE id = ?')
+            .get(lots.base.variantId) as {
+            stock_count: number;
+          }
+        ).stock_count,
+        100000,
+      );
+      assert.equal(
+        (db.prepare('SELECT COUNT(*) AS count FROM orders').get() as { count: number }).count,
+        orderCountBefore,
+      );
+
+      db.prepare('UPDATE product_variants SET active = 1 WHERE id = ?').run(
+        lots.ingredient.variantId,
+      );
+      const replayed = await api.checkout.process(params);
+      assert.deepEqual(replayed, rejected);
+      assert.equal(gateway.calls, 0);
+    },
+  );
+
   await t.test('a retired base lot is rejected before the gateway', async (testContext) => {
     const { db, lots } = setupFresh(testContext);
     const gateway = countingGateway();
@@ -346,6 +441,101 @@ void test('Custom Blend checkout money, promotion, and revalidation', async (t) 
     assert.equal(result.success === false && result.error, 'CUSTOM_BLEND_INVALID');
     assert.equal(gateway.calls, 0);
   });
+
+  await t.test(
+    'resolver prices every material component before applying the flat fee',
+    async (testContext) => {
+      const { db, lots } = setupFresh(testContext);
+      db.prepare('UPDATE product_variants SET price_cents = 4000 WHERE id = ?').run(
+        lots.base.variantId,
+      );
+      db.prepare('UPDATE product_variants SET price_cents = 8000 WHERE id = ?').run(
+        lots.ingredient.variantId,
+      );
+      const gateway = countingGateway();
+      const api = services(db, gateway);
+      const cartId = configure(api, lots, 5);
+      const cart = api.carts.get(cartId)!;
+      const line = cart.items[0]!;
+
+      assert.equal(line.resolvedUnitPriceCents, 5000);
+      assert.equal(line.materialSubtotalCents, 25_000);
+      assert.equal(line.blendingFeeCents, CUSTOM_BLEND_FEE_CENTS);
+      assert.equal(line.lineTotalCents, 25_000 + CUSTOM_BLEND_FEE_CENTS);
+
+      const result = await api.checkout.process(paymentParams(cartId, 'resolver-material-fee'));
+      assert.equal(result.success, true, `checkout failed: ${JSON.stringify(result)}`);
+      assert.equal(gateway.calls, 1);
+      const quote = loadQuote(db, 'resolver-material-fee');
+      assert.equal(quote.subtotalCents, 25_000 + CUSTOM_BLEND_FEE_CENTS);
+      assert.equal(
+        quote.totalCents,
+        25_000 + CUSTOM_BLEND_FEE_CENTS + quote.deliverySummary.chargeCents,
+      );
+    },
+  );
+
+  await t.test(
+    'promo minimum subtotal includes all material components but excludes the fee',
+    async (testContext) => {
+      const { db, lots } = setupFresh(testContext);
+      db.prepare('UPDATE product_variants SET price_cents = 4000 WHERE id = ?').run(
+        lots.base.variantId,
+      );
+      db.prepare('UPDATE product_variants SET price_cents = 8000 WHERE id = ?').run(
+        lots.ingredient.variantId,
+      );
+      db.prepare("UPDATE promo_codes SET min_subtotal_cents = 25000 WHERE code = 'SAVE10'").run();
+      const gateway = countingGateway();
+      const api = services(db, gateway);
+      const cartId = configure(api, lots, 5);
+
+      const result = await api.checkout.process(
+        paymentParams(cartId, 'resolver-promo-boundary', 'SAVE10'),
+      );
+      assert.equal(result.success, true, `checkout failed: ${JSON.stringify(result)}`);
+      const quote = loadQuote(db, 'resolver-promo-boundary');
+      assert.equal(quote.discountCents, 2500);
+      assert.equal(quote.subtotalCents, 25_000 + CUSTOM_BLEND_FEE_CENTS);
+      assert.equal(
+        quote.totalCents,
+        25_000 + CUSTOM_BLEND_FEE_CENTS - 2500 + quote.deliverySummary.chargeCents,
+      );
+    },
+  );
+
+  await t.test(
+    'promo validation does not apply the aggregate tier a second time',
+    async (testContext) => {
+      const { db, lots } = setupFresh(testContext);
+      db.prepare('UPDATE product_variants SET price_cents = 4000 WHERE id = ?').run(
+        lots.base.variantId,
+      );
+      db.prepare('UPDATE product_variants SET price_cents = 8000 WHERE id = ?').run(
+        lots.ingredient.variantId,
+      );
+      const gateway = countingGateway();
+      const api = services(db, gateway);
+      const cartId = configure(api, lots, 200);
+      const cart = api.carts.get(cartId)!;
+      const materialSubtotalCents = cart.discountableSubtotalCents;
+      // The base and ingredient qualify for different component tiers at this quantity. The
+      // promo gate must see their already-resolved sum, not another discount on that sum.
+      assert.equal(materialSubtotalCents, 1_000_000);
+      db.prepare("UPDATE promo_codes SET min_subtotal_cents = ? WHERE code = 'SAVE10'").run(
+        materialSubtotalCents,
+      );
+
+      const result = await api.checkout.process(
+        paymentParams(cartId, 'resolver-promo-tier-boundary', 'SAVE10'),
+      );
+      assert.equal(result.success, true, `checkout failed: ${JSON.stringify(result)}`);
+      const quote = loadQuote(db, 'resolver-promo-tier-boundary');
+      assert.equal(quote.discountBaseCents, materialSubtotalCents);
+      assert.equal(quote.discountCents, 100_000);
+      assert.equal(quote.subtotalCents, materialSubtotalCents + CUSTOM_BLEND_FEE_CENTS);
+    },
+  );
 });
 
 void test('payment route maps a stale Custom Blend line to a 409 conflict', async (t) => {
@@ -391,4 +581,46 @@ void test('payment route maps a stale Custom Blend line to a 409 conflict', asyn
     error: 'The custom blend is no longer valid.',
     code: 'CUSTOM_BLEND_INVALID',
   });
+});
+
+void test('cleaning checkout accepts a pigment ingredient through the resolver policy', async (t) => {
+  const { db } = await createSeededAppFixture(t);
+  const lots = {
+    base: eligibleLotForGroup(db, 'cleaning'),
+    ingredient: eligibleLotForGroup(db, 'pigments'),
+  };
+  db.prepare('UPDATE product_variants SET stock_count = 100000 WHERE id = ?').run(
+    lots.base.variantId,
+  );
+  const gateway = countingGateway();
+  const api = services(db, gateway);
+  const cartId = api.carts.create().cartId;
+  const configured = api.blends.create(
+    api.carts,
+    cartId,
+    {
+      baseVariantId: lots.base.variantId,
+      ingredients: [{ variantId: lots.ingredient.variantId, percentage: 10 }],
+      quantity: 5,
+    },
+    { actor: { type: 'anonymous', userId: null }, requestId: `cleaning-${cartId}` },
+  );
+  assert.equal(
+    typeof configured === 'string',
+    false,
+    `configure failed: ${JSON.stringify(configured)}`,
+  );
+
+  const result = await api.checkout.process(paymentParams(cartId, 'cleaning-pigment'));
+  assert.equal(result.success, true, `checkout failed: ${JSON.stringify(result)}`);
+  assert.equal(gateway.calls, 1);
+  const quote = loadQuote(db, 'cleaning-pigment');
+  const line = quote.variantLines[0]!;
+  const resolvedBlend = Value.Parse(ResolvedCustomBlendSnapshot, line.customBlend);
+  assert.equal(resolvedBlend.ruleVersion, 1);
+  assert.equal(resolvedBlend.resultClassification, 'non-food');
+  assert.deepEqual(
+    resolvedBlend.components.map((component) => component.mixingGroup),
+    ['cleaning', 'pigments'],
+  );
 });

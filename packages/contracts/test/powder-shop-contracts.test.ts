@@ -5,6 +5,7 @@ import {
   CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION,
   PersistedCheckoutQuoteV7,
   PersistedCheckoutQuoteV8,
+  PersistedCheckoutQuoteV9,
   parsePersistedCheckoutQuote,
 } from '../src/payments.js';
 import {
@@ -585,8 +586,8 @@ void test('PersistedCheckoutQuoteV8 roundtrip with variant lines and delivery', 
   assert.equal(v8.totalCents, total);
 });
 
-void test('V8 is the only version written and accepted', () => {
-  assert.equal(CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION, 8);
+void test('V10 is current while prepared V8/V9 and unknown-version rejection remain enforced', () => {
+  assert.equal(CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION, 10);
 
   const v8 = {
     version: 8,
@@ -598,10 +599,14 @@ void test('V8 is the only version written and accepted', () => {
     inventoryAllocations: [{ productId: '1', reservedQuantity: 1, backorderedQuantity: 0 }],
   };
   assert.doesNotThrow(() => parsePersistedCheckoutQuote(v8));
+  const v9 = { ...v8, version: 9 };
+  assert.equal(Value.Check(PersistedCheckoutQuoteV9, v9), true);
+  assert.doesNotThrow(() => parsePersistedCheckoutQuote(v9));
 
   for (const staleVersion of [1, 2, 3, 4, 5, 6, 7]) {
     assert.throws(() => parsePersistedCheckoutQuote({ ...v8, version: staleVersion }));
   }
+  assert.throws(() => parsePersistedCheckoutQuote({ ...v9, version: 10 }));
   assert.throws(() => parsePersistedCheckoutQuote({ version: 0, ...baseQuote }));
   assert.throws(() => parsePersistedCheckoutQuote(null));
   assert.throws(() => parsePersistedCheckoutQuote(undefined));

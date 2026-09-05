@@ -99,10 +99,10 @@ describe('CheckoutPage approval response', () => {
       await act(async () => {
         await result.current();
       });
-      expect(pay).toHaveBeenNthCalledWith(
-        2,
+      expect(vi.mocked(pay).mock.calls[1]?.[0]).toEqual(
         expect.objectContaining({ idempotencyKey: conflictEvent.idempotencyKey }),
       );
+      expect(vi.mocked(pay).mock.calls[1]?.[1]?.signal).toBeInstanceOf(AbortSignal);
     },
   );
 });

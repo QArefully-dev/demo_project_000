@@ -50,6 +50,15 @@ interface Row {
   created_at: string;
 }
 
+interface RefundablePayment {
+  id: number;
+  order_id: number | null;
+  amount_cents: number;
+  status: unknown;
+  payment_method: unknown;
+  order_payment_method: unknown;
+}
+
 function map(row: Row): AdminRefundRecord {
   return {
     id: String(row.id),
@@ -80,6 +89,37 @@ export function createAdminRefundService(deps: {
   const findByKey = (key: string): Row | undefined =>
     deps.db.prepare('SELECT * FROM admin_refunds WHERE idempotency_key = ?').get(key) as
       Row | undefined;
+
+  const requireCardPayment = (paymentId: number, orderId: number): RefundablePayment => {
+    const payment = deps.db
+      .prepare(
+        `SELECT p.id, p.order_id, p.amount_cents, p.status, p.payment_method,
+                o.payment_method AS order_payment_method
+         FROM payments p
+         LEFT JOIN orders o ON o.id = p.order_id
+         WHERE p.id = ?`,
+      )
+      .get(paymentId) as RefundablePayment | undefined;
+    if (!payment) throw new AdminRefundError('PAYMENT_NOT_REFUNDABLE');
+    if (payment.order_id !== orderId) throw new AdminRefundError('PAYMENT_ORDER_MISMATCH');
+
+    // Validate the authoritative order and every linked payment, not only the selected row. A
+    // malformed or mixed method set must never reach the refund balance or gateway.
+    const linkedPayments = deps.db
+      .prepare('SELECT payment_method FROM payments WHERE order_id = ? ORDER BY id ASC')
+      .all(orderId) as Array<{ payment_method: unknown }>;
+    if (
+      payment.order_payment_method !== 'card' ||
+      payment.payment_method !== 'card' ||
+      linkedPayments.length === 0 ||
+      linkedPayments.some((linked) => linked.payment_method !== 'card') ||
+      payment.status !== 'succeeded'
+    ) {
+      throw new AdminRefundError('PAYMENT_NOT_REFUNDABLE');
+    }
+    return payment;
+  };
+
   return {
     refund({ paymentId, orderId, amountCents, reason, idempotencyKey, context }) {
       if (
@@ -96,17 +136,14 @@ export function createAdminRefundService(deps: {
         throw new AdminRefundError('INVALID_REFUND');
       }
       return deps.unitOfWork.run(() => {
+        const payment = requireCardPayment(paymentId, orderId);
         const replay = findByKey(idempotencyKey);
-        if (replay) return map(replay);
-        const payment = deps.db
-          .prepare(
-            `SELECT id, order_id, amount_cents FROM payments
-             WHERE id = ? AND status = 'succeeded'`,
-          )
-          .get(paymentId) as
-          { id: number; order_id: number | null; amount_cents: number } | undefined;
-        if (!payment) throw new AdminRefundError('PAYMENT_NOT_REFUNDABLE');
-        if (payment.order_id !== orderId) throw new AdminRefundError('PAYMENT_ORDER_MISMATCH');
+        if (replay) {
+          if (replay.payment_id !== paymentId || replay.order_id !== orderId) {
+            throw new AdminRefundError('PAYMENT_ORDER_MISMATCH');
+          }
+          return map(replay);
+        }
         const prior = deps.db
           .prepare(
             `SELECT

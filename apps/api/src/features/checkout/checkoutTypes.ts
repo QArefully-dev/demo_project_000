@@ -1,7 +1,11 @@
 import type { Order } from '@shop/contracts/orders';
 import type { PostalAddress } from '@shop/contracts/address';
 import type { DeliveryDate, DeliverySlot } from '@shop/contracts/delivery';
-import type { BillingSelection, DeliveryDestination } from '@shop/contracts/payments';
+import type {
+  BillingSelection,
+  DeliveryDestination,
+  PaymentMethod,
+} from '@shop/contracts/payments';
 import type { BillingEntitySnapshot } from '@shop/contracts/trade-account';
 import type { Clock } from '../auth/authService.js';
 import type { DeliverySlotService } from '../delivery/deliverySlotService.js';
@@ -21,6 +25,9 @@ import type { InventoryService } from '../inventory/inventoryService.js';
 import type { ApprovalService } from '../orderApprovals/approvalService.js';
 import type { CompanyService } from '../companyAccounts/companyService.js';
 import type { CountryProfileService } from '../countryProfile/countryProfileService.js';
+import type { CustomBlendResolver } from '../customBlend/customBlendResolver.js';
+import type { CreditAccountService } from '../tradeCredit/creditAccountService.js';
+import type { InvoiceService } from '../invoices/invoiceService.js';
 
 export type CheckoutErrorCode =
   | 'CART_NOT_FOUND'
@@ -52,6 +59,14 @@ export type CheckoutErrorCode =
   | 'APPROVAL_REJECTED'
   | 'APPROVAL_EXPIRED'
   | 'APPROVAL_TOTAL_DRIFT'
+  | 'CREDIT_NOT_ELIGIBLE'
+  | 'CREDIT_ACCOUNT_ON_HOLD'
+  | 'CREDIT_ACCOUNT_SUSPENDED'
+  | 'CREDIT_LIMIT_EXCEEDED'
+  | 'CREDIT_PAYMENT_UNAVAILABLE'
+  | 'COMPANY_REQUIRED'
+  | 'PAYMENT_METHOD_INVALID'
+  | 'CARD_FIELDS_FORBIDDEN'
   | 'CHECKOUT_FAILED';
 
 export type CheckoutResult =
@@ -69,6 +84,14 @@ export type CheckoutResult =
         | 'APPROVAL_EXPIRED'
         | 'APPROVAL_TOTAL_DRIFT'
         | 'BELOW_MOQ'
+        | 'CREDIT_LIMIT_EXCEEDED'
+        | 'CREDIT_NOT_ELIGIBLE'
+        | 'CREDIT_ACCOUNT_ON_HOLD'
+        | 'CREDIT_ACCOUNT_SUSPENDED'
+        | 'CREDIT_PAYMENT_UNAVAILABLE'
+        | 'COMPANY_REQUIRED'
+        | 'PAYMENT_METHOD_INVALID'
+        | 'CARD_FIELDS_FORBIDDEN'
       >;
       promoError?: string;
       promoErrorCode?: string;
@@ -81,6 +104,23 @@ export type CheckoutResult =
   | { success: false; error: 'BELOW_MOQ'; minQuantity: number }
   | { success: false; error: 'PENDING_APPROVAL'; approvalRequestId: string }
   | { success: false; error: 'APPROVAL_REJECTED' | 'APPROVAL_EXPIRED' | 'APPROVAL_TOTAL_DRIFT' }
+  | {
+      success: false;
+      error: 'CREDIT_LIMIT_EXCEEDED';
+      requestedCents: number;
+      availableCreditCents: number;
+    }
+  | {
+      success: false;
+      error:
+        | 'CREDIT_NOT_ELIGIBLE'
+        | 'CREDIT_ACCOUNT_ON_HOLD'
+        | 'CREDIT_ACCOUNT_SUSPENDED'
+        | 'CREDIT_PAYMENT_UNAVAILABLE'
+        | 'COMPANY_REQUIRED'
+        | 'PAYMENT_METHOD_INVALID'
+        | 'CARD_FIELDS_FORBIDDEN';
+    }
   /** Carries the freshly derived earliest bookable date so the buyer can rebook without a round trip. */
   | { success: false; error: 'DELIVERY_SLOT_UNAVAILABLE'; earliestDate: DeliveryDate };
 
@@ -98,9 +138,12 @@ export interface CheckoutParams {
   billingSelection: BillingSelection;
   deliverySlot: DeliverySlot;
   purchaseOrderReference?: string;
-  cardNumber: string;
-  cardExpiry: string;
-  cardCvc: string;
+  /** Required only for the card method. Trade-credit requests must omit all card fields. */
+  cardNumber?: string;
+  cardExpiry?: string;
+  cardCvc?: string;
+  /** Omitted preserves the historic simulated-card request shape. */
+  paymentMethod?: PaymentMethod;
   idempotencyKey: string;
   userId: number | null;
   auditContext: AuditContext;
@@ -127,16 +170,28 @@ export interface CheckoutDependencies {
   payments: PaymentRepository;
   orders: OrderRepository;
   mailbox: MailboxRepository;
+  /** Canonical invoice capability required before a trade-credit finalization can write. */
+  invoices?: Pick<InvoiceService, 'issue'>;
+  /** Compatibility alias used while composition roots converge on the `invoices` name. */
+  invoiceService?: Pick<InvoiceService, 'issue'>;
   gateway: PaymentGateway;
   clock: Clock;
   products: ProductRepository;
   audit: AuditWriter;
   inventory: InventoryService;
+  /**
+   * The application singleton used to rehydrate configured lines at the checkout boundary. It is
+   * optional only for legacy direct callers that can contain plain lines; app composition always
+   * supplies it so checkout and cart reads share one live-fact authority.
+   */
+  customBlendResolver?: CustomBlendResolver;
   /** Production composition always supplies the checked-in country availability policy. */
   countryProfiles?: Pick<CountryProfileService, 'isCategoryBlocked' | 'isProductBlocked'>;
   /** Optional only during composition convergence; production checkout wires both services. */
   approvals?: ApprovalService;
   companies?: CompanyService;
+  /** Company credit authority and exposure-hold workflow. */
+  creditAccounts?: CreditAccountService;
   /** Resolves saved destinations and billing parties owned by the authenticated buyer. */
   tradeAccount: { sites: DeliverySiteService; billingEntities: BillingEntityService };
   /**

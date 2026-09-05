@@ -10,7 +10,9 @@ import {
 } from '../../src/features/cart/cartService.js';
 import {
   createPaymentRepository,
+  createSafeFingerprint,
   parsePersistedCheckoutQuote,
+  type SafeFingerprintParams,
   type PersistedCheckoutQuote,
 } from '../../src/features/payments/paymentRepository.js';
 import { createPromoRepository } from '../../src/features/promos/promoRepository.js';
@@ -18,6 +20,22 @@ import { validatePromo } from '../../src/features/promos/promoService.js';
 import { testPostalAddress } from './checkoutDepthFixtures.js';
 
 const createdAt = '2026-07-14T10:00:00.000Z';
+
+const fingerprintParams = (
+  overrides: Partial<SafeFingerprintParams> = {},
+): SafeFingerprintParams => ({
+  cartId: '00000000-0000-4000-8000-000000000061',
+  customerName: 'Checkout test',
+  customerEmail: 'checkout@example.test',
+  deliveryDestination: { kind: 'adhoc', address: testPostalAddress },
+  billingSelection: {
+    kind: 'adhoc',
+    billingEntity: { legalName: 'Test Buyer Ltd', address: testPostalAddress },
+  },
+  deliverySlot: { date: '2026-07-20', window: 'am' },
+  cardExpiry: '12/30',
+  ...overrides,
+});
 
 function quote(cartId: string, totalCents = 1200): PersistedCheckoutQuote {
   return {
@@ -232,4 +250,267 @@ void test('persisted checkout quotes reject malformed and unknown-version data',
     () => parsePersistedCheckoutQuote(JSON.stringify({ ...quote('cart'), version: 2 })),
     /Invalid persisted checkout quote/,
   );
+});
+
+void test('method-aware reservations persist conditional card and company metadata', (t) => {
+  const { db } = openSeededDatabase(t);
+  const payments = createPaymentRepository(db);
+  const companyId = (db
+    .prepare('SELECT id FROM company_accounts ORDER BY id LIMIT 1')
+    .pluck()
+    .get() ?? 0) as number;
+  assert.ok(companyId > 0);
+
+  const card = payments.reservePreGateway({
+    idempotencyKey: '00000000-0000-4000-8000-000000000062',
+    fingerprint: 'card-fingerprint',
+    card: { last4: '4242', brand: 'Visa' },
+    createdAt,
+  });
+  assert.deepEqual(card, { reserved: true });
+  const cardRecord = payments.load('00000000-0000-4000-8000-000000000062');
+  assert.equal(cardRecord?.paymentMethod, 'card');
+  assert.equal(cardRecord?.companyId, null);
+  assert.equal(cardRecord?.userId, null);
+  assert.equal(cardRecord?.cardLast4, '4242');
+  assert.equal(cardRecord?.cardBrand, 'Visa');
+
+  const creditKey = '00000000-0000-4000-8000-000000000063';
+  assert.deepEqual(
+    payments.reservePreGateway({
+      idempotencyKey: creditKey,
+      fingerprint: 'credit-fingerprint',
+      paymentMethod: 'trade_credit',
+      companyId,
+      userId: 1,
+      createdAt,
+    }),
+    { reserved: true },
+  );
+  const creditRecord = payments.load(creditKey);
+  assert.equal(creditRecord?.paymentMethod, 'trade_credit');
+  assert.equal(creditRecord?.companyId, companyId);
+  assert.equal(creditRecord?.userId, 1);
+  assert.equal(creditRecord?.cardLast4, null);
+  assert.equal(creditRecord?.cardBrand, null);
+});
+
+void test('omitted and explicit card fingerprints retain legacy normalization while credit binds identity', () => {
+  const card = { last4: '4242', brand: 'Visa' } as const;
+  const omitted = createSafeFingerprint(fingerprintParams({ userId: null }), card);
+  const explicit = createSafeFingerprint(
+    fingerprintParams({ paymentMethod: 'card', userId: null }),
+    card,
+  );
+  assert.equal(explicit, omitted);
+  assert.equal(
+    createSafeFingerprint(fingerprintParams({ userId: 7 }), card),
+    createSafeFingerprint(fingerprintParams({ paymentMethod: 'card', userId: 8 }), card),
+    'authenticated legacy card retries must not add buyer identity to the digest',
+  );
+
+  const credit = createSafeFingerprint(
+    fingerprintParams({
+      paymentMethod: 'trade_credit',
+      userId: '7',
+      companyId: '11',
+      cardExpiry: undefined,
+    }),
+  );
+  assert.notEqual(
+    credit,
+    createSafeFingerprint(
+      fingerprintParams({
+        paymentMethod: 'trade_credit',
+        userId: '8',
+        companyId: '11',
+        cardExpiry: undefined,
+      }),
+    ),
+  );
+  assert.notEqual(
+    credit,
+    createSafeFingerprint(
+      fingerprintParams({ paymentMethod: 'card', userId: 7, cardExpiry: '12/30' }),
+      card,
+    ),
+  );
+  assert.throws(
+    () =>
+      createSafeFingerprint(
+        fingerprintParams({
+          paymentMethod: 'trade_credit',
+          userId: 7,
+          companyId: 11,
+          cardExpiry: undefined,
+        }),
+        { last4: '4242', brand: 'Visa' },
+      ),
+    /cannot include card metadata/,
+  );
+});
+
+void test('quote persistence rejects changed method/company and malformed conditional rows', (t) => {
+  const { db } = openSeededDatabase(t);
+  const payments = createPaymentRepository(db);
+  const companyId = (db
+    .prepare('SELECT id FROM company_accounts ORDER BY id LIMIT 1')
+    .pluck()
+    .get() ?? 0) as number;
+  assert.ok(companyId > 0);
+  const key = '00000000-0000-4000-8000-000000000064';
+  payments.reservePreGateway({
+    idempotencyKey: key,
+    fingerprint: 'credit-fingerprint',
+    paymentMethod: 'trade_credit',
+    companyId,
+    userId: 1,
+    createdAt,
+  });
+  const baseCreditQuote = quote('00000000-0000-4000-8000-000000000065', 1200);
+  const creditQuote = {
+    ...baseCreditQuote,
+    // V10 freezes the catalogue SKU; keep the fixture schema-valid so binding assertions run.
+    variantLines: baseCreditQuote.variantLines.map((line) => ({
+      ...line,
+      sku: 'BKP-0001-001',
+    })),
+    version: 10,
+    userId: 1,
+    companyId: String(companyId),
+    country: 'UK' as const,
+    paymentMethod: 'trade_credit' as const,
+    netCents: 1200,
+    vatRateBasisPoints: 2000,
+    vatCents: 240,
+    grossCents: 1440,
+    totalCents: 1440,
+    terms: 'net_30' as const,
+  } as unknown as PersistedCheckoutQuote;
+  assert.throws(
+    () =>
+      payments.persistQuote({
+        idempotencyKey: key,
+        cartId: creditQuote.cartId,
+        quote: creditQuote,
+        updatedAt: createdAt,
+        reservationExpiresAt: '2026-07-14T10:15:00.000Z',
+        companyId: companyId + 1,
+        userId: 1,
+      }),
+    /does not match payment reservation/,
+  );
+
+  assert.throws(
+    () =>
+      payments.persistQuote({
+        idempotencyKey: key,
+        cartId: creditQuote.cartId,
+        quote: creditQuote,
+        updatedAt: createdAt,
+        reservationExpiresAt: '2026-07-14T10:15:00.000Z',
+      }),
+    /user must be bound to payment reservation/,
+  );
+  assert.throws(
+    () =>
+      payments.persistQuote({
+        idempotencyKey: key,
+        cartId: creditQuote.cartId,
+        quote: creditQuote,
+        updatedAt: createdAt,
+        reservationExpiresAt: '2026-07-14T10:15:00.000Z',
+        userId: 2,
+      }),
+    /does not match payment reservation/,
+  );
+
+  db.pragma('ignore_check_constraints = ON');
+  db.prepare(
+    `UPDATE payments SET payment_method = 'trade_credit', company_id = ?, card_last4 = '4242', card_brand = 'Visa'
+     WHERE idempotency_key = ?`,
+  ).run(companyId, key);
+  db.pragma('ignore_check_constraints = OFF');
+  assert.throws(() => payments.load(key), /Invalid persisted payment intent/);
+});
+
+void test('credit quote persistence binds the quote buyer to the stored reservation buyer', (t) => {
+  const { db } = openSeededDatabase(t);
+  const payments = createPaymentRepository(db);
+  const companyId = (db
+    .prepare('SELECT id FROM company_accounts ORDER BY id LIMIT 1')
+    .pluck()
+    .get() ?? 0) as number;
+  assert.ok(companyId > 0);
+
+  const key = '00000000-0000-4000-8000-000000000066';
+  payments.reservePreGateway({
+    idempotencyKey: key,
+    fingerprint: 'credit-buyer-a-fingerprint',
+    paymentMethod: 'trade_credit',
+    companyId,
+    userId: 1,
+    createdAt,
+  });
+  const baseQuoteForBuyerB = quote('00000000-0000-4000-8000-000000000067', 1200);
+  const quoteForBuyerB = {
+    ...baseQuoteForBuyerB,
+    // V10 freezes the catalogue SKU; keep the fixture schema-valid so buyer binding is tested.
+    variantLines: baseQuoteForBuyerB.variantLines.map((line) => ({
+      ...line,
+      sku: 'BKP-0001-001',
+    })),
+    version: 10,
+    userId: 2,
+    companyId: String(companyId),
+    country: 'UK' as const,
+    paymentMethod: 'trade_credit' as const,
+    netCents: 1200,
+    vatRateBasisPoints: 2000,
+    vatCents: 240,
+    grossCents: 1440,
+    totalCents: 1440,
+    terms: 'net_30' as const,
+  } as unknown as PersistedCheckoutQuote;
+
+  assert.throws(
+    () =>
+      payments.persistQuote({
+        idempotencyKey: key,
+        cartId: quoteForBuyerB.cartId,
+        quote: quoteForBuyerB,
+        updatedAt: createdAt,
+        reservationExpiresAt: '2026-07-14T10:15:00.000Z',
+        paymentMethod: 'trade_credit',
+        companyId,
+        // The caller assertion agrees with the quote, but not with the stored reservation.
+        userId: 2,
+      }),
+    /does not match payment reservation/,
+  );
+  assert.equal(payments.load(key)?.quoteJson, null);
+});
+
+void test('trade-credit reservations require a positive authenticated user', (t) => {
+  const { db } = openSeededDatabase(t);
+  const payments = createPaymentRepository(db);
+  const companyId = (db
+    .prepare('SELECT id FROM company_accounts ORDER BY id LIMIT 1')
+    .pluck()
+    .get() ?? 0) as number;
+  assert.ok(companyId > 0);
+  for (const userId of [undefined, null, 0, '0', -1] as const) {
+    assert.throws(
+      () =>
+        payments.reservePreGateway({
+          idempotencyKey: `00000000-0000-4000-8000-${String(70 + (userId ?? 0)).padStart(12, '0')}`,
+          fingerprint: 'credit-fingerprint',
+          paymentMethod: 'trade_credit',
+          companyId,
+          userId,
+          createdAt,
+        }),
+      /(?:authenticated user|Invalid payment user)/,
+    );
+  }
 });

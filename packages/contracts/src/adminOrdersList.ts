@@ -1,4 +1,6 @@
 import { Type, type Static } from '@sinclair/typebox';
+import { TypeSystem } from '@sinclair/typebox/system';
+import { Value } from '@sinclair/typebox/value';
 import { EmailAddress, MoneyCents, PositiveIntegerString } from './common.js';
 import { OrderDetailResponse, OrderStatus } from './orders.js';
 
@@ -52,12 +54,31 @@ export const AdminOrderRefundPayment = Type.Object(
 );
 export type AdminOrderRefundPayment = Static<typeof AdminOrderRefundPayment>;
 
-/** Administrator detail keeps refund capability out of customer order transport. */
-export const AdminOrderDetailResponse = Type.Object(
-  {
-    ...OrderDetailResponse.properties,
-    refundPayment: Type.Union([AdminOrderRefundPayment, Type.Null()]),
+const AdminOrderDetailAccountingIntegrity = TypeSystem.Type<unknown>(
+  'AdminOrderDetailAccountingIntegrity',
+  (_options, value) => {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+    if (!('refundPayment' in value)) return false;
+    const { refundPayment, ...orderDetail } = value;
+    // Reuse the canonical order-detail schema so this admin extension cannot weaken its
+    // accounting invariants while adding the refund capability field.
+    return refundPayment !== undefined && Value.Check(OrderDetailResponse, orderDetail);
   },
+);
+
+/** Administrator detail keeps refund capability out of customer order transport. */
+const AdminOrderDetailFields = Type.Composite(
+  [
+    OrderDetailResponse,
+    Type.Object({
+      refundPayment: Type.Union([AdminOrderRefundPayment, Type.Null()]),
+    }),
+  ],
   { additionalProperties: false },
+);
+export const AdminOrderDetailResponse = Object.defineProperty(
+  Type.Intersect([AdminOrderDetailFields, AdminOrderDetailAccountingIntegrity()]),
+  'properties',
+  { value: AdminOrderDetailFields.properties },
 );
 export type AdminOrderDetailResponse = Static<typeof AdminOrderDetailResponse>;

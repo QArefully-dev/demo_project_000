@@ -1,10 +1,11 @@
-import type { CountryProfile } from './types.js';
+import { createVatRateBasisPoints, type CountryProfile } from './types.js';
 
 export const ES_COUNTRY_PROFILE = {
   language: 'es',
   numberLocale: 'es-ES',
   dateLocale: 'es-ES',
   displayCurrency: 'EUR',
+  vatRateBasisPoints: createVatRateBasisPoints(2100),
   exchangeRate: { numerator: 117, denominator: 100 },
   blockedCategories: [],
   blockedProductSlugs: [],

@@ -3,14 +3,24 @@ import test from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import {
   CartLineConfigKey,
+  CustomBlendBaseListQuery,
+  CustomBlendBaseListResponse,
+  CustomBlendEvaluationBody,
+  CustomBlendEvaluationResponse,
   CreateCustomBlendBody,
   CustomBlendOption,
   CustomBlendSnapshot,
+  LegacyCustomBlendSnapshot,
+  ResolvedCustomBlendSnapshot,
   ReplaceCustomBlendBody,
 } from '../src/customBlends.js';
 import { Cart, CartLine, RemoveFromCartBody, UpdateCartLineBody } from '../src/cart.js';
 import { OrderLineItem } from '../src/orders.js';
-import { PersistedCheckoutQuoteV8, parsePersistedCheckoutQuote } from '../src/payments.js';
+import {
+  PersistedCheckoutQuoteV8,
+  PersistedCheckoutQuoteV9,
+  parsePersistedCheckoutQuote,
+} from '../src/payments.js';
 import { CUSTOM_BLEND_FEE_CENTS, TIER_LADDER } from '../src/pricing.js';
 
 const uuid = '123e4567-e89b-42d3-a456-426614174000';
@@ -33,6 +43,71 @@ const customBlend = {
   blendingFeeCents: CUSTOM_BLEND_FEE_CENTS,
   madeToOrder: true,
   returnable: false,
+};
+
+const resolvedCustomBlend = {
+  ...customBlend,
+  ruleVersion: 1,
+  resultClassification: 'food',
+  quantity: 4,
+  components: [
+    {
+      role: 'base',
+      variantId: 1,
+      productId: '1',
+      productName: 'Protein powder',
+      productDescription: 'Base material',
+      sku: 'SN-0001-001',
+      variantLabel: '25kg Sack',
+      mixingGroup: 'food-grade',
+      consumptionClassification: 'food',
+      percentage: 80,
+      weightGrams: 80_000,
+      sourceUnitPriceCents: 2500,
+      tierDiscountPct: 0,
+      nextTierProgress: {
+        minTonnes: 1,
+        discountPct: 0,
+        sacksToNextTier: 37,
+        weightToNextTierGrams: 920_000,
+      },
+      unitContributionCents: 2000,
+      subtotalCents: 8000,
+    },
+    {
+      role: 'ingredient',
+      variantId: 2,
+      productId: '2',
+      productName: 'Cocoa powder',
+      productDescription: 'Unsweetened cocoa powder',
+      sku: 'CO-0002-001',
+      variantLabel: '25kg Sack',
+      mixingGroup: 'food-grade',
+      consumptionClassification: 'food',
+      percentage: 20,
+      weightGrams: 20_000,
+      sourceUnitPriceCents: 1500,
+      tierDiscountPct: 0,
+      nextTierProgress: {
+        minTonnes: 1,
+        discountPct: 0,
+        sacksToNextTier: 40,
+        weightToNextTierGrams: 980_000,
+      },
+      unitContributionCents: 300,
+      subtotalCents: 1200,
+    },
+  ],
+  materialUnitPriceCents: 2300,
+  materialSubtotalCents: 9200,
+  discountableTotalCents: 9200,
+  lineTotalCents: 11_700,
+};
+
+const zeroFeeResolvedCustomBlend = {
+  ...resolvedCustomBlend,
+  blendingFeeCents: 0,
+  lineTotalCents: resolvedCustomBlend.materialSubtotalCents,
 };
 
 const product = {
@@ -84,6 +159,7 @@ void test('Custom Blend inputs enforce integer percentage bounds and strict conf
 
 void test('Custom Blend snapshot carries fee and non-returnable made-to-order facts', () => {
   assert.equal(CUSTOM_BLEND_FEE_CENTS, 2500);
+  assert.equal(Value.Check(LegacyCustomBlendSnapshot, customBlend), true);
   assert.equal(Value.Check(CustomBlendSnapshot, customBlend), true);
   assert.equal(
     Value.Check(CustomBlendSnapshot, {
@@ -94,6 +170,64 @@ void test('Custom Blend snapshot carries fee and non-returnable made-to-order fa
   );
   assert.equal(Value.Check(CustomBlendSnapshot, { ...customBlend, madeToOrder: false }), false);
   assert.equal(Value.Check(CustomBlendSnapshot, { ...customBlend, returnable: true }), false);
+});
+
+void test('resolved Custom Blend snapshots freeze component facts and reject tampering', () => {
+  assert.equal(Value.Check(ResolvedCustomBlendSnapshot, resolvedCustomBlend), true);
+  assert.equal(
+    Value.Check(ResolvedCustomBlendSnapshot, {
+      ...resolvedCustomBlend,
+      resultClassification: 'non-food',
+    }),
+    false,
+  );
+  assert.equal(Value.Check(CustomBlendSnapshot, resolvedCustomBlend), true);
+  assert.equal(Value.Check(ResolvedCustomBlendSnapshot, zeroFeeResolvedCustomBlend), false);
+  assert.equal(Value.Check(CustomBlendSnapshot, zeroFeeResolvedCustomBlend), false);
+  assert.equal(
+    Value.Check(ResolvedCustomBlendSnapshot, {
+      ...resolvedCustomBlend,
+      materialSubtotalCents: 9201,
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(ResolvedCustomBlendSnapshot, {
+      ...resolvedCustomBlend,
+      components: [
+        { ...resolvedCustomBlend.components[0], unexpected: true },
+        resolvedCustomBlend.components[1],
+      ],
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(ResolvedCustomBlendSnapshot, {
+      ...resolvedCustomBlend,
+      components: [
+        { ...resolvedCustomBlend.components[0], sourceUnitPriceCents: Number.MAX_SAFE_INTEGER + 1 },
+        resolvedCustomBlend.components[1],
+      ],
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(ResolvedCustomBlendSnapshot, {
+      ...resolvedCustomBlend,
+      components: [
+        resolvedCustomBlend.components[0],
+        { ...resolvedCustomBlend.components[1], subtotalCents: 1201 },
+      ],
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(ResolvedCustomBlendSnapshot, {
+      ...resolvedCustomBlend,
+      components: [null, resolvedCustomBlend.components[1]],
+    }),
+    false,
+  );
 });
 
 void test('Custom Blend base presentation is optional for legacy snapshots and strict when present', () => {
@@ -172,6 +306,63 @@ void test('Custom Blend options require presentation facts and reject unknown pr
   );
   assert.equal(Value.Check(CustomBlendOption, { ...option, categoryFacts: undefined }), false);
   assert.equal(Value.Check(CustomBlendOption, { ...option, unexpected: true }), false);
+
+  assert.equal(Value.Check(CustomBlendBaseListQuery, {}), true);
+  assert.equal(
+    Value.Check(CustomBlendBaseListQuery, {
+      q: 'cement',
+      category: 'Trade',
+      page: 1,
+      pageSize: 24,
+    }),
+    true,
+  );
+  assert.equal(Value.Check(CustomBlendBaseListQuery, { unexpected: true }), false);
+  assert.equal(Value.Check(CustomBlendBaseListQuery, { page: 0 }), false);
+  assert.equal(
+    Value.Check(CustomBlendBaseListQuery, { pageSize: Number.MAX_SAFE_INTEGER + 1 }),
+    false,
+  );
+  assert.equal(
+    Value.Check(CustomBlendBaseListResponse, { items: [option], total: 1, page: 1, pageSize: 48 }),
+    true,
+  );
+  assert.equal(
+    Value.Check(CustomBlendBaseListResponse, {
+      items: [option],
+      total: 1,
+      page: 1,
+      pageSize: 48,
+      unexpected: true,
+    }),
+    false,
+  );
+
+  const evaluationBody = {
+    baseVariantId: 1,
+    ingredients: [{ variantId: 2, percentage: 20 }],
+    quantity: 4,
+  };
+  assert.equal(Value.Check(CustomBlendEvaluationBody, evaluationBody), true);
+  assert.equal(Value.Check(CustomBlendEvaluationBody, { ...evaluationBody, unknown: true }), false);
+  assert.equal(
+    Value.Check(CustomBlendEvaluationBody, {
+      ...evaluationBody,
+      quantity: Number.MAX_SAFE_INTEGER + 1,
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(CustomBlendEvaluationResponse, { quantity: 4, customBlend: resolvedCustomBlend }),
+    true,
+  );
+  assert.equal(
+    Value.Check(CustomBlendEvaluationResponse, {
+      quantity: 5,
+      customBlend: resolvedCustomBlend,
+    }),
+    false,
+  );
 });
 
 void test('configured cart and order lines expose money split and specification', () => {
@@ -187,15 +378,22 @@ void test('configured cart and order lines expose money split and specification'
       deliveryClass: 'parcel',
     },
     perTonneCents: 100_000,
-    resolvedUnitPriceCents: 2500,
+    resolvedUnitPriceCents: 2300,
     quantity: 4,
-    materialSubtotalCents: 10_000,
+    materialSubtotalCents: 9200,
     blendingFeeCents: 2500,
-    discountableTotalCents: 10_000,
-    lineTotalCents: 12_500,
-    customBlend,
+    discountableTotalCents: 9200,
+    lineTotalCents: 11_700,
+    customBlend: resolvedCustomBlend,
   };
   assert.equal(Value.Check(CartLine, line), true);
+  const zeroFeeLine = {
+    ...line,
+    blendingFeeCents: 0,
+    lineTotalCents: line.materialSubtotalCents,
+    customBlend: zeroFeeResolvedCustomBlend,
+  };
+  assert.equal(Value.Check(CartLine, zeroFeeLine), false);
   assert.equal(
     Value.Check(CartLine, {
       ...line,
@@ -206,7 +404,7 @@ void test('configured cart and order lines expose money split and specification'
         weightToNextTierGrams: 900_000,
       },
     }),
-    true,
+    false,
   );
   assert.equal(
     Value.Check(CartLine, {
@@ -248,12 +446,21 @@ void test('configured cart and order lines expose money split and specification'
   const cart = {
     id: uuid,
     items: [line],
-    subtotalCents: 12_500,
-    discountableSubtotalCents: 10_000,
+    subtotalCents: 11_700,
+    discountableSubtotalCents: 9200,
     blendingFeeTotalCents: 2500,
     totalItems: 4,
   };
   assert.equal(Value.Check(Cart, cart), true);
+  assert.equal(
+    Value.Check(Cart, {
+      ...cart,
+      items: [zeroFeeLine],
+      subtotalCents: line.materialSubtotalCents,
+      blendingFeeTotalCents: 0,
+    }),
+    false,
+  );
   assert.equal(
     Value.Check(Cart, { ...cart, discountableSubtotalCents: Number.MAX_SAFE_INTEGER + 1 }),
     false,
@@ -301,7 +508,7 @@ void test('configured cart and order lines expose money split and specification'
   );
 });
 
-void test('V8 round-trips configured variant lines and rejects stale V7 quotes', () => {
+void test('V8/V9 round-trip configured variant lines and reject stale or malformed quotes', () => {
   const address = {
     line1: '1 Example Street',
     city: 'London',
@@ -388,4 +595,68 @@ void test('V8 round-trips configured variant lines and rejects stale V7 quotes',
   }
   assert.deepEqual(parsePersistedCheckoutQuote(configured), configured);
   assert.throws(() => parsePersistedCheckoutQuote({ ...plain, version: 7 }));
+
+  const configuredV9 = {
+    ...configured,
+    version: 9,
+    subtotalCents: 11_700,
+    totalCents: 11_700,
+    discountBaseCents: 9200,
+    variantLines: [
+      {
+        ...configured.variantLines[0],
+        unitPriceCents: 2300,
+        materialSubtotalCents: 9200,
+        blendingFeeCents: 2500,
+        discountableTotalCents: 9200,
+        lineTotalCents: 11_700,
+        customBlend: resolvedCustomBlend,
+      },
+    ],
+  };
+  assert.equal(Value.Check(PersistedCheckoutQuoteV9, configuredV9), true);
+  assert.equal(
+    Value.Check(PersistedCheckoutQuoteV9, {
+      ...configuredV9,
+      variantLines: [{ ...configuredV9.variantLines[0], productId: '2' }],
+    }),
+    false,
+  );
+  assert.deepEqual(parsePersistedCheckoutQuote(configuredV9), configuredV9);
+  assert.equal(Value.Check(PersistedCheckoutQuoteV8, { ...configuredV9, version: 8 }), false);
+  assert.equal(
+    Value.Check(PersistedCheckoutQuoteV9, {
+      ...configuredV9,
+      variantLines: [{ ...configuredV9.variantLines[0], customBlend }],
+    }),
+    false,
+  );
+  const incompleteConfiguredLine = { ...configuredV9.variantLines[0] };
+  Reflect.deleteProperty(incompleteConfiguredLine, 'blendingFeeCents');
+  assert.equal(
+    Value.Check(PersistedCheckoutQuoteV9, {
+      ...configuredV9,
+      variantLines: [incompleteConfiguredLine],
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(PersistedCheckoutQuoteV9, {
+      ...configuredV9,
+      variantLines: [{ ...configuredV9.variantLines[0], unitPriceCents: 2301 }],
+    }),
+    false,
+  );
+  assert.equal(
+    Value.Check(PersistedCheckoutQuoteV9, {
+      ...configuredV9,
+      variantLines: [
+        {
+          ...configuredV9.variantLines[0],
+          customBlend: { ...resolvedCustomBlend, lineTotalCents: 11_701 },
+        },
+      ],
+    }),
+    false,
+  );
 });

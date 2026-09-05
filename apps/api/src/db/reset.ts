@@ -7,8 +7,10 @@ import type Database from 'better-sqlite3';
  * remain as historical facts even when referenced mutable rows are removed.
  * Does NOT drop tables — schema is preserved.
  *
- * Reset order: inventory movements -> receipts -> inventory allocations -> reservations ->
- *   checkout reservations -> payments -> promo redemptions -> review reports -> helpful votes ->
+ * Reset order: immutable child triggers -> inventory movements -> receipts -> inventory allocations ->
+ *   reservations -> checkout reservations -> admin refunds -> invoice events -> invoice states ->
+ *   invoice mailbox descriptors -> credit holds -> invoices -> invoice sequences -> payments ->
+ *   promo redemptions -> review reports -> helpful votes ->
  *   reviews -> rating aggregates -> back-in-stock subscriptions ->
  *   saved-list items -> saved lists -> reset tokens -> sessions -> mailbox ->
  *   order access grants -> lifecycle events ->
@@ -28,6 +30,14 @@ export function resetDatabase(db: Database.Database): void {
       DROP TRIGGER IF EXISTS refunds_no_delete;
       DROP TRIGGER IF EXISTS return_events_no_update;
       DROP TRIGGER IF EXISTS return_events_no_delete;
+      DROP TRIGGER IF EXISTS admin_refunds_no_update;
+      DROP TRIGGER IF EXISTS admin_refunds_no_delete;
+      DROP TRIGGER IF EXISTS company_credit_events_no_update;
+      DROP TRIGGER IF EXISTS company_credit_events_no_delete;
+      DROP TRIGGER IF EXISTS invoices_no_update;
+      DROP TRIGGER IF EXISTS invoices_no_delete;
+      DROP TRIGGER IF EXISTS invoice_events_no_update;
+      DROP TRIGGER IF EXISTS invoice_events_no_delete;
       DROP TRIGGER IF EXISTS inventory_stock_movements_no_delete;
       DROP TRIGGER IF EXISTS inventory_stock_movements_no_update;
       DROP TRIGGER IF EXISTS job_attempts_no_update;
@@ -43,11 +53,18 @@ export function resetDatabase(db: Database.Database): void {
       DELETE FROM inventory_reservations;
       DELETE FROM cart_reservations;
       DELETE FROM promo_reservations;
+      DELETE FROM admin_refunds;
+      DELETE FROM invoice_events;
+      DELETE FROM invoice_states;
+      DELETE FROM dev_mailbox;
+      DELETE FROM credit_exposure_holds;
+      DELETE FROM invoices;
+      DELETE FROM invoice_sequences;
       DELETE FROM payments;
       DELETE FROM order_approvals;
       DELETE FROM company_invites;
       DELETE FROM company_memberships;
-      DELETE FROM company_accounts;
+      DELETE FROM company_credit_events;
       DELETE FROM promo_redemptions;
       DELETE FROM review_reports;
       DELETE FROM review_helpful_votes;
@@ -66,13 +83,13 @@ export function resetDatabase(db: Database.Database): void {
       DELETE FROM sessions;
       DELETE FROM user_preferences;
       DELETE FROM account_deletion_events;
-      DELETE FROM dev_mailbox;
       DELETE FROM order_access_grants;
       DELETE FROM order_lifecycle_events;
       DELETE FROM order_shipment_items;
       DELETE FROM order_shipments;
       DELETE FROM order_line_items;
       DELETE FROM orders;
+      DELETE FROM company_accounts;
       DELETE FROM cart_line_items;
       DELETE FROM carts;
       DELETE FROM promo_codes;
@@ -84,6 +101,30 @@ export function resetDatabase(db: Database.Database): void {
       DELETE FROM products;
       DELETE FROM catalog_tags;
       DELETE FROM users;
+      CREATE TRIGGER admin_refunds_no_update
+      BEFORE UPDATE ON admin_refunds
+      BEGIN SELECT RAISE(ABORT, 'admin_refunds are immutable'); END;
+      CREATE TRIGGER admin_refunds_no_delete
+      BEFORE DELETE ON admin_refunds
+      BEGIN SELECT RAISE(ABORT, 'admin_refunds are immutable'); END;
+      CREATE TRIGGER company_credit_events_no_update
+      BEFORE UPDATE ON company_credit_events
+      BEGIN SELECT RAISE(ABORT, 'company_credit_events are immutable'); END;
+      CREATE TRIGGER company_credit_events_no_delete
+      BEFORE DELETE ON company_credit_events
+      BEGIN SELECT RAISE(ABORT, 'company_credit_events are immutable'); END;
+      CREATE TRIGGER invoices_no_update
+      BEFORE UPDATE ON invoices
+      BEGIN SELECT RAISE(ABORT, 'invoices are immutable'); END;
+      CREATE TRIGGER invoices_no_delete
+      BEFORE DELETE ON invoices
+      BEGIN SELECT RAISE(ABORT, 'invoices are immutable'); END;
+      CREATE TRIGGER invoice_events_no_update
+      BEFORE UPDATE ON invoice_events
+      BEGIN SELECT RAISE(ABORT, 'invoice_events are immutable'); END;
+      CREATE TRIGGER invoice_events_no_delete
+      BEFORE DELETE ON invoice_events
+      BEGIN SELECT RAISE(ABORT, 'invoice_events are immutable'); END;
       CREATE TRIGGER inventory_stock_movements_no_update
       BEFORE UPDATE ON inventory_stock_movements
       BEGIN SELECT RAISE(ABORT, 'inventory_stock_movements are immutable'); END;

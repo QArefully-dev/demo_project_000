@@ -11,6 +11,7 @@ import {
   CustomBlendPackaging,
   customBlendCompositionLabel,
   customBlendMadeToOrderNote,
+  isResolvedCustomBlendSnapshot,
 } from '@/features/customBlend/CustomBlendPackaging';
 
 interface CartLineItemProps {
@@ -43,6 +44,179 @@ function editBlendHref(item: CartLine, baseVariantId: number): string {
   return `/custom-blend?baseVariantId=${baseVariantId}&editConfigKey=${item.configKey}`;
 }
 
+function CartCustomBlendDetails({
+  item,
+  blend,
+}: {
+  item: CartLine;
+  blend: NonNullable<CartLine['customBlend']>;
+}) {
+  const { translate, formatMoney, number, activeCountry } = useLocalisation();
+  const resolved = isResolvedCustomBlendSnapshot(blend) ? blend : undefined;
+  const resultLabel = resolved
+    ? translate(
+        cartMessages,
+        resolved.resultClassification === 'food'
+          ? 'cart.customBlend.resultFood'
+          : 'cart.customBlend.resultNonFood',
+      )
+    : undefined;
+  const safetyLabel =
+    resolved?.resultClassification === 'non-food'
+      ? translate(cartMessages, 'cart.customBlend.notForConsumption')
+      : undefined;
+
+  return (
+    <div className="grid gap-1" data-testid="cart-line-custom-blend">
+      <Badge variant="outline" className="w-fit text-[10px]">
+        {translate(cartMessages, 'cart.customBlend')}
+      </Badge>
+      <p className="break-words text-xs text-muted-foreground">
+        {customBlendCompositionLabel(item.product.name, blend, activeCountry)}
+      </p>
+      {resolved ? (
+        <>
+          <Badge
+            variant={resolved.resultClassification === 'non-food' ? 'destructive' : 'secondary'}
+            className="w-fit"
+            data-testid="cart-line-blend-result"
+          >
+            {resultLabel}
+          </Badge>
+          {safetyLabel && (
+            <p
+              role="alert"
+              data-testid="cart-line-blend-safety"
+              className="custom-blend-notice rounded-md px-2 py-1 text-xs"
+            >
+              <span className="font-semibold">{safetyLabel}</span>{' '}
+              {translate(cartMessages, 'cart.customBlend.safetyWarning')}
+            </p>
+          )}
+          <ul
+            className="grid gap-1 border-l pl-2 text-xs text-muted-foreground"
+            aria-label={translate(cartMessages, 'cart.customBlend')}
+            data-testid="cart-line-blend-components"
+          >
+            {resolved.components.map((component) => (
+              <li key={`${component.role}-${component.variantId}`}>
+                <span className="font-medium text-foreground">{component.productName}</span>{' '}
+                <span>
+                  {number.count(component.percentage)}% ·{' '}
+                  {translate(
+                    cartMessages,
+                    component.role === 'base'
+                      ? 'cart.customBlend.componentBase'
+                      : 'cart.customBlend.componentIngredient',
+                  )}
+                </span>
+                <span className="block">
+                  {translate(cartMessages, 'cart.customBlend.componentRole', {
+                    role: translate(
+                      cartMessages,
+                      component.role === 'base'
+                        ? 'cart.customBlend.componentBase'
+                        : 'cart.customBlend.componentIngredient',
+                    ),
+                  })}
+                </span>
+                <span className="block">
+                  {translate(cartMessages, 'cart.customBlend.componentWeight', {
+                    weight: number.weightGrams(component.weightGrams),
+                  })}
+                </span>
+                <span className="block">
+                  {translate(cartMessages, 'cart.customBlend.componentSourcePrice', {
+                    money: formatMoney(component.sourceUnitPriceCents),
+                  })}
+                </span>
+                {component.clearance && (
+                  <span className="block">
+                    {translate(cartMessages, 'cart.customBlend.componentClearance', {
+                      money: formatMoney(component.clearance.priceCents),
+                    })}
+                  </span>
+                )}
+                <span className="block">
+                  {translate(cartMessages, 'cart.customBlend.componentTier', {
+                    discountPct: number.count(component.tierDiscountPct),
+                  })}
+                </span>
+                {component.nextTierProgress && (
+                  <span className="block">
+                    {translate(cartMessages, 'cart.customBlend.componentNextTier', {
+                      sacksToNextTier: number.count(component.nextTierProgress.sacksToNextTier),
+                      minTonnes: number.decimal(component.nextTierProgress.minTonnes),
+                      discountPct: number.count(component.nextTierProgress.discountPct),
+                    })}
+                  </span>
+                )}
+                <span className="block">
+                  {translate(cartMessages, 'cart.customBlend.componentUnitContribution', {
+                    money: formatMoney(component.unitContributionCents),
+                  })}
+                </span>
+                <span className="block">
+                  {translate(cartMessages, 'cart.customBlend.componentSubtotal', {
+                    money: formatMoney(component.subtotalCents),
+                  })}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-muted-foreground">
+            {translate(cartMessages, 'cart.customBlend.materialUnitPrice', {
+              money: formatMoney(resolved.materialUnitPriceCents),
+            })}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {translate(cartMessages, 'cart.customBlend.materialSubtotal', {
+              money: formatMoney(resolved.materialSubtotalCents),
+            })}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {translate(cartMessages, 'cart.customBlend.blendingFee', {
+              money: formatMoney(resolved.blendingFeeCents),
+            })}
+          </p>
+          <p className="text-xs font-medium text-foreground">
+            {translate(cartMessages, 'cart.customBlend.lineTotal', {
+              money: formatMoney(resolved.lineTotalCents),
+            })}
+          </p>
+        </>
+      ) : (
+        <>
+          <p data-testid="cart-line-blend-legacy" className="text-xs text-muted-foreground">
+            {translate(cartMessages, 'cart.customBlend.legacyFallback')}
+          </p>
+          {/* Historical cart records retain line money, but no component/current-price facts. */}
+          <p className="text-xs text-muted-foreground">
+            {translate(cartMessages, 'cart.baseMaterial', {
+              money: formatMoney(item.materialSubtotalCents),
+            })}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {translate(cartMessages, 'cart.blendingFee', {
+              money: formatMoney(item.blendingFeeCents),
+            })}
+          </p>
+        </>
+      )}
+      {/*
+       * Non-returnable status has to be visible where the line is first held, not first at
+       * checkout. Rendering it here covers CartPage and CartSheet from the one line component.
+       */}
+      <p
+        data-testid="cart-line-made-to-order"
+        className="custom-blend-notice w-fit rounded-md px-2 py-1 text-xs"
+      >
+        {customBlendMadeToOrderNote(activeCountry)}
+      </p>
+    </div>
+  );
+}
+
 export function CartLineItem({
   item,
   onUpdateQuantity,
@@ -51,7 +225,7 @@ export function CartLineItem({
   isRemoving = false,
 }: CartLineItemProps) {
   const [actionError, setActionError] = useState<CartMessageKey | null>(null);
-  const { translate, formatMoney, number, activeCountry } = useLocalisation();
+  const { translate, formatMoney, number } = useLocalisation();
   const isPending = isUpdating || isRemoving;
   const lineKey = cartLineKey(item);
 
@@ -111,34 +285,9 @@ export function CartLineItem({
             money: formatMoney(item.resolvedUnitPriceCents),
           })}
         </p>
+        {blend && <CartCustomBlendDetails item={item} blend={blend} />}
         {blend && (
-          <div className="grid gap-0.5" data-testid="cart-line-custom-blend">
-            <Badge variant="outline" className="w-fit text-[10px]">
-              {translate(cartMessages, 'cart.customBlend')}
-            </Badge>
-            <p className="break-words text-xs text-muted-foreground">
-              {customBlendCompositionLabel(item.product.name, blend, activeCountry)}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {translate(cartMessages, 'cart.baseMaterial', {
-                money: formatMoney(item.materialSubtotalCents),
-              })}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {translate(cartMessages, 'cart.blendingFee', {
-                money: formatMoney(item.blendingFeeCents),
-              })}
-            </p>
-            {/*
-             * Non-returnable status has to be visible where the line is first held, not first at
-             * checkout. Rendering it here covers CartPage and CartSheet from the one line component.
-             */}
-            <p
-              data-testid="cart-line-made-to-order"
-              className="custom-blend-notice w-fit rounded-md px-2 py-1 text-xs"
-            >
-              {customBlendMadeToOrderNote(activeCountry)}
-            </p>
+          <>
             {baseVariantId !== undefined && (
               <Link
                 to={editBlendHref(item, baseVariantId)}
@@ -147,7 +296,7 @@ export function CartLineItem({
                 {translate(cartMessages, 'cart.editBlend')}
               </Link>
             )}
-          </div>
+          </>
         )}
         {item.variantSnap && (
           <Badge variant="outline" className="w-fit text-[10px]">

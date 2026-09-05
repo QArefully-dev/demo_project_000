@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import type { CustomBlendOption, CustomBlendSnapshot } from '@shop/contracts/custom-blends';
+import type {
+  CustomBlendEvaluationResponse,
+  CustomBlendOption,
+  CustomBlendSnapshot,
+  ResolvedCustomBlendSnapshot,
+} from '@shop/contracts/custom-blends';
 import { CustomBlendPackaging, customBlendCompositionLabel } from './CustomBlendPackaging';
 import { useLocalisation } from '@/i18n/LocaleContext';
 import { customBlendMessages } from '@shop/localisation/messages/customBlend';
@@ -13,6 +18,10 @@ export type CustomBlendPreviewProps = {
   base: CustomBlendOption;
   basePercentage: number;
   ingredients: readonly PreviewIngredient[];
+  /** Latest successful server verdict; its snapshot owns the rendered blend facts. */
+  resolved?: ResolvedCustomBlendSnapshot | null;
+  /** Alias for callers that retain the complete evaluation response from the evaluation hook. */
+  evaluation?: CustomBlendEvaluationResponse | null;
   /**
    * A server-issued key for the composition currently being shown. This is intentionally not the
    * edit target key: replacing a blend may produce a different composition and therefore a
@@ -45,7 +54,11 @@ export function toPreviewBlend({
   basePercentage,
   ingredients,
   authoritativeConfigKey,
+  resolved,
+  evaluation,
 }: Omit<CustomBlendPreviewProps, 'className'>): CustomBlendSnapshot {
+  const serverSnapshot = resolved ?? evaluation?.customBlend ?? null;
+  if (serverSnapshot) return serverSnapshot;
   return {
     // Required by the transport type. Drafts use a non-authoritative sentinel and render
     // `CB-PREVIEW`; only a fresh server key is allowed to produce a batch mark.
@@ -69,7 +82,8 @@ export function toPreviewBlend({
 export function CustomBlendPreview(props: CustomBlendPreviewProps) {
   const { country, translate } = useLocalisation();
   const blend = toPreviewBlend(props);
-  const isDraft = !props.authoritativeConfigKey;
+  const isDraft =
+    !props.authoritativeConfigKey && !props.resolved && !props.evaluation?.customBlend;
   const [zoomed, setZoomed] = useState(false);
   const [origin, setOrigin] = useState('50% 50%');
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);

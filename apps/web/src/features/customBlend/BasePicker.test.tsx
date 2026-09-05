@@ -1,16 +1,67 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useSearchParams } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CustomBlendBaseListResponse, CustomBlendOption } from '@shop/contracts/custom-blends';
 
-import { getProduct } from '@/api/products';
-import { useCategories } from '@/hooks/useCategories';
-import { useProducts } from '@/hooks/useProducts';
+import { ApiError } from '@/api/client';
+import { getCustomBlendBases } from '@/api/customBlends';
 import { BasePicker, SelectedBaseChip } from './BasePicker';
 
-vi.mock('@/api/products', () => ({ getProduct: vi.fn() }));
-vi.mock('@/hooks/useProducts', () => ({ useProducts: vi.fn() }));
-vi.mock('@/hooks/useCategories', () => ({ useCategories: vi.fn() }));
+vi.mock('@/api/customBlends', () => ({ getCustomBlendBases: vi.fn() }));
+
+function option(
+  variantId: number,
+  productName: string,
+  category = 'Trade & Creative Materials',
+  mixingGroup: CustomBlendOption['mixingGroup'] = 'mineral',
+): CustomBlendOption {
+  return {
+    productId: String(variantId),
+    productName,
+    productDescription: `${productName} description`,
+    mixingGroup,
+    category,
+    consumptionClassification: mixingGroup === 'food-grade' ? 'food' : 'non-food',
+    categoryFacts: {
+      texture: 'Fine',
+      colour: 'Grey',
+      source: 'Test source',
+      intendedUse: 'Testing',
+      storage: 'Dry cool',
+      consumptionClassification: mixingGroup === 'food-grade' ? 'food' : 'non-food',
+    },
+    variant: {
+      variantId,
+      productId: variantId,
+      sku: `MAT-${variantId}`,
+      label: '25 kg sack',
+      weightGrams: 25_000,
+      priceCents: 1_200,
+      moqSacks: 4,
+      perTonneCents: 48_000,
+      priceTiers: [{ minTonnes: 1, discountPct: 0 }],
+      stockCount: 0,
+      backorderable: false,
+      backorderLeadDays: null,
+      deliveryClass: 'freight',
+      active: true,
+      sortOrder: 1,
+    },
+  };
+}
+
+function response(
+  items: readonly CustomBlendOption[],
+  pagination: Partial<Pick<CustomBlendBaseListResponse, 'total' | 'page' | 'pageSize'>> = {},
+): CustomBlendBaseListResponse {
+  return {
+    items: [...items],
+    total: pagination.total ?? items.length,
+    page: pagination.page ?? 1,
+    pageSize: pagination.pageSize ?? 12,
+  };
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -18,35 +69,6 @@ function deferred<T>() {
     resolve = resolvePromise;
   });
   return { promise, resolve };
-}
-
-function product(id: string, name: string, category = 'Trade & Creative Materials') {
-  return {
-    id,
-    name,
-    description: `${name} description`,
-    priceCents: 1_200,
-    imageSetId: `set-${id}`,
-    category,
-    stock: 10,
-    availability: 'in_stock',
-    backorderable: false,
-    backorderLeadDays: null,
-    slug: name.toLowerCase().replaceAll(' ', '-'),
-    salesCount: 0,
-    createdAt: '2026-07-14T00:00:00.000Z',
-    available: true,
-    tags: [],
-    specificationGroups: [],
-    consumptionClassification: 'non-food',
-    mixingGroup: 'mineral',
-  };
-}
-
-function detail(variantId: number | null) {
-  return {
-    variants: variantId === null ? [] : [{ variantId, weightGrams: 25_000, active: true }],
-  };
 }
 
 function SearchOwnedPicker() {
@@ -61,161 +83,186 @@ function SearchOwnedPicker() {
   );
 }
 
-function mockCatalog(...products: ReturnType<typeof product>[]) {
-  vi.mocked(useCategories).mockReturnValue({
-    categories: ['Trade & Creative Materials'],
-    isLoading: false,
-    error: null,
-  });
-  vi.mocked(useProducts).mockReturnValue({
-    products,
-    isLoading: false,
-    error: null,
-    refetch: vi.fn(),
-  } as unknown as ReturnType<typeof useProducts>);
-}
-
 beforeEach(() => {
   vi.resetAllMocks();
 });
 
 describe('BasePicker', () => {
-  it('renders resolved packaging artwork, a category badge, and its mixing group', () => {
-    mockCatalog(product('40', 'Yellow Ochre'));
+  it('renders the server-approved options without a client-side group allowlist', async () => {
+    vi.mocked(getCustomBlendBases).mockResolvedValue(
+      response([
+        option(40, 'Yellow Ochre', 'Trade & Creative Materials', 'mineral'),
+        option(41, 'Food Binder', 'Sports Nutrition', 'food-grade'),
+      ]),
+    );
 
     render(<BasePicker onSelectBase={vi.fn()} />);
 
-    expect(screen.getByLabelText('Yellow Ochre packaging')).toBeInTheDocument();
     expect(
-      screen.getByText('Trade & Creative Materials', { selector: '[data-slot="badge"]' }),
+      await screen.findByRole('button', { name: 'Use Yellow Ochre as base' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('mineral blend group')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Use Food Binder as base' })).toBeInTheDocument();
+    expect(
+      screen.getByText('Sports Nutrition', { selector: '[data-slot="badge"]' }),
+    ).toBeInTheDocument();
+    expect(getCustomBlendBases).toHaveBeenCalledWith({}, expect.any(AbortSignal));
   });
 
-  it('uses the generic packaging fallback when no catalog palette resolves', () => {
-    mockCatalog(product('not-a-canonical-id', 'Unmapped Material'));
+  it('forwards trimmed search and category filters to the server', async () => {
+    const user = userEvent.setup();
+    vi.mocked(getCustomBlendBases).mockResolvedValue(response([option(40, 'Yellow Ochre')]));
+
+    render(<BasePicker onSelectBase={vi.fn()} />);
+    await screen.findByRole('button', { name: 'Use Yellow Ochre as base' });
+    await user.type(screen.getByLabelText('Search materials'), ' cement ');
+    await user.selectOptions(screen.getByLabelText('Category'), 'Trade & Creative Materials');
+
+    await waitFor(() => {
+      expect(getCustomBlendBases).toHaveBeenLastCalledWith(
+        { q: 'cement', category: 'Trade & Creative Materials' },
+        expect.any(AbortSignal),
+      );
+    });
+  });
+
+  it('aggregates every server page and derives categories from the complete eligible result', async () => {
+    const firstPage = Array.from({ length: 12 }, (_, index) =>
+      option(100 + index, `First Material ${index + 1}`),
+    );
+    const laterPage = option(200, 'Later Pigment', 'Later Eligible Category');
+    vi.mocked(getCustomBlendBases)
+      .mockResolvedValueOnce(response(firstPage, { total: 13, page: 1, pageSize: 12 }))
+      .mockResolvedValueOnce(response([laterPage], { total: 13, page: 2, pageSize: 12 }));
 
     render(<BasePicker onSelectBase={vi.fn()} />);
 
-    expect(screen.getByLabelText('Unmapped Material packaging unavailable')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Unmapped Material packaging')).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: 'Use Later Pigment as base' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Later Eligible Category' })).toBeInTheDocument();
+    expect(getCustomBlendBases).toHaveBeenNthCalledWith(1, {}, expect.any(AbortSignal));
+    expect(getCustomBlendBases).toHaveBeenNthCalledWith(
+      2,
+      { page: 2, pageSize: 12 },
+      expect.any(AbortSignal),
+    );
+    expect(vi.mocked(getCustomBlendBases).mock.calls[0]?.[1]).toBe(
+      vi.mocked(getCustomBlendBases).mock.calls[1]?.[1],
+    );
+    expect(vi.mocked(getCustomBlendBases).mock.calls[1]?.[1]?.aborted).toBe(false);
   });
 
-  it('keeps an ineligible-sack failure on the failed card only', async () => {
-    const user = userEvent.setup();
-    mockCatalog(product('40', 'No Sack'), product('41', 'Available Sack'));
-    vi.mocked(getProduct).mockResolvedValueOnce(detail(null) as never);
+  it('exposes loading and empty states accessibly', async () => {
+    const pending = deferred<CustomBlendBaseListResponse>();
+    vi.mocked(getCustomBlendBases).mockReturnValue(pending.promise);
 
     render(<BasePicker onSelectBase={vi.fn()} />);
-    await user.click(screen.getByRole('button', { name: 'Use No Sack as base' }));
+    expect(screen.getByRole('status', { name: 'Loading materials' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('not stocked in a 25 kg sack');
-    expect(
-      screen.getByRole('button', { name: 'Use Available Sack as base' }).closest('li'),
-    ).not.toHaveTextContent('not stocked in a 25 kg sack');
+    await act(async () => {
+      pending.resolve(response([]));
+      await pending.promise;
+    });
+    expect(await screen.findByRole('status')).toHaveTextContent('No materials match that search.');
   });
 
-  it('keeps sequential resolve failures on their respective cards', async () => {
+  it('shows a coded, localised error and supports retry', async () => {
     const user = userEvent.setup();
-    mockCatalog(product('40', 'First Failure'), product('41', 'Second Failure'));
-    vi.mocked(getProduct)
-      .mockResolvedValueOnce(detail(null) as never)
-      .mockResolvedValueOnce(detail(null) as never);
+    vi.mocked(getCustomBlendBases)
+      .mockRejectedValueOnce(
+        new ApiError('private server prose', 400, {
+          error: 'private server prose',
+          code: 'CUSTOM_BLEND_INVALID',
+        }),
+      )
+      .mockResolvedValueOnce(response([option(40, 'Yellow Ochre')]));
 
     render(<BasePicker onSelectBase={vi.fn()} />);
-    await user.click(screen.getByRole('button', { name: 'Use First Failure as base' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('not stocked in a 25 kg sack');
-
-    await user.click(screen.getByRole('button', { name: 'Use Second Failure as base' }));
-    await waitFor(() => expect(screen.getAllByRole('alert')).toHaveLength(2));
-
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('The custom blend is no longer valid.');
+    expect(alert).not.toHaveTextContent('private server prose');
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(
-      screen.getByRole('button', { name: 'Use First Failure as base' }).closest('li'),
-    ).toHaveTextContent('not stocked in a 25 kg sack');
-    expect(
-      screen.getByRole('button', { name: 'Use Second Failure as base' }).closest('li'),
-    ).toHaveTextContent('not stocked in a 25 kg sack');
+      await screen.findByRole('button', { name: 'Use Yellow Ochre as base' }),
+    ).toBeInTheDocument();
   });
 
-  it('lets the URL owner write the selected 25 kg variant id', async () => {
+  it('aborts and drops a stale response after a newer filter request', async () => {
+    const stale = deferred<CustomBlendBaseListResponse>();
+    vi.mocked(getCustomBlendBases)
+      .mockReturnValueOnce(stale.promise)
+      .mockResolvedValueOnce(response([option(42, 'Current Material')]));
+
+    render(<BasePicker onSelectBase={vi.fn()} />);
+    const oldSignal = vi.mocked(getCustomBlendBases).mock.calls[0]?.[1];
+    fireEvent.change(screen.getByLabelText('Search materials'), { target: { value: 'current' } });
+    expect(
+      await screen.findByRole('button', { name: 'Use Current Material as base' }),
+    ).toBeInTheDocument();
+    expect(oldSignal?.aborted).toBe(true);
+
+    await act(async () => {
+      stale.resolve(response([option(41, 'Stale Material')]));
+      await stale.promise;
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Use Stale Material as base' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('aborts an in-flight later page and drops its stale result after a newer filter request', async () => {
+    const firstPage = deferred<CustomBlendBaseListResponse>();
+    const staleLaterPage = deferred<CustomBlendBaseListResponse>();
+    vi.mocked(getCustomBlendBases)
+      .mockReturnValueOnce(firstPage.promise)
+      .mockReturnValueOnce(staleLaterPage.promise)
+      .mockResolvedValueOnce(response([option(302, 'Current Material')]));
+
+    render(<BasePicker onSelectBase={vi.fn()} />);
+    await act(async () => {
+      firstPage.resolve(
+        response([option(301, 'First Material')], { total: 13, page: 1, pageSize: 12 }),
+      );
+      await firstPage.promise;
+    });
+    await waitFor(() => expect(getCustomBlendBases).toHaveBeenCalledTimes(2));
+    const stalePageSignal = vi.mocked(getCustomBlendBases).mock.calls[1]?.[1];
+
+    fireEvent.change(screen.getByLabelText('Search materials'), {
+      target: { value: 'current' },
+    });
+    expect(
+      await screen.findByRole('button', { name: 'Use Current Material as base' }),
+    ).toBeInTheDocument();
+    expect(stalePageSignal?.aborted).toBe(true);
+
+    await act(async () => {
+      staleLaterPage.resolve(response([option(303, 'Stale Later Material')], { page: 2 }));
+      await staleLaterPage.promise;
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Use Stale Later Material as base' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('lets the URL owner receive the selected server variant id', async () => {
     const user = userEvent.setup();
-    mockCatalog(product('40', 'Yellow Ochre'));
-    vi.mocked(getProduct).mockResolvedValueOnce(detail(901) as never);
+    vi.mocked(getCustomBlendBases).mockResolvedValue(response([option(901, 'Yellow Ochre')]));
 
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <SearchOwnedPicker />
       </MemoryRouter>,
     );
-    await user.click(screen.getByRole('button', { name: 'Use Yellow Ochre as base' }));
-
+    await user.click(await screen.findByRole('button', { name: 'Use Yellow Ochre as base' }));
     expect(await screen.findByTestId('base-variant-id')).toHaveTextContent('901');
   });
 
-  it('drops a stale product resolve after a newer card selection', async () => {
-    const user = userEvent.setup();
-    const first = deferred<ReturnType<typeof detail>>();
-    const second = deferred<ReturnType<typeof detail>>();
-    const onSelectBase = vi.fn();
-    mockCatalog(product('40', 'Earlier Material'), product('41', 'Current Material'));
-    vi.mocked(getProduct)
-      .mockReturnValueOnce(first.promise as never)
-      .mockReturnValueOnce(second.promise as never);
-
-    render(<BasePicker onSelectBase={onSelectBase} />);
-    await user.click(screen.getByRole('button', { name: 'Use Earlier Material as base' }));
-    await user.click(screen.getByRole('button', { name: 'Use Current Material as base' }));
-
-    second.resolve(detail(902));
-    await waitFor(() => expect(onSelectBase).toHaveBeenCalledWith(902));
-    first.resolve(detail(901));
-    await waitFor(() => expect(onSelectBase).toHaveBeenCalledTimes(1));
-  });
-
   it('renders the selected base as an option-backed artwork chip', () => {
-    render(
-      <SelectedBaseChip
-        base={{
-          productId: '40',
-          productName: 'Yellow Ochre',
-          productDescription: 'Pigment',
-          mixingGroup: 'mineral',
-          category: 'Trade & Creative Materials',
-          consumptionClassification: 'non-food',
-          categoryFacts: {
-            texture: 'Fine powder',
-            colour: 'Yellow',
-            source: 'Mineral',
-            intendedUse: 'Pigment',
-            storage: 'Keep dry',
-            consumptionClassification: 'non-food',
-            composition: 'Iron oxide',
-            waterRatio: 'Not applicable',
-            coverage: 'Not applicable',
-            settingTime: 'Not applicable',
-            ppe: ['Gloves'],
-          },
-          variant: {
-            variantId: 901,
-            productId: 40,
-            sku: 'MAT-901',
-            label: '25 kg sack',
-            weightGrams: 25_000,
-            priceCents: 1_200,
-            moqSacks: 1,
-            perTonneCents: 48_000,
-            priceTiers: [],
-            stockCount: 4,
-            backorderable: false,
-            backorderLeadDays: null,
-            deliveryClass: 'freight',
-            active: true,
-            sortOrder: 1,
-          },
-        }}
-        onChange={vi.fn()}
-      />,
-    );
+    render(<SelectedBaseChip base={option(901, 'Yellow Ochre')} onChange={vi.fn()} />);
 
     expect(screen.getByLabelText('Yellow Ochre packaging')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Change base material' })).toBeInTheDocument();

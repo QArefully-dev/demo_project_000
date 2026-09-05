@@ -3,6 +3,7 @@ import test from 'node:test';
 import type Database from 'better-sqlite3';
 import { Value } from '@sinclair/typebox/value';
 import { Cart, CreateCartResponse } from '@shop/contracts/cart';
+import { CustomBlendSnapshot as CustomBlendSnapshotSchema } from '@shop/contracts';
 import { ReorderResponse } from '@shop/contracts/reorder';
 import { buildApp } from '../../src/app.js';
 import { createCartRepository } from '../../src/features/cart/cartRepository.js';
@@ -59,6 +60,31 @@ async function login(app: App, email: string): Promise<string> {
 async function createCart(app: App): Promise<string> {
   const created = await app.inject({ method: 'POST', url: '/api/cart' });
   return Value.Parse(CreateCartResponse, created.json()).cartId;
+}
+
+interface PersistedCustomBlendSpec {
+  configKey: string;
+  basePercentage: number;
+  mixingGroup: string;
+  ingredients: Array<{
+    variantId: number;
+    productId: string;
+    productName: string;
+    productDescription: string;
+    mixingGroup: string;
+    percentage: number;
+  }>;
+  blendingFeeCents: number;
+  madeToOrder: true;
+  returnable: false;
+}
+
+function parsePersistedCustomBlend(json: string): PersistedCustomBlendSpec {
+  const parsed: unknown = JSON.parse(json);
+  if (!Value.Check(CustomBlendSnapshotSchema, parsed)) {
+    throw new Error('Expected a valid persisted Custom Blend specification');
+  }
+  return parsed;
 }
 
 interface Lot {
@@ -125,6 +151,39 @@ function line(lot: Lot, quantity: number, unitPriceCents = lot.price_cents): Ord
       deliveryClass: lot.delivery_class as 'parcel' | 'freight',
     },
   };
+}
+
+async function createPersistedBlend(
+  app: App,
+  db: Database.Database,
+  base: Lot,
+  ingredientVariantId: number,
+  percentage = 10,
+  quantity = 4,
+): Promise<{ snapshot: PersistedCustomBlendSpec; resolvedUnitPriceCents: number }> {
+  const scratchCartId = await createCart(app);
+  const configured = await app.inject({
+    method: 'POST',
+    url: `/api/cart/${scratchCartId}/custom-blends`,
+    payload: {
+      baseVariantId: base.id,
+      ingredients: [{ variantId: ingredientVariantId, percentage }],
+      quantity,
+    },
+  });
+  assert.equal(configured.statusCode, 200, configured.body);
+  const configuredCart = Value.Parse(Cart, configured.json());
+  const configuredItem = configuredCart.items[0];
+  assert.ok(configuredItem?.customBlend && 'components' in configuredItem.customBlend);
+  assert.ok(configuredItem, 'expected a configured cart line');
+  const resolvedUnitPriceCents = configuredItem.resolvedUnitPriceCents;
+  assert.equal(resolvedUnitPriceCents, configuredItem.customBlend.materialUnitPriceCents);
+
+  const stored = db
+    .prepare("SELECT custom_blend_json FROM cart_line_items WHERE cart_id = ? AND config_key <> ''")
+    .get(scratchCartId) as { custom_blend_json: string } | undefined;
+  assert.ok(stored, 'expected a persisted configured specification');
+  return { snapshot: parsePersistedCustomBlend(stored.custom_blend_json), resolvedUnitPriceCents };
 }
 
 /** An order line whose variant reference was lost; `order_line_items.variant_id` is nullable. */
@@ -422,7 +481,7 @@ void test('reorder re-adds a Custom Blend line under its original config key', a
            SELECT p2.mixing_group
            FROM product_variants pv2 INNER JOIN products p2 ON p2.id = pv2.product_id
            WHERE p2.active = 1 AND pv2.active = 1 AND pv2.sort_order = 1 AND pv2.weight_grams = 25000
-             AND p2.mixing_group IS NOT NULL
+             AND p2.mixing_group NOT IN ('pigments', 'absorbents')
            GROUP BY p2.mixing_group HAVING COUNT(*) >= 2 ORDER BY p2.mixing_group LIMIT 1
          )
        ORDER BY pv.id LIMIT 2`,
@@ -444,8 +503,17 @@ void test('reorder re-adds a Custom Blend line under its original config key', a
     },
   });
   assert.equal(configured.statusCode, 200, configured.body);
-  const snapshot = Value.Parse(Cart, configured.json()).items[0]?.customBlend;
-  assert.ok(snapshot, 'expected a configured cart line');
+  const configuredCart = Value.Parse(Cart, configured.json());
+  const resolvedSnapshot = configuredCart.items[0]?.customBlend;
+  assert.ok(resolvedSnapshot, 'expected a configured cart line');
+  assert.ok('components' in resolvedSnapshot, 'cart should expose a resolved blend outcome');
+  const stored = db
+    .prepare("SELECT custom_blend_json FROM cart_line_items WHERE cart_id = ? AND config_key <> ''")
+    .get(scratchCartId) as { custom_blend_json: string } | undefined;
+  assert.ok(stored, 'expected a persisted configured specification');
+  const snapshot = parsePersistedCustomBlend(stored.custom_blend_json);
+  assert.equal('components' in snapshot, false);
+  assert.equal('quantity' in snapshot, false);
 
   const blendLine: OrderLine = {
     ...line(pinnedBase, 4),
@@ -464,6 +532,13 @@ void test('reorder re-adds a Custom Blend line under its original config key', a
   assert.equal(report.cart.items.length, 1);
   assert.equal(report.cart.items[0]?.configKey, snapshot.configKey);
   assert.equal(report.cart.items[0]?.quantity, 4);
+  const reorderedBlend = report.cart.items[0]?.customBlend;
+  assert.ok(reorderedBlend && 'components' in reorderedBlend);
+  assert.equal(reorderedBlend.quantity, 4);
+  assert.deepEqual(
+    reorderedBlend.components.map((component) => component.variantId),
+    [pinnedBase.id, ingredient.id],
+  );
   assert.deepEqual(
     (
       db.prepare('SELECT config_key FROM cart_line_items WHERE cart_id = ?').all(cartId) as Array<{
@@ -471,5 +546,217 @@ void test('reorder re-adds a Custom Blend line under its original config key', a
       }>
     ).map((row) => row.config_key),
     [snapshot.configKey],
+  );
+  const reorderedStored = db
+    .prepare("SELECT custom_blend_json FROM cart_line_items WHERE cart_id = ? AND config_key <> ''")
+    .get(cartId) as { custom_blend_json: string } | undefined;
+  assert.ok(reorderedStored);
+  const reorderedSpec = parsePersistedCustomBlend(reorderedStored.custom_blend_json);
+  assert.equal('components' in reorderedSpec, false);
+  assert.equal('quantity' in reorderedSpec, false);
+});
+
+void test('reorder keeps resolver pricing for skipped Custom Blend lines', async (t) => {
+  const fixture = await openFixture('reorder-blend-price-skips');
+  t.after(fixture.cleanup);
+  const { db, app, orders } = fixture;
+  const blendLots = db
+    .prepare(
+      `SELECT pv.id, pv.product_id, pv.sku, pv.label, pv.weight_grams, pv.price_cents,
+              pv.moq_sacks, pv.delivery_class, p.consumption_classification
+       FROM product_variants pv INNER JOIN products p ON p.id = pv.product_id
+       WHERE p.active = 1 AND pv.active = 1 AND pv.sort_order = 1 AND pv.weight_grams = 25000
+         AND p.mixing_group = (
+           SELECT p2.mixing_group
+           FROM product_variants pv2 INNER JOIN products p2 ON p2.id = pv2.product_id
+           WHERE p2.active = 1 AND pv2.active = 1 AND pv2.sort_order = 1 AND pv2.weight_grams = 25000
+             AND p2.mixing_group NOT IN ('pigments', 'absorbents')
+           GROUP BY p2.mixing_group HAVING COUNT(*) >= 2 ORDER BY p2.mixing_group LIMIT 1
+         )
+       ORDER BY pv.id LIMIT 2`,
+    )
+    .all() as Lot[];
+  assert.equal(blendLots.length, 2, 'seed must expose two blendable lots');
+  const [base, ingredient] = blendLots as [Lot, Lot];
+  const pinnedBase = pin(db, base, { stock: 1_000, moqSacks: 1, priceCents: 1_000 });
+  db.prepare(
+    `UPDATE product_variants
+     SET price_cents = ?, clearance_price_cents = NULL,
+         clearance_starts_at = NULL, clearance_ends_at = NULL
+     WHERE id = ?`,
+  ).run(10_000, ingredient.id);
+  const { snapshot, resolvedUnitPriceCents } = await createPersistedBlend(
+    app,
+    db,
+    pinnedBase,
+    ingredient.id,
+  );
+  assert.notEqual(resolvedUnitPriceCents, pinnedBase.price_cents);
+
+  const blendLine: OrderLine = {
+    ...line(pinnedBase, 4, pinnedBase.price_cents),
+    blendingFeeCents: snapshot.blendingFeeCents,
+    customBlend: snapshot,
+  };
+
+  // A stock skip still has a valid resolver snapshot and must disclose its configured material
+  // price, rather than silently comparing against the base variant price.
+  const stockOrderId = placeOrder(orders, ALICE_USER_ID, [blendLine]);
+  db.prepare('UPDATE product_variants SET stock_count = 0, backorderable = 0 WHERE id = ?').run(
+    pinnedBase.id,
+  );
+  const cookie = await login(app, ALICE);
+  const stockCartId = await createCart(app);
+  const stockReport = await reorderOk(app, cookie, stockOrderId, stockCartId);
+  assert.equal(stockReport.outcomes[0]?.status, 'skipped');
+  assert.equal(stockReport.outcomes[0]?.reason, 'INSUFFICIENT_STOCK');
+  assert.equal(stockReport.outcomes[0]?.currentUnitPriceCents, resolvedUnitPriceCents);
+  assert.equal(stockReport.outcomes[0]?.priceChanged, true);
+  assert.deepEqual(stockReport.cart.items, []);
+
+  // A MOQ skip follows the same rule after stock is restored; the resolver still prices the
+  // requested quantity even though the cart classifier refuses to add it.
+  const moqOrderId = placeOrder(orders, ALICE_USER_ID, [blendLine]);
+  db.prepare('UPDATE product_variants SET stock_count = 1_000, moq_sacks = 40 WHERE id = ?').run(
+    pinnedBase.id,
+  );
+  const moqCartId = await createCart(app);
+  const moqReport = await reorderOk(app, cookie, moqOrderId, moqCartId);
+  assert.equal(moqReport.outcomes[0]?.status, 'skipped');
+  assert.equal(moqReport.outcomes[0]?.reason, 'BELOW_MOQ');
+  assert.equal(moqReport.outcomes[0]?.currentUnitPriceCents, resolvedUnitPriceCents);
+  assert.equal(moqReport.outcomes[0]?.priceChanged, true);
+  assert.deepEqual(moqReport.cart.items, []);
+});
+
+void test('reorder keeps resolver pricing for a country-blocked Custom Blend', async (t) => {
+  const fixture = await openFixture('reorder-blend-country-price');
+  t.after(fixture.cleanup);
+  const { db, app, orders } = fixture;
+  const pair = db
+    .prepare(
+      `SELECT base.id, base.product_id, base.sku, base.label, base.weight_grams,
+              base.price_cents, base.moq_sacks, base.delivery_class,
+              base_product.consumption_classification,
+              ingredient.id AS ingredient_id
+       FROM product_variants base
+       INNER JOIN products base_product ON base_product.id = base.product_id
+       INNER JOIN products ingredient_product
+         ON ingredient_product.mixing_group = base_product.mixing_group
+       INNER JOIN product_variants ingredient ON ingredient.product_id = ingredient_product.id
+       WHERE base_product.category != 'Sports Nutrition'
+         AND ingredient_product.category = 'Sports Nutrition'
+         AND base_product.active = 1 AND ingredient_product.active = 1
+         AND base.active = 1 AND ingredient.active = 1
+         AND base.sort_order = 1 AND ingredient.sort_order = 1
+         AND base.weight_grams = 25000 AND ingredient.weight_grams = 25000
+       ORDER BY base.id, ingredient.id
+       LIMIT 1`,
+    )
+    .get() as (Lot & { ingredient_id: number }) | undefined;
+  assert.ok(pair, 'seed must expose a blendable country-blocked ingredient');
+  const pinnedBase = pin(db, pair, { stock: 1_000, moqSacks: 1, priceCents: 1_000 });
+  db.prepare(
+    `UPDATE product_variants
+     SET price_cents = ?, clearance_price_cents = NULL,
+         clearance_starts_at = NULL, clearance_ends_at = NULL
+     WHERE id = ?`,
+  ).run(10_000, pair.ingredient_id);
+  const { snapshot, resolvedUnitPriceCents } = await createPersistedBlend(
+    app,
+    db,
+    pinnedBase,
+    pair.ingredient_id,
+  );
+  const orderId = placeOrder(orders, ALICE_USER_ID, [
+    {
+      ...line(pinnedBase, 4, pinnedBase.price_cents),
+      blendingFeeCents: snapshot.blendingFeeCents,
+      customBlend: snapshot,
+    },
+  ]);
+
+  const cookie = await login(app, ALICE);
+  const created = await app.inject({
+    method: 'POST',
+    url: '/api/cart',
+    payload: { country: 'CN' },
+  });
+  const cartId = Value.Parse(CreateCartResponse, created.json()).cartId;
+  const report = await reorderOk(app, cookie, orderId, cartId);
+  assert.equal(report.outcomes[0]?.status, 'skipped');
+  assert.equal(report.outcomes[0]?.reason, 'BLOCKED_IN_COUNTRY');
+  assert.equal(report.outcomes[0]?.currentUnitPriceCents, resolvedUnitPriceCents);
+  assert.equal(report.outcomes[0]?.priceChanged, true);
+  assert.deepEqual(report.cart.items, []);
+});
+
+void test('reorder reports a stale legacy Custom Blend specification as unavailable', async (t) => {
+  const fixture = await openFixture('reorder-stale-blend');
+  t.after(fixture.cleanup);
+  const { db, app, orders } = fixture;
+  const base = db
+    .prepare(
+      `SELECT pv.id, pv.product_id, pv.sku, pv.label, pv.weight_grams, pv.price_cents,
+              pv.moq_sacks, pv.delivery_class, p.consumption_classification
+       FROM product_variants pv INNER JOIN products p ON p.id = pv.product_id
+       WHERE p.active = 1 AND pv.active = 1 AND pv.sort_order = 1 AND pv.weight_grams = 25000
+         AND p.mixing_group = 'cleaning'
+       ORDER BY pv.id LIMIT 1`,
+    )
+    .get() as Lot | undefined;
+  const ingredient = db
+    .prepare(
+      `SELECT pv.id, pv.product_id, pv.sku, pv.label, pv.weight_grams, pv.price_cents,
+              pv.moq_sacks, pv.delivery_class, p.consumption_classification
+       FROM product_variants pv INNER JOIN products p ON p.id = pv.product_id
+       WHERE p.active = 1 AND pv.active = 1 AND pv.sort_order = 1 AND pv.weight_grams = 25000
+         AND p.mixing_group = 'pigments'
+       ORDER BY pv.id LIMIT 1`,
+    )
+    .get() as Lot | undefined;
+  assert.ok(base);
+  assert.ok(ingredient);
+  const pinnedBase = pin(db, base, { stock: 1_000, moqSacks: 1 });
+
+  const scratchCartId = await createCart(app);
+  const configured = await app.inject({
+    method: 'POST',
+    url: `/api/cart/${scratchCartId}/custom-blends`,
+    payload: {
+      baseVariantId: pinnedBase.id,
+      ingredients: [{ variantId: ingredient.id, percentage: 5 }],
+      quantity: 4,
+    },
+  });
+  assert.equal(configured.statusCode, 200, configured.body);
+  const stored = db
+    .prepare("SELECT custom_blend_json FROM cart_line_items WHERE cart_id = ? AND config_key <> ''")
+    .get(scratchCartId) as { custom_blend_json: string } | undefined;
+  assert.ok(stored);
+  const snapshot = parsePersistedCustomBlend(stored.custom_blend_json);
+  const orderId = placeOrder(orders, ALICE_USER_ID, [
+    {
+      ...line(pinnedBase, 4),
+      blendingFeeCents: snapshot.blendingFeeCents,
+      customBlend: snapshot,
+    },
+  ]);
+  db.prepare('UPDATE product_variants SET active = 0 WHERE id = ?').run(ingredient.id);
+
+  const cookie = await login(app, ALICE);
+  const cartId = await createCart(app);
+  const report = await reorderOk(app, cookie, orderId, cartId);
+  assert.equal(report.addedLineCount, 0);
+  assert.equal(report.skippedLineCount, 1);
+  assert.equal(report.outcomes[0]?.status, 'skipped');
+  assert.equal(report.outcomes[0]?.reason, 'BLEND_UNAVAILABLE');
+  assert.equal(report.outcomes[0]?.configKey, snapshot.configKey);
+  assert.equal(report.outcomes[0]?.currentUnitPriceCents, null);
+  assert.equal(report.outcomes[0]?.priceChanged, false);
+  assert.deepEqual(report.cart.items, []);
+  assert.deepEqual(
+    db.prepare('SELECT variant_id, config_key FROM cart_line_items WHERE cart_id = ?').all(cartId),
+    [],
   );
 });

@@ -1,10 +1,12 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OrderDetailResponse, OrderListResponse } from '@shop/contracts/orders';
+import type { InvoiceDetailResponse } from '@shop/contracts/trade-credit';
+import type { ResolvedCustomBlendSnapshot } from '@shop/contracts/custom-blends';
 import { ApiError } from '@/api/client';
-import { cancelOrder, getOrder, getOrders } from '@/api/orders';
+import { cancelOrder, getOrder, getOrderInvoice, getOrders } from '@/api/orders';
 import { fetchReturnOverview } from '@/api/returns';
 import { useCartContext } from '@/hooks/CartContext';
 import { OrderDetailPage } from './OrderDetailPage';
@@ -22,7 +24,12 @@ import {
 } from './orderPresentation';
 import { formatDualTotal } from '@shop/localisation';
 
-vi.mock('@/api/orders', () => ({ getOrders: vi.fn(), getOrder: vi.fn(), cancelOrder: vi.fn() }));
+vi.mock('@/api/orders', () => ({
+  getOrders: vi.fn(),
+  getOrder: vi.fn(),
+  getOrderInvoice: vi.fn(),
+  cancelOrder: vi.fn(),
+}));
 vi.mock('@/api/returns', () => ({ fetchReturnOverview: vi.fn(), createReturnRequest: vi.fn() }));
 vi.mock('@/hooks/CartContext', () => ({ useCartContext: vi.fn() }));
 
@@ -151,6 +158,128 @@ const tradeDetail: OrderDetailResponse = {
   purchaseOrderReference: 'PO-55120',
 };
 
+const creditDetail: OrderDetailResponse = {
+  ...tradeDetail,
+  paymentMethod: 'trade_credit',
+  companyId: '1',
+  country: 'UK',
+  netCents: 2200,
+  vatRateBasisPoints: 0,
+  vatCents: 0,
+  grossCents: 2200,
+};
+
+const invoice: InvoiceDetailResponse = {
+  version: 1,
+  id: '301',
+  invoiceNumber: 'QME-2026-000301',
+  orderId: '12',
+  companyId: '1',
+  userId: '1',
+  country: 'UK',
+  paymentMethod: 'trade_credit',
+  currency: 'GBP',
+  terms: 'net_30',
+  termsDays: 30,
+  billingEntity: tradeDetail.billingEntity!,
+  purchaseOrderReference: 'PO-55120',
+  lines: [
+    {
+      lineId: '31',
+      description: 'Oat powder',
+      productId: 'oat',
+      quantity: 1,
+      unitPriceCents: 1000,
+      netCents: 1000,
+    },
+  ],
+  netCents: 2200,
+  vatRateBasisPoints: 0,
+  vatCents: 0,
+  grossCents: 2200,
+  issuedAt: '2026-07-14T00:00:00.000Z',
+  dueAt: '2026-08-13T00:00:00.000Z',
+  status: 'open',
+  lifecycleStatus: 'open',
+  lifecycleVersion: 1,
+  settledAt: null,
+};
+
+const resolvedOrderBlend: ResolvedCustomBlendSnapshot = {
+  configKey: 'e'.repeat(64),
+  basePercentage: 75,
+  mixingGroup: 'mineral',
+  basePresentation: {
+    category: 'Trade & Creative Materials',
+    consumptionClassification: 'non-food',
+    categoryFacts: {
+      composition: 'Cementitious powder',
+      source: 'Mineral',
+      intendedUse: 'Construction',
+      storage: 'Keep dry',
+      colour: 'Grey',
+      texture: 'Fine powder',
+      consumptionClassification: 'non-food',
+    },
+  },
+  ingredients: [
+    {
+      variantId: 601,
+      productId: '11',
+      productName: 'Chalk Filler',
+      productDescription: 'Filler',
+      mixingGroup: 'mineral',
+      percentage: 25,
+    },
+  ],
+  blendingFeeCents: 2_500,
+  madeToOrder: true,
+  returnable: false,
+  ruleVersion: 1,
+  resultClassification: 'non-food',
+  quantity: 1,
+  components: [
+    {
+      role: 'base',
+      variantId: 31,
+      productId: '31',
+      productName: 'Oat powder',
+      productDescription: 'Base powder',
+      sku: 'OAT-001',
+      variantLabel: '25 kg sack',
+      mixingGroup: 'mineral',
+      consumptionClassification: 'non-food',
+      percentage: 75,
+      weightGrams: 18_750,
+      sourceUnitPriceCents: 1_000,
+      tierDiscountPct: 0,
+      unitContributionCents: 750,
+      subtotalCents: 750,
+    },
+    {
+      role: 'ingredient',
+      variantId: 601,
+      productId: '11',
+      productName: 'Chalk Filler',
+      productDescription: 'Filler',
+      sku: 'CHALK-601',
+      variantLabel: '25 kg sack',
+      mixingGroup: 'mineral',
+      consumptionClassification: 'non-food',
+      percentage: 25,
+      weightGrams: 6_250,
+      sourceUnitPriceCents: 1_200,
+      tierDiscountPct: 0,
+      unitContributionCents: 300,
+      subtotalCents: 300,
+    },
+  ],
+  materialUnitPriceCents: 1_050,
+  materialSubtotalCents: 1_050,
+  discountableTotalCents: 1_050,
+  lineTotalCents: 3_550,
+};
+
 function ConfirmationRoutes() {
   const navigate = useNavigate();
   return (
@@ -163,10 +292,31 @@ function ConfirmationRoutes() {
   );
 }
 
+function OrderNavigationRoutes() {
+  const navigate = useNavigate();
+  return (
+    <>
+      <button onClick={() => navigate('/orders/13')}>Open order 13</button>
+      <Routes>
+        <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+      </Routes>
+    </>
+  );
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
 describe('customer order UI', () => {
   beforeEach(() => {
     vi.mocked(getOrders).mockReset();
     vi.mocked(getOrder).mockReset();
+    vi.mocked(getOrderInvoice).mockReset();
     vi.mocked(cancelOrder).mockReset();
     vi.mocked(fetchReturnOverview).mockReset();
     vi.mocked(useCartContext).mockReset();
@@ -343,12 +493,66 @@ describe('customer order UI', () => {
     expect(await screen.findByText(/75% Oat powder — 25% Chalk Filler/)).toBeInTheDocument();
     expect(screen.getByText('Custom blend')).toBeInTheDocument();
     expect(screen.getByTestId('custom-blend-livery')).toBeInTheDocument();
-    expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute('data-vessel', 'kraft-sack');
-    expect(screen.getByText('Mineral')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute('data-vessel', 'neutral');
+    expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute(
+      'data-colour-scheme',
+      'neutral',
+    );
+    expect(screen.queryByText('Not for consumption')).not.toBeInTheDocument();
     expect(screen.getByText(/Base material: \$12.50.*Blending fee: \$31.25/)).toBeInTheDocument();
     expect(
       screen.getByText(/Made to order\. Custom blends cannot be returned/),
     ).toBeInTheDocument();
+  });
+
+  it('renders resolved result safety and frozen component totals on the order record', async () => {
+    vi.mocked(getOrder).mockResolvedValue({
+      ...detail,
+      items: [
+        {
+          ...detail.items[0]!,
+          productId: '31',
+          unitPriceCents: resolvedOrderBlend.materialUnitPriceCents,
+          discountableTotalCents: resolvedOrderBlend.discountableTotalCents,
+          blendingFeeCents: resolvedOrderBlend.blendingFeeCents,
+          lineTotalCents: resolvedOrderBlend.lineTotalCents,
+          variantSnapshot: {
+            variantId: 31,
+            sku: 'OAT-001',
+            label: '25 kg sack',
+            unitPriceCents: 1000,
+            weightGrams: 25_000,
+            consumptionClassification: 'non-food',
+            deliveryClass: 'freight',
+          },
+          customBlend: resolvedOrderBlend,
+        },
+      ],
+    });
+    render(
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders/12']}
+      >
+        <Routes>
+          <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByTestId('order-blend-result')).toHaveTextContent('Non-food blend');
+    expect(screen.getByTestId('order-blend-safety')).toHaveTextContent('Not for consumption');
+    expect(screen.getByText('Component weight: 18.75 kg')).toBeInTheDocument();
+    expect(screen.getByText('Source price: $12.50 per sack')).toBeInTheDocument();
+    expect(screen.getByText('Unit contribution: $9.38')).toBeInTheDocument();
+    expect(screen.getByText('Material price per sack: $13.13')).toBeInTheDocument();
+    expect(screen.getByText('Material total: $13.13')).toBeInTheDocument();
+    expect(screen.getByText('Blending fee: $31.25')).toBeInTheDocument();
+    expect(screen.getByText('Blend total: $44.38')).toBeInTheDocument();
+    expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute(
+      'data-result-classification',
+      'non-food',
+    );
   });
 
   it('uses a neutral Custom Blend presentation for legacy order snapshots', async () => {
@@ -363,6 +567,7 @@ describe('customer order UI', () => {
             configKey: 'd'.repeat(64),
             basePercentage: 75,
             mixingGroup: 'mineral',
+            basePresentation: resolvedOrderBlend.basePresentation,
             ingredients: [
               {
                 variantId: 601,
@@ -399,6 +604,15 @@ describe('customer order UI', () => {
       'data-vessel',
       'food-bag',
     );
+    expect(screen.getByTestId('custom-blend-livery')).toHaveAttribute(
+      'data-colour-scheme',
+      'neutral',
+    );
+    expect(screen.queryByText('Not for consumption')).not.toBeInTheDocument();
+    expect(screen.getByTestId('order-blend-legacy')).toHaveTextContent(
+      'Pricing and safety details are unavailable for this historic blend.',
+    );
+    expect(screen.queryByTestId('order-blend-result')).not.toBeInTheDocument();
   });
 
   it('shows order allocation state without an estimated delivery date', async () => {
@@ -600,6 +814,91 @@ describe('customer order UI', () => {
     expect(screen.getByText('PO-55120')).toBeInTheDocument();
   });
 
+  it('loads an immutable credit invoice for an owned order and hides returns', async () => {
+    vi.mocked(getOrder).mockResolvedValue({ ...creditDetail, status: 'delivered' });
+    vi.mocked(getOrderInvoice).mockResolvedValue(invoice);
+
+    render(
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders/12']}
+      >
+        <Routes>
+          <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(getOrderInvoice).toHaveBeenCalled());
+    expect(await screen.findByText(/Invoice number: QME-2026-000301/)).toBeInTheDocument();
+    expect(screen.getByText('Trade credit')).toBeInTheDocument();
+    expect(screen.getByTestId('invoice-status')).toHaveAttribute(
+      'aria-label',
+      'Invoice status: Open',
+    );
+    expect(screen.getByText('Payment terms: net 30 days')).toBeInTheDocument();
+    expect(screen.queryByText('Return items')).not.toBeInTheDocument();
+  });
+
+  it('keeps a non-UK invoice total local and qualifies its GBP settlement separately', async () => {
+    vi.mocked(getOrder).mockResolvedValue({ ...creditDetail, status: 'delivered' });
+    vi.mocked(getOrderInvoice).mockResolvedValue(invoice);
+
+    render(
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders/12']}
+      >
+        <Routes>
+          <Route path="/orders/:orderId" element={<OrderDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const invoiceCard = await screen.findByTestId('invoice-details');
+    expect(within(invoiceCard).getByText('$27.50')).toBeInTheDocument();
+    expect(within(invoiceCard).getByText('GBP settlement: £22.00')).toBeInTheDocument();
+    expect(within(invoiceCard).getByText('Net (GBP): £22.00')).toBeInTheDocument();
+    expect(within(invoiceCard).queryByText(/Net \(GBP\): \$27\.50/)).not.toBeInTheDocument();
+  });
+
+  it('does not carry the previous invoice across deferred order navigation', async () => {
+    const nextOrder = deferred<OrderDetailResponse>();
+    vi.mocked(getOrder)
+      .mockResolvedValueOnce({ ...creditDetail, status: 'delivered' })
+      .mockReturnValueOnce(nextOrder.promise);
+    vi.mocked(getOrderInvoice).mockImplementation((id) =>
+      Promise.resolve(
+        id === '13'
+          ? { ...invoice, id: '302', invoiceNumber: 'QME-2026-000302', orderId: '13' }
+          : invoice,
+      ),
+    );
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+        initialEntries={['/orders/12']}
+      >
+        <OrderNavigationRoutes />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/Invoice number: QME-2026-000301/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Open order 13' }));
+    await waitFor(() => expect(getOrder).toHaveBeenCalledWith('13'));
+    expect(screen.queryByText(/Invoice number: QME-2026-000301/)).not.toBeInTheDocument();
+    expect(getOrderInvoice).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      nextOrder.resolve({ ...creditDetail, id: '13', status: 'delivered' });
+      await nextOrder.promise;
+    });
+    expect(await screen.findByText(/Invoice number: QME-2026-000302/)).toBeInTheDocument();
+    expect(getOrderInvoice).toHaveBeenCalledWith('13', expect.anything());
+  });
+
   it('omits the delivery and billing section entirely for a legacy order', async () => {
     vi.mocked(getOrder).mockResolvedValue(detail);
     render(
@@ -652,6 +951,7 @@ describe('Buy Again placement on the order surfaces', () => {
   beforeEach(() => {
     vi.mocked(getOrders).mockReset();
     vi.mocked(getOrder).mockReset();
+    vi.mocked(getOrderInvoice).mockReset();
     vi.mocked(useCartContext).mockReset();
     vi.mocked(useCartContext).mockReturnValue(cartStub());
     vi.mocked(fetchReturnOverview).mockReset();

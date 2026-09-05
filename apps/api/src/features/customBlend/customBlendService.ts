@@ -1,32 +1,45 @@
 import {
-  CategoryFacts,
-  CUSTOM_BLEND_FEE_CENTS,
-  TIER_LADDER,
   type Cart,
-  type CatalogVariant,
+  type CustomBlendBaseListQuery,
+  type CustomBlendBaseListResponse,
   type CreateCustomBlendBody,
-  type CustomBlendOption,
+  type CustomBlendEvaluationBody,
+  type CustomBlendEvaluationResponse,
   type CustomBlendOptionsResponse,
-  type CustomBlendBasePresentation,
   type CustomBlendSnapshot,
   type ReplaceCustomBlendBody,
 } from '@shop/contracts';
-import { Value } from '@sinclair/typebox/value';
-import { perTonneCents } from '../pricing/pricingRules.js';
-import type { CustomBlendFactRow, CustomBlendRepository } from './customBlendRepository.js';
+import type { Country } from '@shop/contracts/country';
+import type { CustomBlendRepository } from './customBlendRepository.js';
 import type { CartService } from '../cart/cartService.js';
 import type { AuditContext } from '../audit/auditEvent.js';
-import { normalizeCustomBlendSpec } from './customBlendRules.js';
+import {
+  createCustomBlendResolver,
+  CustomBlendResolverError,
+  type CustomBlendResolver,
+  type CustomBlendResolverClock,
+} from './customBlendResolver.js';
 
 export class CustomBlendInvalidError extends Error {
-  constructor(message: string) {
+  readonly resolverCode?: CustomBlendResolverError['code'];
+  readonly maxPercentage?: number;
+  readonly actualPercentage?: number;
+
+  constructor(message: string, resolverError?: CustomBlendResolverError) {
     super(message);
     this.name = 'CustomBlendInvalidError';
+    if (resolverError) {
+      this.resolverCode = resolverError.code;
+      this.maxPercentage = resolverError.maxPercentage;
+      this.actualPercentage = resolverError.actualPercentage;
+    }
   }
 }
 
 export interface CustomBlendService {
-  listOptions(baseVariantId: number): CustomBlendOptionsResponse;
+  listBases(query?: CustomBlendBaseListQuery, country?: Country): CustomBlendBaseListResponse;
+  listOptions(baseVariantId: number, country?: Country): CustomBlendOptionsResponse;
+  evaluate(body: CustomBlendEvaluationBody, country?: Country): CustomBlendEvaluationResponse;
   create(
     carts: CartService,
     cartId: string,
@@ -51,75 +64,50 @@ export type CustomBlendMutationResult =
   | 'BELOW_MOQ'
   | 'INVALID_QUANTITY';
 
-function toOption(row: CustomBlendFactRow): CustomBlendOption {
-  const variant: CatalogVariant = {
-    variantId: row.variant_id,
-    productId: row.product_id,
-    sku: row.sku,
-    label: row.label,
-    weightGrams: row.weight_grams,
-    priceCents: row.price_cents,
-    moqSacks: row.moq_sacks,
-    perTonneCents: perTonneCents(row.price_cents, row.weight_grams),
-    priceTiers: TIER_LADDER,
-    ...(row.compare_at_price_cents === null
-      ? {}
-      : { compareAtPriceCents: row.compare_at_price_cents }),
-    stockCount: row.stock_count,
-    backorderable: row.backorderable === 1,
-    backorderLeadDays: row.backorderable === 1 ? (row.backorder_lead_days ?? null) : null,
-    deliveryClass: row.delivery_class as CatalogVariant['deliveryClass'],
-    active: row.variant_active === 1,
-    sortOrder: row.sort_order,
-  };
+/**
+ * Resolves options and mutation specifications through one authority. The repository overload is
+ * retained for existing direct service callers; application composition supplies the resolver and
+ * an injected clock explicitly.
+ */
+export function createCustomBlendService(resolver: CustomBlendResolver): CustomBlendService;
+export function createCustomBlendService(
+  repository: CustomBlendRepository,
+  clock?: CustomBlendResolverClock,
+): CustomBlendService;
+export function createCustomBlendService(
+  resolverOrRepository: CustomBlendResolver | CustomBlendRepository,
+  clock: CustomBlendResolverClock = { now: () => new Date(0) },
+): CustomBlendService {
+  const resolver = isCustomBlendResolver(resolverOrRepository)
+    ? resolverOrRepository
+    : createCustomBlendResolver(resolverOrRepository, clock);
   return {
-    productId: String(row.product_id),
-    productName: row.product_name,
-    productDescription: row.product_description,
-    category: row.category,
-    consumptionClassification:
-      row.consumption_classification as CustomBlendOption['consumptionClassification'],
-    categoryFacts: parseCategoryFacts(row.details_json, row.consumption_classification),
-    mixingGroup: row.mixing_group,
-    variant,
-  };
-}
-
-function parseCategoryFacts(
-  detailsJson: string | null,
-  consumptionClassification: string,
-): CategoryFacts {
-  if (detailsJson) {
-    try {
-      const parsed: unknown = JSON.parse(detailsJson);
-      if (Value.Check(CategoryFacts, parsed)) return parsed;
-    } catch {
-      // Fall through to the canonical catalog presentation fallback.
-    }
-  }
-  return {
-    texture: 'Not specified',
-    colour: 'Not specified',
-    source: 'Not specified',
-    intendedUse: 'Not specified',
-    storage: 'Not specified',
-    consumptionClassification:
-      (consumptionClassification as CategoryFacts['consumptionClassification']) || 'non-food',
-  };
-}
-
-/** Resolves options from current catalog facts; inventory availability intentionally does not filter lots. */
-export function createCustomBlendService(repository: CustomBlendRepository): CustomBlendService {
-  return {
-    listOptions(baseVariantId) {
-      const base = repository.findEligibleVariant(baseVariantId);
-      if (!base) {
-        throw new CustomBlendInvalidError('Selected base lot is not eligible for Custom Blend.');
+    listBases(query, country) {
+      try {
+        return resolver.listBases(query, country);
+      } catch (error) {
+        throwInvalid(error);
       }
-      return {
-        base: toOption(base),
-        ingredients: repository.listCompatibleIngredients(base).map(toOption),
-      };
+    },
+    listOptions(baseVariantId, country) {
+      try {
+        return resolver.listOptions(baseVariantId, country);
+      } catch (error) {
+        throwInvalid(error);
+      }
+    },
+    evaluate(body, country) {
+      try {
+        const resolved = resolver.evaluate(
+          body.baseVariantId,
+          body.ingredients,
+          body.quantity,
+          country,
+        );
+        return { quantity: resolved.quantity, customBlend: resolved };
+      } catch (error) {
+        throwInvalid(error);
+      }
     },
     create(carts, cartId, body, context) {
       if (
@@ -130,12 +118,17 @@ export function createCustomBlendService(repository: CustomBlendRepository): Cus
       ) {
         return 'BLOCKED_IN_COUNTRY';
       }
-      const snapshot = resolveSnapshot(repository, body.baseVariantId, body.ingredients);
+      const evaluated = evaluatedSpecFor(
+        resolver,
+        body.baseVariantId,
+        body.ingredients,
+        body.quantity,
+      );
       return carts.addConfigured(
         cartId,
         String(body.baseVariantId),
-        snapshot,
-        body.quantity,
+        evaluated.snapshot,
+        evaluated.quantity,
         context,
       );
     },
@@ -148,67 +141,42 @@ export function createCustomBlendService(repository: CustomBlendRepository): Cus
       ) {
         return 'BLOCKED_IN_COUNTRY';
       }
-      const snapshot = resolveSnapshot(repository, body.baseVariantId, body.ingredients);
+      const evaluated = evaluatedSpecFor(resolver, body.baseVariantId, body.ingredients);
       return carts.replaceConfigured(
         cartId,
         String(body.baseVariantId),
         body.configKey,
-        snapshot,
+        evaluated.snapshot,
         context,
       );
     },
   };
 }
 
-/** Resolve every persisted fact at mutation time; stock remains deliberately irrelevant. */
-function resolveSnapshot(
-  repository: CustomBlendRepository,
+function isCustomBlendResolver(
+  value: CustomBlendResolver | CustomBlendRepository,
+): value is CustomBlendResolver {
+  return typeof (value as CustomBlendResolver).evaluate === 'function';
+}
+
+function throwInvalid(error: unknown): never {
+  if (error instanceof CustomBlendInvalidError) throw error;
+  if (error instanceof CustomBlendResolverError) {
+    throw new CustomBlendInvalidError('Custom Blend specification is invalid.', error);
+  }
+  throw error;
+}
+
+function evaluatedSpecFor(
+  resolver: CustomBlendResolver,
   baseVariantId: number,
   ingredients: CreateCustomBlendBody['ingredients'],
-): CustomBlendSnapshot {
-  let normalized;
+  quantity?: number,
+): { snapshot: CustomBlendSnapshot; quantity: number } {
   try {
-    normalized = normalizeCustomBlendSpec(baseVariantId, ingredients);
+    const resolved = resolver.evaluate(baseVariantId, ingredients, quantity);
+    return { snapshot: resolver.toPersistedSpec(resolved), quantity: resolved.quantity };
   } catch (error) {
-    throw new CustomBlendInvalidError(
-      error instanceof Error ? error.message : 'Custom Blend ingredients are invalid.',
-    );
+    throwInvalid(error);
   }
-  const base = repository.findEligibleVariant(baseVariantId);
-  if (!base)
-    throw new CustomBlendInvalidError('Selected base lot is not eligible for Custom Blend.');
-  const compatibleByVariant = new Map(
-    repository.listCompatibleIngredients(base).map((fact) => [fact.variant_id, fact]),
-  );
-  const snapshots = normalized.ingredients.map((ingredient) => {
-    const fact = compatibleByVariant.get(ingredient.variantId);
-    if (!fact) {
-      throw new CustomBlendInvalidError(
-        'Selected ingredient lot is not compatible with this base lot.',
-      );
-    }
-    return {
-      variantId: fact.variant_id,
-      productId: String(fact.product_id),
-      productName: fact.product_name,
-      productDescription: fact.product_description,
-      mixingGroup: fact.mixing_group,
-      percentage: ingredient.percentage,
-    };
-  });
-  return {
-    configKey: normalized.configKey,
-    basePercentage: normalized.basePercentage,
-    mixingGroup: base.mixing_group,
-    basePresentation: {
-      category: base.category,
-      consumptionClassification:
-        base.consumption_classification as CustomBlendBasePresentation['consumptionClassification'],
-      categoryFacts: parseCategoryFacts(base.details_json, base.consumption_classification),
-    },
-    ingredients: snapshots,
-    blendingFeeCents: CUSTOM_BLEND_FEE_CENTS,
-    madeToOrder: true,
-    returnable: false,
-  };
 }

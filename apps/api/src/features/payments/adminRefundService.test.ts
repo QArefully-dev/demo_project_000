@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import type Database from 'better-sqlite3';
 import { closeDatabase, openDatabase } from '../../db/index.js';
 import { createUnitOfWork } from '../../db/unitOfWork.js';
 import { createAuditRepository } from '../audit/auditRepository.js';
@@ -87,6 +88,22 @@ function fixture(t: test.TestContext) {
   };
 }
 
+function setSettlementMethods(
+  db: Database.Database,
+  orderId: number,
+  paymentId: number,
+  orderMethod: string,
+  paymentMethod: string,
+): void {
+  db.pragma('ignore_check_constraints = ON');
+  try {
+    db.prepare('UPDATE orders SET payment_method = ? WHERE id = ?').run(orderMethod, orderId);
+    db.prepare('UPDATE payments SET payment_method = ? WHERE id = ?').run(paymentMethod, paymentId);
+  } finally {
+    db.pragma('ignore_check_constraints = OFF');
+  }
+}
+
 void test('admin refund shares return cap, replays idempotently, and audits once', (t) => {
   const { db, service, paymentId, orderId, context } = fixture(t);
   const request = {
@@ -100,6 +117,22 @@ void test('admin refund shares return cap, replays idempotently, and audits once
   const refunded = service.refund(request);
   assert.equal(refunded.amountCents, 700);
   assert.equal(service.refund(request).id, refunded.id);
+
+  setSettlementMethods(db, orderId, paymentId, 'trade_credit', 'card');
+  assert.throws(
+    () => service.refund(request),
+    (error: unknown) =>
+      error instanceof AdminRefundError && error.code === 'PAYMENT_NOT_REFUNDABLE',
+  );
+  setSettlementMethods(db, orderId, paymentId, 'card', 'trade_credit');
+  assert.throws(
+    () => service.refund(request),
+    (error: unknown) =>
+      error instanceof AdminRefundError && error.code === 'PAYMENT_NOT_REFUNDABLE',
+  );
+  setSettlementMethods(db, orderId, paymentId, 'card', 'card');
+  assert.equal(service.refund(request).id, refunded.id, 'valid-card replay remains idempotent');
+
   assert.equal(
     (
       db
@@ -113,5 +146,70 @@ void test('admin refund shares return cap, replays idempotently, and audits once
   assert.throws(
     () => service.refund({ ...request, amountCents: 1, idempotencyKey: 'refund-over-cap' }),
     AdminRefundError,
+  );
+});
+
+void test('succeeded trade-credit intent has no refundable balance and never calls the gateway', (t) => {
+  const { db, orderId, context } = fixture(t);
+  const now = '2026-07-29T10:00:00.000Z';
+  const companyId = Number(
+    db
+      .prepare(
+        `INSERT INTO company_accounts
+           (name, created_by_user_id, active, approval_threshold_cents, credit_limit_cents,
+            credit_terms_days, credit_state, credit_version, created_at, updated_at)
+         VALUES ('Refund Credit Ltd', ?, 1, NULL, 100000, 30, 'active', 0, ?, ?)`,
+      )
+      .run(context.actor.userId, now, now).lastInsertRowid,
+  );
+  const paymentId = Number(
+    db
+      .prepare(
+        `INSERT INTO payments
+           (order_id, idempotency_key, request_fingerprint, status, amount_cents, created_at,
+            payment_method, company_id, user_id)
+         VALUES (?, 'credit-admin-refund-payment', 'credit-admin-refund-fingerprint', 'succeeded',
+                 1000, ?, 'trade_credit', ?, ?)`,
+      )
+      .run(orderId, now, companyId, context.actor.userId).lastInsertRowid,
+  );
+  let gatewayCalls = 0;
+  const service = createAdminRefundService({
+    db,
+    unitOfWork: createUnitOfWork(db),
+    audit: createAuditWriter({
+      repository: createAuditRepository(db),
+      clock: { now: () => new Date(now) },
+    }),
+    clock: { now: () => new Date(now) },
+    refundGateway: {
+      refund() {
+        gatewayCalls += 1;
+        return { processor: 'simulated', simulatedReference: 'must-not-run' };
+      },
+    },
+  });
+
+  assert.throws(
+    () =>
+      service.refund({
+        paymentId,
+        orderId,
+        amountCents: 100,
+        reason: 'Credit return should not refund',
+        idempotencyKey: 'credit-admin-refund-request',
+        context,
+      }),
+    (error: unknown) =>
+      error instanceof AdminRefundError && error.code === 'PAYMENT_NOT_REFUNDABLE',
+  );
+  assert.equal(gatewayCalls, 0);
+  assert.equal(
+    (
+      db
+        .prepare('SELECT COUNT(*) AS count FROM admin_refunds WHERE payment_id = ?')
+        .get(paymentId) as { count: number }
+    ).count,
+    0,
   );
 });

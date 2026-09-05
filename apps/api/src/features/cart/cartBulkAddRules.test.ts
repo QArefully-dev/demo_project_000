@@ -305,6 +305,69 @@ void test('added price resolves clearance first, then the tonne tier ladder', ()
   });
 });
 
+void test('configured groups use resolver component pricing instead of base-only pricing', () => {
+  const classification = classifyBulkAddGroup({
+    variantRow: variantRow({ price_cents: 1_000 }),
+    existingQuantity: 0,
+    requestedQuantity: 4,
+    availability: { availableToSell: 4, backorderable: false },
+    blendValid: true,
+    resolvedBlend: { materialUnitPriceCents: 1_250 },
+    now: NOW,
+  });
+  assert.deepEqual(classification, {
+    status: 'added',
+    resultingQuantity: 4,
+    resolvedUnitPriceCents: 1_250,
+  });
+});
+
+void test('configured policy skips retain resolver pricing while unavailable blends stay unpriced', () => {
+  const resolvedBlend = { materialUnitPriceCents: 1_250 };
+  const baseInput = {
+    variantRow: variantRow(),
+    existingQuantity: 0,
+    requestedQuantity: 4,
+    availability: { availableToSell: 4, backorderable: false },
+    blendValid: true,
+    resolvedBlend,
+    now: NOW,
+  };
+
+  assert.deepEqual(classifyBulkAddGroup({ ...baseInput, blockedInCountry: true }), {
+    status: 'skipped',
+    reason: 'BLOCKED_IN_COUNTRY',
+    resolvedUnitPriceCents: 1_250,
+  });
+  assert.deepEqual(
+    classifyBulkAddGroup({
+      ...baseInput,
+      availability: { availableToSell: 0, backorderable: false },
+    }),
+    {
+      status: 'skipped',
+      reason: 'INSUFFICIENT_STOCK',
+      resolvedUnitPriceCents: 1_250,
+    },
+  );
+  assert.deepEqual(
+    classifyBulkAddGroup({
+      ...baseInput,
+      variantRow: variantRow({ moq_sacks: 40 }),
+      availability: { availableToSell: 4, backorderable: false },
+    }),
+    {
+      status: 'skipped',
+      reason: 'BELOW_MOQ',
+      resolvedUnitPriceCents: 1_250,
+    },
+  );
+  assert.deepEqual(classifyBulkAddGroup({ ...baseInput, blendValid: false }), {
+    status: 'skipped',
+    reason: 'BLEND_UNAVAILABLE',
+  });
+});
+
 void test('an expired clearance window falls back to the list price', () => {
   const classification = classifyBulkAddGroup({
     variantRow: variantRow({

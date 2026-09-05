@@ -24,6 +24,14 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
     },
     async (request, reply) => {
       const userId = request.authenticatedUser?.id ?? null;
+      const cardFields =
+        'cardNumber' in request.body
+          ? {
+              cardNumber: request.body.cardNumber,
+              cardExpiry: request.body.cardExpiry,
+              cardCvc: request.body.cardCvc,
+            }
+          : { cardNumber: undefined, cardExpiry: undefined, cardCvc: undefined };
 
       const result = await services.checkout.process({
         cartId: request.body.cartId,
@@ -34,9 +42,8 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
         billingSelection: request.body.billingSelection,
         deliverySlot: request.body.deliverySlot,
         purchaseOrderReference: request.body.purchaseOrderReference,
-        cardNumber: request.body.cardNumber,
-        cardExpiry: request.body.cardExpiry,
-        cardCvc: request.body.cardCvc,
+        ...cardFields,
+        paymentMethod: request.body.paymentMethod,
         idempotencyKey: request.body.idempotencyKey,
         userId,
         auditContext: {
@@ -162,6 +169,33 @@ export default function paymentRoutes(app: FastifyInstance, { services }: AppCon
           // Catalog state moved under a configured line. Same conflict class as stock shortfall:
           // the request was well formed, the cart must be revisited before paying.
           sendPublicError(request, reply, 409, 'CUSTOM_BLEND_INVALID');
+          return;
+        case 'CREDIT_LIMIT_EXCEEDED':
+          sendPublicError(request, reply, 409, 'CREDIT_LIMIT_EXCEEDED', {
+            requestedCents: result.requestedCents,
+            availableCreditCents: result.availableCreditCents,
+          });
+          return;
+        case 'CREDIT_ACCOUNT_ON_HOLD':
+          sendPublicError(request, reply, 409, 'CREDIT_ACCOUNT_ON_HOLD');
+          return;
+        case 'CREDIT_ACCOUNT_SUSPENDED':
+          sendPublicError(request, reply, 409, 'CREDIT_ACCOUNT_SUSPENDED');
+          return;
+        case 'CREDIT_NOT_ELIGIBLE':
+          sendPublicError(request, reply, 409, 'CREDIT_NOT_ELIGIBLE');
+          return;
+        case 'CREDIT_PAYMENT_UNAVAILABLE':
+          sendPublicError(request, reply, 500, 'CREDIT_PAYMENT_UNAVAILABLE');
+          return;
+        case 'COMPANY_REQUIRED':
+          sendPublicError(request, reply, 400, 'COMPANY_REQUIRED');
+          return;
+        case 'PAYMENT_METHOD_INVALID':
+          sendPublicError(request, reply, 400, 'PAYMENT_METHOD_INVALID');
+          return;
+        case 'CARD_FIELDS_FORBIDDEN':
+          sendPublicError(request, reply, 400, 'CARD_FIELDS_FORBIDDEN');
           return;
         case 'INSUFFICIENT_STOCK':
           sendPublicError(request, reply, 409, 'INSUFFICIENT_STOCK', {

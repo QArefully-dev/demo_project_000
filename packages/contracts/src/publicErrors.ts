@@ -63,6 +63,8 @@ export const PUBLIC_ERROR_CODES = [
   'BLOCKED_IN_COUNTRY',
   'BLEND_UNAVAILABLE',
   'CUSTOM_BLEND_INVALID',
+  'CUSTOM_BLEND_INCOMPATIBLE',
+  'CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED',
   'CART_NOT_FOUND',
   'CART_EMPTY',
   'CART_RESERVED',
@@ -111,6 +113,31 @@ export const PUBLIC_ERROR_CODES = [
   'APPROVAL_NOT_FOUND',
   'NOT_APPROVER',
   'APPROVAL_ALREADY_RESOLVED',
+
+  // Trade credit and immutable invoicing.
+  'CREDIT_ACCOUNT_NOT_FOUND',
+  'CREDIT_ACCOUNT_FORBIDDEN',
+  'CREDIT_ACCOUNT_ALREADY_EXISTS',
+  'CREDIT_ACCOUNT_ON_HOLD',
+  'CREDIT_ACCOUNT_SUSPENDED',
+  'CREDIT_NOT_ELIGIBLE',
+  'CREDIT_LIMIT_EXCEEDED',
+  'CREDIT_LIMIT_INVALID',
+  'CREDIT_TERMS_INVALID',
+  'CREDIT_PAYMENT_UNAVAILABLE',
+  'COMPANY_REQUIRED',
+  'PAYMENT_METHOD_INVALID',
+  'CARD_FIELDS_FORBIDDEN',
+  'INVOICE_NOT_FOUND',
+  'INVOICE_FORBIDDEN',
+  'INVOICE_ALREADY_PAID',
+  'INVOICE_VOIDED',
+  'INVOICE_ALREADY_SETTLED',
+  'INVOICE_ALREADY_VOID',
+  'INVOICE_NOT_SETTLEABLE',
+  'INVOICE_SETTLEMENT_INVALID',
+  'INVOICE_SETTLEMENT_CONFLICT',
+  'INVOICE_TOTAL_MISMATCH',
 
   // Returns, reviews, notifications, and standing orders.
   'RETURN_NOT_FOUND',
@@ -176,6 +203,7 @@ export type PublicErrorId = Static<typeof PublicErrorId>;
 
 const SafeCount = Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER });
 const SafePositiveCount = Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER });
+const SafePercentage = Type.Integer({ minimum: 0, maximum: 100 });
 const SafeMoneyCents = Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER });
 const Uuid = Type.String({
   minLength: 36,
@@ -207,6 +235,7 @@ const PublicErrorMetaFieldSchemas = {
   deliverySiteId: PublicErrorId,
   billingEntityId: PublicErrorId,
   companyId: PublicErrorId,
+  creditAccountId: PublicErrorId,
   userId: PublicErrorId,
   listId: PublicErrorId,
   itemId: PublicErrorId,
@@ -214,6 +243,7 @@ const PublicErrorMetaFieldSchemas = {
   returnId: PublicErrorId,
   reviewId: PublicErrorId,
   paymentId: PublicErrorId,
+  invoiceId: PublicErrorId,
   jobId: PublicErrorId,
   webhookId: PublicErrorId,
   count: SafeCount,
@@ -228,6 +258,10 @@ const PublicErrorMetaFieldSchemas = {
   availableQuantity: SafeCount,
   remainingQuantity: SafeCount,
   amountCents: SafeMoneyCents,
+  requestedCents: SafeMoneyCents,
+  creditLimitCents: SafeMoneyCents,
+  outstandingCents: SafeMoneyCents,
+  availableCreditCents: SafeMoneyCents,
   totalCents: SafeMoneyCents,
   minSubtotalCents: SafeMoneyCents,
   refundAmountCents: SafeMoneyCents,
@@ -235,6 +269,8 @@ const PublicErrorMetaFieldSchemas = {
   reservationExpiresAt: UtcIsoInstant,
   expiresAt: UtcIsoInstant,
   retryAfterSeconds: SafeCount,
+  maxPercentage: SafePercentage,
+  actualPercentage: SafePercentage,
 } as const;
 
 type PublicErrorMetaField = keyof typeof PublicErrorMetaFieldSchemas;
@@ -267,8 +303,12 @@ const ParameterizedPublicErrorMetaSchemas = {
   BLOCKED_IN_COUNTRY: strictMeta(['productIds']),
   DELIVERY_SLOT_UNAVAILABLE: strictMeta(['earliestDate']),
   PENDING_APPROVAL: strictMeta(['approvalRequestId']),
+  CREDIT_LIMIT_EXCEEDED: strictMeta(['requestedCents', 'availableCreditCents']),
+  INVOICE_SETTLEMENT_INVALID: strictMeta(['invoiceId']),
+  INVOICE_SETTLEMENT_CONFLICT: strictMeta(['invoiceId']),
   QUANTITY_UNAVAILABLE: strictMeta(['availableQuantity']),
   TOO_MANY_LINES: strictMeta(['lineCount']),
+  CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED: strictMeta(['maxPercentage', 'actualPercentage']),
 } as const satisfies Partial<Record<PublicErrorCode, TSchema>>;
 
 type FieldStatic<Field extends PublicErrorMetaField> = Static<
@@ -290,6 +330,16 @@ type ParameterizedPublicErrorMetaByCode = {
   PENDING_APPROVAL: { approvalRequestId: FieldStatic<'approvalRequestId'> };
   QUANTITY_UNAVAILABLE: { availableQuantity: FieldStatic<'availableQuantity'> };
   TOO_MANY_LINES: { lineCount: FieldStatic<'lineCount'> };
+  CUSTOM_BLEND_PIGMENT_CAP_EXCEEDED: {
+    maxPercentage: FieldStatic<'maxPercentage'>;
+    actualPercentage: FieldStatic<'actualPercentage'>;
+  };
+  CREDIT_LIMIT_EXCEEDED: {
+    requestedCents: FieldStatic<'requestedCents'>;
+    availableCreditCents: FieldStatic<'availableCreditCents'>;
+  };
+  INVOICE_SETTLEMENT_INVALID: { invoiceId: FieldStatic<'invoiceId'> };
+  INVOICE_SETTLEMENT_CONFLICT: { invoiceId: FieldStatic<'invoiceId'> };
 };
 
 /** Public error identities whose caller must provide one approved metadata object. */

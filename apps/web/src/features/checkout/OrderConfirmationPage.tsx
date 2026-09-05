@@ -61,7 +61,8 @@ export function OrderConfirmationPage() {
         <h1 className="text-2xl font-bold text-green-700">{t('checkout.confirmed')}</h1>
         <p className="text-muted-foreground">{t('checkout.confirmedDescription')}</p>
       </div>
-      <OrderDetailView order={order} />
+      {/* This route may be opened with an exact-order guest capability cookie. */}
+      <OrderDetailView order={order} showInvoice={false} />
       <div className="mt-6 text-center">
         <Button nativeButton={false} render={<Link to="/catalog" />}>
           {t('checkout.shopMore')}

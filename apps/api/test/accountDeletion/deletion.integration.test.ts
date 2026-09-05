@@ -14,8 +14,13 @@ import { createSessionRepository } from '../../src/features/auth/sessionReposito
 import { createSessionService } from '../../src/features/auth/sessionService.js';
 import { createUserRepository } from '../../src/features/auth/userRepository.js';
 import { createMailboxRepository } from '../../src/features/mailbox/mailboxRepository.js';
+import { createInvoiceRepository } from '../../src/features/invoices/invoiceRepository.js';
 import { createPasswordResetRepository } from '../../src/features/passwordReset/passwordResetRepository.js';
 import { createPasswordResetService } from '../../src/features/passwordReset/passwordResetService.js';
+import { createCompanyMembershipRepository } from '../../src/features/companyAccounts/companyMembershipRepository.js';
+import { createCreditAccountRepository } from '../../src/features/tradeCredit/creditAccountRepository.js';
+import { createCreditAccountService } from '../../src/features/tradeCredit/creditAccountService.js';
+import { createCreditHoldRepository } from '../../src/features/tradeCredit/creditHoldRepository.js';
 import { createBillingEntityRepository } from '../../src/features/tradeAccount/billingEntityRepository.js';
 import { createDeliverySiteRepository } from '../../src/features/tradeAccount/deliverySiteRepository.js';
 import { authPlugin } from '../../src/plugins/auth.js';
@@ -83,6 +88,7 @@ async function insertUser(db: ReturnType<typeof openDatabase>, email: string, di
 
 void test('account deletion redacts live account data while preserving commerce history and purging sessions', async (t) => {
   const { app, db, sessions, auth, passwordReset, audit } = await createFixture(t);
+  const unitOfWork = createUnitOfWork(db);
   const userId = await insertUser(db, 'delete-me@example.test', 'Delete Me');
   const foreignUserId = await insertUser(db, 'foreign-cart@example.test', 'Foreign Cart');
   const variantId = Number(
@@ -217,6 +223,196 @@ void test('account deletion redacts live account data while preserving commerce 
     `INSERT INTO company_memberships (company_id, user_id, role, active, created_at)
      VALUES (?, ?, 'owner', 1, ?)`,
   ).run(companyId, userId, now);
+  db.prepare(
+    `UPDATE company_accounts
+     SET credit_limit_cents = 10000, credit_state = 'active', credit_version = 1
+     WHERE id = ?`,
+  ).run(companyId);
+  db.prepare(
+    `INSERT INTO company_credit_events
+       (company_id, event_type, credit_limit_cents, credit_terms_days, credit_state,
+        credit_version, amount_cents, reason, idempotency_key, request_fingerprint, occurred_at)
+     VALUES (?, 'limit_changed', 10000, 30, 'active', 1, NULL, 'Initial limit', ?, ?, ?)`,
+  ).run(
+    companyId,
+    '423e4567-e89b-42d3-a456-426614174000',
+    'deletion-credit-event-fingerprint',
+    now,
+  );
+  const creditOrderId = Number(
+    (db.prepare('SELECT COALESCE(MAX(id), 0) + 1 AS next FROM orders').get() as { next: number })
+      .next,
+  );
+  const creditPaymentKey = '523e4567-e89b-42d3-a456-426614174000';
+  const billingSnapshot = {
+    legalName: 'Deletion Materials Ltd',
+    registrationNumber: null,
+    vatNumber: null,
+    address: { line1: '1 Removal Road', city: 'Leeds', postcode: 'LS1 1AA', countryCode: 'GB' },
+  };
+  db.prepare(
+    `INSERT INTO orders
+       (id, customer_name, customer_email, shipping_address, subtotal_cents, discount_cents,
+        total_cents, created_at, user_id, lifecycle_status, version, country, payment_method,
+        company_id, net_cents, vat_rate_basis_points, vat_cents, gross_cents,
+        billing_entity_json, purchase_order_reference)
+     VALUES (?, 'Delete Me', 'delete-me@example.test', '1 Removal Road', 1000, 0, 1200, ?, ?,
+             'processing', 0, 'UK', 'trade_credit', ?, 1000, 2000, 200, 1200, ?, 'PO-DELETE')`,
+  ).run(creditOrderId, now, userId, companyId, JSON.stringify(billingSnapshot));
+  db.prepare(
+    `INSERT INTO order_line_items
+       (order_id, product_id, product_name, product_price_cents, quantity, line_total_cents,
+        discountable_total_cents, blending_fee_cents)
+     VALUES (?, 1, 'Deletion Material', 1000, 1, 1000, 1000, 0)`,
+  ).run(creditOrderId);
+  db.prepare(
+    `INSERT INTO payments
+       (order_id, idempotency_key, request_fingerprint, status, amount_cents,
+        card_last4, card_brand, created_at, payment_method, company_id, user_id)
+     VALUES (?, ?, 'deletion-payment-fingerprint', 'succeeded', 1200, NULL, NULL, ?,
+             'trade_credit', ?, ?)`,
+  ).run(creditOrderId, creditPaymentKey, now, companyId, userId);
+  const creditInvoiceId = Number(
+    (db.prepare('SELECT COALESCE(MAX(id), 0) + 1 AS next FROM invoices').get() as { next: number })
+      .next,
+  );
+  const invoiceNumber = 'QME-2026-001101';
+  const invoiceIssuedAt = '2026-07-29T10:00:00.000Z';
+  const invoiceSettledAt = '2026-07-29T11:00:00.000Z';
+  const invoiceDueAt = '2026-08-28T10:00:00.000Z';
+  const invoiceDocument = {
+    version: 1,
+    id: String(creditInvoiceId),
+    invoiceNumber,
+    orderId: String(creditOrderId),
+    companyId: String(companyId),
+    userId: String(userId),
+    country: 'UK' as const,
+    paymentMethod: 'trade_credit' as const,
+    currency: 'GBP' as const,
+    terms: 'net_30' as const,
+    billingEntity: billingSnapshot,
+    purchaseOrderReference: 'PO-DELETE',
+    paymentIdempotencyKey: creditPaymentKey,
+    lines: [
+      {
+        lineId: String(creditOrderId),
+        description: 'Deletion Material',
+        productId: '1',
+        quantity: 1,
+        unitPriceCents: 1000,
+        netCents: 1000,
+      },
+    ],
+    netCents: 1000,
+    vatRateBasisPoints: 2000,
+    vatCents: 200,
+    grossCents: 1200,
+    issuedAt: invoiceIssuedAt,
+    dueAt: invoiceDueAt,
+  };
+  db.prepare(
+    `INSERT INTO invoices
+       (id, version, invoice_number, order_id, payment_idempotency_key, company_id, user_id,
+        country, currency, terms, terms_days, document_json, net_cents,
+        vat_rate_basis_points, vat_cents, gross_cents, issued_at, due_at)
+     VALUES (?, 1, ?, ?, ?, ?, ?, 'UK', 'GBP', 'net_30', 30, ?, 1000, 2000, 200, 1200, ?, ?)`,
+  ).run(
+    creditInvoiceId,
+    invoiceNumber,
+    creditOrderId,
+    creditPaymentKey,
+    companyId,
+    userId,
+    JSON.stringify(invoiceDocument),
+    invoiceIssuedAt,
+    invoiceDueAt,
+  );
+  db.prepare(
+    `INSERT INTO invoice_states (invoice_id, status, version, settled_at, updated_at)
+     VALUES (?, 'paid', 1, ?, ?)`,
+  ).run(creditInvoiceId, invoiceSettledAt, invoiceSettledAt);
+  db.prepare(
+    `INSERT INTO invoice_events
+       (invoice_id, event_type, occurred_at, idempotency_key, request_fingerprint, actor_user_id)
+     VALUES (?, 'issued', ?, NULL, NULL, ?)`,
+  ).run(creditInvoiceId, invoiceIssuedAt, userId);
+  db.prepare(
+    `INSERT INTO invoice_events
+       (invoice_id, event_type, occurred_at, idempotency_key, request_fingerprint, actor_user_id)
+     VALUES (?, 'settled', ?, ?, 'deletion-settlement-fingerprint', ?)`,
+  ).run(creditInvoiceId, invoiceSettledAt, '623e4567-e89b-42d3-a456-426614174000', userId);
+  const holdId = Number(
+    (
+      db.prepare('SELECT COALESCE(MAX(id), 0) + 1 AS next FROM credit_exposure_holds').get() as {
+        next: number;
+      }
+    ).next,
+  );
+  db.prepare(
+    `INSERT INTO credit_exposure_holds
+       (id, company_id, payment_idempotency_key, amount_cents, status, invoice_id,
+        committed_at, released_at, created_at, updated_at)
+     VALUES (?, ?, ?, 1200, 'released', ?, ?, ?, ?, ?)`,
+  ).run(holdId, companyId, creditPaymentKey, creditInvoiceId, invoiceIssuedAt, now, now, now);
+  const invoiceRepository = createInvoiceRepository(db);
+  const creditAccounts = createCreditAccountService({
+    accounts: createCreditAccountRepository(db),
+    holds: createCreditHoldRepository(db),
+    memberships: createCompanyMembershipRepository(db),
+    unitOfWork,
+    clock,
+    audit,
+  });
+  assert.ok(creditAccounts.getMemberSummary(userId));
+  assert.equal(invoiceRepository.findOwnedById(creditInvoiceId, userId, now)?.status, 'paid');
+  const preservedCompanyAttribution = db
+    .prepare(
+      `SELECT id, name, created_by_user_id, country, credit_limit_cents, credit_state, credit_version
+       FROM company_accounts WHERE id = ?`,
+    )
+    .get(companyId);
+  const preservedOrderAttribution = db
+    .prepare(
+      `SELECT id, user_id, company_id, payment_method, country, net_cents, vat_cents, gross_cents
+       FROM orders WHERE id = ?`,
+    )
+    .get(creditOrderId);
+  const preservedPaymentAttribution = db
+    .prepare(
+      `SELECT id, order_id, idempotency_key, request_fingerprint, payment_method, company_id, user_id
+       FROM payments WHERE idempotency_key = ?`,
+    )
+    .get(creditPaymentKey);
+  const preservedInvoiceAttribution = db
+    .prepare(
+      `SELECT id, invoice_number, order_id, payment_idempotency_key, company_id, user_id,
+              country, gross_cents FROM invoices WHERE id = ?`,
+    )
+    .get(creditInvoiceId);
+  const preservedInvoiceState = db
+    .prepare(
+      'SELECT invoice_id, status, version, settled_at FROM invoice_states WHERE invoice_id = ?',
+    )
+    .get(creditInvoiceId);
+  const preservedInvoiceEvents = db
+    .prepare(
+      `SELECT invoice_id, event_type, occurred_at, idempotency_key, request_fingerprint, actor_user_id
+       FROM invoice_events WHERE invoice_id = ? ORDER BY id`,
+    )
+    .all(creditInvoiceId);
+  const preservedCreditEvents = db
+    .prepare(
+      `SELECT company_id, event_type, credit_limit_cents, credit_state, credit_version,
+              idempotency_key, request_fingerprint FROM company_credit_events WHERE company_id = ?`,
+    )
+    .all(companyId);
+  const preservedHoldAttribution = db
+    .prepare(
+      `SELECT id, company_id, payment_idempotency_key, amount_cents, status, invoice_id,
+              committed_at, released_at FROM credit_exposure_holds WHERE id = ?`,
+    )
+    .get(holdId);
   const current = sessions.create(userId);
   const other = sessions.create(userId);
   // Identity is (email, country) since migration 032; `insertUser` takes the 'UK' column default.
@@ -384,6 +580,83 @@ void test('account deletion redacts live account data while preserving commerce 
   assert.deepEqual(
     db.prepare('SELECT active FROM company_memberships WHERE user_id = ?').get(userId),
     { active: 0 },
+  );
+  assert.equal(creditAccounts.getMemberSummary(userId), null);
+  assert.equal(
+    invoiceRepository.findOwnedById(creditInvoiceId, userId, now)?.status,
+    'paid',
+    'immutable invoice remains available to internal history readers',
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT id, name, created_by_user_id, country, credit_limit_cents, credit_state, credit_version
+         FROM company_accounts WHERE id = ?`,
+      )
+      .get(companyId),
+    preservedCompanyAttribution,
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT id, user_id, company_id, payment_method, country, net_cents, vat_cents, gross_cents
+         FROM orders WHERE id = ?`,
+      )
+      .get(creditOrderId),
+    preservedOrderAttribution,
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT id, order_id, idempotency_key, request_fingerprint, payment_method, company_id, user_id
+         FROM payments WHERE idempotency_key = ?`,
+      )
+      .get(creditPaymentKey),
+    preservedPaymentAttribution,
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT id, invoice_number, order_id, payment_idempotency_key, company_id, user_id,
+                country, gross_cents FROM invoices WHERE id = ?`,
+      )
+      .get(creditInvoiceId),
+    preservedInvoiceAttribution,
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        'SELECT invoice_id, status, version, settled_at FROM invoice_states WHERE invoice_id = ?',
+      )
+      .get(creditInvoiceId),
+    preservedInvoiceState,
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT invoice_id, event_type, occurred_at, idempotency_key, request_fingerprint, actor_user_id
+         FROM invoice_events WHERE invoice_id = ? ORDER BY id`,
+      )
+      .all(creditInvoiceId),
+    preservedInvoiceEvents,
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT company_id, event_type, credit_limit_cents, credit_state, credit_version,
+                idempotency_key, request_fingerprint FROM company_credit_events WHERE company_id = ?`,
+      )
+      .all(companyId),
+    preservedCreditEvents,
+  );
+  assert.deepEqual(
+    db
+      .prepare(
+        `SELECT id, company_id, payment_idempotency_key, amount_cents, status, invoice_id,
+                committed_at, released_at FROM credit_exposure_holds WHERE id = ?`,
+      )
+      .get(holdId),
+    preservedHoldAttribution,
   );
   assert.deepEqual(db.prepare('SELECT id, user_id FROM orders WHERE id = ?').get(orderId), {
     id: orderId,

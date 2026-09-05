@@ -9,6 +9,9 @@ import type { UnitOfWork } from '../../db/unitOfWork.js';
 import type { AuditContext } from '../audit/auditEvent.js';
 import type { AuditWriter } from '../audit/auditService.js';
 import type { Clock } from '../auth/authService.js';
+import type { InvoiceService } from '../invoices/invoiceService.js';
+import type { InvoiceRepository } from '../invoices/invoiceRepository.js';
+import { InvoiceDomainError } from '../invoices/invoiceErrors.js';
 import { OrderDomainError } from './orderErrors.js';
 import {
   aggregateOrderStatus,
@@ -71,7 +74,123 @@ type OrderServiceDependencies = {
   clock?: Clock;
   audit?: AuditWriter;
   inventory?: Pick<InventoryService, 'cancelOrderInventory'>;
+  /** Invoice and payment readers used to validate credit-order cancellation identity. */
+  invoiceRepository?: Pick<
+    InvoiceRepository,
+    'findByOrderId' | 'findByPaymentIdempotencyKey' | 'findPaymentForIssue'
+  >;
+  /** Canonical invoice lifecycle command used by credit-order cancellation. */
+  invoices?: Pick<InvoiceService, 'void'>;
+  /** Compatibility alias for composition roots that use the service name. */
+  invoiceService?: Pick<InvoiceService, 'void'>;
 };
+
+function isBusySnapshot(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'SQLITE_BUSY_SNAPSHOT'
+  );
+}
+
+type CancellationOrder = NonNullable<ReturnType<OrderRepository['findById']>>;
+type CancellationInvoiceRepository = NonNullable<OrderServiceDependencies['invoiceRepository']>;
+
+function cancellationLinkageMismatch(): never {
+  throw new InvoiceDomainError('INVOICE_TOTAL_MISMATCH');
+}
+
+function validateCancellationOrderAccounting(order: CancellationOrder): void {
+  if (
+    order.paymentMethod !== undefined &&
+    order.paymentMethod !== 'card' &&
+    order.paymentMethod !== 'trade_credit'
+  ) {
+    cancellationLinkageMismatch();
+  }
+
+  const accounting = [order.netCents, order.vatRateBasisPoints, order.vatCents, order.grossCents];
+  const populated = accounting.filter((fact) => fact !== undefined).length;
+  if (populated !== 0 && populated !== accounting.length) cancellationLinkageMismatch();
+
+  if (order.paymentMethod === undefined) {
+    if (order.companyId !== undefined || populated !== 0) cancellationLinkageMismatch();
+    return;
+  }
+  if (order.paymentMethod === 'card') {
+    if (order.companyId !== undefined) cancellationLinkageMismatch();
+    return;
+  }
+  if (order.companyId === undefined || populated !== accounting.length) {
+    cancellationLinkageMismatch();
+  }
+}
+
+function readCancellationInvoice(
+  repository: CancellationInvoiceRepository,
+  order: CancellationOrder,
+  occurredAt: string,
+): ReturnType<InvoiceRepository['findByOrderId']> {
+  let invoice: ReturnType<InvoiceRepository['findByOrderId']>;
+  try {
+    invoice = repository.findByOrderId(Number(order.id), occurredAt);
+  } catch (error) {
+    if (error instanceof InvoiceDomainError) throw error;
+    cancellationLinkageMismatch();
+  }
+
+  if (order.paymentMethod !== 'trade_credit') {
+    // Card and historical orders must never acquire an invoice as a side effect of a lookup.
+    if (invoice) cancellationLinkageMismatch();
+    return undefined;
+  }
+  if (!invoice) cancellationLinkageMismatch();
+
+  if (
+    invoice.orderId !== String(order.id) ||
+    invoice.paymentMethod !== 'trade_credit' ||
+    invoice.country !== order.country ||
+    invoice.companyId !== order.companyId ||
+    invoice.netCents !== order.netCents ||
+    invoice.vatRateBasisPoints !== order.vatRateBasisPoints ||
+    invoice.vatCents !== order.vatCents ||
+    invoice.grossCents !== order.grossCents
+  ) {
+    cancellationLinkageMismatch();
+  }
+
+  const paymentIdempotencyKey = invoice.paymentIdempotencyKey;
+  if (typeof paymentIdempotencyKey !== 'string' || paymentIdempotencyKey.length === 0) {
+    cancellationLinkageMismatch();
+  }
+
+  let byPayment: ReturnType<InvoiceRepository['findByPaymentIdempotencyKey']>;
+  let payment: ReturnType<NonNullable<InvoiceRepository['findPaymentForIssue']>> | undefined;
+  try {
+    byPayment = repository.findByPaymentIdempotencyKey(paymentIdempotencyKey, occurredAt);
+    payment = repository.findPaymentForIssue?.(paymentIdempotencyKey);
+  } catch (error) {
+    if (error instanceof InvoiceDomainError) throw error;
+    cancellationLinkageMismatch();
+  }
+  if (!byPayment || byPayment.id !== invoice.id || byPayment.orderId !== invoice.orderId) {
+    cancellationLinkageMismatch();
+  }
+
+  const companyId = Number(order.companyId);
+  if (
+    !payment ||
+    payment.idempotencyKey !== paymentIdempotencyKey ||
+    payment.orderId !== Number(order.id) ||
+    payment.paymentMethod !== 'trade_credit' ||
+    payment.companyId !== companyId ||
+    payment.amountCents !== order.grossCents
+  ) {
+    cancellationLinkageMismatch();
+  }
+  return invoice;
+}
 
 /** Accepts legacy repository-only construction for pre-P3 read routes. Mutation commands require UoW + audit. */
 export function createOrderService(
@@ -288,38 +407,90 @@ export function createOrderService(
         orderId: input.orderId,
         version: input.version,
       });
-      return run(() => {
-        const replay = replayOrConflict(input.idempotencyKey, fingerprint);
-        if (replay) return replay;
-        const state = dependencies.repository.getOrderState(input.orderId);
-        if (!state) throw new OrderDomainError('ORDER_NOT_FOUND');
-        if (state.version !== input.version) throw new OrderDomainError('STALE_VERSION');
-        assertCanCancel(state.status, dependencies.repository.listShipments(input.orderId));
-        const occurredAt = clock.now().toISOString();
-        const country = dependencies.repository.country(input.orderId);
-        if (!country) throw new OrderDomainError('ORDER_NOT_FOUND');
-        dependencies.inventory?.cancelOrderInventory({ orderId: input.orderId, occurredAt });
-        dependencies.repository.cancelPackedShipments(input.orderId, occurredAt);
-        if (
-          !dependencies.repository.updateOrderStatus({
+      const work = () =>
+        run(() => {
+          const replay = replayOrConflict(input.idempotencyKey, fingerprint);
+          if (replay) return replay;
+          const state = dependencies.repository.getOrderState(input.orderId);
+          if (!state) throw new OrderDomainError('ORDER_NOT_FOUND');
+          if (state.version !== input.version) throw new OrderDomainError('STALE_VERSION');
+          assertCanCancel(state.status, dependencies.repository.listShipments(input.orderId));
+          const occurredAt = clock.now().toISOString();
+          const country = dependencies.repository.country(input.orderId);
+          if (!country) throw new OrderDomainError('ORDER_NOT_FOUND');
+
+          let order: CancellationOrder | undefined;
+          try {
+            order = dependencies.repository.findById(input.orderId);
+          } catch {
+            cancellationLinkageMismatch();
+          }
+          if (!order) throw new OrderDomainError('ORDER_NOT_FOUND');
+          validateCancellationOrderAccounting(order);
+
+          // Resolve and validate the immutable invoice/payment identity before touching inventory,
+          // shipment, exposure, or order state. The invoice command owns its lifecycle CAS and
+          // exposure release; its nested UoW is part of this outer transaction.
+          const invoice = dependencies.invoiceRepository
+            ? readCancellationInvoice(dependencies.invoiceRepository, order, occurredAt)
+            : order.paymentMethod === 'trade_credit'
+              ? cancellationLinkageMismatch()
+              : undefined;
+          if (invoice) {
+            const invoiceService = dependencies.invoices ?? dependencies.invoiceService;
+            if (!invoiceService) {
+              cancellationLinkageMismatch();
+            }
+            const standingCountry = input.context.standingCountry ?? country;
+            const invoiceContext =
+              input.context.standingCountry === undefined
+                ? { ...input.context, standingCountry }
+                : input.context;
+            invoiceService.void({
+              invoiceId: Number(invoice.id),
+              expectedVersion: invoice.lifecycleVersion,
+              idempotencyKey: input.idempotencyKey,
+              reason: 'Order cancellation',
+              context: invoiceContext,
+              standingCountry,
+              actorUserId: input.context.actor.userId,
+            });
+          }
+          dependencies.inventory?.cancelOrderInventory({ orderId: input.orderId, occurredAt });
+          dependencies.repository.cancelPackedShipments(input.orderId, occurredAt);
+          if (
+            !dependencies.repository.updateOrderStatus({
+              orderId: input.orderId,
+              expectedVersion: state.version,
+              status: 'cancelled',
+              cancelledAt: occurredAt,
+            })
+          )
+            throw new OrderDomainError('STALE_VERSION');
+          dependencies.repository.insertEvent({
             orderId: input.orderId,
-            expectedVersion: state.version,
-            status: 'cancelled',
-            cancelledAt: occurredAt,
-          })
-        )
-          throw new OrderDomainError('STALE_VERSION');
-        dependencies.repository.insertEvent({
-          orderId: input.orderId,
-          type: 'order_cancelled',
-          title: orderLifecycleTitle(country, 'cancelled'),
-          idempotencyKey: input.idempotencyKey,
-          requestFingerprint: fingerprint,
-          occurredAt,
+            type: 'order_cancelled',
+            title: orderLifecycleTitle(country, 'cancelled'),
+            idempotencyKey: input.idempotencyKey,
+            requestFingerprint: fingerprint,
+            occurredAt,
+          });
+          append({ action: 'order.cancelled', context: input.context, orderId: input.orderId });
+          return detail(input.orderId);
         });
-        append({ action: 'order.cancelled', context: input.context, orderId: input.orderId });
-        return detail(input.orderId);
-      });
+      // The invoice reader runs before the nested invoice void command needs a writer lock. If a
+      // concurrent settlement commits in that gap, SQLite rejects upgrading this transaction's
+      // old read snapshot. Roll back and retry the complete cancellation from a fresh snapshot;
+      // the invoice lifecycle CAS then deterministically reports either the paid winner or the
+      // cancellation winner.
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          return work();
+        } catch (error) {
+          if (attempt === 0 && isBusySnapshot(error)) continue;
+          throw error;
+        }
+      }
     },
   };
 }

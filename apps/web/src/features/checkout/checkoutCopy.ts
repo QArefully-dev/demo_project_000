@@ -49,6 +49,28 @@ export function localizeCheckoutError(
   return translate(checkoutMessages, state.key, state.params ?? {});
 }
 
+const tradeCreditPaymentErrorKeys: Partial<Record<PublicErrorCode, CheckoutMessageKey>> = {
+  CREDIT_LIMIT_EXCEEDED: 'checkout.credit.error.limitExceeded',
+  CREDIT_ACCOUNT_ON_HOLD: 'checkout.credit.error.onHold',
+  CREDIT_ACCOUNT_SUSPENDED: 'checkout.credit.error.suspended',
+  CREDIT_NOT_ELIGIBLE: 'checkout.credit.error',
+  CREDIT_PAYMENT_UNAVAILABLE: 'checkout.credit.error',
+  COMPANY_REQUIRED: 'checkout.credit.error',
+  PAYMENT_METHOD_INVALID: 'checkout.credit.error',
+  CARD_FIELDS_FORBIDDEN: 'checkout.credit.error',
+};
+
+/** Render payment failures with checkout-specific trade-credit guidance when that branch fails. */
+export function localizeTradeCreditError(
+  state: CheckoutErrorState | null | undefined,
+  translate: (catalog: MessageCatalog, key: string, params?: MessageParams) => string,
+): string | null {
+  if (state === null || state === undefined) return null;
+  const key = state.code === null ? undefined : tradeCreditPaymentErrorKeys[state.code];
+  if (key) return translate(checkoutMessages, key, state.params ?? {});
+  return localizeCheckoutError(state, translate);
+}
+
 export function checkoutCodeToken(state: CheckoutErrorState): string {
   return state.code ?? state.key;
 }
@@ -112,6 +134,9 @@ export function translatePaymentError(
   t: CheckoutTranslate,
 ): string {
   void fallback;
+  const tradeCreditKey =
+    code === null || code === undefined ? undefined : tradeCreditPaymentErrorKeys[code];
+  if (tradeCreditKey) return t(tradeCreditKey);
   if (code === 'CARD_INVALID') return t('checkout.paymentError.invalid');
   if (code === 'CARD_DECLINED' || code === 'DECLINED') return t('checkout.paymentError.declined');
   if (code === 'GATEWAY_TIMEOUT' || code === 'TIMEOUT') return t('checkout.paymentError.timeout');

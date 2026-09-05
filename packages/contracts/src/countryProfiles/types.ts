@@ -15,6 +15,27 @@ export interface CountryExchangeRate {
   readonly denominator: number;
 }
 
+declare const vatRateBasisPointsBrand: unique symbol;
+
+/** VAT rate in basis points, constrained to the inclusive 0..10000 range. */
+export type VatRateBasisPoints = number & {
+  readonly [vatRateBasisPointsBrand]: 'VatRateBasisPoints';
+};
+
+/**
+ * Constructs a VAT rate only when it is a safe integer in the inclusive 0..10000 range.
+ *
+ * Keeping the check here means profile fixtures and later profile producers cannot accidentally
+ * widen the domain back to arbitrary numbers while the runtime representation stays a number.
+ */
+export function createVatRateBasisPoints(value: unknown): VatRateBasisPoints {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > 10_000) {
+    throw new RangeError('VAT rate basis points must be a safe integer from 0 through 10000');
+  }
+
+  return value as VatRateBasisPoints;
+}
+
 /** Stable lookup key for country-owned translated copy. */
 export type CountryMessageKey = string;
 
@@ -38,6 +59,8 @@ export interface CountryProfile {
   readonly dateLocale: CountryLocale;
   /** Currency used only for buyer-facing display conversion. */
   readonly displayCurrency: CountryDisplayCurrency;
+  /** Country VAT rate in basis points (0..10000 inclusive). */
+  readonly vatRateBasisPoints: VatRateBasisPoints;
   /** Positive integer ratio of target minor units per GBP penny. */
   readonly exchangeRate: CountryExchangeRate;
   /** Live catalogue categories unavailable to buyers in this identity country. */

@@ -8,6 +8,7 @@ import {
   customBlendMadeToOrderNote,
   CustomBlendPackaging,
   customBlendCompositionLabel,
+  isResolvedCustomBlendSnapshot,
 } from '@/features/customBlend/CustomBlendPackaging';
 import { Badge } from '@/components/ui/badge';
 import { useLocalisation } from '@/i18n/LocaleContext';
@@ -35,6 +36,169 @@ interface CheckoutSummaryProps {
   onPromoChange: (value: string) => void;
   onApplyPromo: () => void;
   onRemovePromo: () => void;
+}
+
+function checkoutPackagingProduct(item: Cart['items'][number]): Cart['items'][number]['product'] {
+  if (!item.customBlend || isResolvedCustomBlendSnapshot(item.customBlend)) {
+    return item.product;
+  }
+  // Historic blend snapshots can include a frozen base presentation, but it has no authoritative
+  // result classification. Blank the catalog category so the livery renders its neutral fallback
+  // instead of guessing a vessel or safety treatment from stale facts.
+  return { ...item.product, category: '', consumptionClassification: undefined };
+}
+
+function CheckoutCustomBlendDetails({ item }: { item: Cart['items'][number] }) {
+  const { country, translate, formatDisplayMoney, formatWeightGrams, number } = useLocalisation();
+  const blend = item.customBlend;
+  if (!blend) return null;
+  const resolved = isResolvedCustomBlendSnapshot(blend) ? blend : undefined;
+  const resultLabel = resolved
+    ? translate(
+        checkoutMessages,
+        resolved.resultClassification === 'food'
+          ? 'checkout.customBlend.resultFood'
+          : 'checkout.customBlend.resultNonFood',
+      )
+    : undefined;
+  const safetyLabel =
+    resolved?.resultClassification === 'non-food'
+      ? translate(checkoutMessages, 'checkout.customBlend.notForConsumption')
+      : undefined;
+
+  return (
+    <span className="block text-xs text-muted-foreground" data-testid="checkout-blend">
+      <Badge variant="outline" className="mb-0.5 w-fit text-[10px]">
+        {translate(checkoutMessages, 'checkout.customBlend')}
+      </Badge>
+      <span className="block">
+        {customBlendCompositionLabel(item.product.name, blend, country)}
+      </span>
+      {resolved ? (
+        <>
+          <Badge
+            variant={resolved.resultClassification === 'non-food' ? 'destructive' : 'secondary'}
+            className="mt-1 w-fit"
+            data-testid="checkout-blend-result"
+          >
+            {resultLabel}
+          </Badge>
+          {safetyLabel && (
+            <span
+              role="alert"
+              data-testid="checkout-blend-safety"
+              className="custom-blend-notice mt-1 block rounded-md px-2 py-1"
+            >
+              <span className="font-semibold">{safetyLabel}</span>{' '}
+              {translate(checkoutMessages, 'checkout.customBlend.safetyWarning')}
+            </span>
+          )}
+          <ul
+            className="mt-1 grid gap-1 border-l pl-2"
+            aria-label={translate(checkoutMessages, 'checkout.customBlend')}
+            data-testid="checkout-blend-components"
+          >
+            {resolved.components.map((component) => {
+              const roleLabel = translate(
+                checkoutMessages,
+                component.role === 'base'
+                  ? 'checkout.customBlend.componentBase'
+                  : 'checkout.customBlend.componentIngredient',
+              );
+              return (
+                <li key={`${component.role}-${component.variantId}`}>
+                  <span className="font-medium text-foreground">{component.productName}</span>{' '}
+                  {number.count(component.percentage)}% · {roleLabel}
+                  <span className="block">
+                    {translate(checkoutMessages, 'checkout.customBlend.componentRole', {
+                      role: roleLabel,
+                    })}
+                  </span>
+                  <span className="block">
+                    {translate(checkoutMessages, 'checkout.customBlend.componentWeight', {
+                      weight: formatWeightGrams(component.weightGrams),
+                    })}
+                  </span>
+                  <span className="block">
+                    {translate(checkoutMessages, 'checkout.customBlend.componentSourcePrice', {
+                      money: formatDisplayMoney(component.sourceUnitPriceCents),
+                    })}
+                  </span>
+                  {component.clearance && (
+                    <span className="block">
+                      {translate(checkoutMessages, 'checkout.customBlend.componentClearance', {
+                        money: formatDisplayMoney(component.clearance.priceCents),
+                      })}
+                    </span>
+                  )}
+                  <span className="block">
+                    {translate(checkoutMessages, 'checkout.customBlend.componentTier', {
+                      discountPct: number.count(component.tierDiscountPct),
+                    })}
+                  </span>
+                  {component.nextTierProgress && (
+                    <span className="block">
+                      {translate(checkoutMessages, 'checkout.customBlend.componentNextTier', {
+                        sacksToNextTier: number.count(component.nextTierProgress.sacksToNextTier),
+                        minTonnes: number.decimal(component.nextTierProgress.minTonnes),
+                        discountPct: number.count(component.nextTierProgress.discountPct),
+                      })}
+                    </span>
+                  )}
+                  <span className="block">
+                    {translate(checkoutMessages, 'checkout.customBlend.componentUnitContribution', {
+                      money: formatDisplayMoney(component.unitContributionCents),
+                    })}
+                  </span>
+                  <span className="block">
+                    {translate(checkoutMessages, 'checkout.customBlend.componentSubtotal', {
+                      money: formatDisplayMoney(component.subtotalCents),
+                    })}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          <span className="block">
+            {translate(checkoutMessages, 'checkout.customBlend.materialUnitPrice', {
+              money: formatDisplayMoney(resolved.materialUnitPriceCents),
+            })}
+          </span>
+          <span className="block">
+            {translate(checkoutMessages, 'checkout.customBlend.materialSubtotal', {
+              money: formatDisplayMoney(resolved.materialSubtotalCents),
+            })}
+          </span>
+          <span className="block">
+            {translate(checkoutMessages, 'checkout.customBlend.blendingFee', {
+              money: formatDisplayMoney(resolved.blendingFeeCents),
+            })}
+          </span>
+          <span className="block font-medium text-foreground">
+            {translate(checkoutMessages, 'checkout.customBlend.lineTotal', {
+              money: formatDisplayMoney(resolved.lineTotalCents),
+            })}
+          </span>
+        </>
+      ) : (
+        <>
+          <span className="block" data-testid="checkout-blend-legacy">
+            {translate(checkoutMessages, 'checkout.customBlend.legacyFallback')}
+          </span>
+          {/* A legacy line may show only its captured line split; no component/current price facts. */}
+          <span className="block">
+            {translate(checkoutMessages, 'checkout.baseMaterial', {
+              money: formatDisplayMoney(item.materialSubtotalCents),
+            })}{' '}
+            ·{' '}
+            {translate(checkoutMessages, 'checkout.blendingFee', {
+              money: formatDisplayMoney(item.blendingFeeCents),
+            })}
+          </span>
+        </>
+      )}
+    </span>
+  );
 }
 
 export function CheckoutSummary({
@@ -102,7 +266,7 @@ export function CheckoutSummary({
               {item.customBlend && (
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
                   <CustomBlendPackaging
-                    product={item.product}
+                    product={checkoutPackagingProduct(item)}
                     variant={item.variantSnap}
                     blend={item.customBlend}
                     className="h-full w-full object-cover"
@@ -132,28 +296,7 @@ export function CheckoutSummary({
                     })}
                   </span>
                 )}
-                {item.customBlend && (
-                  <span
-                    className="block text-xs text-muted-foreground"
-                    data-testid="checkout-blend"
-                  >
-                    <Badge variant="outline" className="mb-0.5 w-fit text-[10px]">
-                      {t('checkout.customBlend')}
-                    </Badge>
-                    <span className="block">
-                      {customBlendCompositionLabel(item.product.name, item.customBlend, country)}
-                    </span>
-                    <span className="block">
-                      {t('checkout.baseMaterial', {
-                        money: formatDisplayMoney(item.materialSubtotalCents),
-                      })}{' '}
-                      ·{' '}
-                      {t('checkout.blendingFee', {
-                        money: formatDisplayMoney(item.blendingFeeCents),
-                      })}
-                    </span>
-                  </span>
-                )}
+                {item.customBlend && <CheckoutCustomBlendDetails item={item} />}
               </span>
               <span className="shrink-0">{formatDisplayMoney(item.lineTotalCents)}</span>
             </div>
@@ -166,16 +309,10 @@ export function CheckoutSummary({
         )}
         <Separator />
         {cart.blendingFeeTotalCents > 0 && (
-          <>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">{t('checkout.materialSubtotal')}</span>
-              <span>{formatDisplayMoney(cart.discountableSubtotalCents)}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">{t('checkout.blendingFees')}</span>
-              <span>{formatDisplayMoney(cart.blendingFeeTotalCents)}</span>
-            </div>
-          </>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">{t('checkout.materialSubtotal')}</span>
+            <span>{formatDisplayMoney(cart.discountableSubtotalCents)}</span>
+          </div>
         )}
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">{t('checkout.merchandiseSubtotal')}</span>

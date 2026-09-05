@@ -20,6 +20,8 @@ export const AUDIT_ACTIONS = [
   'company.member_revoked',
   'company.member_role_changed',
   'company.threshold_changed',
+  'company.credit_limit_changed',
+  'company.credit_state_changed',
   'approval.requested',
   'approval.approved',
   'approval.rejected',
@@ -36,6 +38,9 @@ export const AUDIT_ACTIONS = [
   'payment.declined',
   'payment.timed_out',
   'payment.succeeded',
+  'invoice.issued',
+  'invoice.settled',
+  'invoice.voided',
   'order.created',
   'order.shipment_packed',
   'order.cancelled',
@@ -120,6 +125,7 @@ export type AuditEntityType =
   | 'membership'
   | 'invite'
   | 'approval'
+  | 'invoice'
   | 'product'
   | 'variant'
   | 'promo'
@@ -160,6 +166,7 @@ type UserEventAction = Exclude<
   | `cart.${string}`
   | `checkout.${string}`
   | `payment.${string}`
+  | `invoice.${string}`
   | `order.${string}`
   | `shipment.${string}`
   | `review.${string}`
@@ -203,6 +210,19 @@ export type AuditEventInput =
       companyId: number;
       oldThresholdCents: number | null;
       newThresholdCents: number | null;
+    })
+  | (WithContext & {
+      action: 'company.credit_limit_changed';
+      companyId: number;
+      oldCreditLimitCents: number;
+      newCreditLimitCents: number;
+    })
+  | (WithContext & {
+      action: 'company.credit_state_changed';
+      companyId: number;
+      oldState: 'active' | 'on_hold' | 'suspended';
+      newState: 'active' | 'on_hold' | 'suspended';
+      reason: string | null;
     })
   | (WithContext & {
       action: 'approval.requested';
@@ -270,6 +290,28 @@ export type AuditEventInput =
       paymentId: number;
       orderId: number;
       amountCents: number;
+    })
+  | (WithContext & {
+      action: 'invoice.issued';
+      invoiceId: number;
+      orderId: number;
+      companyId: number;
+      grossCents: number;
+    })
+  | (WithContext & {
+      action: 'invoice.settled';
+      invoiceId: number;
+      orderId: number;
+      companyId: number;
+      amountCents: number;
+    })
+  | (WithContext & {
+      action: 'invoice.voided';
+      invoiceId: number;
+      orderId: number;
+      companyId: number;
+      grossCents: number;
+      reason: string;
     })
   | (WithContext & {
       action: 'order.created';
@@ -551,6 +593,16 @@ function companyEntity(input: Record<string, unknown>): {
   };
 }
 
+function invoiceEntity(input: Record<string, unknown>): {
+  entityType: 'invoice';
+  entityId: string;
+} {
+  return {
+    entityType: 'invoice',
+    entityId: String(requirePositiveSafeInteger(input.invoiceId, 'invoiceId')),
+  };
+}
+
 function membershipEntity(input: Record<string, unknown>): {
   entityType: 'membership';
   entityId: string;
@@ -649,6 +701,21 @@ function requireReviewRating(value: unknown): number {
   return rating;
 }
 
+function requireCreditState(value: unknown, name: 'oldState' | 'newState'): string {
+  if (value !== 'active' && value !== 'on_hold' && value !== 'suspended') {
+    throw new AuditEventValidationError(`${name} is not an allowed credit account state`);
+  }
+  return value;
+}
+
+function requirePlainText(value: unknown, name: string, maxLength: number): string {
+  const text = requireBoundedString(value, name, maxLength);
+  if (/[<>]/.test(text)) {
+    throw new AuditEventValidationError(`${name} must not contain markup delimiters`);
+  }
+  return text;
+}
+
 /** Builds one immutable, privacy-allowlisted audit row from scalar domain facts. */
 export function buildAuditEvent(input: AuditEventInput): BuiltAuditEvent {
   if (!isRecord(input) || !auditActionSet.has(input.action)) {
@@ -742,6 +809,27 @@ export function buildAuditEvent(input: AuditEventInput): BuiltAuditEvent {
           input.newThresholdCents === null
             ? 'null'
             : requireNonNegativeSafeInteger(input.newThresholdCents, 'newThresholdCents'),
+      };
+      break;
+    case 'company.credit_limit_changed':
+      entity = companyEntity(input);
+      metadata = {
+        oldCreditLimitCents: requireNonNegativeSafeInteger(
+          input.oldCreditLimitCents,
+          'oldCreditLimitCents',
+        ),
+        newCreditLimitCents: requireNonNegativeSafeInteger(
+          input.newCreditLimitCents,
+          'newCreditLimitCents',
+        ),
+      };
+      break;
+    case 'company.credit_state_changed':
+      entity = companyEntity(input);
+      metadata = {
+        oldState: requireCreditState(input.oldState, 'oldState'),
+        newState: requireCreditState(input.newState, 'newState'),
+        reason: input.reason === null ? 'null' : requirePlainText(input.reason, 'reason', 500),
       };
       break;
     case 'approval.requested':
@@ -848,6 +936,31 @@ export function buildAuditEvent(input: AuditEventInput): BuiltAuditEvent {
       metadata = {
         orderId: requirePositiveSafeInteger(input.orderId, 'orderId'),
         amountCents: requireNonNegativeSafeInteger(input.amountCents, 'amountCents'),
+      };
+      break;
+    case 'invoice.issued':
+      entity = invoiceEntity(input);
+      metadata = {
+        orderId: requirePositiveSafeInteger(input.orderId, 'orderId'),
+        companyId: requirePositiveSafeInteger(input.companyId, 'companyId'),
+        grossCents: requireNonNegativeSafeInteger(input.grossCents, 'grossCents'),
+      };
+      break;
+    case 'invoice.settled':
+      entity = invoiceEntity(input);
+      metadata = {
+        orderId: requirePositiveSafeInteger(input.orderId, 'orderId'),
+        companyId: requirePositiveSafeInteger(input.companyId, 'companyId'),
+        amountCents: requirePositiveSafeInteger(input.amountCents, 'amountCents'),
+      };
+      break;
+    case 'invoice.voided':
+      entity = invoiceEntity(input);
+      metadata = {
+        orderId: requirePositiveSafeInteger(input.orderId, 'orderId'),
+        companyId: requirePositiveSafeInteger(input.companyId, 'companyId'),
+        grossCents: requireNonNegativeSafeInteger(input.grossCents, 'grossCents'),
+        reason: requirePlainText(input.reason, 'reason', 500),
       };
       break;
     case 'order.created':

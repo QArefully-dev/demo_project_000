@@ -6,9 +6,180 @@ import { createAuditRepository } from '../../src/features/audit/auditRepository.
 import { createAuditWriter } from '../../src/features/audit/auditService.js';
 import { createInventoryRepository } from '../../src/features/inventory/inventoryRepository.js';
 import { createInventoryService } from '../../src/features/inventory/inventoryService.js';
+import { createInvoiceRepository } from '../../src/features/invoices/invoiceRepository.js';
+import { createInvoiceService } from '../../src/features/invoices/invoiceService.js';
+import { InvoiceDomainError } from '../../src/features/invoices/invoiceErrors.js';
 import { createOrderAccessService } from '../../src/features/orders/orderAccessService.js';
 import { createOrderRepository } from '../../src/features/orders/orderRepository.js';
 import { createOrderService } from '../../src/features/orders/orderService.js';
+
+const creditBillingEntity = {
+  legalName: 'Cancellation Materials Ltd',
+  registrationNumber: null,
+  vatNumber: null,
+  address: {
+    line1: '1 Cancellation Lane',
+    city: 'London',
+    postcode: 'EC1A 1BB',
+    countryCode: 'GB',
+  },
+} as const;
+
+function createCreditCancellationFixture(t: test.TestContext) {
+  const { db } = openSeededDatabase(t);
+  const issuedAt = '2026-09-01T09:00:00.000Z';
+  const now = new Date('2026-09-02T09:00:00.000Z');
+  const userId = 9301;
+  const companyId = 9301;
+  const repository = createOrderRepository(db);
+  db.prepare(
+    `INSERT INTO users (id, email, display_name, password_hash, password_salt, role, country)
+     VALUES (?, ?, 'Cancellation Buyer', 'hash', 'salt', 'customer', 'UK')`,
+  ).run(userId, `cancellation-${userId}@example.test`);
+  db.prepare(
+    `INSERT INTO company_accounts
+      (id, name, created_by_user_id, active, approval_threshold_cents, credit_limit_cents,
+       credit_terms_days, credit_state, credit_version, created_at, updated_at, country)
+     VALUES (?, 'Cancellation Materials Ltd', ?, 1, 0, 100000, 30, 'active', 0, ?, ?, 'UK')`,
+  ).run(companyId, userId, issuedAt, issuedAt);
+  const orderId = repository.create({
+    country: 'UK',
+    customerName: 'Cancellation Buyer',
+    customerEmail: `cancellation-${userId}@example.test`,
+    shippingAddress: '1 Cancellation Lane',
+    promoApplied: null,
+    subtotalCents: 10000,
+    discountCents: 0,
+    totalCents: 12000,
+    paymentMethod: 'trade_credit',
+    companyId,
+    netCents: 10000,
+    vatRateBasisPoints: 2000,
+    vatCents: 2000,
+    grossCents: 12000,
+    userId,
+    billingEntity: creditBillingEntity,
+    purchaseOrderReference: 'PO-CANCEL-9301',
+    items: [
+      {
+        productId: '1',
+        productName: 'Material sacks',
+        unitPriceCents: 10000,
+        quantity: 1,
+        discountableTotalCents: 10000,
+        blendingFeeCents: 0,
+        lineTotalCents: 10000,
+      },
+    ],
+    createdAt: issuedAt,
+  });
+  const paymentKey = '123e4567-e89b-42d3-a456-426614174901';
+  db.prepare(
+    `INSERT INTO payments
+      (id, order_id, idempotency_key, request_fingerprint, status, amount_cents,
+       card_last4, card_brand, created_at, payment_method, company_id, user_id)
+     VALUES (?, ?, ?, 'cancellation-fingerprint', 'authorized_pending_finalize', 12000,
+             NULL, NULL, ?, 'trade_credit', ?, ?)`,
+  ).run(9301, orderId, paymentKey, issuedAt, companyId, userId);
+  db.prepare(
+    `INSERT INTO credit_exposure_holds
+      (id, company_id, payment_idempotency_key, amount_cents, status,
+       authorized_at, created_at, updated_at)
+     VALUES (?, ?, ?, 12000, 'authorized', ?, ?, ?)`,
+  ).run(9301, companyId, paymentKey, issuedAt, issuedAt, issuedAt);
+  const invoiceRepository = createInvoiceRepository(db);
+  const invoiceService = createInvoiceService({
+    repository: invoiceRepository,
+    unitOfWork: createUnitOfWork(db),
+    clock: { now: () => now },
+    audit: createAuditWriter({ repository: createAuditRepository(db), clock: { now: () => now } }),
+  });
+  const invoice = invoiceService.issue({
+    orderId,
+    paymentIdempotencyKey: paymentKey,
+    companyId,
+    userId,
+    country: 'UK',
+    billingEntity: creditBillingEntity,
+    purchaseOrderReference: 'PO-CANCEL-9301',
+    netCents: 10000,
+    vatRateBasisPoints: 2000,
+    vatCents: 2000,
+    grossCents: 12000,
+    issuedAt,
+  });
+  const service = createOrderService({
+    repository,
+    unitOfWork: createUnitOfWork(db),
+    clock: { now: () => now },
+    audit: createAuditWriter({ repository: createAuditRepository(db), clock: { now: () => now } }),
+    inventory: createInventoryService({ repository: createInventoryRepository(db) }),
+    invoiceRepository,
+    invoices: invoiceService,
+  });
+  return {
+    db,
+    repository,
+    service,
+    invoiceService,
+    invoiceRepository,
+    invoice,
+    orderId,
+    paymentKey,
+    now,
+  };
+}
+
+function createCancellationService(
+  fixture: ReturnType<typeof createCreditCancellationFixture>,
+  invoiceRepository = fixture.invoiceRepository,
+) {
+  return createOrderService({
+    repository: fixture.repository,
+    unitOfWork: createUnitOfWork(fixture.db),
+    clock: { now: () => fixture.now },
+    audit: createAuditWriter({
+      repository: createAuditRepository(fixture.db),
+      clock: { now: () => fixture.now },
+    }),
+    inventory: createInventoryService({ repository: createInventoryRepository(fixture.db) }),
+    invoiceRepository,
+    invoices: fixture.invoiceService,
+  });
+}
+
+function assertCancellationDidNotMutate(
+  fixture: ReturnType<typeof createCreditCancellationFixture>,
+  orderId: number,
+): void {
+  assert.equal(fixture.repository.getOrderState(orderId)?.status, 'processing');
+  assert.equal(
+    (
+      fixture.db
+        .prepare('SELECT COUNT(*) AS count FROM order_lifecycle_events WHERE order_id = ?')
+        .get(orderId) as { count: number }
+    ).count,
+    1,
+  );
+  assert.equal(
+    (
+      fixture.db
+        .prepare('SELECT COUNT(*) AS count FROM order_shipments WHERE order_id = ?')
+        .get(orderId) as { count: number }
+    ).count,
+    0,
+  );
+  assert.deepEqual(
+    fixture.db
+      .prepare(
+        `SELECT status, invoice_id FROM credit_exposure_holds
+         WHERE payment_idempotency_key = ?`,
+      )
+      .get(fixture.paymentKey),
+    { status: 'committed', invoice_id: Number(fixture.invoice.id) },
+  );
+  assert.equal(fixture.invoiceService.get(Number(fixture.invoice.id)).status, 'open');
+}
 
 void test('order lifecycle repository creates initial immutable event', (t) => {
   const { db } = openSeededDatabase(t);
@@ -378,5 +549,271 @@ void test('lifecycle commands are idempotent, versioned, audited, and transactio
   assert.equal(
     service.listOwned(1, 1, 50).items.some((order) => order.id === String(orderId)),
     true,
+  );
+});
+
+void test('credit cancellation rejects a missing or mismatched invoice before mutations', (t) => {
+  const missing = createCreditCancellationFixture(t);
+  const missingInvoiceRepository = {
+    ...missing.invoiceRepository,
+    findByOrderId: () => undefined,
+  };
+  assert.throws(
+    () =>
+      createCancellationService(missing, missingInvoiceRepository).cancel({
+        orderId: missing.orderId,
+        version: 0,
+        idempotencyKey: '623e4567-e89b-42d3-a456-426614174901',
+        context: {
+          actor: { type: 'user' as const, userId: 9301 },
+          requestId: 'missing-invoice-cancellation-request',
+        },
+      }),
+    (error: unknown) =>
+      error instanceof InvoiceDomainError && error.code === 'INVOICE_TOTAL_MISMATCH',
+  );
+  assertCancellationDidNotMutate(missing, missing.orderId);
+
+  const mismatched = createCreditCancellationFixture(t);
+  const mismatchedInvoiceRepository = {
+    ...mismatched.invoiceRepository,
+    findByOrderId: () => ({ ...mismatched.invoice, orderId: String(mismatched.orderId + 1) }),
+  };
+  assert.throws(
+    () =>
+      createCancellationService(mismatched, mismatchedInvoiceRepository).cancel({
+        orderId: mismatched.orderId,
+        version: 0,
+        idempotencyKey: '723e4567-e89b-42d3-a456-426614174901',
+        context: {
+          actor: { type: 'user' as const, userId: 9301 },
+          requestId: 'mismatched-invoice-cancellation-request',
+        },
+      }),
+    (error: unknown) =>
+      error instanceof InvoiceDomainError && error.code === 'INVOICE_TOTAL_MISMATCH',
+  );
+  assertCancellationDidNotMutate(mismatched, mismatched.orderId);
+});
+
+void test('credit cancellation rejects a payment linkage mismatch before mutations', (t) => {
+  const fixture = createCreditCancellationFixture(t);
+  const mismatchedPaymentRepository = {
+    ...fixture.invoiceRepository,
+    findPaymentForIssue: () => ({
+      ...fixture.invoiceRepository.findPaymentForIssue!(fixture.paymentKey),
+      orderId: fixture.orderId + 1,
+    }),
+  };
+  assert.throws(
+    () =>
+      createCancellationService(fixture, mismatchedPaymentRepository).cancel({
+        orderId: fixture.orderId,
+        version: 0,
+        idempotencyKey: '823e4567-e89b-42d3-a456-426614174901',
+        context: {
+          actor: { type: 'user' as const, userId: 9301 },
+          requestId: 'mismatched-payment-cancellation-request',
+        },
+      }),
+    (error: unknown) =>
+      error instanceof InvoiceDomainError && error.code === 'INVOICE_TOTAL_MISMATCH',
+  );
+  assertCancellationDidNotMutate(fixture, fixture.orderId);
+});
+
+void test('card and legacy cancellation reject any linked invoice before mutations', (t) => {
+  const fixture = createCreditCancellationFixture(t);
+  const cardOrderId = fixture.repository.create({
+    customerName: 'Card Cancellation Buyer',
+    customerEmail: 'card-cancellation@example.test',
+    shippingAddress: '1 Card Cancellation Lane',
+    promoApplied: null,
+    subtotalCents: 500,
+    discountCents: 0,
+    totalCents: 500,
+    userId: 1,
+    items: [
+      {
+        productId: '1',
+        productName: 'Material sacks',
+        unitPriceCents: 500,
+        quantity: 1,
+        discountableTotalCents: 500,
+        blendingFeeCents: 0,
+        lineTotalCents: 500,
+      },
+    ],
+    createdAt: '2026-09-01T09:00:00.000Z',
+  });
+  const linkedInvoiceRepository = {
+    ...fixture.invoiceRepository,
+    findByOrderId: (orderId: number, now?: string) =>
+      orderId === cardOrderId
+        ? fixture.invoice
+        : fixture.invoiceRepository.findByOrderId(orderId, now),
+  };
+  assert.throws(
+    () =>
+      createCancellationService(fixture, linkedInvoiceRepository).cancel({
+        orderId: cardOrderId,
+        version: 0,
+        idempotencyKey: '923e4567-e89b-42d3-a456-426614174901',
+        context: {
+          actor: { type: 'user' as const, userId: 1 },
+          requestId: 'card-linked-invoice-cancellation-request',
+        },
+      }),
+    (error: unknown) =>
+      error instanceof InvoiceDomainError && error.code === 'INVOICE_TOTAL_MISMATCH',
+  );
+  assert.equal(fixture.repository.getOrderState(cardOrderId)?.status, 'processing');
+  assert.equal(
+    (
+      fixture.db
+        .prepare('SELECT COUNT(*) AS count FROM order_lifecycle_events WHERE order_id = ?')
+        .get(cardOrderId) as { count: number }
+    ).count,
+    1,
+  );
+  assert.equal(fixture.invoiceService.get(Number(fixture.invoice.id)).status, 'open');
+});
+
+void test('unpaid credit cancellation voids its invoice and releases exposure exactly once', (t) => {
+  const fixture = createCreditCancellationFixture(t);
+  const context = {
+    actor: { type: 'user' as const, userId: 9301 },
+    requestId: 'credit-cancellation-request',
+  };
+  const cancellationKey = '223e4567-e89b-42d3-a456-426614174901';
+  const cancelled = fixture.service.cancel({
+    orderId: fixture.orderId,
+    version: 0,
+    idempotencyKey: cancellationKey,
+    context,
+  });
+  assert.equal(cancelled.status, 'cancelled');
+  assert.equal(fixture.invoiceService.get(Number(fixture.invoice.id)).status, 'voided');
+  assert.deepEqual(
+    fixture.db
+      .prepare(
+        `SELECT status FROM credit_exposure_holds
+         WHERE payment_idempotency_key = ?`,
+      )
+      .get('123e4567-e89b-42d3-a456-426614174901'),
+    { status: 'released' },
+  );
+  assert.equal(
+    (
+      fixture.db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM invoice_events
+           WHERE invoice_id = ? AND event_type = 'voided'`,
+        )
+        .get(Number(fixture.invoice.id)) as { count: number }
+    ).count,
+    1,
+  );
+  assert.equal(
+    (
+      fixture.db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM audit_events
+           WHERE action = 'invoice.voided' AND entity_id = ?`,
+        )
+        .get(String(fixture.invoice.id)) as { count: number }
+    ).count,
+    1,
+  );
+
+  const replay = fixture.service.cancel({
+    orderId: fixture.orderId,
+    version: 0,
+    idempotencyKey: cancellationKey,
+    context,
+  });
+  assert.equal(replay.status, 'cancelled');
+  assert.equal(
+    (
+      fixture.db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM invoice_events
+           WHERE invoice_id = ? AND event_type = 'voided'`,
+        )
+        .get(Number(fixture.invoice.id)) as { count: number }
+    ).count,
+    1,
+  );
+  assert.equal(
+    (
+      fixture.db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM audit_events
+           WHERE action = 'invoice.voided' AND entity_id = ?`,
+        )
+        .get(String(fixture.invoice.id)) as { count: number }
+    ).count,
+    1,
+  );
+  assert.throws(
+    () =>
+      fixture.service.cancel({
+        orderId: fixture.orderId,
+        version: 0,
+        idempotencyKey: '323e4567-e89b-42d3-a456-426614174901',
+        context,
+      }),
+    { name: 'OrderDomainError', code: 'STALE_VERSION' },
+  );
+});
+
+void test('paid credit cancellation rejects before order or exposure mutation', (t) => {
+  const fixture = createCreditCancellationFixture(t);
+  fixture.invoiceService.settle({
+    invoiceId: Number(fixture.invoice.id),
+    expectedVersion: 0,
+    idempotencyKey: '423e4567-e89b-42d3-a456-426614174901',
+    context: {
+      actor: { type: 'user' as const, userId: 9301 },
+      requestId: 'paid-invoice-settlement-request',
+      standingCountry: 'UK',
+    },
+    standingCountry: 'UK',
+  });
+  assert.throws(
+    () =>
+      fixture.service.cancel({
+        orderId: fixture.orderId,
+        version: 0,
+        idempotencyKey: '523e4567-e89b-42d3-a456-426614174901',
+        context: {
+          actor: { type: 'user' as const, userId: 9301 },
+          requestId: 'paid-credit-cancellation-request',
+        },
+      }),
+    (error: unknown) =>
+      error instanceof InvoiceDomainError && error.code === 'INVOICE_ALREADY_PAID',
+  );
+  assert.equal(fixture.repository.getOrderState(fixture.orderId)?.status, 'processing');
+  assert.equal(fixture.invoiceService.get(Number(fixture.invoice.id)).status, 'paid');
+  assert.deepEqual(
+    fixture.db
+      .prepare(
+        `SELECT status FROM credit_exposure_holds
+         WHERE payment_idempotency_key = ?`,
+      )
+      .get('123e4567-e89b-42d3-a456-426614174901'),
+    { status: 'released' },
+  );
+  assert.equal(
+    (
+      fixture.db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM invoice_events
+           WHERE invoice_id = ? AND event_type = 'voided'`,
+        )
+        .get(Number(fixture.invoice.id)) as { count: number }
+    ).count,
+    0,
   );
 });

@@ -4,7 +4,12 @@ import {
   validatePostalAddressDraft,
   type PostalAddressFieldErrors,
 } from '@/features/account/PostalAddressFields';
-import { slotKey, type CheckoutState, type FieldErrors } from './checkoutState';
+import {
+  slotKey,
+  type CheckoutPaymentMethod,
+  type CheckoutState,
+  type FieldErrors,
+} from './checkoutState';
 
 /**
  * Validation for the three-step checkout.
@@ -108,7 +113,12 @@ export function validateBilling(billing: CheckoutState['billing']): GroupValidat
   return { errors, addressErrors: address.ok ? {} : address.errors };
 }
 
-export function validateCard(card: CheckoutState['card']): FieldErrors {
+/** Card fields are required only for the card branch; trade credit deliberately has no card input. */
+export function validateCard(
+  card: CheckoutState['card'],
+  paymentMethod: CheckoutPaymentMethod = 'card',
+): FieldErrors {
+  if (paymentMethod === 'trade_credit') return {};
   const errors: FieldErrors = {};
   if (!/^[0-9 -]{12,25}$/.test(card.cardNumber)) errors.cardNumber = 'Enter a valid card number';
   if (!/^(0[1-9]|1[0-2])\/[0-9]{2}$/.test(card.cardExpiry))

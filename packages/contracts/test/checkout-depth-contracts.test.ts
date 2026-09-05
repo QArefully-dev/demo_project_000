@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { TypeCompiler } from '@sinclair/typebox/compiler';
 import { Value } from '@sinclair/typebox/value';
 import {
   FORMATTED_ADDRESS_MAX_LENGTH,
@@ -21,7 +22,7 @@ import {
   DeliverySlotOptionsResponse,
   DeliverySlotWindow,
 } from '../src/delivery.js';
-import { Order, OrderSummary } from '../src/orders.js';
+import { Order, OrderDetailResponse, OrderSummary } from '../src/orders.js';
 import {
   BillingSelection,
   CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION,
@@ -29,6 +30,7 @@ import {
   PaymentBody,
   PaymentConflictResponse,
 } from '../src/payments.js';
+import { AdminOrderDetailResponse } from '../src/adminOrdersList.js';
 
 const uuid = '123e4567-e89b-42d3-a456-426614174000';
 
@@ -454,6 +456,118 @@ void test('order summary carries an optional PO reference so history rows can sh
   );
 });
 
+void test('order summary and detail share credit attribution and accounting integrity', () => {
+  const accounting = {
+    country: 'UK' as const,
+    paymentMethod: 'trade_credit' as const,
+    companyId: '7',
+    netCents: 10_000,
+    vatRateBasisPoints: 2_000,
+    vatCents: 2_000,
+    grossCents: 12_000,
+  };
+  const summary = {
+    id: '1',
+    status: 'processing',
+    version: 0,
+    totalCents: 12_000,
+    ...accounting,
+    totalItems: 0,
+    hasBackorder: false,
+    createdAt: '2026-07-14T00:00:00.000Z',
+  };
+  const detail = {
+    id: '1',
+    status: 'processing',
+    version: 0,
+    items: [],
+    subtotalCents: 10_000,
+    discountCents: 0,
+    totalCents: 12_000,
+    ...accounting,
+    promoApplied: null,
+    createdAt: '2026-07-14T00:00:00.000Z',
+    shipments: [],
+    events: [],
+    canCancel: true,
+  };
+  assert.equal(Value.Check(OrderSummary, summary), true);
+  assert.equal(Value.Check(OrderDetailResponse, detail), true);
+  const creditAdminDetail = {
+    ...detail,
+    refundPayment: { paymentId: '501', remainingRefundableCents: 12_000 },
+  };
+  assert.equal(Value.Check(AdminOrderDetailResponse, creditAdminDetail), true);
+  assert.equal(
+    Value.Check(AdminOrderDetailResponse, {
+      ...detail,
+      grossCents: 12_001,
+      refundPayment: null,
+    }),
+    false,
+  );
+
+  // The admin extension is used directly by Fastify response serialization. Keep its merged
+  // object metadata non-enumerable while checking both method-specific accounting shapes.
+  assert.equal(
+    Object.prototype.propertyIsEnumerable.call(AdminOrderDetailResponse, 'properties'),
+    false,
+  );
+  const adminDetailSchema = TypeCompiler.Compile(AdminOrderDetailResponse);
+  assert.equal(adminDetailSchema.Check(creditAdminDetail), true);
+  assert.deepEqual(Value.Parse(AdminOrderDetailResponse, creditAdminDetail), creditAdminDetail);
+  const { companyId: omittedCompanyId, ...cardDetailBase } = detail;
+  assert.equal(omittedCompanyId, '7');
+  const cardAdminDetail = {
+    ...cardDetailBase,
+    paymentMethod: 'card' as const,
+    netCents: 12_000,
+    vatRateBasisPoints: 0,
+    vatCents: 0,
+    grossCents: 12_000,
+    refundPayment: null,
+  };
+  assert.equal(adminDetailSchema.Check(cardAdminDetail), true);
+  assert.deepEqual(Value.Parse(AdminOrderDetailResponse, cardAdminDetail), cardAdminDetail);
+  assert.equal(adminDetailSchema.Check({ ...cardAdminDetail, companyId: '7' }), false);
+
+  for (const candidate of [summary, detail]) {
+    const schema = candidate === summary ? OrderSummary : OrderDetailResponse;
+    assert.equal(Value.Check(schema, { ...candidate, grossCents: 12_001 }), false);
+    assert.equal(Value.Check(schema, { ...candidate, totalCents: 10_000 }), false);
+    assert.equal(Value.Check(schema, { ...candidate, companyId: undefined }), false);
+    assert.equal(
+      Value.Check(schema, {
+        ...candidate,
+        paymentMethod: 'card',
+        companyId: '7',
+        vatRateBasisPoints: 0,
+        vatCents: 0,
+        grossCents: 12_000,
+      }),
+      false,
+    );
+  }
+  assert.equal(Value.Check(OrderSummary, { ...summary, netCents: undefined }), false);
+  assert.equal(Value.Check(OrderDetailResponse, { ...detail, netCents: undefined }), false);
+  for (const candidate of [summary, detail]) {
+    const schema = candidate === summary ? OrderSummary : OrderDetailResponse;
+    assert.equal(Value.Check(schema, { ...candidate, country: undefined }), false);
+    assert.equal(
+      Value.Check(schema, {
+        ...candidate,
+        paymentMethod: 'card',
+        companyId: undefined,
+        netCents: undefined,
+        vatRateBasisPoints: undefined,
+        vatCents: undefined,
+        grossCents: undefined,
+      }),
+      false,
+    );
+  }
+});
+
 void test('persisted quote version advanced and never restarted', () => {
-  assert.equal(CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION, 8);
+  assert.equal(CURRENT_PERSISTED_CHECKOUT_QUOTE_VERSION, 10);
 });
