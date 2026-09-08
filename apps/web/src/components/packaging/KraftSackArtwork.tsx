@@ -8,12 +8,6 @@ const SHADE = '#b3966d';
 const EDGE = '#3a3128';
 const PAPER = '#f2efe7';
 
-/**
- * Direction A -- stitched multi-wall kraft sack. Trade & Creative Materials (cementitious,
- * casting, pigment, absorbent groups). Geometry, ink and layout ported verbatim from
- * `plans/heavy_duty_sack_prototypes.html:115-157` (`sackA`); text content is derived per-product
- * via `resolvePackagingSpec` instead of the prototype's fixed fixtures.
- */
 export function KraftSackArtwork({ name, spec, ariaLabel, className }: VesselArtworkProps) {
   const { ink, alert } = spec.ink;
   const { translate } = useLocalisation();

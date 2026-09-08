@@ -1,9 +1,5 @@
 import { createElement, type ReactNode } from 'react';
 
-/**
- * Font stacks and ink table ported verbatim from `plans/heavy_duty_sack_prototypes.html:79-88`.
- * Values are literal, not design tokens -- do not re-derive them.
- */
 export const NARROW_FONT = "Haettenschweiler,'Arial Narrow',Impact,sans-serif";
 export const UI_FONT = 'Arial,Helvetica,sans-serif';
 export const MONO_FONT = "'Courier New',monospace";
@@ -27,12 +23,6 @@ interface CondOptions {
   opacity?: number;
 }
 
-/**
- * Condensed text forced to an exact pixel width via `textLength` + `spacingAndGlyphs`, ported
- * from the prototype's `cond` helper (`plans/heavy_duty_sack_prototypes.html:94-99`). The
- * prototype hard-codes widths per fixture string; this port renders arbitrary catalog strings, so
- * callers compute `width` with `condWidth` instead of a literal.
- */
 export function cond(
   x: number,
   y: number,

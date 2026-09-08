@@ -6,16 +6,6 @@ import { useLocalisation } from '@/i18n/LocaleContext';
 const EDGE = '#33403f';
 const SHELL = '#e7e9e4';
 
-/**
- * Direction F -- rigid HDPE keg. Household & Cleaning. Geometry and layout ported verbatim from
- * `plans/heavy_duty_sack_prototypes.html:218-267` (`sackF`).
- *
- * `tone: 'mild'` implements the user-approved carve-out (2026-07-23) for the absorbent lines
- * (carpet cleaner, shoe deodoriser) whose worst hazard is dust irritation: the stripe swaps the
- * alert ink for the category ink, the corrosion pictogram becomes a generic irritant mark, and
- * the vertical "CORROSIVE" word plus the "DANGER" band are dropped entirely rather than softened,
- * so the artwork never asserts a hazard the product does not carry.
- */
 export function KegArtwork({ name, spec, ariaLabel, className }: VesselArtworkProps) {
   const { ink, alert } = spec.ink;
   const { translate } = useLocalisation();

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Write Orchestrator Coding Plan"
-  short_description: "Turn roadmap sections into executable coding plans"
-  default_prompt: "Use $write-orchestrator-coding-plan to inspect this repository and turn selected roadmap section into orchestrator-ready coding plan."

@@ -30,7 +30,7 @@ function assertForeignKeysClean(db: MigrationDb, step: string): void {
 /**
  * Physically removes the retired powderizer feature from persistence.
  *
- * Destructive by design (see `plans/powderizer_removal_coding_plan.md`, Data policy): the
+ * Destructive by design: the
  * powder-mix tables, the `demand_kind` discriminator, and the `products` mixing columns carry
  * no preservation obligation, so `021` deletes rather than retires them. Rows that survive the
  * feature — product lines, product-demand reservations, catalogue rows — are still copied

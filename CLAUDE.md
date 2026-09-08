@@ -1,1 +1,0 @@
-For Claude Code only - read the sibling AGENTS.md

@@ -13,13 +13,6 @@ const Z_TEETH = 16;
 const BODY_PATH =
   'M164 214Q148 400 156 594Q158 622 200 624L520 624Q562 622 564 594Q572 400 556 214Z';
 
-/**
- * Direction B -- woven polypropylene sack with a knockout colour band. Garden & Outdoors
- * (garden-treatment group). Geometry, ink and layout ported verbatim from
- * `plans/heavy_duty_sack_prototypes.html:160-215` (`sackB`). The prototype dedupes its `pattern`
- * and `clipPath` ids with a module-global `uid` counter; that pattern is banned by repository
- * rules for mutable module state, so ids here are scoped with `useId` and unique per instance.
- */
 export function WovenSackArtwork({ name, spec, ariaLabel, className }: VesselArtworkProps) {
   const { translate } = useLocalisation();
   const rawId = useId().replace(/:/g, '');

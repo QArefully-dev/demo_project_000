@@ -422,6 +422,5 @@ demo_project_000/
 │   ├── catalog/      # Canonical catalog and packaging data
 │   └── contracts/    # Shared transport schemas and types
 ├── scripts/          # Repository quality checks
-├── data/             # SQLite database (auto-created)
-└── plans/            # Design and implementation plans
+└── data/             # SQLite database (auto-created)
 ```
