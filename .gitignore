@@ -10,3 +10,7 @@ dist/
 .env.local
 nul
 __pycache__/
+
+# macOS metadata (AppleDouble sidecars, Finder state)
+._*
+.DS_Store

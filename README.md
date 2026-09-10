@@ -31,7 +31,7 @@ The web app proxies `/api/*` requests to the API server automatically.
 
 ## Database
 
-SQLite database is created automatically on first `npm run dev` at `data/shop.db`.
+SQLite database is created automatically on first `npm run dev` at `apps/api/data/shop.db`.
 
 - Database location can be overridden via `SHOP_DB_PATH` environment variable.
 - WAL mode enabled for better concurrent read performance.
@@ -131,7 +131,7 @@ UK Alice has a pre-seeded default Favourites list with 3 products. Her `Monthly 
 
 Country behaviour demos cover all three localisation stages. Seven country profiles (`UK`, `US`, `CN`, `PL`, `ES`, `DE`, `FR`) drive account selection, server-side availability, postcode rules, delivery cut-offs, translated shop copy, and locale-owned number/date formatting. China blocks the `Sports Nutrition` category server-side, so a CN visitor cannot browse, open, add, or check out those lots; UK can access the same lots. Spain alone shows the country banner. `LOC-UK-DE-10` applies in UK and DE carts but is rejected in US carts. Delivery remains country-bound: UK carts accept `GB` destinations, while DE carts accept `DE` destinations only.
 
-Display currency conversion uses fixed checked-in rates and happens only at render time. Checkout, order confirmation, mailbox receipts, payment, refund, and persisted commerce values remain GBP-authoritative; non-UK checkout and receipts show local display plus the GBP total. No converted amount is stored, charged, refunded, or snapshotted. Migration head is `034`.
+Display currency conversion uses fixed checked-in rates and happens only at render time. Checkout, order confirmation, mailbox receipts, payment, refund, and persisted commerce values remain GBP-authoritative; non-UK checkout and receipts show local display plus the GBP total. No converted amount is stored, charged, refunded, or snapshotted. Migration head is `038`.
 
 ### Local Administration
 
@@ -417,10 +417,11 @@ The API creates a `data/` directory for the SQLite database. If you see permissi
 demo_project_000/
 ├── apps/
 │   ├── api/          # Fastify API server (port 3001)
+│   │   └── data/     # SQLite database (auto-created)
 │   └── web/          # React + Vite frontend (port 5173)
 ├── packages/
 │   ├── catalog/      # Canonical catalog and packaging data
-│   └── contracts/    # Shared transport schemas and types
-├── scripts/          # Repository quality checks
-└── data/             # SQLite database (auto-created)
+│   ├── contracts/    # Shared transport schemas and types
+│   └── localisation/ # Country-aware translation and formatting
+└── scripts/          # Repository quality checks
 ```
