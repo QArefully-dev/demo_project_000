@@ -11,6 +11,11 @@ dist/
 nul
 __pycache__/
 
+# Playwright
+playwright-report/
+test-results/
+blob-report/
+
 # macOS metadata (AppleDouble sidecars, Finder state)
 ._*
 .DS_Store

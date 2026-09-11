@@ -17,6 +17,8 @@
     "test:unit": "npm run test:unit -w @shop/web && npm run test:unit -w @shop/api",
     "test:integration": "npm run test:integration -w @shop/web && npm run test:integration -w @shop/api",
     "smoke": "npm run typecheck && npm run test:unit && npm run test:integration",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "lint": "eslint .",
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
@@ -28,6 +30,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",
+    "@playwright/test": "^1.63.0",
     "concurrently": "^10.0.3",
     "eslint": "^9.18.0",
     "prettier": "^3.4.0",
