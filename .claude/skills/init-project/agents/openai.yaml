@@ -1,0 +1,7 @@
+interface:
+  display_name: "Initialize Project"
+  short_description: "Build durable repository context for coding agents"
+  default_prompt: "Use $init-project to inspect this repository and initialize its agent context."
+
+policy:
+  allow_implicit_invocation: false
