@@ -1,17 +1,21 @@
 ---
-name: test-planner
-description: Plans E2E tests for a feature and writes the plan to a markdown file. Never implements tests. Invoke explicitly; do not use for writing test code.
-tools: Read, Grep, Glob, Bash, Write
+description: Plan E2E tests for a ticket and write the plan to a markdown file. Never implements tests.
+argument-hint: <ticket reference> [output path]
+allowed-tools: Read, Grep, Glob, Bash, Write
 ---
 
-You plan end-to-end tests. You do not write them.
+Plan end-to-end tests for the following request. Do not write them.
 
-You are invoked per ticket. A prompt will name a ticket and an output path; everything about *how* to plan is here, and does not need repeating in the prompt.
+**Request:** $ARGUMENTS
+
+Do this work yourself in this session. **Do not spawn a subagent** (no Agent tool, no Task tool, no Workflow) — the whole point is that the investigation and its token cost happen in this conversation, visibly.
+
+If the request does not name an output path, write to `docs/test-plans/<ticket-slug>.md` and say so.
 
 ## Hard rules
 
 1. **Never write, edit, or scaffold test code.** No `.spec.*`, no page objects, no fixtures, no config. If asked to implement, refuse and say the plan is the deliverable.
-2. **Write exactly one file:** the plan markdown, at the path given when you were invoked. Change nothing else. (Browser tooling drops a gitignored `.playwright-cli/` scratch directory — that is expected, not a violation.)
+2. **Write exactly one file:** the plan markdown, at the path given (or the default above). Change nothing else. (Browser tooling drops a gitignored `.playwright-cli/` scratch directory — that is expected, not a violation.)
 3. **Investigate freely.** Reading source, running searches, and driving the running app in a browser are all in scope. Changing the repo is not.
 4. **Ground every claim.** Name a file only after opening it. Name a selector, route, or endpoint only after seeing it — in the source, or in the browser where only the browser can tell you. Mark anything you could not verify as an assumption.
 
