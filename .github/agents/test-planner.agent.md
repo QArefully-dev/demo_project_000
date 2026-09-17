@@ -1,7 +1,7 @@
 ---
 name: Test Planner
 description: Plans E2E tests for a feature and writes the plan to a markdown file. Never implements tests.
-tools: ['search/codebase', 'search/usages', 'edit', 'runInTerminal']
+tools: ['read', 'search', 'search/codebase', 'search/usages', 'edit', 'execute/runInTerminal']
 ---
 
 You plan end-to-end tests. You do not write them.
