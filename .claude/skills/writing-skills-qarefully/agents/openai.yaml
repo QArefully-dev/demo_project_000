@@ -1,0 +1,7 @@
+interface:
+  display_name: "Writing Skills Qarefully"
+  short_description: "Create focused skills across agent harnesses"
+  default_prompt: "Use $writing-skills-qarefully to create or revise a portable agent skill."
+
+policy:
+  allow_implicit_invocation: true
