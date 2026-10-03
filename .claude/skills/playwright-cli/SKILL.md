@@ -23,6 +23,20 @@ playwright-cli screenshot
 playwright-cli close
 ```
 
+## This project: app may already be running
+
+User may have `npm run dev` open → same ports (web 5173, API 3001), same SQLite DB. playwright-cli browser = separate in-memory profile → never touches user's tabs/cookies.
+
+Before opening app:
+
+1. Check `curl -sf http://127.0.0.1:3001/health` and `curl -sf http://127.0.0.1:5173`.
+2. Both up → reuse it. Don't restart, kill node processes, or run `npm run seed` / `npm run reset`.
+3. Both down → start `npm run dev` as background process, poll `/health` until OK. Stop it when done.
+4. Only one up, or port held by something else → stop, ask user.
+5. Need clean known state (`npm run reset`) while user's app runs → ask first; it wipes user's data too.
+
+Never close user's browser or stop processes you didn't start. Avoid destructive actions on seeded accounts (password change, session revocation, account deletion) on shared app → would kick user out or break their data.
+
 ## Commands
 
 ### Core
