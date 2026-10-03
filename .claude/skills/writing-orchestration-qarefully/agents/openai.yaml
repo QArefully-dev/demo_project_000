@@ -1,0 +1,7 @@
+interface:
+  display_name: "Writing Orchestration Qarefully"
+  short_description: "Design workflows with focused agents and lean context"
+  default_prompt: "Use $writing-orchestration-qarefully to write a complex orchestration skill with focused agents and file-based handoffs."
+
+policy:
+  allow_implicit_invocation: false
