@@ -1,4 +1,4 @@
-Przeczytaj `workshop/feature-ticket.md` i zapisz plan testów E2E w `workshop/e2e-plan.md`. Ten plan ma być jedyną zmianą w repozytorium. Nie korzystaj z subagentów, nie zadawaj pytań ani nie implementuj testów.
+Przeczytaj `workshop/feature-ticket.md` i zapisz plan testów E2E w `workshop/e2e-plan.md`. Ten plan ma być jedyną zmianą w repozytorium. Nie korzystaj z subagentów, nie zadawaj pytań ani nie implementuj testów. Cały plan napisz w języku angielskim.
 
 Pracuj wyłącznie na podstawie plików repozytorium. Nie otwieraj przeglądarki, nie uruchamiaj aplikacji ani testów, nie instaluj zależności i nie resetuj bazy danych. Planujesz przyszłe ścieżki użytkownika w przeglądarce, ale nie wykonujesz ich w tym ćwiczeniu.
 
