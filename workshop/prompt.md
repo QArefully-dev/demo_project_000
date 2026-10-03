@@ -5,3 +5,5 @@ Sprawdź odpowiedni kod źródłowy oraz istniejące testy E2E i testy niższego
 Ułóż niezależne ścieżki użytkownika w przeglądarce według ryzyka. Uwzględnij każde kryterium akceptacji albo wyjaśnij, dlaczego nie wymaga nowego scenariusza E2E. Nie powtarzaj wariantów reguł objętych już testami niższego poziomu. Dla każdego scenariusza podaj krótko przygotowanie i dane, ponumerowane kroki użytkownika, widoczne wyniki oraz powiązanie z kryteriami akceptacji.
 
 Użyj dokładnie tych nagłówków, w podanej kolejności: `## Scenarios`, `## Existing coverage`, `## Files to read`, `## Risks`, `## Approach`. W sekcji `## Risks` wskaż rozbieżności między zgłoszeniem a kodem oraz niezweryfikowane założenia. Plan ma mieć mniej niż 1500 słów. Po ukończeniu podaj jego ścieżkę.
+
+Napisz plan to Angielsku. 
