@@ -1,6 +1,7 @@
 ---
 name: workshop-env
-description: Back up and clear global AI customizations (Claude Code plugins/skills/agents, Copilot, Cursor, Codex) so a harness starts with a clean, minimal context for the workshop — then restore everything afterwards. Use when preparing a machine for the "Agentic QA in Large Projects" workshop, when a baseline measurement needs an unpolluted context, or when restoring a machine after the workshop.
+description: Back up and clear global AI customizations (Claude Code plugins/skills/agents, Copilot, Cursor, Codex) so a harness starts with a clean, minimal context for the workshop.
+disable-model-invocation: true
 ---
 
 # Workshop environment: clean and restore
