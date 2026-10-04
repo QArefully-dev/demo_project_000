@@ -1,0 +1,7 @@
+interface:
+  display_name: "Initialize Project"
+  short_description: "Write root and Custom Blend AGENTS.md files"
+  default_prompt: "Use $init-project to inspect this repository and write root plus API and UI Custom Blend AGENTS.md files."
+
+policy:
+  allow_implicit_invocation: false
