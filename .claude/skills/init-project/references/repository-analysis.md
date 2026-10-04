@@ -4,39 +4,40 @@
 
 Evidence order: executable config/code -> tests/CI -> maintained docs -> existing instructions -> user context.
 
-Main agent root scan -> shallow; enough to choose boundaries and brief investigators:
+Main agent root scan -> shallow; enough to brief investigators:
 
 - main applications, services, packages, infrastructure, and test harnesses
 - runtime and package-manager requirements
 - exact install, run, build, check, and test commands
-- flow entry points per boundary: routes, CLI commands, UI entry, jobs, consumers, webhooks, schedules
+- entry points per boundary: routes, CLI commands, UI entry, jobs, consumers, webhooks, schedules
 - destructive actions, generated boundaries, external effects, and common traps
 - documentation paths to reference instead of repeat
 
-Investigator scans -> deep flow tracing per references/flow-investigation.md. Main agent merges findings, joins flows crossing scopes via reported contracts, and reads code to close gaps.
+Investigator scans -> where-to-look and rationale per references/scope-investigation.md. Main agent merges findings and reads code, plans, and git history to close gaps.
 
 ## Select content
 
-Except for runtime requirements and exact commands, prefer where and why over current implementation detail.
+Except for runtime requirements and exact commands, write only where to look and why it was built in a specific way. Never describe execution order.
 
 Keep:
 
 - boundary purpose and allowed dependency direction
-- authoritative definitions and extension points
+- where to look: authoritative definitions, entry points, extension points, shared helpers
+- why: architecture decisions and their reasons, only when not obvious from code
 - ownership of validation, state, permissions, and side effects
-- doc-worthy flows per `## Flows`
-- durable domain or safety invariants
+- durable domain or safety invariants, each with reason
 - fastest relevant validation and unusual test prerequisites
 - plausible wrong turns not obvious from nearby code
-- implementation rules enforced by code or tests that agents could easily bypass: layer order, shared helpers, transaction handling, import syntax, public error handling, validation flow
-- exact helper or entry-point paths when using the wrong path would break a boundary
+- implementation rules enforced by code or tests that agents could easily bypass: layer order, shared helpers, transaction handling, import syntax, public error handling, validation ownership
 - 1-3 maintained exemplar paths for common changes
+
+Format: `path -> what it owns; why: reason`. Rationale without evidence -> omit.
 
 Drop:
 
+- code narration: hop chains, call sequences, step-by-step request paths, per-file change sets
 - file, symbol, route, dependency, or environment-variable inventories
 - timings, counts, temporary status
-- line-by-line code narration; flows obvious from entry point and adjacent files
 - generic advice or host-provided agent workflow
 - duplicated parent guidance or human documentation
 - unsupported claims
@@ -54,26 +55,10 @@ Root `## Commands` -> max 10 lines. Group related commands on one line per purpo
 
 Keep every command agents routinely run; drop only one-off, internal, or CI-only scripts. Short purpose notes inline in parentheses. Custom Blend-only commands -> matching nested file.
 
-## Flows
-
-Doc-worthy flow -> investigator reports at least one complexity signal, and agent changing flow would otherwise trace multiple files or boundaries to find required hops. Otherwise omit.
-
-Placement -> `## Flows` per SKILL.md Workflow step 5: cross-app or non-Custom Blend -> root; API-only Custom Blend -> `apps/api/src/features/customBlend/AGENTS.md`; web-only Custom Blend -> `apps/web/src/features/customBlend/AGENTS.md`. One flow lives in one file; never split or repeat it.
-
-Per flow:
-
-- name; trigger -> entry path
-- hop chain: `A (path) -> B (path) -> C (path)`, marking async and process/service boundaries
-- where validation, auth, transactions, state writes, and side effects happen
-- invariants, ordering, failure/retry behavior agents could break
-- change set: files that must change together, required helpers
-
-Durable granularity: module/file hops and responsibilities. No line numbers, function bodies, or transient config values.
-
 ## Shape
 
-Root sections as useful: repository map, runtime, commands, architecture/domain, flows, testing, agent hints, maintenance.
+Root sections as useful: repository map, runtime, commands, architecture/domain, testing, agent hints, maintenance.
 
 Add `## Testing` only where test structure or setup changes agent decisions. Cover relevant layers/frameworks, file or config locations, harnesses/fixtures/providers, prerequisites, and E2E ownership. Keep runnable commands only in `## Commands`; do not repeat them under Testing.
 
-Nested files contain only local architecture, local flows, local commands, local testing, and local hazards. Never create nested files beyond two Custom Blend files.
+Nested files contain only local where-to-look, local rationale, local commands, local testing, and local hazards. Never create nested files beyond two Custom Blend files.

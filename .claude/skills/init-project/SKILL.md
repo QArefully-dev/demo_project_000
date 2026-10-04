@@ -1,6 +1,6 @@
 ---
 name: init-project
-description: Initialize or refresh root AGENTS.md plus nested AGENTS.md for API and UI Custom Blend from repository scans that trace application flow in depth
+description: Initialize or refresh root AGENTS.md plus nested AGENTS.md for API and UI Custom Blend that tell agents where to look and why code was built in a specific way, explaining architecture decisions not obvious from code
 disable-model-invocation: true
 ---
 
@@ -28,7 +28,7 @@ Do not create, update, or delete any `CLAUDE.md`, `.claude/settings.json`, `.age
 
 Dispatch exactly three read-only scan subagents, all with model `GPT-6 Luna (copilot)`. Run them in parallel. Never substitute another model; model unavailable -> stop and report.
 
-- Root subagent: repository-wide scope excluding Custom Blend scopes below. Cross-cutting architecture, commands, testing, and flows outside Custom Blend.
+- Root subagent: repository-wide scope excluding Custom Blend scopes below. Cross-cutting architecture, rationale, commands, and testing outside Custom Blend.
 - API Custom Blend subagent: `apps/api/src/features/customBlend/`, `apps/api/src/routes/customBlends.ts`, `apps/api/src/db/migrations/022_custom_blends.ts`, Custom Blend tests under `apps/api/test/`, plus Custom Blend touchpoints in API cart, checkout, orders, payments, reorder, saved lists, and shared `packages/contracts/src/customBlends.ts`.
 - UI Custom Blend subagent: `apps/web/src/features/customBlend/`, `apps/web/src/api/customBlends.ts`, `apps/web/src/components/home/CustomBlendBanner.tsx`, plus Custom Blend touchpoints in web routing, nav, cart, checkout, orders, saved lists, help content, and `packages/localisation/src/messages/customBlend.ts`.
 
@@ -39,31 +39,32 @@ Final review reuses one completed scan subagent; it does not add a fourth.
 ## Workflow
 
 1. Resolve repository root. Read [repository analysis](references/repository-analysis.md) and bundled [LLM-oriented Markdown rules](assets/llm-oriented-markdowns/llm-oriented-markdowns.md).
-2. Shallow root scan: manifests, executable config, tests, CI, maintained docs, existing `AGENTS.md` files, flow entry points. Code and executable config win conflicts; report unresolved intent conflicts with "WARNING".
-3. Read [flow investigation brief](references/flow-investigation.md). Dispatch three subagents per `## Subagents`, each with full brief, exact scope, repository root, and user context.
-4. Merge findings; join flows crossing scopes and read code to close reported gaps.
+2. Shallow root scan: manifests, executable config, tests, CI, maintained docs, existing `AGENTS.md` files, entry points. Code and executable config win conflicts; report unresolved intent conflicts with "WARNING".
+3. Read [scope investigation brief](references/scope-investigation.md). Dispatch three subagents per `## Subagents`, each with full brief, exact scope, repository root, and user context.
+4. Merge findings; read code, plans, and git history to close reported gaps.
 5. Write three output files. Merge valuable existing rules from current files.
-   - Root -> global context plus flows spanning both apps (web -> API) or outside Custom Blend.
-   - API Custom Blend -> API-side Custom Blend architecture, flows, testing, pitfalls. API-only Custom Blend flows live here even when hops touch `apps/api/src/routes/` or other API features.
-   - UI Custom Blend -> web-side Custom Blend architecture, flows, testing, pitfalls. Web-only Custom Blend flows live here even when hops touch other web features.
+   - Root -> global context, including Custom Blend facts spanning both apps.
+   - API Custom Blend -> API-side Custom Blend: where to look, non-obvious architecture decisions, testing, pitfalls. Covers API Custom Blend code outside folder too (routes, cart, checkout, orders).
+   - UI Custom Blend -> web-side Custom Blend: where to look, non-obvious architecture decisions, testing, pitfalls. Covers web Custom Blend code outside folder too (routing, cart, checkout, orders).
    - Nested files -> subtree-only deltas; never repeat root rules.
-   - Flows -> apply threshold and format from repository analysis `## Flows`; below threshold -> omit.
+   - Why -> explain architecture decisions (why built in a specific way) only when not obvious from code. Obvious from code -> omit.
+   - No flows: no `## Flows` sections, hop chains, call sequences, step-by-step request paths, or per-file change sets.
 6. Assign final review and deduplication to one completed scan subagent. Grant edit ownership of the three output files only. Subagent must:
    - Read `<skill-directory>/assets/llm-oriented-markdowns/llm-oriented-markdowns.md` before editing; follow it for all edits.
    - Enforce every bundled writing and formatting rule in each file, including terse prose, linear structure, compact formatting, flat lists, and prohibited constructs.
    - Compare three files for exact and semantic duplication, plus within-file duplication.
    - Keep each fact or rule only in most relevant place: repository-wide guidance at root; Custom Blend API or UI guidance in matching nested file.
    - Delete duplicate copies without weakening scope, exceptions, or meaning.
-   - Compress flow wording without dropping hops, ownership, invariants, or change sets.
+   - Remove any flow-style content (hop chains, call sequences, step lists); keep paths and rationale it carried.
    - Fit root `## Commands` in max 10 lines by grouping related commands per line by purpose (setup/run, checks, tests, gates, scoped-run pattern, destructive with impact). Do not drop commands agents routinely run.
    - Edit files directly and report moved or deleted guidance. Do not return recommendations only.
-7. Before finalizing, test drafts against a typical cross-layer Custom Blend change (contract -> API rule -> route -> web client -> page). If an agent would need to rediscover a required layer, helper, import convention, transaction mechanism, validation step, or flow hop, add missing rule, flow, or exemplar path.
+7. Before finalizing, test drafts against a typical cross-layer Custom Blend change. If an agent would not know where to start, which layer owns a rule, or why architecture differs from obvious approach, add missing path, ownership rule, or decision rationale.
 
 ## Generated content
 
 - Minimal: every line must change agent behavior or avoid meaningful rediscovery.
-- Prefer where and why: authoritative paths, ownership, rationale, durable invariants, hazards, and surprising constraints. Reference detailed docs with plain repository-relative paths; never use Markdown links or copy doc content.
-- Avoid volatile implementation prose (line numbers, function bodies, transient values), inventories, exhaustive environment lists, generic coding advice, and host-provided agent or skill-routing rules.
+- Only where and why: authoritative paths, ownership, architecture decisions not obvious from code with their reasons, durable invariants, hazards, and surprising constraints. Reference detailed docs with plain repository-relative paths; never use Markdown links or copy doc content.
+- Avoid flows and code narration, volatile implementation prose (line numbers, function bodies, transient values), inventories, exhaustive environment lists, generic coding advice, and host-provided agent or skill-routing rules.
 - Destructive commands -> state impact and required authorization.
 - Generated/runtime files -> identify only when agents might edit or commit them accidentally.
 - Do not reference initializer plumbing in generated files: this skill, skill locations/discovery, nested-skill notes.
@@ -89,8 +90,8 @@ Write any AI documentation (AGENTS.md) or code comments in terse language, for f
 - Confirm output files use plain repository-relative paths, not Markdown links.
 - Confirm each output file contains `## Pitfalls` and only evidence-backed entries.
 - Confirm Maintenance and AI Documentation rules appear in root `AGENTS.md` only.
-- Confirm each `## Flows` entry is investigator-backed, meets doc-worthy threshold, lives in file per Workflow step 5, appears once, and references existing paths.
+- Confirm output contains no `## Flows` sections, hop chains, or step-by-step code paths; every rationale claim is evidence-backed and every path exists.
 - Confirm root `## Commands` has max 10 lines.
 - Review output for unsupported claims, volatile detail, and excess length.
 - Run application tests only if changes extend beyond `AGENTS.md` files.
-- Report changed files, documented and skipped flows, validation, and evidence gaps.
+- Report changed files, validation, and evidence gaps, including unknown rationale.
