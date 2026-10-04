@@ -13,34 +13,42 @@ Main agent root scan -> shallow; enough to brief investigators:
 - destructive actions, generated boundaries, external effects, and common traps
 - documentation paths to reference instead of repeat
 
-Investigator scans -> where-to-look and rationale per references/scope-investigation.md. Main agent merges findings and reads code, plans, and git history to close gaps.
+Investigator scans -> map candidates and rationale per references/scope-investigation.md. Main agent merges findings and reads code, plans, and git history to close gaps.
 
 ## Select content
 
-Except for runtime requirements and exact commands, write only where to look and why it was built in a specific way. Never describe execution order.
+Except for runtime requirements and exact commands, write only capped maps and why it was built in a specific way. Never describe execution order.
 
 Keep:
 
 - boundary purpose and allowed dependency direction
-- where to look: authoritative definitions, entry points, extension points, shared helpers
+- capped maps per `## Maps`
 - why: architecture decisions and their reasons, only when not obvious from code
 - ownership of validation, state, permissions, and side effects
 - durable domain or safety invariants, each with reason
 - fastest relevant validation and unusual test prerequisites
 - plausible wrong turns not obvious from nearby code
 - implementation rules enforced by code or tests that agents could easily bypass: layer order, shared helpers, transaction handling, import syntax, public error handling, validation ownership
-- 1-3 maintained exemplar paths for common changes
 
-Format: `path -> what it owns; why: reason`. Rationale without evidence -> omit.
+Rationale without evidence -> omit.
 
 Drop:
 
 - code narration: hop chains, call sequences, step-by-step request paths, per-file change sets
-- file, symbol, route, dependency, or environment-variable inventories
+- file, symbol, route, dependency, or environment-variable inventories beyond capped maps
 - timings, counts, temporary status
 - generic advice or host-provided agent workflow
 - duplicated parent guidance or human documentation
 - unsupported claims
+
+## Maps
+
+Purpose: help future agents find code fast. Add entry only when it helps that; not helpful or unsure -> omit. Limits are caps, not targets.
+
+- Root `## Repository Map`: max 8 main directories. One line each: `path/` -> short description (purpose, owned concern). No files, classes, or methods.
+- Nested `## Map`: max 6 entries in total across core directories, files, classes, and methods. One line each: `path` or `path` `Symbol` -> short description. Prefer sources of truth, entry points, and extension points over leaf components.
+- Short description: what it owns, plus non-obvious why when useful. No behavior narration.
+- Entry already obvious from directory name or parent map -> omit.
 
 ## Commands
 
@@ -57,8 +65,8 @@ Keep every command agents routinely run; drop only one-off, internal, or CI-only
 
 ## Shape
 
-Root sections as useful: repository map, runtime, commands, architecture/domain, testing, agent hints, maintenance.
+Root sections as useful: `## Repository Map`, runtime, commands, architecture/domain, testing, agent hints, maintenance.
 
 Add `## Testing` only where test structure or setup changes agent decisions. Cover relevant layers/frameworks, file or config locations, harnesses/fixtures/providers, prerequisites, and E2E ownership. Keep runnable commands only in `## Commands`; do not repeat them under Testing.
 
-Nested files contain only local where-to-look, local rationale, local commands, local testing, and local hazards. Never create nested files beyond two Custom Blend files.
+Nested files contain only local `## Map`, local rationale, local commands, local testing, and local hazards. Never create nested files beyond two Custom Blend files.

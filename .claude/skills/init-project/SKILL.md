@@ -1,6 +1,6 @@
 ---
 name: init-project
-description: Initialize or refresh root AGENTS.md plus nested AGENTS.md for API and UI Custom Blend that tell agents where to look and why code was built in a specific way, explaining architecture decisions not obvious from code
+description: Initialize or refresh root AGENTS.md plus nested AGENTS.md for API and UI Custom Blend with compact maps of core directories and code, plus why code was built in a specific way, explaining architecture decisions not obvious from code
 disable-model-invocation: true
 ---
 
@@ -43,9 +43,11 @@ Final review reuses one completed scan subagent; it does not add a fourth.
 3. Read [scope investigation brief](references/scope-investigation.md). Dispatch three subagents per `## Subagents`, each with full brief, exact scope, repository root, and user context.
 4. Merge findings; read code, plans, and git history to close reported gaps.
 5. Write three output files. Merge valuable existing rules from current files.
-   - Root -> global context, including Custom Blend facts spanning both apps.
-   - API Custom Blend -> API-side Custom Blend: where to look, non-obvious architecture decisions, testing, pitfalls. Covers API Custom Blend code outside folder too (routes, cart, checkout, orders).
-   - UI Custom Blend -> web-side Custom Blend: where to look, non-obvious architecture decisions, testing, pitfalls. Covers web Custom Blend code outside folder too (routing, cart, checkout, orders).
+   - Root -> global context, including Custom Blend facts spanning both apps. `## Repository Map`: max 8 main directories, one short description each.
+   - API Custom Blend -> API-side Custom Blend: `## Map`, non-obvious architecture decisions, testing, pitfalls. Covers API Custom Blend code outside folder too (routes, cart, checkout, orders).
+   - UI Custom Blend -> web-side Custom Blend: `## Map`, non-obvious architecture decisions, testing, pitfalls. Covers web Custom Blend code outside folder too (routing, cart, checkout, orders).
+   - Nested `## Map` -> max 6 entries in total across core directories, files, classes, and methods, one short description each.
+   - Maps -> add entry only when it helps future agents find code. Not helpful or unsure -> omit. Limits are caps, not targets. Format per repository analysis `## Maps`.
    - Nested files -> subtree-only deltas; never repeat root rules.
    - Why -> explain architecture decisions (why built in a specific way) only when not obvious from code. Obvious from code -> omit.
    - No flows: no `## Flows` sections, hop chains, call sequences, step-by-step request paths, or per-file change sets.
@@ -56,15 +58,16 @@ Final review reuses one completed scan subagent; it does not add a fourth.
    - Keep each fact or rule only in most relevant place: repository-wide guidance at root; Custom Blend API or UI guidance in matching nested file.
    - Delete duplicate copies without weakening scope, exceptions, or meaning.
    - Remove any flow-style content (hop chains, call sequences, step lists); keep paths and rationale it carried.
+   - Enforce map caps: root `## Repository Map` max 8 directories; each nested `## Map` max 6 entries total. Over cap or doubtful entry -> remove least useful.
    - Fit root `## Commands` in max 10 lines by grouping related commands per line by purpose (setup/run, checks, tests, gates, scoped-run pattern, destructive with impact). Do not drop commands agents routinely run.
    - Edit files directly and report moved or deleted guidance. Do not return recommendations only.
-7. Before finalizing, test drafts against a typical cross-layer Custom Blend change. If an agent would not know where to start, which layer owns a rule, or why architecture differs from obvious approach, add missing path, ownership rule, or decision rationale.
+7. Before finalizing, test drafts against a typical cross-layer Custom Blend change. If an agent would not know where to start, which layer owns a rule, or why architecture differs from obvious approach, add missing map entry (within cap), ownership rule, or decision rationale.
 
 ## Generated content
 
 - Minimal: every line must change agent behavior or avoid meaningful rediscovery.
-- Only where and why: authoritative paths, ownership, architecture decisions not obvious from code with their reasons, durable invariants, hazards, and surprising constraints. Reference detailed docs with plain repository-relative paths; never use Markdown links or copy doc content.
-- Avoid flows and code narration, volatile implementation prose (line numbers, function bodies, transient values), inventories, exhaustive environment lists, generic coding advice, and host-provided agent or skill-routing rules.
+- Only maps and why: capped maps, ownership, architecture decisions not obvious from code with their reasons, durable invariants, hazards, and surprising constraints. Reference detailed docs with plain repository-relative paths; never use Markdown links or copy doc content.
+- Avoid flows and code narration, volatile implementation prose (line numbers, function bodies, transient values), inventories beyond capped maps, exhaustive environment lists, generic coding advice, and host-provided agent or skill-routing rules.
 - Destructive commands -> state impact and required authorization.
 - Generated/runtime files -> identify only when agents might edit or commit them accidentally.
 - Do not reference initializer plumbing in generated files: this skill, skill locations/discovery, nested-skill notes.
@@ -91,6 +94,7 @@ Write any AI documentation (AGENTS.md) or code comments in terse language, for f
 - Confirm each output file contains `## Pitfalls` and only evidence-backed entries.
 - Confirm Maintenance and AI Documentation rules appear in root `AGENTS.md` only.
 - Confirm output contains no `## Flows` sections, hop chains, or step-by-step code paths; every rationale claim is evidence-backed and every path exists.
+- Confirm root `## Repository Map` has max 8 directories and each nested `## Map` max 6 entries total, every entry useful for finding code.
 - Confirm root `## Commands` has max 10 lines.
 - Review output for unsupported claims, volatile detail, and excess length.
 - Run application tests only if changes extend beyond `AGENTS.md` files.
