@@ -12,9 +12,9 @@ Apply only when init-project writes or edits `AGENTS.md` files. Never apply to u
 
 ## Structure
 
-- Prefer compact bullets, `key: value`, and `A -> B -> C` relations.
+- Prefer compact bullets and `key: value`.
 - Use inline code for identifiers. Use plain repository-relative paths in `AGENTS.md`; never use Markdown links.
-- Limit lists to two levels where practical. Use two-space indentation and arrow chains instead of deep nesting.
+- Limit lists to two levels. Use two-space indentation.
 - No Mermaid, pipe or ASCII tables, horizontal rules, decorative separators, structural emoji, or ASCII art.
 
 ## Editing rules

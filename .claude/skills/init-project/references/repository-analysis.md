@@ -13,7 +13,7 @@ Main agent root scan -> shallow; enough to brief investigators:
 - destructive actions, generated boundaries, external effects, and common traps
 - documentation paths to reference instead of repeat
 
-Investigator scans -> map candidates and rationale per references/scope-investigation.md. Main agent merges findings and reads code, plans, and git history to close gaps.
+Investigator scans -> map candidates and rationale per references/scope-investigation.md.
 
 ## Select content
 
@@ -46,8 +46,9 @@ Drop:
 
 Purpose: help future agents find code fast. Add entry only when it helps that; not helpful or unsure -> omit. Limits are caps, not targets.
 
-- Root `## Repository Map`: max 8 main directories. One line each: `path/` -> short description (purpose, owned concern). No files, classes, or methods.
-- Nested `## Map`: max 6 entries in total across core directories, files, classes, and methods. One line each: `path` or `path` `Symbol` -> short description. Prefer sources of truth, entry points, and extension points over leaf components.
+- Format: one list item per entry, `` - `path` -> description `` or `` - `path` `Symbol` -> description ``. Forward slashes even on Windows.
+- Root `## Repository Map`: max 8 main directories; short description of purpose and owned concern. No files, classes, or methods.
+- Nested `## Map`: max 6 entries in total across core directories, files, classes, and methods. Prefer sources of truth, entry points, and extension points over leaf components.
 - Short description: what it owns, plus non-obvious why when useful. No behavior narration.
 - Entry already obvious from directory name or parent map -> omit.
 
@@ -72,4 +73,4 @@ Add `## Testing` only where test structure or setup changes agent decisions. Per
 
 Single-file run -> one pattern per test type with `<path>` placeholder, verified against manifest script: script with fixed globs may ignore or add to extra args; then give direct runner invocation instead. Root `## Commands` owns repository-wide commands; nested `## Testing` holds only scope-specific run patterns; never repeat a command between them.
 
-Nested files contain only local `## Map`, local rationale, local commands, local testing, and local hazards. Never create nested files beyond two Custom Blend files.
+Nested files contain only local `## Map`, local rationale, local commands, local testing, and local hazards.
