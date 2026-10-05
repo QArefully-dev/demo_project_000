@@ -24,7 +24,7 @@ Change no other files.
 
 ## Subagents
 
-Dispatch exactly three read-only scan subagents, all with model `GPT-6 Luna (copilot)`. Run them in parallel. Never substitute another model; model unavailable -> stop and report.
+Dispatch exactly three scan subagents, all agent type `general-purpose` with model `GPT-6 Luna (copilot)`. Never use `explore` or other quick-lookup agent types: they stop after first answer and cannot edit in step 6. Run them in parallel in background. Never substitute another model; model unavailable -> stop and report.
 
 - Root subagent: repository-wide scope excluding Custom Blend scopes below. Cross-cutting architecture, rationale, commands, and testing outside Custom Blend.
 - API Custom Blend subagent: `apps/api/src/features/customBlend/`, `apps/api/src/routes/customBlends.ts`, `apps/api/src/db/migrations/022_custom_blends.ts`, Custom Blend tests under `apps/api/test/`, plus Custom Blend touchpoints in API cart, checkout, orders, payments, reorder, saved lists, and shared `packages/contracts/src/customBlends.ts`.
@@ -37,7 +37,7 @@ Final review reuses one completed scan subagent; it does not add a fourth.
 ## Workflow
 
 1. Resolve repository root. Read [repository analysis](references/repository-analysis.md) and bundled [LLM-oriented Markdown rules](assets/llm-oriented-markdowns/llm-oriented-markdowns.md).
-2. Shallow root scan per repository analysis `## Scan`, including existing `AGENTS.md` files. Code and executable config win conflicts; report unresolved intent conflicts with "WARNING".
+2. Main agent's own shallow root scan per repository analysis `## Scan` (shallow applies only here; never pass it to subagents), including existing `AGENTS.md` files. Code and executable config win conflicts; report unresolved intent conflicts with "WARNING".
 3. Read [scope investigation brief](references/scope-investigation.md). Dispatch three subagents per `## Subagents`, each with full brief, exact scope, repository root, and user context.
 4. Merge findings; read code, plans, and git history to close reported gaps. Before writing, verify each claim against cited evidence per brief `## Accuracy`. Claims marked `inferred`, conflicting between subagents, or unconfirmable -> omit or confirm in code yourself.
 5. Write three output files. Existing `AGENTS.md` content is unverified; keep a rule only after confirming it in code.
@@ -82,7 +82,7 @@ Write any AI documentation (AGENTS.md) or code comments in terse language, for f
 
 ## Verify
 
-- Confirm exactly three subagents ran, all on `GPT-6 Luna (copilot)`, and final review reused one of them.
+- Confirm exactly three `general-purpose` subagents ran, all on `GPT-6 Luna (copilot)`, and final review reused one of them.
 - Confirm only three output files changed.
 - Review final-pass diff for lost scope, meaning, or unsupported formatting changes.
 - Confirm output files use plain repository-relative paths with forward slashes, not Markdown links.

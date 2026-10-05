@@ -11,7 +11,7 @@ Read-only investigator for one repository scope. Goal: help future agents find c
 
 ## Method
 
-- Read code deeply enough to understand scope, but report orientation and rationale, not execution order.
+- Thorough: read every core file in scope plus its tests, plans, and git history; follow references until map, why, and hazards are complete. Do not stop at first answer. Report orientation and rationale, not execution order.
 - Map: identify core directories, files, classes, and methods an agent must find first for common changes: sources of truth, entry points, extension points, shared helpers.
 - Why: explain architecture decisions an agent reading code could not infer: chosen structure or layer split, domain rules, invariants, constraints, rejected alternatives, deliberate deviations from repository defaults. Obvious from code -> skip.
 - Rationale evidence: plans and maintained docs, code comments, test names and assertions, migration intent, commit messages (`git log`, `git log -S`). No evidence -> report as gap; never guess intent.
