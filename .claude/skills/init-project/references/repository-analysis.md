@@ -37,6 +37,7 @@ Drop:
 - code narration: hop chains, call sequences, step-by-step request paths, per-file change sets
 - file, symbol, route, dependency, or environment-variable inventories beyond capped maps
 - timings, counts, temporary status
+- literal business values (amounts, percentages, durations, sizes) -> name constant and defining path instead
 - generic advice or host-provided agent workflow
 - duplicated parent guidance or human documentation
 - unsupported claims
@@ -58,7 +59,7 @@ Root `## Commands` -> max 10 lines. Group related commands on one line per purpo
 - checks: typecheck, lint, format, custom static guards
 - tests: per-layer or per-kind test commands
 - gates: aggregate scripts with what each runs
-- scoped runs: one pattern line (workspace, package, single test) with example instead of per-target commands
+- scoped runs: one pattern line (workspace, package, single test) with placeholder instead of per-target commands; only patterns that actually scope per manifest script
 - destructive: own line; impact and required authorization
 
 Keep every command agents routinely run; drop only one-off, internal, or CI-only scripts. Short purpose notes inline in parentheses. Custom Blend-only commands -> matching nested file.
@@ -67,6 +68,8 @@ Keep every command agents routinely run; drop only one-off, internal, or CI-only
 
 Root sections as useful: `## Repository Map`, runtime, commands, architecture/domain, testing, agent hints, maintenance.
 
-Add `## Testing` only where test structure or setup changes agent decisions. Cover relevant layers/frameworks, file or config locations, harnesses/fixtures/providers, prerequisites, and E2E ownership. Keep runnable commands only in `## Commands`; do not repeat them under Testing.
+Add `## Testing` only where test structure or setup changes agent decisions. Per test type: location pattern (e.g. colocated vs separate test directory), harness or fixtures, unusual prerequisites. No test file lists; agents find files by pattern.
+
+Single-file run -> one pattern per test type with `<path>` placeholder, verified against manifest script: script with fixed globs may ignore or add to extra args; then give direct runner invocation instead. Root `## Commands` owns repository-wide commands; nested `## Testing` holds only scope-specific run patterns; never repeat a command between them.
 
 Nested files contain only local `## Map`, local rationale, local commands, local testing, and local hazards. Never create nested files beyond two Custom Blend files.
