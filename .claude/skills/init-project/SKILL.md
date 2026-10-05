@@ -37,10 +37,10 @@ Final review reuses one completed scan subagent; it does not add a fourth.
 ## Workflow
 
 1. Resolve repository root. Read [repository analysis](references/repository-analysis.md) and bundled [LLM-oriented Markdown rules](assets/llm-oriented-markdowns/llm-oriented-markdowns.md).
-2. Main agent's own shallow root scan per repository analysis `## Scan` (shallow applies only here; never pass it to subagents), including existing `AGENTS.md` files. Code and executable config win conflicts; report unresolved intent conflicts with "WARNING".
-3. Read [scope investigation brief](references/scope-investigation.md). Dispatch three subagents per `## Subagents`, each with full brief, exact scope, repository root, and user context.
-4. Merge findings; read code, plans, and git history to close reported gaps. Before writing, verify each claim against cited evidence per brief `## Accuracy`. Claims marked `inferred`, conflicting between subagents, or unconfirmable -> omit or confirm in code yourself.
-5. Write three output files. Existing `AGENTS.md` content is unverified; keep a rule only after confirming it in code.
+2. Main agent's own shallow root scan per repository analysis `## Scan` (shallow applies only here; never pass it to subagents), including existing `AGENTS.md` files.
+3. Read [scope investigation brief](references/scope-investigation.md). Dispatch three subagents per `## Subagents`, each with full brief, exact scope, repository root, user context, and paths of existing `AGENTS.md` files.
+4. Merge findings. Trust subagent evidence: never re-read code to verify claims or close gaps. Claims marked `inferred` or conflicting between subagents -> omit. Report gaps and subagent "WARNING" conflicts to user.
+5. Write three output files from subagent findings only. Existing `AGENTS.md` rule -> keep only if subagent confirmed it.
    - Root -> global context, including Custom Blend facts spanning both apps.
    - API Custom Blend -> API-side Custom Blend: `## Map`, non-obvious architecture decisions, testing, pitfalls. Covers API Custom Blend code outside folder too (routes, cart, checkout, orders).
    - UI Custom Blend -> web-side Custom Blend: `## Map`, non-obvious architecture decisions, testing, pitfalls. Covers web Custom Blend code outside folder too (routing, cart, checkout, orders).
@@ -57,7 +57,7 @@ Final review reuses one completed scan subagent; it does not add a fourth.
    - Fit root `## Commands` in max 10 lines by grouping related commands per line by purpose (setup/run, checks, tests, gates, scoped-run pattern, destructive with impact). Do not drop commands agents routinely run.
    - Edit files directly and report moved, corrected, or deleted guidance. Do not return recommendations only.
 7. Append Maintenance and AI Documentation text from `## Generated content` verbatim to end of root `AGENTS.md`.
-8. Before finalizing, test drafts against a typical cross-layer Custom Blend change. If an agent would not know where to start, which layer owns a rule, or why architecture differs from obvious approach, add missing map entry (within cap), ownership rule, or decision rationale.
+8. Before finalizing, test drafts against a typical cross-layer Custom Blend change. If an agent would not know where to start, which layer owns a rule, or why architecture differs from obvious approach, add missing map entry (within cap), ownership rule, or decision rationale from subagent findings; not in findings -> report gap.
 
 ## Generated content
 
@@ -91,6 +91,6 @@ Write any AI documentation (AGENTS.md) or code comments in terse language, for f
 - Confirm output contains no `## Flows` sections, hop chains, or step-by-step code paths.
 - Confirm root `## Repository Map` has max 8 directories and each nested `## Map` max 6 entries total, every entry useful for finding code.
 - Confirm root `## Commands` has max 10 lines.
-- Confirm every claim is evidence-backed and was fact-checked, every cited path exists, every command matches manifest scripts; no volatile detail or excess length.
-- Confirm `## Testing` sections contain no test file lists and each single-file pattern actually scopes per its script.
+- Confirm reviewer reported fact-check results; no volatile detail or excess length.
+- Confirm `## Testing` sections contain no test file lists.
 - Report changed files, validation, and evidence gaps, including unknown rationale.

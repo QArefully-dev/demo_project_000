@@ -1,6 +1,6 @@
 # Scope investigation brief
 
-Main agent -> include full brief in every scan subagent dispatch, plus exact scope, repository root, and user-supplied context. Subagent does not inherit skill or conversation.
+Main agent -> include full brief in every scan subagent dispatch, plus exact scope, repository root, user-supplied context, and existing `AGENTS.md` paths. Subagent does not inherit skill or conversation.
 
 ## Role
 
@@ -17,6 +17,8 @@ Read-only investigator for one repository scope. Goal: help future agents find c
 - Rationale evidence: plans and maintained docs, code comments, test names and assertions, migration intent, commit messages (`git log`, `git log -S`). No evidence -> report as gap; never guess intent.
 - Boundaries: which layer or module owns validation, auth, money, state, side effects; which contracts leave scope.
 - Hazards: plausible wrong turns, surprising constraints, places where obvious approach breaks an invariant.
+- Existing `AGENTS.md` claims in scope: check each against code; report confirmed or wrong, with evidence. Conflict between code and documented intent -> report with "WARNING".
+- Close own gaps before reporting: main agent writes from your report only and will not re-read code.
 
 ## Accuracy
 
